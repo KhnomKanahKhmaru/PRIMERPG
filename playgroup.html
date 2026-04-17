@@ -148,9 +148,7 @@
       text-align: center;
       padding: 60px 0;
     }
-    .world-field {
-      margin-bottom: 28px;
-    }
+    .world-field { margin-bottom: 28px; }
     .world-field-title {
       font-size: 11px;
       font-weight: 600;
@@ -163,6 +161,38 @@
       font-size: 13px;
       color: #888;
       line-height: 1.6;
+    }
+    .world-textarea {
+      width: 100%;
+      background: #111;
+      border: 1px solid #222;
+      color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 13px;
+      padding: 8px 12px;
+      border-radius: 4px;
+      outline: none;
+      resize: vertical;
+      min-height: 80px;
+      line-height: 1.6;
+    }
+    .world-textarea:focus { border-color: #444; }
+    .save-btn {
+      margin-top: 8px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 12px;
+      padding: 6px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .save-btn:hover { background: #222; border-color: #555; }
+    .save-msg {
+      font-size: 11px;
+      margin-left: 10px;
+      color: #66ff99;
     }
     .people-row {
       display: flex;
@@ -287,6 +317,8 @@
     <div class="pg-tab active" onclick="switchTab('news', this)">News</div>
     <div class="pg-tab" onclick="switchTab('people', this)">People</div>
     <div class="pg-tab" onclick="switchTab('world', this)">World</div>
+    <div class="pg-tab" onclick="switchTab('rules', this)">Rules</div>
+    <div class="pg-tab" onclick="switchTab('resources', this)">Resources</div>
   </div>
 </div>
 
@@ -295,26 +327,55 @@
     <div id="news-loading" class="empty">Loading...</div>
     <div class="empty" id="news-empty" style="display:none">No news yet!</div>
   </div>
+
   <div class="tab-panel" id="tab-people">
     <div id="people-list"></div>
   </div>
+
   <div class="tab-panel" id="tab-world">
     <div class="world-field">
       <div class="world-field-title">Setting Synopsis</div>
-      <div class="world-field-content" id="world-synopsis">Not set.</div>
-    </div>
-    <div class="world-field">
-      <div class="world-field-title">World Rules</div>
-      <div class="world-field-content" id="world-rules">Not set.</div>
+      <div id="synopsis-display" class="world-field-content">Not set.</div>
+      <textarea id="synopsis-edit" class="world-textarea" style="display:none"></textarea>
+      <div id="synopsis-save-row" style="display:none">
+        <button class="save-btn" onclick="saveField('synopsis')">Save</button>
+        <span class="save-msg" id="synopsis-msg"></span>
+      </div>
     </div>
     <div class="world-field">
       <div class="world-field-title">Setting Description</div>
-      <div class="world-field-content" id="world-description">Not set.</div>
+      <div id="description-display" class="world-field-content">Not set.</div>
+      <textarea id="description-edit" class="world-textarea" style="display:none"></textarea>
+      <div id="description-save-row" style="display:none">
+        <button class="save-btn" onclick="saveField('description')">Save</button>
+        <span class="save-msg" id="description-msg"></span>
+      </div>
     </div>
     <div class="world-field">
       <div class="world-field-title">World Events</div>
-      <div class="world-field-content" id="world-events">Not set.</div>
+      <div id="events-display" class="world-field-content">Not set.</div>
+      <textarea id="events-edit" class="world-textarea" style="display:none"></textarea>
+      <div id="events-save-row" style="display:none">
+        <button class="save-btn" onclick="saveField('events')">Save</button>
+        <span class="save-msg" id="events-msg"></span>
+      </div>
     </div>
+  </div>
+
+  <div class="tab-panel" id="tab-rules">
+    <div class="world-field">
+      <div class="world-field-title">Playgroup Rules</div>
+      <div id="rules-display" class="world-field-content">Not set.</div>
+      <textarea id="rules-edit" class="world-textarea" style="display:none"></textarea>
+      <div id="rules-save-row" style="display:none">
+        <button class="save-btn" onclick="saveField('rules')">Save</button>
+        <span class="save-msg" id="rules-msg"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tab-resources">
+    <div class="empty">Resources coming soon.</div>
   </div>
 </div>
 
@@ -327,7 +388,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
-  import { getFirestore, doc, getDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+  import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCf94yLvAtJ9pLgJ3FsV7ir4Qh9XXm3nHg",
@@ -344,53 +405,94 @@
 
   const params = new URLSearchParams(window.location.search);
   const pgId = params.get('id');
-
   if (!pgId) window.location.href = 'home.html';
+
+  let canEdit = false;
+  let pgData = {};
+
+  const fields = ['synopsis', 'description', 'events', 'rules'];
 
   onAuthStateChanged(auth, async function(user) {
     if (!user || !user.emailVerified) {
       window.location.href = 'index.html';
       return;
     }
+
     const pgDoc = await getDoc(doc(db, 'playgroups', pgId));
-    if (!pgDoc.exists()) {
-      window.location.href = 'home.html';
-      return;
-    }
-    const pg = pgDoc.data();
-    document.title = pg.name + ' — PRIME RPG';
-    document.getElementById('pg-name').textContent = pg.name;
-    document.getElementById('pg-primer').textContent = pg.primer || '';
+    if (!pgDoc.exists()) { window.location.href = 'home.html'; return; }
+    pgData = pgDoc.data();
+
+    document.title = pgData.name + ' — PRIME RPG';
+    document.getElementById('pg-name').textContent = pgData.name;
+    document.getElementById('pg-primer').textContent = pgData.primer || '';
     document.getElementById('news-loading').style.display = 'none';
     document.getElementById('news-empty').style.display = 'block';
 
-    if (pg.world) {
-      if (pg.world.synopsis) document.getElementById('world-synopsis').textContent = pg.world.synopsis;
-      if (pg.world.rules) document.getElementById('world-rules').textContent = pg.world.rules;
-      if (pg.world.description) document.getElementById('world-description').textContent = pg.world.description;
-      if (pg.world.events) document.getElementById('world-events').textContent = pg.world.events;
+    const membershipDoc = await getDoc(doc(db, 'memberships', user.uid + '_' + pgId));
+    if (membershipDoc.exists()) {
+      const role = membershipDoc.data().role;
+      canEdit = role === 'Leader' || role === 'Administrator';
     }
 
-   const peopleList = document.getElementById('people-list');
-peopleList.innerHTML = '<div class="empty">Loading...</div>';
-const membershipsQ = query(collection(db, 'memberships'), where('playgroupId', '==', pgId));
-const membershipsSnap = await getDocs(membershipsQ);
-if (membershipsSnap.empty) {
-  peopleList.innerHTML = '<div class="empty">No members yet.</div>';
-} else {
-  peopleList.innerHTML = '';
-  for (const mDoc of membershipsSnap.docs) {
-    const m = mDoc.data();
-    const userDoc = await getDoc(doc(db, 'users', m.uid));
-    const username = userDoc.exists() ? userDoc.data().username : 'Unknown';
-    peopleList.innerHTML += `
-      <div class="people-row">
-        <div class="people-name">${username}</div>
-        <div class="people-role">${m.role}</div>
-      </div>`;
-  }
-}
+    const world = pgData.world || {};
+    const fieldMap = {
+      synopsis: world.synopsis || '',
+      description: world.description || '',
+      events: world.events || '',
+      rules: pgData.rules || ''
+    };
+
+    fields.forEach(f => {
+      const val = fieldMap[f];
+      const display = document.getElementById(f + '-display');
+      const edit = document.getElementById(f + '-edit');
+      const saveRow = document.getElementById(f + '-save-row');
+      display.textContent = val || 'Not set.';
+      if (canEdit) {
+        display.style.display = 'none';
+        edit.value = val;
+        edit.style.display = 'block';
+        saveRow.style.display = 'block';
+      }
+    });
+
+    const peopleList = document.getElementById('people-list');
+    peopleList.innerHTML = '<div class="empty">Loading...</div>';
+    const membershipsQ = query(collection(db, 'memberships'), where('playgroupId', '==', pgId));
+    const membershipsSnap = await getDocs(membershipsQ);
+    if (membershipsSnap.empty) {
+      peopleList.innerHTML = '<div class="empty">No members yet.</div>';
+    } else {
+      peopleList.innerHTML = '';
+      for (const mDoc of membershipsSnap.docs) {
+        const m = mDoc.data();
+        const userDoc = await getDoc(doc(db, 'users', m.uid));
+        const username = userDoc.exists() ? userDoc.data().username : 'Unknown';
+        peopleList.innerHTML += `
+          <div class="people-row">
+            <div class="people-name">${username}</div>
+            <div class="people-role">${m.role}</div>
+          </div>`;
+      }
+    }
   });
+
+  window.saveField = async function(field) {
+    const val = document.getElementById(field + '-edit').value.trim();
+    const msg = document.getElementById(field + '-msg');
+    try {
+      if (field === 'rules') {
+        await updateDoc(doc(db, 'playgroups', pgId), { rules: val });
+      } else {
+        await updateDoc(doc(db, 'playgroups', pgId), { ['world.' + field]: val });
+      }
+      msg.textContent = 'Saved!';
+      setTimeout(() => { msg.textContent = ''; }, 2000);
+    } catch(e) {
+      msg.textContent = 'Error saving.';
+      msg.style.color = '#ff6666';
+    }
+  }
 
   window.switchTab = function(name, el) {
     document.querySelectorAll('.pg-tab').forEach(t => t.classList.remove('active'));
