@@ -365,10 +365,10 @@
   ];
 
   const CONDITION_SEVERITY = [
-    {value:'Minor',label:'Minor (−1 Difficulty / 1 Break Point)'},{value:'Moderate',label:'Moderate (+0 Difficulty / 2 Break Points)'},
-    {value:'Major',label:'Major (+1 Difficulty / 3 Break Points)'},{value:'Massive',label:'Massive (+2 Difficulty / 4 Break Points)'},
-    {value:'Monumental',label:'Monumental (+3 Difficulty / 5 Break Points)'},{value:'Mega',label:'Mega (+4 Difficulty / 6 Break Points)'},
-    {value:'Mythical',label:'Mythical (+5 Difficulty / 7 Break Points)'}
+    {value:'Minor',label:'Minor Condition (−1 Difficulty / 1 Break Point)'},{value:'Moderate',label:'Moderate Condition (+0 Difficulty / 2 Break Points)'},
+    {value:'Major',label:'Major Condition (+1 Difficulty / 3 Break Points)'},{value:'Massive',label:'Massive Condition (+2 Difficulty / 4 Break Points)'},
+    {value:'Monumental',label:'Monumental Condition (+3 Difficulty / 5 Break Points)'},{value:'Mega',label:'Mega Condition (+4 Difficulty / 6 Break Points)'},
+    {value:'Mythical',label:'Mythical Condition (+5 Difficulty / 7 Break Points)'}
   ];
 
   const OBLIGATION_SEVERITY = [
@@ -716,7 +716,7 @@
     document.getElementById('disorders-view').innerHTML=d.length===0?'<div style="color:#333;font-size:12px">None.</div>'
       :d.map((x,i)=>`<div class="disorder-entry">
         <div class="entry-header">
-          <span style="font-size:11px;font-weight:600;color:#777">${severityLabel(x.severity,CONDITION_SEVERITY)} ${x.disorder||'Condition'}</span>
+          <span style="font-size:11px;font-weight:600;color:#777">${x.severity||'Minor'} ${x.disorder||'Condition'}</span>
           ${canEdit?`<span class="entry-delete" onclick="deleteDisorder(${i})">×</span>`:''}
         </div>
         I have <span class="entry-text">${x.disorder||'___'}</span> which means <span class="entry-text">${x.description||'___'}</span> and if triggered I might <span class="entry-text">${x.symptoms||'___'}</span>
