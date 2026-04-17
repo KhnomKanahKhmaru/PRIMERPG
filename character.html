@@ -374,6 +374,7 @@
   const SKILL_LABELS = ['No Exposure','Minor Exposure','Exposure','Basic Training','Training','Major Training','Expertise','Major Expertise','Near-Mastery','Mastery','True Mastery'];
 
   function getStatLabel(v){return STAT_LABELS[Math.min(Math.max(0,Math.floor(v)),20)]||'';}
+  function getSizeLabel(v){const o=SIZE_OPTIONS.slice().reverse().find(o=>v>=o.value);return o?o.label:'Nano';}
   function getStatLevelText(key,total){if(key==='size')return getSizeLabel(total);return `You are of ${getStatLabel(total)} ${key.charAt(0).toUpperCase()+key.slice(1)}`;}
   function getSkillLevelText(val){return `You have ${SKILL_LABELS[Math.min(10,Math.max(0,val))]||'No Exposure'} in this Skill`;}
   function getStatTotal(k){const d=STAT_DEFS.find(s=>s.key===k);const b=(charData.stats&&charData.stats[k]!==undefined)?charData.stats[k]:d.default;const m=(charData.statModifiers&&charData.statModifiers[k])?charData.statModifiers[k]:[];return b+m.reduce((s,x)=>s+(parseInt(x.value)||0),0);}
