@@ -131,8 +131,8 @@
     .ql-picker-options { background: #1a1a1a !important; border-color: #333 !important; }
     .ql-toolbar.ql-snow { display: none; }
     .ql-container.ql-snow { display: none; }
-    .quill-active .ql-toolbar.ql-snow { display: block; }
-    .quill-active .ql-container.ql-snow { display: block; }
+    .quill-wrapper.quill-active .ql-toolbar.ql-snow { display: block; }
+    .quill-wrapper.quill-active .ql-container.ql-snow { display: block; }
   </style>
 </head>
 <body>
@@ -162,7 +162,7 @@
     <div class="world-field">
       <div class="world-field-title">Setting Synopsis <span id="synopsis-edit-btn" class="edit-btn" style="display:none" onclick="editField('synopsis')">Edit</span></div>
       <div id="synopsis-display" class="world-field-content"></div>
-      <div id="synopsis-editor" style="display:none"></div>
+      <div class="quill-wrapper" id="synopsis-wrapper" style="display:none"><div id="synopsis-editor"></div></div>
       <div id="synopsis-save-row" style="display:none;margin-top:8px">
         <button class="save-btn" onclick="saveField('synopsis')">Save</button>
         <button class="save-btn" onclick="cancelField('synopsis')" style="margin-left:6px;border-color:#333;color:#888">Cancel</button>
@@ -172,7 +172,7 @@
     <div class="world-field">
       <div class="world-field-title">Setting Description <span id="description-edit-btn" class="edit-btn" style="display:none" onclick="editField('description')">Edit</span></div>
       <div id="description-display" class="world-field-content"></div>
-      <div id="description-editor" style="display:none"></div>
+      <div class="quill-wrapper" id="description-wrapper" style="display:none"><div id="description-editor"></div></div>
       <div id="description-save-row" style="display:none;margin-top:8px">
         <button class="save-btn" onclick="saveField('description')">Save</button>
         <button class="save-btn" onclick="cancelField('description')" style="margin-left:6px;border-color:#333;color:#888">Cancel</button>
@@ -182,7 +182,7 @@
     <div class="world-field">
       <div class="world-field-title">World Events <span id="events-edit-btn" class="edit-btn" style="display:none" onclick="editField('events')">Edit</span></div>
       <div id="events-display" class="world-field-content"></div>
-      <div id="events-editor" style="display:none"></div>
+      <div class="quill-wrapper" id="events-wrapper" style="display:none"><div id="events-editor"></div></div>
       <div id="events-save-row" style="display:none;margin-top:8px">
         <button class="save-btn" onclick="saveField('events')">Save</button>
         <button class="save-btn" onclick="cancelField('events')" style="margin-left:6px;border-color:#333;color:#888">Cancel</button>
@@ -194,7 +194,7 @@
     <div class="world-field">
       <div class="world-field-title">Playgroup Rules <span id="rules-edit-btn" class="edit-btn" style="display:none" onclick="editField('rules')">Edit</span></div>
       <div id="rules-display" class="world-field-content"></div>
-      <div id="rules-editor" style="display:none"></div>
+      <div class="quill-wrapper" id="rules-wrapper" style="display:none"><div id="rules-editor"></div></div>
       <div id="rules-save-row" style="display:none;margin-top:8px">
         <button class="save-btn" onclick="saveField('rules')">Save</button>
         <button class="save-btn" onclick="cancelField('rules')" style="margin-left:6px;border-color:#333;color:#888">Cancel</button>
@@ -353,16 +353,16 @@
 
   window.editField = function(field) {
     document.getElementById(field + '-display').style.display = 'none';
-    document.getElementById(field + '-editor').style.display = 'block';
-    document.getElementById(field + '-editor').classList.add('quill-active');
+    document.getElementById(field + '-wrapper').style.display = 'block';
+    document.getElementById(field + '-wrapper').classList.add('quill-active');
     document.getElementById(field + '-save-row').style.display = 'block';
     document.getElementById(field + '-edit-btn').style.display = 'none';
   }
 
   window.cancelField = function(field) {
     document.getElementById(field + '-display').style.display = 'block';
-    document.getElementById(field + '-editor').style.display = 'none';
-    document.getElementById(field + '-editor').classList.remove('quill-active');
+    document.getElementById(field + '-wrapper').style.display = 'none';
+    document.getElementById(field + '-wrapper').classList.remove('quill-active');
     document.getElementById(field + '-save-row').style.display = 'none';
     document.getElementById(field + '-edit-btn').style.display = 'inline';
   }
