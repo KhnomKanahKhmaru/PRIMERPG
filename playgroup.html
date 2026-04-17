@@ -369,20 +369,25 @@
       if (pg.world.events) document.getElementById('world-events').textContent = pg.world.events;
     }
 
-    const peopleList = document.getElementById('people-list');
-    if (pg.members && pg.members.length > 0) {
-      for (const member of pg.members) {
-        const userDoc = await getDoc(doc(db, 'users', member.uid));
-        const username = userDoc.exists() ? userDoc.data().username : 'Unknown';
-        peopleList.innerHTML += `
-          <div class="people-row">
-            <div class="people-name">${username}</div>
-            <div class="people-role">${member.role}</div>
-          </div>`;
-      }
-    } else {
-      peopleList.innerHTML = '<div class="empty">No members yet.</div>';
-    }
+   const peopleList = document.getElementById('people-list');
+peopleList.innerHTML = '<div class="empty">Loading...</div>';
+const membershipsQ = query(collection(db, 'memberships'), where('playgroupId', '==', pgId));
+const membershipsSnap = await getDocs(membershipsQ);
+if (membershipsSnap.empty) {
+  peopleList.innerHTML = '<div class="empty">No members yet.</div>';
+} else {
+  peopleList.innerHTML = '';
+  for (const mDoc of membershipsSnap.docs) {
+    const m = mDoc.data();
+    const userDoc = await getDoc(doc(db, 'users', m.uid));
+    const username = userDoc.exists() ? userDoc.data().username : 'Unknown';
+    peopleList.innerHTML += `
+      <div class="people-row">
+        <div class="people-name">${username}</div>
+        <div class="people-role">${m.role}</div>
+      </div>`;
+  }
+}
   });
 
   window.switchTab = function(name, el) {
