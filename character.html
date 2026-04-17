@@ -570,14 +570,9 @@
     const selected=normalizeSelectedMorals();
     const display=document.getElementById('moral-cards-display');
     if(selected.length===0){display.innerHTML='<div class="moral-empty">No morals selected.</div>';return;}
-    display.innerHTML=selected.map((m,i)=>`
+    display.innerHTML=selected.map(m=>`
       <div class="moral-card-item">
-        <div class="moral-card-top">
-          ${canEdit
-            ? severitySelectHtml(m.severity, `updateMoralSeverity(${i}, this.value)`)
-            : `<span style="font-size:10px;color:#555">${m.severity||'Minor'}</span>`
-          }
-        </div>
+        <div class="moral-card-top"><span style="font-size:10px;color:#555">${m.severity||'Minor'}</span></div>
         <div class="moral-card-name">${m.name}</div>
       </div>`).join('');
   }
@@ -593,7 +588,13 @@
     document.getElementById('morals-view').style.display='none';document.getElementById('morals-edit-btn').style.display='none';document.getElementById('morals-edit-mode').style.display='block';
     const selected=normalizeSelectedMorals();
     const selectedNames=selected.map(m=>m.name);
-    document.getElementById('morals-by-ruleset').innerHTML=availableRulesets.map(rs=>`<div class="moral-group"><div class="moral-group-title">${rs.name}</div><div class="moral-chips">${rs.morals.map(m=>`<div class="moral-chip ${selectedNames.includes(m)?'selected':''}" onclick="toggleMoral('${m}',this)">${m}</div>`).join('')}</div></div>`).join('');
+    const chipsHtml=availableRulesets.map(rs=>`<div class="moral-group"><div class="moral-group-title">${rs.name}</div><div class="moral-chips">${rs.morals.map(m=>`<div class="moral-chip ${selectedNames.includes(m)?'selected':''}" onclick="toggleMoral('${m}',this)">${m}</div>`).join('')}</div></div>`).join('');
+    const severityHtml=selected.length===0?'':
+      `<div style="margin-top:12px;border-top:1px solid #1a1a1a;padding-top:10px">
+        <div style="font-size:10px;color:#444;font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">Severity</div>
+        ${selected.map((m,i)=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:12px;color:#888">${severitySelectHtml(m.severity,`updateMoralSeverity(${i},this.value)`)}<span>${m.name}</span></div>`).join('')}
+      </div>`;
+    document.getElementById('morals-by-ruleset').innerHTML=chipsHtml+severityHtml;
   }
 
   window.doneMorals=function(){document.getElementById('morals-view').style.display='block';document.getElementById('morals-edit-btn').style.display='inline';document.getElementById('morals-edit-mode').style.display='none';renderMoralsView();}
@@ -613,8 +614,7 @@
     document.getElementById('obligations-view').innerHTML=o.length===0?'<div style="color:#333;font-size:12px">None.</div>'
       :o.map((x,i)=>`<div class="obligation-entry">
         <div class="entry-header">
-          ${canEdit?severitySelectHtml(x.severity,`saveObligation(${i},'severity',this.value)`):`<span style="font-size:10px">${x.severity||'Minor'}</span>`}
-          <span class="entry-header-type">Obligation</span>
+          <span style="font-size:11px;font-weight:600;color:#777">${x.severity||'Minor'} Obligation</span>
           ${canEdit?`<span class="entry-delete" onclick="deleteObligation(${i})">×</span>`:''}
         </div>
         I have to <span class="entry-text">${x.obligation||'___'}</span> because I <span class="entry-text">${x.violation||'___'}</span>
@@ -647,8 +647,7 @@
     document.getElementById('disorders-view').innerHTML=d.length===0?'<div style="color:#333;font-size:12px">None.</div>'
       :d.map((x,i)=>`<div class="disorder-entry">
         <div class="entry-header">
-          ${canEdit?severitySelectHtml(x.severity,`saveDisorder(${i},'severity',this.value)`):`<span style="font-size:10px">${x.severity||'Minor'}</span>`}
-          <span class="entry-header-type">${x.disorder||'Disorder'}</span>
+          <span style="font-size:11px;font-weight:600;color:#777">${x.severity||'Minor'} ${x.disorder||'Disorder'}</span>
           ${canEdit?`<span class="entry-delete" onclick="deleteDisorder(${i})">×</span>`:''}
         </div>
         I have <span class="entry-text">${x.disorder||'___'}</span> which means <span class="entry-text">${x.description||'___'}</span> and if triggered I might <span class="entry-text">${x.symptoms||'___'}</span>
