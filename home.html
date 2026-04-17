@@ -80,14 +80,47 @@
       border-top: 1px solid #222;
       margin: 4px 0;
     }
+    .page {
+      padding-top: 44px;
+      display: flex;
+      min-height: 100vh;
+    }
+    .left-panel {
+      width: 220px;
+      flex-shrink: 0;
+      border-right: 1px solid #1a1a1a;
+    }
+    .right-panel {
+      width: 220px;
+      flex-shrink: 0;
+      border-left: 1px solid #1a1a1a;
+    }
+    .center-panel {
+      flex: 1;
+      padding: 24px;
+      max-width: 680px;
+      margin: 0 auto;
+    }
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #555;
+      margin-bottom: 16px;
+    }
+    .news-empty {
+      color: #444;
+      font-size: 13px;
+      text-align: center;
+      padding: 60px 0;
+    }
   </style>
 </head>
 <body>
 <div class="topbar">
   <div class="topbar-item home" onclick="window.location.href='home.html'">PRIME RPG</div>
-
   <div class="topbar-item" onclick="window.location.href='home.html'">Home</div>
-
   <div class="topbar-item">
     Documentation
     <div class="dropdown">
@@ -96,7 +129,6 @@
       <a href="#">Characters</a>
     </div>
   </div>
-
   <div class="topbar-item">
     Navigation
     <div class="dropdown">
@@ -105,14 +137,12 @@
       <a href="#">My Scenarios</a>
     </div>
   </div>
-
   <div class="topbar-item">
     Alerts
     <div class="dropdown" id="alerts-dropdown">
       <a href="#">No alerts</a>
     </div>
   </div>
-
   <div class="topbar-item" style="margin-left:auto">
     Account
     <div class="dropdown" style="left:auto;right:0">
@@ -124,6 +154,16 @@
     </div>
   </div>
 </div>
+
+<div class="page">
+  <div class="left-panel"></div>
+  <div class="center-panel">
+    <div class="section-title">Playgroup News</div>
+    <div class="news-empty">No news yet!</div>
+  </div>
+  <div class="right-panel"></div>
+</div>
+
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
