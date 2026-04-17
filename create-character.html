@@ -23,12 +23,7 @@
       padding-right: 24px;
       padding-bottom: 60px;
     }
-    .page-title {
-      font-size: 18px;
-      font-weight: 600;
-      margin-bottom: 24px;
-      color: #e0e0e0;
-    }
+    .page-title { font-size: 18px; font-weight: 600; margin-bottom: 24px; color: #e0e0e0; }
     .section-title {
       font-size: 11px;
       font-weight: 600;
@@ -40,12 +35,7 @@
       padding-bottom: 6px;
       border-bottom: 1px solid #1a1a1a;
     }
-    .field {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      margin-bottom: 14px;
-    }
+    .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
     .field label {
       font-size: 11px;
       font-weight: 600;
@@ -53,7 +43,7 @@
       text-transform: uppercase;
       color: #555;
     }
-    .field input, .field textarea {
+    .field input, .field textarea, .field select {
       background: #111;
       border: 1px solid #222;
       color: #e0e0e0;
@@ -64,8 +54,9 @@
       outline: none;
       width: 100%;
     }
-    .field input:focus, .field textarea:focus { border-color: #444; }
+    .field input:focus, .field textarea:focus, .field select:focus { border-color: #444; }
     .field textarea { resize: vertical; min-height: 100px; line-height: 1.6; }
+    .field select option { background: #111; }
     .preview {
       background: #111;
       border: 1px solid #1a1a1a;
@@ -104,53 +95,33 @@
 
 <div class="page">
   <div class="page-title">Create Character</div>
-
   <div class="section-title">Biography</div>
-
+  <div class="field"><label>Name</label><input type="text" id="c-name" oninput="updatePreview()"></div>
+  <div class="field"><label>Sex</label><input type="text" id="c-sex" oninput="updatePreview()"></div>
+  <div class="field"><label>Age</label><input type="text" id="c-age" oninput="updatePreview()"></div>
+  <div class="field"><label>Ethnicity</label><input type="text" id="c-ethnicity" oninput="updatePreview()"></div>
+  <div class="field"><label>Paradigm</label><input type="text" id="c-paradigm" oninput="updatePreview()"></div>
+  <div class="field"><label>Archetype</label><input type="text" id="c-archetype" oninput="updatePreview()"></div>
+  <div class="field"><label>Residence</label><input type="text" id="c-residence" oninput="updatePreview()"></div>
   <div class="field">
-    <label>Name</label>
-    <input type="text" id="c-name" oninput="updatePreview()">
+    <label>World (Playgroup)</label>
+    <select id="c-playgroup" onchange="updatePreview()">
+      <option value="">None — not in active play</option>
+    </select>
   </div>
-  <div class="field">
-    <label>Sex</label>
-    <input type="text" id="c-sex" oninput="updatePreview()">
-  </div>
-  <div class="field">
-    <label>Age</label>
-    <input type="text" id="c-age" oninput="updatePreview()">
-  </div>
-  <div class="field">
-    <label>Ethnicity</label>
-    <input type="text" id="c-ethnicity" oninput="updatePreview()">
-  </div>
-  <div class="field">
-    <label>Paradigm</label>
-    <input type="text" id="c-paradigm" oninput="updatePreview()">
-  </div>
-  <div class="field">
-    <label>Archetype</label>
-    <input type="text" id="c-archetype" oninput="updatePreview()">
-  </div>
-  <div class="field">
-    <label>Residence</label>
-    <input type="text" id="c-residence" oninput="updatePreview()">
-  </div>
-  <div class="field">
-    <label>Appearance</label>
-    <textarea id="c-appearance" oninput="updatePreview()"></textarea>
-  </div>
+  <div class="field"><label>Appearance</label><textarea id="c-appearance" oninput="updatePreview()"></textarea></div>
 
   <div class="preview-label">Preview</div>
   <div class="preview" id="bio-preview">Fill in the fields above to see a preview.</div>
 
-  <button class="submit-btn" onclick="createCharacter()">Create Character</button>
+  <button class="submit-btn" id="submit-btn" onclick="createCharacter()">Create Character</button>
   <div class="message" id="c-message"></div>
 </div>
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
-  import { getFirestore, doc, getDoc, collection, addDoc } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+  import { getFirestore, doc, getDoc, collection, addDoc, query, where, getDocs } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCf94yLvAtJ9pLgJ3FsV7ir4Qh9XXm3nHg",
@@ -165,6 +136,7 @@
   const auth = getAuth(app);
   const db = getFirestore(app);
   let currentUser = null;
+  let userPlaygroups = [];
 
   onAuthStateChanged(auth, async function(user) {
     if (!user || !user.emailVerified) {
@@ -174,6 +146,21 @@
     currentUser = user;
     const userDoc = await getDoc(doc(db, 'users', user.uid));
     if (userDoc.exists()) setNavUsername(userDoc.data().username);
+
+    // load playgroups for dropdown
+    const q = query(collection(db, 'memberships'), where('uid', '==', user.uid));
+    const snap = await getDocs(q);
+    const sel = document.getElementById('c-playgroup');
+    for (const mDoc of snap.docs) {
+      const pgDoc = await getDoc(doc(db, 'playgroups', mDoc.data().playgroupId));
+      if (pgDoc.exists()) {
+        userPlaygroups.push({ id: pgDoc.id, name: pgDoc.data().name });
+        const opt = document.createElement('option');
+        opt.value = pgDoc.id;
+        opt.textContent = pgDoc.data().name;
+        sel.appendChild(opt);
+      }
+    }
   });
 
   window.updatePreview = function() {
@@ -185,6 +172,8 @@
     const archetype = document.getElementById('c-archetype').value.trim();
     const residence = document.getElementById('c-residence').value.trim();
     const appearance = document.getElementById('c-appearance').value.trim();
+    const pgId = document.getElementById('c-playgroup').value;
+    const pg = userPlaygroups.find(p => p.id === pgId);
 
     const namePart = name || '___';
     let line1 = `${namePart} is a`;
@@ -194,7 +183,11 @@
     if (paradigm) line1 += ` ${paradigm}`;
     if (archetype) line1 += ` ${archetype}`;
     if (residence) line1 += ` living in ${residence}`;
-    line1 += '.';
+    if (pg) {
+      line1 += `, from the World of ${pg.name}.`;
+    } else {
+      line1 += '. Currently, they are not an active Character in play.';
+    }
 
     let line2 = `${namePart} typically appears as`;
     if (appearance) line2 += ` ${appearance}`;
@@ -203,6 +196,12 @@
   }
 
   window.createCharacter = async function() {
+    if (!currentUser) {
+      document.getElementById('c-message').textContent = 'Still loading, please wait a moment.';
+      document.getElementById('c-message').style.color = '#ff6666';
+      return;
+    }
+
     const name = document.getElementById('c-name').value.trim();
     const msg = document.getElementById('c-message');
 
@@ -211,6 +210,10 @@
       msg.style.color = '#ff6666';
       return;
     }
+
+    const btn = document.getElementById('submit-btn');
+    btn.disabled = true;
+    btn.textContent = 'Creating...';
 
     try {
       const ref = await addDoc(collection(db, 'characters'), {
@@ -223,16 +226,17 @@
         archetype: document.getElementById('c-archetype').value.trim(),
         residence: document.getElementById('c-residence').value.trim(),
         appearance: document.getElementById('c-appearance').value.trim(),
+        playgroupId: document.getElementById('c-playgroup').value || null,
         createdAt: new Date()
       });
       msg.textContent = 'Character created!';
       msg.style.color = '#66ff99';
-      setTimeout(() => {
-        window.location.href = 'character.html?id=' + ref.id;
-      }, 800);
+      window.location.href = 'character.html?id=' + ref.id;
     } catch(e) {
-      msg.textContent = 'Error creating character. Try again.';
+      msg.textContent = 'Error creating character: ' + e.message;
       msg.style.color = '#ff6666';
+      btn.disabled = false;
+      btn.textContent = 'Create Character';
     }
   }
 
