@@ -287,7 +287,7 @@
       if (isLeader) {
         actionHtml = '<span class="member-badge">Leader</span>';
       } else if (isMember) {
-        actionHtml = `<button class="join-btn" onclick="leavePlaygroup('${pgDoc.id}', this)">Leave</button>`;
+        actionHtml = '<span class="member-badge">Member</span>';
       } else {
         actionHtml = `<button class="join-btn" onclick="joinPlaygroup('${pgDoc.id}', this)">Join</button>`;
       }
