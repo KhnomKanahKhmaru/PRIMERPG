@@ -139,9 +139,13 @@
       return;
     }
     const email = results.docs[0].data().email;
-    await signInWithEmailAndPassword(auth, email, password);
-    showMessage('Logged in! Redirecting...', false);
-    setTimeout(() => { window.location.href = 'sheet.html'; }, 1000);
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    if (!userCredential.user.emailVerified) {
+     showMessage('Please verify your email before logging in.', true);
+     return;
+}
+showMessage('Logged in! Redirecting...', false);
+setTimeout(() => { window.location.href = 'sheet.html'; }, 1000);
   } catch(e) {
     showMessage('Login failed. Check your username and password.', true);
   }
