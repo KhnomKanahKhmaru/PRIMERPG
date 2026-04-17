@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PRIME RPG — Character</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="nav.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0a0a0a;
+      color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+    .page {
+      padding-top: 104px;
+      max-width: 720px;
+      margin: 0 auto;
+      padding-left: 24px;
+      padding-right: 24px;
+      padding-bottom: 60px;
+    }
+    .char-name {
+      font-size: 28px;
+      font-weight: 600;
+      color: #e0e0e0;
+      margin-bottom: 4px;
+    }
+    .char-sub {
+      font-size: 12px;
+      color: #555;
+      margin-bottom: 24px;
+    }
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #555;
+      margin-bottom: 12px;
+      margin-top: 28px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .bio-prose {
+      font-size: 14px;
+      color: #888;
+      line-height: 1.9;
+    }
+    .edit-btn {
+      font-size: 11px;
+      color: #555;
+      cursor: pointer;
+      padding: 3px 10px;
+      border: 1px solid #333;
+      border-radius: 3px;
+      margin-left: 10px;
+      vertical-align: middle;
+    }
+    .edit-btn:hover { color: #aaa; border-color: #555; }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+    .field label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #555;
+    }
+    .field input, .field textarea {
+      background: #111;
+      border: 1px solid #222;
+      color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 13px;
+      padding: 8px 12px;
+      border-radius: 4px;
+      outline: none;
+      width: 100%;
+    }
+    .field input:focus, .field textarea:focus { border-color: #444; }
+    .field textarea { resize: vertical; min-height: 100px; line-height: 1.6; }
+    .btn-row { display: flex; gap: 8px; margin-top: 16px; }
+    .save-btn {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 12px;
+      padding: 6px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .save-btn:hover { background: #222; border-color: #555; }
+    .save-msg { font-size: 11px; margin-left: 6px; color: #66ff99; align-self: center; }
+    .empty { color: #444; font-size: 13px; text-align: center; padding: 60px 0; }
+  </style>
+</head>
+<body>
+<script>injectNav();</script>
+
+<div class="page">
+  <div id="loading" class="empty">Loading...</div>
+  <div id="char-content" style="display:none">
+
+    <div class="char-name" id="char-name"></div>
+    <div class="char-sub" id="char-sub"></div>
+
+    <div class="section-title">
+      Biography
+      <span id="bio-edit-btn" class="edit-btn" style="display:none" onclick="editBio()">Edit</span>
+    </div>
+
+    <div id="bio-view">
+      <div class="bio-prose" id="bio-prose"></div>
+    </div>
+
+    <div id="bio-edit" style="display:none">
+      <div class="field"><label>Name</label><input type="text" id="e-name" oninput="updatePreview()"></div>
+      <div class="field"><label>Sex</label><input type="text" id="e-sex" oninput="updatePreview()"></div>
+      <div class="field"><label>Age</label><input type="text" id="e-age" oninput="updatePreview()"></div>
+      <div class="field"><label>Ethnicity</label><input type="text" id="e-ethnicity" oninput="updatePreview()"></div>
+      <div class="field"><label>Paradigm</label><input type="text" id="e-paradigm" oninput="updatePreview()"></div>
+      <div class="field"><label>Archetype</label><input type="text" id="e-archetype" oninput="updatePreview()"></div>
+      <div class="field"><label>Residence</label><input type="text" id="e-residence" oninput="updatePreview()"></div>
+      <div class="field"><label>Appearance</label><textarea id="e-appearance" oninput="updatePreview()"></textarea></div>
+      <div class="btn-row">
+        <button class="save-btn" onclick="saveBio()">Save</button>
+        <button class="save-btn" onclick="cancelBio()" style="border-color:#333;color:#888">Cancel</button>
+        <span class="save-msg" id="bio-msg"></span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
+  import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
+  import { getFirestore, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCf94yLvAtJ9pLgJ3FsV7ir4Qh9XXm3nHg",
+    authDomain: "prime-rpg.firebaseapp.com",
+    projectId: "prime-rpg",
+    storageBucket: "prime-rpg.firebasestorage.app",
+    messagingSenderId: "177905987748",
+    appId: "1:177905987748:web:8856ab4fdb8f81f42eb631"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  const params = new URLSearchParams(window.location.search);
+  const charId = params.get('id');
+  if (!charId) window.location.href = 'home.html';
+
+  let charData = {};
+  let canEdit = false;
+
+  function buildProse(d) {
+    const name = d.name || '___';
+    let line1 = `${name} is a`;
+    if (d.sex) line1 += ` ${d.sex}`;
+    if (d.age) line1 += ` ${d.age} year old`;
+    if (d.ethnicity) line1 += ` ${d.ethnicity}`;
+    if (d.paradigm) line1 += ` ${d.paradigm}`;
+    if (d.archetype) line1 += ` ${d.archetype}`;
+    if (d.residence) line1 += ` living in ${d.residence}`;
+    line1 += '.';
+    let line2 = `${name} typically appears as`;
+    if (d.appearance) line2 += ` ${d.appearance}`;
+    return line1 + '<br><br>' + line2;
+  }
+
+  function renderBio() {
+    document.getElementById('bio-prose').innerHTML = buildProse(charData);
+    document.getElementById('char-name').textContent = charData.name || 'Unnamed';
+    document.getElementById('char-sub').textContent =
+      [charData.paradigm, charData.archetype].filter(Boolean).join(' · ') || '';
+  }
+
+  onAuthStateChanged(auth, async function(user) {
+    if (!user || !user.emailVerified) {
+      window.location.href = 'index.html';
+      return;
+    }
+
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    if (userDoc.exists()) setNavUsername(userDoc.data().username);
+
+    const charDoc = await getDoc(doc(db, 'characters', charId));
+    if (!charDoc.exists()) { window.location.href = 'home.html'; return; }
+    charData = charDoc.data();
+
+    canEdit = charData.uid === user.uid;
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('char-content').style.display = 'block';
+
+    renderBio();
+
+    if (canEdit) {
+      document.getElementById('bio-edit-btn').style.display = 'inline';
+    }
+  });
+
+  window.editBio = function() {
+    document.getElementById('bio-view').style.display = 'none';
+    document.getElementById('bio-edit-btn').style.display = 'none';
+    document.getElementById('bio-edit').style.display = 'block';
+    document.getElementById('e-name').value = charData.name || '';
+    document.getElementById('e-sex').value = charData.sex || '';
+    document.getElementById('e-age').value = charData.age || '';
+    document.getElementById('e-ethnicity').value = charData.ethnicity || '';
+    document.getElementById('e-paradigm').value = charData.paradigm || '';
+    document.getElementById('e-archetype').value = charData.archetype || '';
+    document.getElementById('e-residence').value = charData.residence || '';
+    document.getElementById('e-appearance').value = charData.appearance || '';
+  }
+
+  window.cancelBio = function() {
+    document.getElementById('bio-view').style.display = 'block';
+    document.getElementById('bio-edit-btn').style.display = 'inline';
+    document.getElementById('bio-edit').style.display = 'none';
+  }
+
+  window.updatePreview = function() {
+    const d = {
+      name: document.getElementById('e-name').value.trim(),
+      sex: document.getElementById('e-sex').value.trim(),
+      age: document.getElementById('e-age').value.trim(),
+      ethnicity: document.getElementById('e-ethnicity').value.trim(),
+      paradigm: document.getElementById('e-paradigm').value.trim(),
+      archetype: document.getElementById('e-archetype').value.trim(),
+      residence: document.getElementById('e-residence').value.trim(),
+      appearance: document.getElementById('e-appearance').value.trim(),
+    };
+    document.getElementById('bio-prose').innerHTML = buildProse(d);
+  }
+
+  window.saveBio = async function() {
+    const msg = document.getElementById('bio-msg');
+    const updated = {
+      name: document.getElementById('e-name').value.trim(),
+      sex: document.getElementById('e-sex').value.trim(),
+      age: document.getElementById('e-age').value.trim(),
+      ethnicity: document.getElementById('e-ethnicity').value.trim(),
+      paradigm: document.getElementById('e-paradigm').value.trim(),
+      archetype: document.getElementById('e-archetype').value.trim(),
+      residence: document.getElementById('e-residence').value.trim(),
+      appearance: document.getElementById('e-appearance').value.trim(),
+    };
+    try {
+      await updateDoc(doc(db, 'characters', charId), updated);
+      Object.assign(charData, updated);
+      renderBio();
+      msg.textContent = 'Saved!';
+      setTimeout(() => {
+        msg.textContent = '';
+        cancelBio();
+      }, 1000);
+    } catch(e) {
+      msg.textContent = 'Error saving.';
+      msg.style.color = '#ff6666';
+    }
+  }
+
+  window.logout = async function() {
+    await signOut(auth);
+    window.location.href = 'index.html';
+  }
+</script>
+</body>
+</html>
