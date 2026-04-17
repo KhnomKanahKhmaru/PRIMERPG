@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PRIME RPG — Playgroup</title>
   <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+  <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
   <script src="nav.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -23,17 +25,8 @@
       padding: 14px 24px 0;
       z-index: 80;
     }
-    .pg-name {
-      font-size: 20px;
-      font-weight: 600;
-      color: #e0e0e0;
-      margin-bottom: 4px;
-    }
-    .pg-primer {
-      font-size: 12px;
-      color: #555;
-      margin-bottom: 12px;
-    }
+    .pg-name { font-size: 20px; font-weight: 600; color: #e0e0e0; margin-bottom: 4px; }
+    .pg-primer { font-size: 12px; color: #555; margin-bottom: 12px; }
     .pg-tabs { display: flex; gap: 0; }
     .pg-tab {
       padding: 7px 18px;
@@ -54,12 +47,7 @@
     }
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
-    .empty {
-      color: #444;
-      font-size: 13px;
-      text-align: center;
-      padding: 60px 0;
-    }
+    .empty { color: #444; font-size: 13px; text-align: center; padding: 60px 0; }
     .world-field { margin-bottom: 28px; }
     .world-field-title {
       font-size: 11px;
@@ -70,21 +58,9 @@
       margin-bottom: 8px;
     }
     .world-field-content { font-size: 13px; color: #888; line-height: 1.6; }
-    .world-textarea {
-      width: 100%;
-      background: #111;
-      border: 1px solid #222;
-      color: #e0e0e0;
-      font-family: 'Open Sans', sans-serif;
-      font-size: 13px;
-      padding: 8px 12px;
-      border-radius: 4px;
-      outline: none;
-      resize: vertical;
-      min-height: 80px;
-      line-height: 1.6;
-    }
-    .world-textarea:focus { border-color: #444; }
+    .world-field-content p { margin-bottom: 8px; }
+    .world-field-content h1,.world-field-content h2,.world-field-content h3 { color: #ccc; margin-bottom: 6px; }
+    .world-field-content ul,.world-field-content ol { padding-left: 20px; margin-bottom: 8px; }
     .save-btn {
       margin-top: 8px;
       background: #1a1a1a;
@@ -137,6 +113,13 @@
       font-family: 'Open Sans', sans-serif;
     }
     .bottom-btn:hover { color: #ccc; border-color: #444; }
+    .ql-toolbar { border-color: #222 !important; background: #1a1a1a; }
+    .ql-container { border-color: #222 !important; background: #111; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 13px; min-height: 120px; }
+    .ql-editor { color: #e0e0e0; line-height: 1.6; }
+    .ql-stroke { stroke: #888 !important; }
+    .ql-fill { fill: #888 !important; }
+    .ql-picker { color: #888 !important; }
+    .ql-picker-options { background: #1a1a1a !important; border-color: #333 !important; }
   </style>
 </head>
 <body>
@@ -165,27 +148,27 @@
   <div class="tab-panel" id="tab-world">
     <div class="world-field">
       <div class="world-field-title">Setting Synopsis</div>
-      <div id="synopsis-display" class="world-field-content">Not set.</div>
-      <textarea id="synopsis-edit" class="world-textarea" style="display:none"></textarea>
-      <div id="synopsis-save-row" style="display:none">
+      <div id="synopsis-display" class="world-field-content"></div>
+      <div id="synopsis-editor" style="display:none"></div>
+      <div id="synopsis-save-row" style="display:none;margin-top:8px">
         <button class="save-btn" onclick="saveField('synopsis')">Save</button>
         <span class="save-msg" id="synopsis-msg"></span>
       </div>
     </div>
     <div class="world-field">
       <div class="world-field-title">Setting Description</div>
-      <div id="description-display" class="world-field-content">Not set.</div>
-      <textarea id="description-edit" class="world-textarea" style="display:none"></textarea>
-      <div id="description-save-row" style="display:none">
+      <div id="description-display" class="world-field-content"></div>
+      <div id="description-editor" style="display:none"></div>
+      <div id="description-save-row" style="display:none;margin-top:8px">
         <button class="save-btn" onclick="saveField('description')">Save</button>
         <span class="save-msg" id="description-msg"></span>
       </div>
     </div>
     <div class="world-field">
       <div class="world-field-title">World Events</div>
-      <div id="events-display" class="world-field-content">Not set.</div>
-      <textarea id="events-edit" class="world-textarea" style="display:none"></textarea>
-      <div id="events-save-row" style="display:none">
+      <div id="events-display" class="world-field-content"></div>
+      <div id="events-editor" style="display:none"></div>
+      <div id="events-save-row" style="display:none;margin-top:8px">
         <button class="save-btn" onclick="saveField('events')">Save</button>
         <span class="save-msg" id="events-msg"></span>
       </div>
@@ -194,9 +177,9 @@
   <div class="tab-panel" id="tab-rules">
     <div class="world-field">
       <div class="world-field-title">Playgroup Rules</div>
-      <div id="rules-display" class="world-field-content">Not set.</div>
-      <textarea id="rules-edit" class="world-textarea" style="display:none"></textarea>
-      <div id="rules-save-row" style="display:none">
+      <div id="rules-display" class="world-field-content"></div>
+      <div id="rules-editor" style="display:none"></div>
+      <div id="rules-save-row" style="display:none;margin-top:8px">
         <button class="save-btn" onclick="saveField('rules')">Save</button>
         <span class="save-msg" id="rules-msg"></span>
       </div>
@@ -238,6 +221,7 @@
   let canEdit = false;
   let pgData = {};
   const fields = ['synopsis', 'description', 'events', 'rules'];
+  const quills = {};
 
   onAuthStateChanged(auth, async function(user) {
     if (!user || !user.emailVerified) {
@@ -279,7 +263,7 @@
       document.querySelector('.bottom-bar').appendChild(leaveBtn);
     }
 
-if (userRole === 'Leader') {
+    if (userRole === 'Leader') {
       const deleteBtn = document.createElement('button');
       deleteBtn.className = 'bottom-btn';
       deleteBtn.textContent = 'Delete Playgroup';
@@ -289,14 +273,13 @@ if (userRole === 'Leader') {
         if (!confirm('Are you sure you want to delete this playgroup? This cannot be undone.')) return;
         const membershipsQ = query(collection(db, 'memberships'), where('playgroupId', '==', pgId));
         const membershipsSnap = await getDocs(membershipsQ);
-        for (const mDoc of membershipsSnap.docs) {
-          await deleteDoc(mDoc.ref);
-        }
+        for (const mDoc of membershipsSnap.docs) await deleteDoc(mDoc.ref);
         await deleteDoc(doc(db, 'playgroups', pgId));
         window.location.href = 'my-playgroups.html';
       };
       document.querySelector('.bottom-bar').appendChild(deleteBtn);
     }
+
     const world = pgData.world || {};
     const fieldMap = {
       synopsis: world.synopsis || '',
@@ -308,14 +291,31 @@ if (userRole === 'Leader') {
     fields.forEach(f => {
       const val = fieldMap[f];
       const display = document.getElementById(f + '-display');
-      const edit = document.getElementById(f + '-edit');
+      const editorDiv = document.getElementById(f + '-editor');
       const saveRow = document.getElementById(f + '-save-row');
-      display.textContent = val || 'Not set.';
+
+      if (val) {
+        display.innerHTML = val;
+      } else {
+        display.innerHTML = '<span style="color:#555">Not set.</span>';
+      }
+
       if (canEdit) {
         display.style.display = 'none';
-        edit.value = val;
-        edit.style.display = 'block';
+        editorDiv.style.display = 'block';
         saveRow.style.display = 'block';
+        quills[f] = new Quill(editorDiv, {
+          theme: 'snow',
+          modules: {
+            toolbar: [
+              ['bold', 'italic', 'underline'],
+              [{ 'header': [1, 2, 3, false] }],
+              [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+              ['clean']
+            ]
+          }
+        });
+        if (val) quills[f].root.innerHTML = val;
       }
     });
 
@@ -341,13 +341,13 @@ if (userRole === 'Leader') {
   });
 
   window.saveField = async function(field) {
-    const val = document.getElementById(field + '-edit').value.trim();
+    const html = quills[field].root.innerHTML;
     const msg = document.getElementById(field + '-msg');
     try {
       if (field === 'rules') {
-        await updateDoc(doc(db, 'playgroups', pgId), { rules: val });
+        await updateDoc(doc(db, 'playgroups', pgId), { rules: html });
       } else {
-        await updateDoc(doc(db, 'playgroups', pgId), { ['world.' + field]: val });
+        await updateDoc(doc(db, 'playgroups', pgId), { ['world.' + field]: html });
       }
       msg.textContent = 'Saved!';
       setTimeout(() => { msg.textContent = ''; }, 2000);
