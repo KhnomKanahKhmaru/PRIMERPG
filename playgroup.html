@@ -318,10 +318,11 @@
         quills[f] = new Quill(document.getElementById(f + '-editor'), {
           theme: 'snow',
           modules: {
-            toolbar: [
+           toolbar: [
               ['bold', 'italic', 'underline'],
               [{ 'header': [1, 2, 3, false] }],
               [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+              [{ 'indent': '-1' }, { 'indent': '+1' }],
               ['clean']
             ]
           }
