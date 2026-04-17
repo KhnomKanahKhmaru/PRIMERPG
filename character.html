@@ -241,7 +241,16 @@
       </div>
       <div class="mental-col">
         <div class="mental-col-header">
-          <div class="mental-col-title">Morals</div>
+          <div class="mental-col-title" style="position:relative;cursor:default" onmouseenter="document.getElementById('morals-tip').style.display='block'" onmouseleave="document.getElementById('morals-tip').style.display='none'">Morals
+            <div id="morals-tip" style="display:none;position:absolute;left:0;top:100%;margin-top:6px;background:#1a1a1a;border:1px solid #333;border-radius:4px;padding:10px 12px;font-size:11px;color:#aaa;width:340px;z-index:1000;line-height:1.6;font-weight:400;letter-spacing:0;text-transform:none">
+              <p style="margin-bottom:8px">Morals are one-word concepts which encompass broad ethical value-and-belief systems; they intentionally lack descriptions as their one-words should be enough. If there is reasonable debate over what is, or isn't pertinent to a Moral, then it likely is pertinent.</p>
+              <p style="margin-bottom:8px">When you violate, compromise, or otherwise are met with situations that go against your Morals, you must make a Mental Health Check with +/− Difficulty dependent on the scale of the infraction. Minor infractions are at −2, Moderate −1, Major +0 and so on so-forth.</p>
+              <p style="margin-bottom:8px">After your Mental Health Check you must allocate a number of "Break Points" equal to 6 − Result to your choice/combination of Moral Obligations, Short-term Trauma, Long-term Trauma, or through an immediate Breakdown.</p>
+              <p style="margin-bottom:8px">Alternatively if you affirm/fulfill your Morals, you may make a Mental Health Check to recover SAN instead; the amount of SAN recovered is equal to Result.</p>
+              <p style="margin-bottom:8px">Morals are scaled based on how important / integral they are to you; Minor Morals are rolled at −2, Moderate at −1, Major at +0, Massive at +1, so-on so-forth. The inverse is true for Moral Affirmations.</p>
+              <p>When you create your Character, you must allocate "10 Moral points" in Morals, with a Minor Moral being worth 1, a Moderate Moral 2, and so-on so-forth, based on how important each Moral is to your Character; there is no limit to the amount of Morals you may take, so long as you meet your spending limit for Moral Points.</p>
+            </div>
+          </div>
           <span class="edit-btn" id="morals-edit-btn" style="display:none" onclick="editMorals()">Edit</span>
         </div>
         <div id="morals-view"><div class="moral-cards" id="moral-cards-display"></div></div>
