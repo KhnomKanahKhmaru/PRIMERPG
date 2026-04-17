@@ -183,6 +183,8 @@
       white-space: pre-wrap;
     }
     .etc-content:hover { color: #777; }
+
+    /* Mental Card */
     .mental-card {
       display: flex;
       align-items: stretch;
@@ -196,17 +198,25 @@
       flex: 1;
       padding: 16px;
       border-right: 1px solid #222;
+      display: flex;
+      flex-direction: column;
     }
     .mental-col:last-child { border-right: none; }
+    .mental-col-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #1a1a1a;
+    }
     .mental-col-title {
       font-size: 11px;
       font-weight: 600;
       letter-spacing: .08em;
       text-transform: uppercase;
       color: #555;
-      margin-bottom: 12px;
-      padding-bottom: 6px;
-      border-bottom: 1px solid #1a1a1a;
+      flex: 1;
     }
     .add-entry-btn {
       background: transparent;
@@ -218,8 +228,11 @@
       border-radius: 3px;
       cursor: pointer;
       margin-top: 10px;
+      display: none;
     }
     .add-entry-btn:hover { color: #aaa; border-color: #444; }
+
+    /* Obligation / Disorder entries */
     .obligation-entry, .disorder-entry {
       background: #111;
       border: 1px solid #1a1a1a;
@@ -228,7 +241,7 @@
       margin-bottom: 8px;
       font-size: 12px;
       color: #888;
-      line-height: 1.7;
+      line-height: 1.9;
       position: relative;
     }
     .entry-delete {
@@ -251,6 +264,22 @@
       padding: 2px 0;
     }
     .entry-input:focus { border-bottom-color: #666; }
+    .entry-text { color: #ccc; font-weight: 500; }
+
+    /* Moral cards (view mode) */
+    .moral-cards { display: flex; flex-wrap: wrap; gap: 8px; }
+    .moral-card-item {
+      background: #1e3a1e;
+      border: 1px solid #2d6b2d;
+      border-radius: 4px;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #66cc66;
+    }
+    .moral-empty { color: #333; font-size: 12px; }
+
+    /* Moral chips (edit mode) */
     .moral-group { margin-bottom: 14px; }
     .moral-group-title {
       font-size: 10px;
@@ -344,20 +373,54 @@
 
     <!-- Mental Card -->
     <div class="mental-card">
-      <div class="mental-col" id="moral-obligations-col">
-        <div class="mental-col-title">Moral Obligations</div>
-        <div id="obligations-list"></div>
-        <button class="add-entry-btn" id="add-obligation-btn" style="display:none" onclick="addObligation()">+ Add</button>
+
+      <!-- Moral Obligations -->
+      <div class="mental-col">
+        <div class="mental-col-header">
+          <div class="mental-col-title">Moral Obligations</div>
+          <span class="edit-btn" id="obligations-edit-btn" style="display:none" onclick="editObligations()">Edit</span>
+        </div>
+        <div id="obligations-view"></div>
+        <div id="obligations-edit-mode" style="display:none">
+          <div id="obligations-list"></div>
+          <button class="add-entry-btn" id="add-obligation-btn" onclick="addObligation()">+ Add</button>
+          <div style="margin-top:10px;display:flex;gap:8px">
+            <button class="save-btn" onclick="doneObligations()" style="font-size:11px;padding:4px 14px">Done</button>
+          </div>
+        </div>
       </div>
-      <div class="mental-col" id="morals-col">
-        <div class="mental-col-title">Morals</div>
-        <div id="morals-by-ruleset"></div>
+
+      <!-- Morals -->
+      <div class="mental-col">
+        <div class="mental-col-header">
+          <div class="mental-col-title">Morals</div>
+          <span class="edit-btn" id="morals-edit-btn" style="display:none" onclick="editMorals()">Edit</span>
+        </div>
+        <div id="morals-view"><div class="moral-cards" id="moral-cards-display"></div></div>
+        <div id="morals-edit-mode" style="display:none">
+          <div id="morals-by-ruleset"></div>
+          <div style="margin-top:10px;display:flex;gap:8px">
+            <button class="save-btn" onclick="doneMorals()" style="font-size:11px;padding:4px 14px">Done</button>
+          </div>
+        </div>
       </div>
-      <div class="mental-col" id="disorders-col">
-        <div class="mental-col-title">Mental Disorders</div>
-        <div id="disorders-list"></div>
-        <button class="add-entry-btn" id="add-disorder-btn" style="display:none" onclick="addDisorder()">+ Add</button>
+
+      <!-- Mental Disorders -->
+      <div class="mental-col">
+        <div class="mental-col-header">
+          <div class="mental-col-title">Mental Disorders</div>
+          <span class="edit-btn" id="disorders-edit-btn" style="display:none" onclick="editDisorders()">Edit</span>
+        </div>
+        <div id="disorders-view"></div>
+        <div id="disorders-edit-mode" style="display:none">
+          <div id="disorders-list"></div>
+          <button class="add-entry-btn" id="add-disorder-btn" onclick="addDisorder()">+ Add</button>
+          <div style="margin-top:10px;display:flex;gap:8px">
+            <button class="save-btn" onclick="doneDisorders()" style="font-size:11px;padding:4px 14px">Done</button>
+          </div>
+        </div>
       </div>
+
     </div>
 
   </div>
@@ -391,6 +454,7 @@
   let canEdit = false;
   let userPlaygroups = [];
   let loaded = false;
+  let availableRulesets = [];
 
   function buildProse(d, pgName) {
     const name = d.name ? `<b>${d.name}</b>` : '___';
@@ -444,19 +508,48 @@
   async function loadMentalSection() {
     const basicQ = query(collection(db, 'rulesets'), where('isBasicSet', '==', true));
     const basicSnap = await getDocs(basicQ);
-    let rulesets = [];
-    if (!basicSnap.empty) rulesets.push({ name: 'Basic Set', morals: basicSnap.docs[0].data().morals || [] });
+    availableRulesets = [];
+    if (!basicSnap.empty) availableRulesets.push({ name: 'Basic Set', morals: basicSnap.docs[0].data().morals || [] });
 
     if (charData.playgroupId) {
       const pgRsQ = query(collection(db, 'rulesets'), where('playgroupId', '==', charData.playgroupId));
       const pgRsSnap = await getDocs(pgRsQ);
-      pgRsSnap.docs.forEach(d => rulesets.push({ name: d.data().name, morals: d.data().morals || [] }));
+      pgRsSnap.docs.forEach(d => availableRulesets.push({ name: d.data().name, morals: d.data().morals || [] }));
     }
+
+    renderMoralsView();
+    renderObligationsView();
+    renderDisordersView();
+
+    if (canEdit) {
+      document.getElementById('morals-edit-btn').style.display = 'inline';
+      document.getElementById('obligations-edit-btn').style.display = 'inline';
+      document.getElementById('disorders-edit-btn').style.display = 'inline';
+    }
+  }
+
+  // ── MORALS ──
+  function renderMoralsView() {
+    const selected = charData.selectedMorals || [];
+    const display = document.getElementById('moral-cards-display');
+    if (selected.length === 0) {
+      display.innerHTML = '<div class="moral-empty">No morals selected.</div>';
+    } else {
+      display.innerHTML = selected.map(m =>
+        `<div class="moral-card-item">${m}</div>`
+      ).join('');
+    }
+  }
+
+  window.editMorals = function() {
+    document.getElementById('morals-view').style.display = 'none';
+    document.getElementById('morals-edit-btn').style.display = 'none';
+    document.getElementById('morals-edit-mode').style.display = 'block';
 
     const selected = charData.selectedMorals || [];
     const moralsDiv = document.getElementById('morals-by-ruleset');
     moralsDiv.innerHTML = '';
-    rulesets.forEach(rs => {
+    availableRulesets.forEach(rs => {
       const chips = rs.morals.map(m => `
         <div class="moral-chip ${selected.includes(m) ? 'selected' : ''}"
           onclick="toggleMoral('${m}', this)">${m}</div>
@@ -467,16 +560,173 @@
           <div class="moral-chips">${chips}</div>
         </div>`;
     });
+  }
 
-    renderObligations();
-    renderDisorders();
+  window.doneMorals = function() {
+    document.getElementById('morals-view').style.display = 'block';
+    document.getElementById('morals-edit-btn').style.display = 'inline';
+    document.getElementById('morals-edit-mode').style.display = 'none';
+    renderMoralsView();
+  }
 
-    if (canEdit) {
-      document.getElementById('add-obligation-btn').style.display = 'inline-block';
-      document.getElementById('add-disorder-btn').style.display = 'inline-block';
+  window.toggleMoral = async function(moral, el) {
+    if (!canEdit) return;
+    let selected = charData.selectedMorals || [];
+    if (selected.includes(moral)) {
+      selected = selected.filter(m => m !== moral);
+      el.classList.remove('selected');
+    } else {
+      selected.push(moral);
+      el.classList.add('selected');
+    }
+    charData.selectedMorals = selected;
+    await updateDoc(doc(db, 'characters', charId), { selectedMorals: selected });
+  }
+
+  // ── OBLIGATIONS ──
+  function renderObligationsView() {
+    const obligations = charData.moralObligations || [];
+    const view = document.getElementById('obligations-view');
+    if (obligations.length === 0) {
+      view.innerHTML = '<div style="color:#333;font-size:12px">None.</div>';
+    } else {
+      view.innerHTML = obligations.map(o => `
+        <div class="obligation-entry">
+          I have to <span class="entry-text">${o.obligation || '___'}</span>
+          because I <span class="entry-text">${o.violation || '___'}</span>
+        </div>`).join('');
     }
   }
 
+  function renderObligationsList() {
+    const obligations = charData.moralObligations || [];
+    const list = document.getElementById('obligations-list');
+    if (obligations.length === 0) {
+      list.innerHTML = '<div style="color:#333;font-size:12px;margin-bottom:8px">No entries yet.</div>';
+    } else {
+      list.innerHTML = obligations.map((o, i) => `
+        <div class="obligation-entry">
+          <span class="entry-delete" onclick="deleteObligation(${i})">×</span>
+          I have to <input class="entry-input" value="${o.obligation || ''}" placeholder="..."
+            onchange="saveObligation(${i}, 'obligation', this.value)">
+          because I <input class="entry-input" value="${o.violation || ''}" placeholder="..."
+            onchange="saveObligation(${i}, 'violation', this.value)">
+        </div>`).join('');
+    }
+  }
+
+  window.editObligations = function() {
+    document.getElementById('obligations-view').style.display = 'none';
+    document.getElementById('obligations-edit-btn').style.display = 'none';
+    document.getElementById('obligations-edit-mode').style.display = 'block';
+    document.getElementById('add-obligation-btn').style.display = 'inline-block';
+    renderObligationsList();
+  }
+
+  window.doneObligations = function() {
+    document.getElementById('obligations-view').style.display = 'block';
+    document.getElementById('obligations-edit-btn').style.display = 'inline';
+    document.getElementById('obligations-edit-mode').style.display = 'none';
+    renderObligationsView();
+  }
+
+  window.addObligation = async function() {
+    const obligations = charData.moralObligations || [];
+    obligations.push({ obligation: '', violation: '' });
+    charData.moralObligations = obligations;
+    await updateDoc(doc(db, 'characters', charId), { moralObligations: obligations });
+    renderObligationsList();
+  }
+
+  window.saveObligation = async function(i, field, val) {
+    const obligations = charData.moralObligations || [];
+    obligations[i][field] = val;
+    charData.moralObligations = obligations;
+    await updateDoc(doc(db, 'characters', charId), { moralObligations: obligations });
+  }
+
+  window.deleteObligation = async function(i) {
+    const obligations = charData.moralObligations || [];
+    obligations.splice(i, 1);
+    charData.moralObligations = obligations;
+    await updateDoc(doc(db, 'characters', charId), { moralObligations: obligations });
+    renderObligationsList();
+  }
+
+  // ── DISORDERS ──
+  function renderDisordersView() {
+    const disorders = charData.mentalDisorders || [];
+    const view = document.getElementById('disorders-view');
+    if (disorders.length === 0) {
+      view.innerHTML = '<div style="color:#333;font-size:12px">None.</div>';
+    } else {
+      view.innerHTML = disorders.map(d => `
+        <div class="disorder-entry">
+          I have <span class="entry-text">${d.disorder || '___'}</span>
+          which means <span class="entry-text">${d.description || '___'}</span>
+          and if triggered I might <span class="entry-text">${d.symptoms || '___'}</span>
+        </div>`).join('');
+    }
+  }
+
+  function renderDisordersList() {
+    const disorders = charData.mentalDisorders || [];
+    const list = document.getElementById('disorders-list');
+    if (disorders.length === 0) {
+      list.innerHTML = '<div style="color:#333;font-size:12px;margin-bottom:8px">No entries yet.</div>';
+    } else {
+      list.innerHTML = disorders.map((d, i) => `
+        <div class="disorder-entry">
+          <span class="entry-delete" onclick="deleteDisorder(${i})">×</span>
+          I have <input class="entry-input" value="${d.disorder || ''}" placeholder="..."
+            onchange="saveDisorder(${i}, 'disorder', this.value)">
+          which means <input class="entry-input" value="${d.description || ''}" placeholder="..."
+            onchange="saveDisorder(${i}, 'description', this.value)">
+          and if triggered I might <input class="entry-input" value="${d.symptoms || ''}" placeholder="..."
+            onchange="saveDisorder(${i}, 'symptoms', this.value)">
+        </div>`).join('');
+    }
+  }
+
+  window.editDisorders = function() {
+    document.getElementById('disorders-view').style.display = 'none';
+    document.getElementById('disorders-edit-btn').style.display = 'none';
+    document.getElementById('disorders-edit-mode').style.display = 'block';
+    document.getElementById('add-disorder-btn').style.display = 'inline-block';
+    renderDisordersList();
+  }
+
+  window.doneDisorders = function() {
+    document.getElementById('disorders-view').style.display = 'block';
+    document.getElementById('disorders-edit-btn').style.display = 'inline';
+    document.getElementById('disorders-edit-mode').style.display = 'none';
+    renderDisordersView();
+  }
+
+  window.addDisorder = async function() {
+    const disorders = charData.mentalDisorders || [];
+    disorders.push({ disorder: '', description: '', symptoms: '' });
+    charData.mentalDisorders = disorders;
+    await updateDoc(doc(db, 'characters', charId), { mentalDisorders: disorders });
+    renderDisordersList();
+  }
+
+  window.saveDisorder = async function(i, field, val) {
+    const disorders = charData.mentalDisorders || [];
+    disorders[i][field] = val;
+    charData.mentalDisorders = disorders;
+    await updateDoc(doc(db, 'characters', charId), { mentalDisorders: disorders });
+  }
+
+  window.deleteDisorder = async function(i) {
+    const disorders = charData.mentalDisorders || [];
+    disorders.splice(i, 1);
+    charData.mentalDisorders = disorders;
+    await updateDoc(doc(db, 'characters', charId), { mentalDisorders: disorders });
+    renderDisordersList();
+  }
+
+  // ── AUTH ──
   onAuthStateChanged(auth, async function(user) {
     if (!user || !user.emailVerified) return;
     if (loaded) return;
@@ -643,102 +893,6 @@
     } catch(e) {
       alert('Error saving.');
     }
-  }
-
-  window.toggleMoral = async function(moral, el) {
-    if (!canEdit) return;
-    let selected = charData.selectedMorals || [];
-    if (selected.includes(moral)) {
-      selected = selected.filter(m => m !== moral);
-      el.classList.remove('selected');
-    } else {
-      selected.push(moral);
-      el.classList.add('selected');
-    }
-    charData.selectedMorals = selected;
-    await updateDoc(doc(db, 'characters', charId), { selectedMorals: selected });
-  }
-
-  function renderObligations() {
-    const list = document.getElementById('obligations-list');
-    const obligations = charData.moralObligations || [];
-    if (obligations.length === 0) {
-      list.innerHTML = '<div style="color:#333;font-size:12px">None.</div>';
-      return;
-    }
-    list.innerHTML = obligations.map((o, i) => `
-      <div class="obligation-entry">
-        ${canEdit ? `<span class="entry-delete" onclick="deleteObligation(${i})">×</span>` : ''}
-        I have to <input class="entry-input" value="${o.obligation || ''}" placeholder="..."
-          ${canEdit ? `onchange="saveObligation(${i}, 'obligation', this.value)"` : 'disabled'}>
-        because I <input class="entry-input" value="${o.violation || ''}" placeholder="..."
-          ${canEdit ? `onchange="saveObligation(${i}, 'violation', this.value)"` : 'disabled'}>
-      </div>`).join('');
-  }
-
-  function renderDisorders() {
-    const list = document.getElementById('disorders-list');
-    const disorders = charData.mentalDisorders || [];
-    if (disorders.length === 0) {
-      list.innerHTML = '<div style="color:#333;font-size:12px">None.</div>';
-      return;
-    }
-    list.innerHTML = disorders.map((d, i) => `
-      <div class="disorder-entry">
-        ${canEdit ? `<span class="entry-delete" onclick="deleteDisorder(${i})">×</span>` : ''}
-        I have <input class="entry-input" value="${d.disorder || ''}" placeholder="..."
-          ${canEdit ? `onchange="saveDisorder(${i}, 'disorder', this.value)"` : 'disabled'}>
-        which means <input class="entry-input" value="${d.description || ''}" placeholder="..."
-          ${canEdit ? `onchange="saveDisorder(${i}, 'description', this.value)"` : 'disabled'}>
-        and if triggered I might <input class="entry-input" value="${d.symptoms || ''}" placeholder="..."
-          ${canEdit ? `onchange="saveDisorder(${i}, 'symptoms', this.value)"` : 'disabled'}>
-      </div>`).join('');
-  }
-
-  window.addObligation = async function() {
-    const obligations = charData.moralObligations || [];
-    obligations.push({ obligation: '', violation: '' });
-    charData.moralObligations = obligations;
-    await updateDoc(doc(db, 'characters', charId), { moralObligations: obligations });
-    renderObligations();
-  }
-
-  window.saveObligation = async function(i, field, val) {
-    const obligations = charData.moralObligations || [];
-    obligations[i][field] = val;
-    charData.moralObligations = obligations;
-    await updateDoc(doc(db, 'characters', charId), { moralObligations: obligations });
-  }
-
-  window.deleteObligation = async function(i) {
-    const obligations = charData.moralObligations || [];
-    obligations.splice(i, 1);
-    charData.moralObligations = obligations;
-    await updateDoc(doc(db, 'characters', charId), { moralObligations: obligations });
-    renderObligations();
-  }
-
-  window.addDisorder = async function() {
-    const disorders = charData.mentalDisorders || [];
-    disorders.push({ disorder: '', description: '', symptoms: '' });
-    charData.mentalDisorders = disorders;
-    await updateDoc(doc(db, 'characters', charId), { mentalDisorders: disorders });
-    renderDisorders();
-  }
-
-  window.saveDisorder = async function(i, field, val) {
-    const disorders = charData.mentalDisorders || [];
-    disorders[i][field] = val;
-    charData.mentalDisorders = disorders;
-    await updateDoc(doc(db, 'characters', charId), { mentalDisorders: disorders });
-  }
-
-  window.deleteDisorder = async function(i) {
-    const disorders = charData.mentalDisorders || [];
-    disorders.splice(i, 1);
-    charData.mentalDisorders = disorders;
-    await updateDoc(doc(db, 'characters', charId), { mentalDisorders: disorders });
-    renderDisorders();
   }
 
   window.logout = async function() {
