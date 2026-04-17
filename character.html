@@ -24,8 +24,6 @@
       margin: 0 auto;
     }
     .empty { color: #444; font-size: 13px; text-align: center; padding: 60px 0; }
-
-    /* ── outer card ── */
     .char-card {
       display: flex;
       align-items: stretch;
@@ -34,8 +32,6 @@
       overflow: hidden;
       min-height: 320px;
     }
-
-    /* ── picture column ── */
     .char-picture {
       width: 220px;
       flex-shrink: 0;
@@ -64,8 +60,6 @@
       z-index: 1;
     }
     .char-picture input[type=file] { display: none; }
-
-    /* ── center biography column ── */
     .char-bio-col {
       flex: 1;
       padding: 20px 24px;
@@ -73,8 +67,6 @@
       display: flex;
       flex-direction: column;
     }
-
-    /* ── name + quip row ── */
     .char-header {
       display: flex;
       align-items: flex-start;
@@ -107,8 +99,6 @@
       cursor: pointer;
     }
     .char-quip-box.has-quip { color: #aaa; }
-
-    /* ── biography section ── */
     .section-title {
       font-size: 18px;
       font-weight: 600;
@@ -130,15 +120,9 @@
       font-weight: 400;
     }
     .edit-btn:hover { color: #aaa; border-color: #555; }
-    .bio-prose {
-      font-size: 13px;
-      color: #888;
-      line-height: 1.9;
-    }
+    .bio-prose { font-size: 13px; color: #888; line-height: 1.9; }
     .bio-prose b { color: #ccc; font-weight: 600; }
     .bio-prose i { color: #888; font-style: italic; }
-
-    /* ── edit form ── */
     .field {
       display: flex;
       flex-direction: column;
@@ -179,8 +163,6 @@
     }
     .save-btn:hover { background: #222; border-color: #555; }
     .save-msg { font-size: 11px; color: #66ff99; }
-
-    /* ── ETC column ── */
     .char-etc-col {
       width: 220px;
       flex-shrink: 0;
@@ -200,7 +182,9 @@
       color: #555;
       line-height: 1.7;
       min-height: 200px;
+      cursor: pointer;
     }
+    .etc-content:hover { color: #777; }
   </style>
 </head>
 <body>
@@ -209,7 +193,6 @@
 <div class="page">
   <div id="loading" class="empty">Loading...</div>
   <div id="char-content" style="display:none">
-
     <div class="char-card">
 
       <!-- Picture -->
@@ -264,7 +247,12 @@
       <!-- ETC -->
       <div class="char-etc-col">
         <div class="etc-title">Notes</div>
-        <div class="etc-content" id="etc-content">—</div>
+        <div class="etc-content" id="etc-content" onclick="editEtc()">—</div>
+        <textarea id="etc-edit" style="display:none;width:100%;background:#111;border:1px solid #222;color:#e0e0e0;font-family:'Open Sans',sans-serif;font-size:12px;padding:8px;border-radius:4px;outline:none;resize:vertical;min-height:200px;line-height:1.6"></textarea>
+        <div id="etc-btn-row" style="display:none;margin-top:8px">
+          <button class="save-btn" onclick="saveEtc()" style="font-size:11px;padding:4px 12px">Save</button>
+          <button class="save-btn" onclick="cancelEtc()" style="font-size:11px;padding:4px 12px;margin-left:6px;border-color:#333;color:#888">Cancel</button>
+        </div>
       </div>
 
     </div>
@@ -339,6 +327,7 @@
       quipEl.textContent = 'Tagline / Quip';
       quipEl.classList.remove('has-quip');
     }
+    document.getElementById('etc-content').textContent = charData.etc || '—';
   }
 
   onAuthStateChanged(auth, async function(user) {
@@ -467,6 +456,33 @@
     } catch(e) {
       msg.textContent = 'Error saving.';
       msg.style.color = '#ff6666';
+    }
+  }
+
+  window.editEtc = function() {
+    if (!canEdit) return;
+    document.getElementById('etc-content').style.display = 'none';
+    const ta = document.getElementById('etc-edit');
+    ta.value = charData.etc || '';
+    ta.style.display = 'block';
+    document.getElementById('etc-btn-row').style.display = 'block';
+  }
+
+  window.cancelEtc = function() {
+    document.getElementById('etc-content').style.display = 'block';
+    document.getElementById('etc-edit').style.display = 'none';
+    document.getElementById('etc-btn-row').style.display = 'none';
+  }
+
+  window.saveEtc = async function() {
+    const val = document.getElementById('etc-edit').value.trim();
+    try {
+      await updateDoc(doc(db, 'characters', charId), { etc: val });
+      charData.etc = val;
+      document.getElementById('etc-content').textContent = val || '—';
+      cancelEtc();
+    } catch(e) {
+      alert('Error saving.');
     }
   }
 
