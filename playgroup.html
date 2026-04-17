@@ -320,7 +320,7 @@
       });
     }
 
-    const peopleList = document.getElementById('people-list');
+   const peopleList = document.getElementById('people-list');
     peopleList.innerHTML = '<div class="empty">Loading...</div>';
     const membershipsQ = query(collection(db, 'memberships'), where('playgroupId', '==', pgId));
     const membershipsSnap = await getDocs(membershipsQ);
@@ -332,9 +332,21 @@
         const m = mDoc.data();
         const userDoc = await getDoc(doc(db, 'users', m.uid));
         const username = userDoc.exists() ? userDoc.data().username : 'Unknown';
+        const charsQ = query(collection(db, 'characters'), where('uid', '==', m.uid));
+        const charsSnap = await getDocs(charsQ);
+        const filteredChars = charsSnap.docs.filter(c => c.data().playgroupId === pgId);
+        let charsHtml = '';
+        if (filteredChars.length > 0) {
+          const links = filteredChars.map(c =>
+            `<a href="character.html?id=${c.id}" style="color:#888;font-style:italic;text-decoration:none;font-size:12px">${c.data().name || 'Unnamed'}</a>`
+          );
+          charsHtml = '<span style="color:#444;margin:0 8px">—</span>' + links.join('<span style="color:#444">, </span>');
+        }
         peopleList.innerHTML += `
           <div class="people-row">
-            <div class="people-name">${username}</div>
+            <div class="people-name" style="display:flex;align-items:center;flex-wrap:wrap;gap:4px">
+              <strong>${username}</strong>${charsHtml}
+            </div>
             <div class="people-role">${m.role}</div>
           </div>`;
       }
