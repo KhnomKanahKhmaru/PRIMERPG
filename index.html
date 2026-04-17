@@ -165,7 +165,13 @@
       showMessage('Account created! Redirecting...', false);
       setTimeout(() => { window.location.href = 'sheet.html'; }, 1000);
     } catch(e) {
-    showMessage(e.message, true);
+    if (e.code === 'auth/email-already-in-use') {
+  showMessage('That email is already registered.', true);
+} else if (e.code === 'auth/weak-password') {
+  showMessage('Password must be at least 6 characters.', true);
+} else {
+  showMessage('Could not create account. Try again.', true);
+}
      }
   }
 </script>
