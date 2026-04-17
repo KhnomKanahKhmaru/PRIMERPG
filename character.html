@@ -85,17 +85,8 @@
       margin-bottom: 16px;
     }
     .char-header-left { flex: 1; }
-    .char-name {
-      font-size: 28px;
-      font-weight: 700;
-      color: #e0e0e0;
-      margin-bottom: 4px;
-    }
-    .char-archetype {
-      font-size: 15px;
-      font-weight: 500;
-      color: #666;
-    }
+    .char-name { font-size: 28px; font-weight: 700; color: #e0e0e0; margin-bottom: 4px; }
+    .char-archetype { font-size: 15px; font-weight: 500; color: #666; }
     .char-quip-box {
       width: 260px;
       flex-shrink: 0;
@@ -134,12 +125,7 @@
     .bio-prose { font-size: 13px; color: #888; line-height: 1.9; }
     .bio-prose b { color: #ccc; font-weight: 600; }
     .bio-prose i { color: #888; font-style: italic; }
-    .field {
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-      margin-bottom: 12px;
-    }
+    .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
     .field label {
       font-size: 10px;
       font-weight: 600;
@@ -206,15 +192,11 @@
   <div id="loading" class="empty">Loading...</div>
   <div id="char-content" style="display:none">
     <div class="char-card">
-
-      <!-- Picture -->
       <div class="char-picture" id="picture-slot" onclick="triggerPicUpload()">
         <div class="char-picture-placeholder" id="pic-placeholder">Click to add picture</div>
         <img id="char-img" style="display:none">
         <input type="file" id="pic-input" accept="image/*" onchange="handlePicChange(event)">
       </div>
-
-      <!-- Biography -->
       <div class="char-bio-col">
         <div class="char-header">
           <div class="char-header-left">
@@ -223,16 +205,13 @@
           </div>
           <div class="char-quip-box" id="char-quip" onclick="editQuip()"></div>
         </div>
-
         <div class="section-title">
           Biography
           <span id="bio-edit-btn" class="edit-btn" style="display:none" onclick="editBio()">Edit</span>
         </div>
-
         <div id="bio-view">
           <div class="bio-prose" id="bio-prose"></div>
         </div>
-
         <div id="bio-edit" style="display:none">
           <div class="field"><label>Name</label><input type="text" id="e-name" oninput="updatePreview()"></div>
           <div class="field"><label>Sex</label><input type="text" id="e-sex" oninput="updatePreview()"></div>
@@ -255,8 +234,6 @@
           </div>
         </div>
       </div>
-
-      <!-- ETC -->
       <div class="char-etc-col">
         <div class="etc-title">Notes</div>
         <div class="etc-content" id="etc-content" onclick="editEtc()">—</div>
@@ -266,7 +243,6 @@
           <button class="save-btn" onclick="cancelEtc()" style="font-size:11px;padding:4px 12px;margin-left:6px;border-color:#333;color:#888">Cancel</button>
         </div>
       </div>
-
     </div>
   </div>
 </div>
@@ -295,7 +271,7 @@
   const charId = params.get('id');
   if (!charId) window.location.href = 'home.html';
 
- let charData = {};
+  let charData = {};
   let canEdit = false;
   let userPlaygroups = [];
   let loaded = false;
@@ -322,8 +298,6 @@
 
   async function getActivePgName() {
     if (!charData.playgroupId || !auth.currentUser) return null;
-    const mDoc = await getDoc(doc(db, 'memberships', auth.currentUser.uid + '_' + charData.playgroupId));
-    if (!mDoc.exists()) return null;
     const pgDoc = await getDoc(doc(db, 'playgroups', charData.playgroupId));
     return pgDoc.exists() ? pgDoc.data().name : null;
   }
@@ -351,11 +325,10 @@
     }
   }
 
- onAuthStateChanged(auth, async function(user) {
+  onAuthStateChanged(auth, async function(user) {
     if (!user || !user.emailVerified) return;
     if (loaded) return;
     loaded = true;
-    }
 
     const userDoc = await getDoc(doc(db, 'users', user.uid));
     if (userDoc.exists()) setNavUsername(userDoc.data().username);
@@ -389,14 +362,11 @@
   window.handlePicChange = async function(e) {
     const file = e.target.files[0];
     if (!file) return;
-
-    // show uploading overlay
     const slot = document.getElementById('picture-slot');
     const overlay = document.createElement('div');
     overlay.className = 'pic-uploading';
     overlay.textContent = 'Uploading...';
     slot.appendChild(overlay);
-
     try {
       const storageRef = ref(storage, `characters/${charId}/portrait`);
       await uploadBytes(storageRef, file);
