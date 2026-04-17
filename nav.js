@@ -67,7 +67,7 @@ const NAV_HTML = `
     Characters
     <div class="banner-dropdown">
       <a href="#">My Characters</a>
-      <a href="#">Create Character</a>
+      <a href="create-character.html">Create Character</a>
     </div>
   </div>
 </div>`;
