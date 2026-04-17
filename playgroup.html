@@ -377,7 +377,7 @@
   }
 
   window.saveField = async function(field) {
-    const html = quills[field].root.innerHTML;
+    const html = quills[field].root.innerHTML.replace(/<p><br><\/p>$/, '').trim();
     const msg = document.getElementById(field + '-msg');
     try {
       if (field === 'rules') {
