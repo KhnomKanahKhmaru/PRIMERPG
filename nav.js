@@ -68,7 +68,6 @@ const NAV_HTML = `
     <div class="banner-dropdown">
       <a href="create-ruleset.html">Create Ruleset</a>
       <a href="my-rulesets.html">My Rulesets</a>
-      <a href="create-ruleset.html">Create Ruleset</a>
       <a href="#">Browse Rulesets</a>
     </div>
   </div>
