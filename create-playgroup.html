@@ -208,18 +208,25 @@
     }
 
     try {
-      const ref = await addDoc(collection(db, 'playgroups'), {
+      const pgRef = await addDoc(collection(db, 'playgroups'), {
         name: name,
         primer: primer,
         leader: currentUser.uid,
-        members: [{ uid: currentUser.uid, role: 'Leader' }],
         ruleset: 'basic',
         createdAt: new Date()
       });
+
+      await setDoc(doc(db, 'memberships', currentUser.uid + '_' + pgRef.id), {
+        uid: currentUser.uid,
+        playgroupId: pgRef.id,
+        role: 'Leader',
+        joinedAt: new Date()
+      });
+
       msg.textContent = 'Playgroup created!';
       msg.style.color = '#66ff99';
       setTimeout(() => {
-        window.location.href = 'playgroup.html?id=' + ref.id;
+        window.location.href = 'playgroup.html?id=' + pgRef.id;
       }, 1000);
     } catch(e) {
       msg.textContent = 'Error creating playgroup. Try again.';
