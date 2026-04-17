@@ -165,8 +165,8 @@
       showMessage('Account created! Redirecting...', false);
       setTimeout(() => { window.location.href = 'sheet.html'; }, 1000);
     } catch(e) {
-      showMessage('Could not create account. Password must be at least 6 characters.', true);
-    }
+    showMessage(e.message, true);
+     }
   }
 </script>
 </body>
