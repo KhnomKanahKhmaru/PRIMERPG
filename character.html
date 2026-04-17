@@ -119,8 +119,14 @@
     .stat-label .abbr { color: #aaa; font-weight: 700; }
     .stat-level-label { font-size: 10px; font-style: italic; color: #444; margin-top: 2px; }
     .stat-value-area { display: flex; flex-direction: column; align-items: center; gap: 2px; flex-shrink: 0; }
-    .stat-total-display { font-size: 18px; font-weight: 700; color: #e0e0e0; text-align: center; min-width: 36px; }
+    .stat-value-wrap { position: relative; display: inline-flex; align-items: flex-start; }
+    .stat-total-display { font-size: 20px; font-weight: 700; color: #e0e0e0; }
+    .stat-mod-exponent { font-size: 10px; font-weight: 600; color: #555; margin-left: 2px; line-height: 1; align-self: flex-start; margin-top: 1px; }
     .stat-mod-badge { background: #1a1a1a; border: 1px solid #333; color: #888; font-size: 9px; padding: 1px 5px; border-radius: 3px; white-space: nowrap; text-align: center; }
+    .stat-input-row { display: flex; align-items: center; gap: 3px; }
+    .stat-mod-row { display: flex; align-items: center; gap: 4px; margin-top: 3px; }
+    .stat-adj-btn { background: transparent; border: 1px solid #333; color: #666; font-size: 13px; width: 20px; height: 20px; border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; font-family: 'Open Sans', sans-serif; line-height: 1; }
+    .stat-adj-btn:hover { color: #ccc; border-color: #666; }
     .stat-base-input { width: 44px; background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 14px; font-weight: 700; text-align: center; padding: 3px; border-radius: 4px; outline: none; }
     .stat-base-input:focus { border-color: #444; }
     .stat-size-select { width: 90px; background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 3px 4px; border-radius: 4px; outline: none; }
@@ -414,14 +420,14 @@
       const wrapper=document.createElement('div');
       const viewRow=document.createElement('div');
       viewRow.className='stat-row';viewRow.id='stat-view-'+s.key;
-      viewRow.innerHTML=`<div class="stat-icon-wrap"><div class="stat-icon">${statIcon(s.key)}</div><div class="stat-tooltip">${STAT_DESCRIPTIONS[s.key]}</div></div><div class="stat-info"><div class="stat-label"><span class="abbr">${s.abbr}</span>${s.rest}</div><div class="stat-level-label" id="stat-level-${s.key}">${levelLabel}</div></div><div class="stat-value-area"><div class="stat-total-display" id="stat-total-${s.key}">${s.key==='size'?getSizeLabel(total):total}</div>${mod!==null?`<div class="stat-mod-badge" id="statmod-${s.key}">${modStr}</div>`:''}</div>`;
+      viewRow.innerHTML=`<div class="stat-icon-wrap"><div class="stat-icon">${statIcon(s.key)}</div><div class="stat-tooltip">${STAT_DESCRIPTIONS[s.key]}</div></div><div class="stat-info"><div class="stat-label"><span class="abbr">${s.abbr}</span>${s.rest}</div><div class="stat-level-label" id="stat-level-${s.key}">${levelLabel}</div></div><div class="stat-value-area"><div class="stat-value-wrap"><span class="stat-total-display" id="stat-total-${s.key}">${s.key==='size'?getSizeLabel(total):total}</span>${mod!==null?`<span class="stat-mod-exponent" id="statmod-${s.key}">${modStr}</span>`:''}</div></div>`;
       const editRow=document.createElement('div');
       editRow.className='stat-row';editRow.id='stat-edit-'+s.key;editRow.style.display='none';
       if(s.key==='size'){
         const sizeOpts=SIZE_OPTIONS.map(o=>`<option value="${o.value}" ${base===o.value?'selected':''}>${o.label}</option>`).join('');
         editRow.innerHTML=`<div class="stat-icon-wrap"><div class="stat-icon">${statIcon(s.key)}</div><div class="stat-tooltip">${STAT_DESCRIPTIONS[s.key]}</div></div><div class="stat-info"><div class="stat-label"><span class="abbr">${s.abbr}</span>${s.rest}</div></div><div class="stat-value-area"><select class="stat-size-select" id="stat-input-${s.key}" onchange="saveStatBase('${s.key}',this.value)">${sizeOpts}</select></div>`;
       } else {
-        editRow.innerHTML=`<div class="stat-icon-wrap"><div class="stat-icon">${statIcon(s.key)}</div><div class="stat-tooltip">${STAT_DESCRIPTIONS[s.key]}</div></div><div class="stat-info"><div class="stat-label"><span class="abbr">${s.abbr}</span>${s.rest}</div><div class="stat-level-label" id="stat-level-edit-${s.key}">${levelLabel}</div></div><div class="stat-value-area"><input type="number" class="stat-base-input" id="stat-input-${s.key}" min="0" max="20" value="${base}" oninput="onStatInput('${s.key}',this.value)" onchange="saveStatBase('${s.key}',this.value)"><div class="stat-mod-badge" id="statmod-edit-${s.key}">${modStr}</div></div><button class="stat-pm-btn" onclick="toggleModPanel('${s.key}')">+/−</button>`;
+        editRow.innerHTML=`<div class="stat-icon-wrap"><div class="stat-icon">${statIcon(s.key)}</div><div class="stat-tooltip">${STAT_DESCRIPTIONS[s.key]}</div></div><div class="stat-info"><div class="stat-label"><span class="abbr">${s.abbr}</span>${s.rest}</div><div class="stat-level-label" id="stat-level-edit-${s.key}">${levelLabel}</div></div><div class="stat-value-area"><div class="stat-input-row"><button class="stat-adj-btn" onclick="adjustStat('${s.key}',-1)">−</button><input type="number" class="stat-base-input" id="stat-input-${s.key}" min="0" max="20" value="${base}" oninput="onStatInput('${s.key}',this.value)" onchange="saveStatBase('${s.key}',this.value)"><button class="stat-adj-btn" onclick="adjustStat('${s.key}',1)">+</button></div><div class="stat-mod-row"><div class="stat-mod-badge" id="statmod-edit-${s.key}">${modStr}</div><button class="stat-pm-btn" onclick="toggleModPanel('${s.key}')">+/−</button></div></div>`;
       }
       const modPanel=document.createElement('div');
       modPanel.className='stat-mod-panel';modPanel.id='modpanel-'+s.key;modPanel.style.display='none';
@@ -453,6 +459,18 @@
     const levelEl=document.getElementById('stat-level-edit-'+key);if(levelEl)levelEl.textContent=getStatLabel(total);
   }
 
+  window.adjustStat=async function(key,delta){
+    if(!canEdit)return;
+    if(!charData.stats)charData.stats={};
+    const current=charData.stats[key]!==undefined?charData.stats[key]:STAT_DEFS.find(s=>s.key===key).default;
+    const newVal=Math.max(0,Math.min(20,current+delta));
+    charData.stats[key]=newVal;
+    const input=document.getElementById('stat-input-'+key);if(input)input.value=newVal;
+    await updateDoc(doc(db,'characters',charId),{[`stats.${key}`]:newVal});
+    onStatInput(key,newVal);
+    updateStatViewDisplay(key);
+  }
+
   function renderModList(key){
     const mods=(charData.statModifiers&&charData.statModifiers[key])?charData.statModifiers[key]:[];
     const el=document.getElementById('modlist-'+key);if(!el)return;
@@ -463,7 +481,7 @@
   function updateStatViewDisplay(key){
     const total=getStatTotal(key);const mod=getStatMod(total);const modStr=mod>=0?'+'+mod:''+mod;
     const t=document.getElementById('stat-total-'+key);if(t)t.textContent=key==='size'?getSizeLabel(total):total;
-    const b=document.getElementById('statmod-'+key);if(b)b.textContent=modStr;
+    const exp=document.getElementById('statmod-'+key);if(exp)exp.textContent=modStr;
     const l=document.getElementById('stat-level-'+key);if(l)l.textContent=key==='size'?getSizeLabel(total):getStatLabel(total);
     const eb=document.getElementById('statmod-edit-'+key);if(eb)eb.textContent=modStr;
     const el=document.getElementById('stat-level-edit-'+key);if(el)el.textContent=getStatLabel(total);
