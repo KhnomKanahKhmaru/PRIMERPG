@@ -253,7 +253,7 @@
     }
 
     const list = document.getElementById('pg-list');
-
+    list.innerHTML = '';
     const q = query(collection(db, 'memberships'), where('uid', '==', user.uid));
     const snap = await getDocs(q);
 
