@@ -48,45 +48,35 @@
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
     .empty { color: #444; font-size: 13px; text-align: center; padding: 60px 0; }
-    .world-field { margin-bottom: 28px; }
-    .world-field-title {
-      font-size: 15px;
-      font-weight: 600;
-      color: #aaa;
-      margin-bottom: 8px;
-    }
-    .world-field-content { font-size: 13px; color: #888; line-height: 1.6; }
-    .world-field-content p { margin-bottom: 8px; }
-    .world-field-content p:last-child { margin-bottom: 0; }
-    .world-field-content p:last-child:empty { display: none; }
-    .world-field-content h1,.world-field-content h2,.world-field-content h3 { color: #ccc; margin-bottom: 6px; }
-    .world-field-content ul { padding-left: 0; list-style: none; margin-bottom: 8px; }
-    .world-field-content ul:last-child { margin-bottom: 0; }
-    .world-field-content li { padding-left: 1.5em; position: relative; margin-bottom: 2px; }
-    .world-field-content li::before { content: '•'; position: absolute; left: 0; color: #888; }
-    .world-field-content li.ql-indent-1 { padding-left: 3em; }
-    .world-field-content li.ql-indent-2 { padding-left: 4.5em; }
-    .world-field-content li.ql-indent-3 { padding-left: 6em; }
-    .world-field-content li.ql-indent-4 { padding-left: 7.5em; }
-    .world-field-content li.ql-indent-5 { padding-left: 9em; }
-    .world-field-content li.ql-indent-1::before { left: 1.5em; content: '◦'; }
-    .world-field-content li.ql-indent-2::before { left: 3em; content: '▪'; }
-    .world-field-content li.ql-indent-3::before { left: 4.5em; content: '◦'; }
-    .world-field-content li.ql-indent-4::before { left: 6em; content: '▪'; }
-    .world-field-content li.ql-indent-5::before { left: 7.5em; content: '◦'; }
+    .doc-display { font-size: 13px; color: #888; line-height: 1.8; }
+    .doc-display p { margin-bottom: 8px; }
+    .doc-display p:last-child { margin-bottom: 0; }
+    .doc-display p:last-child:empty { display: none; }
+    .doc-display h1 { font-size: 20px; font-weight: 600; color: #ccc; margin-top: 24px; margin-bottom: 10px; }
+    .doc-display h1:first-child { margin-top: 0; }
+    .doc-display h2 { font-size: 16px; font-weight: 600; color: #bbb; margin-top: 18px; margin-bottom: 8px; }
+    .doc-display h3 { font-size: 14px; font-weight: 600; color: #aaa; margin-top: 14px; margin-bottom: 6px; }
+    .doc-display ul { padding-left: 0; list-style: none; margin-bottom: 8px; }
+    .doc-display ul:last-child { margin-bottom: 0; }
+    .doc-display li { padding-left: 1.5em; position: relative; margin-bottom: 2px; }
+    .doc-display li::before { content: '•'; position: absolute; left: 0; color: #888; }
+    .doc-display li.ql-indent-1 { padding-left: 3em; }
+    .doc-display li.ql-indent-2 { padding-left: 4.5em; }
+    .doc-display li.ql-indent-3 { padding-left: 6em; }
+    .doc-display li.ql-indent-1::before { left: 1.5em; content: '◦'; }
+    .doc-display li.ql-indent-2::before { left: 3em; content: '▪'; }
+    .doc-display li.ql-indent-3::before { left: 4.5em; content: '◦'; }
+    .doc-actions { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
     .edit-btn {
-      font-size: 10px;
+      font-size: 11px;
       color: #555;
       cursor: pointer;
-      padding: 1px 7px;
+      padding: 3px 10px;
       border: 1px solid #333;
       border-radius: 3px;
-      margin-left: 8px;
-      vertical-align: middle;
     }
     .edit-btn:hover { color: #aaa; border-color: #555; }
     .save-btn {
-      margin-top: 8px;
       background: #1a1a1a;
       border: 1px solid #333;
       color: #e0e0e0;
@@ -97,7 +87,7 @@
       cursor: pointer;
     }
     .save-btn:hover { background: #222; border-color: #555; }
-    .save-msg { font-size: 11px; margin-left: 10px; color: #66ff99; }
+    .save-msg { font-size: 11px; margin-left: 6px; color: #66ff99; }
     .people-row {
       display: flex;
       align-items: center;
@@ -138,8 +128,11 @@
     }
     .bottom-btn:hover { color: #ccc; border-color: #444; }
     .ql-toolbar { border-color: #222 !important; background: #1a1a1a; }
-    .ql-container { border-color: #222 !important; background: #111; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 13px; min-height: 120px; }
-    .ql-editor { color: #e0e0e0; line-height: 1.6; }
+    .ql-container { border-color: #222 !important; background: #111; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 13px; min-height: 300px; }
+    .ql-editor { color: #e0e0e0; line-height: 1.8; }
+    .ql-editor h1 { color: #ccc; }
+    .ql-editor h2 { color: #bbb; }
+    .ql-editor h3 { color: #aaa; }
     .ql-stroke { stroke: #888 !important; }
     .ql-fill { fill: #888 !important; }
     .ql-picker { color: #888 !important; }
@@ -174,48 +167,28 @@
     <div id="people-list"></div>
   </div>
   <div class="tab-panel" id="tab-world">
-    <div class="world-field">
-      <div class="world-field-title">Setting Synopsis <span id="synopsis-edit-btn" class="edit-btn" style="display:none" onclick="editField('synopsis')">Edit</span></div>
-      <div id="synopsis-display" class="world-field-content"></div>
-      <div class="quill-wrapper" id="synopsis-wrapper" style="display:none"><div id="synopsis-editor"></div></div>
-      <div id="synopsis-save-row" style="display:none;margin-top:8px">
-        <button class="save-btn" onclick="saveField('synopsis')">Save</button>
-        <button class="save-btn" onclick="cancelField('synopsis')" style="margin-left:6px;border-color:#333;color:#888">Cancel</button>
-        <span class="save-msg" id="synopsis-msg"></span>
-      </div>
+    <div id="world-actions" class="doc-actions" style="display:none">
+      <span class="edit-btn" onclick="editDoc('world')">Edit</span>
     </div>
-    <div class="world-field">
-      <div class="world-field-title">Setting Description <span id="description-edit-btn" class="edit-btn" style="display:none" onclick="editField('description')">Edit</span></div>
-      <div id="description-display" class="world-field-content"></div>
-      <div class="quill-wrapper" id="description-wrapper" style="display:none"><div id="description-editor"></div></div>
-      <div id="description-save-row" style="display:none;margin-top:8px">
-        <button class="save-btn" onclick="saveField('description')">Save</button>
-        <button class="save-btn" onclick="cancelField('description')" style="margin-left:6px;border-color:#333;color:#888">Cancel</button>
-        <span class="save-msg" id="description-msg"></span>
-      </div>
+    <div id="world-edit-actions" class="doc-actions" style="display:none">
+      <button class="save-btn" onclick="saveDoc('world')">Save</button>
+      <button class="save-btn" onclick="cancelDoc('world')" style="border-color:#333;color:#888">Cancel</button>
+      <span class="save-msg" id="world-msg"></span>
     </div>
-    <div class="world-field">
-      <div class="world-field-title">World Events <span id="events-edit-btn" class="edit-btn" style="display:none" onclick="editField('events')">Edit</span></div>
-      <div id="events-display" class="world-field-content"></div>
-      <div class="quill-wrapper" id="events-wrapper" style="display:none"><div id="events-editor"></div></div>
-      <div id="events-save-row" style="display:none;margin-top:8px">
-        <button class="save-btn" onclick="saveField('events')">Save</button>
-        <button class="save-btn" onclick="cancelField('events')" style="margin-left:6px;border-color:#333;color:#888">Cancel</button>
-        <span class="save-msg" id="events-msg"></span>
-      </div>
-    </div>
+    <div id="world-display" class="doc-display"></div>
+    <div class="quill-wrapper" id="world-wrapper" style="display:none"><div id="world-editor"></div></div>
   </div>
   <div class="tab-panel" id="tab-rules">
-    <div class="world-field">
-      <div class="world-field-title">Playgroup Rules <span id="rules-edit-btn" class="edit-btn" style="display:none" onclick="editField('rules')">Edit</span></div>
-      <div id="rules-display" class="world-field-content"></div>
-      <div class="quill-wrapper" id="rules-wrapper" style="display:none"><div id="rules-editor"></div></div>
-      <div id="rules-save-row" style="display:none;margin-top:8px">
-        <button class="save-btn" onclick="saveField('rules')">Save</button>
-        <button class="save-btn" onclick="cancelField('rules')" style="margin-left:6px;border-color:#333;color:#888">Cancel</button>
-        <span class="save-msg" id="rules-msg"></span>
-      </div>
+    <div id="rules-actions" class="doc-actions" style="display:none">
+      <span class="edit-btn" onclick="editDoc('rules')">Edit</span>
     </div>
+    <div id="rules-edit-actions" class="doc-actions" style="display:none">
+      <button class="save-btn" onclick="saveDoc('rules')">Save</button>
+      <button class="save-btn" onclick="cancelDoc('rules')" style="border-color:#333;color:#888">Cancel</button>
+      <span class="save-msg" id="rules-msg"></span>
+    </div>
+    <div id="rules-display" class="doc-display"></div>
+    <div class="quill-wrapper" id="rules-wrapper" style="display:none"><div id="rules-editor"></div></div>
   </div>
   <div class="tab-panel" id="tab-resources">
     <div class="empty">Resources coming soon.</div>
@@ -252,8 +225,10 @@
 
   let canEdit = false;
   let pgData = {};
-  const fields = ['synopsis', 'description', 'events', 'rules'];
   const quills = {};
+
+  const WORLD_DEFAULT = '<h1>Setting Synopsis</h1><p><br></p><h1>Setting Description</h1><p><br></p>';
+  const RULES_DEFAULT = '<h1>Playgroup Rules</h1><p><br></p>';
 
   function cleanHtml(html) {
     return (html || '').replace(/(<p><br><\/p>)+$/, '').trim();
@@ -316,20 +291,19 @@
       document.querySelector('.bottom-bar').appendChild(deleteBtn);
     }
 
-    const world = pgData.world || {};
-    const fieldMap = {
-      synopsis: world.synopsis || '',
-      description: world.description || '',
-      events: world.events || '',
-      rules: pgData.rules || ''
-    };
+    const worldVal = pgData.world_doc || '';
+    const rulesVal = pgData.rules_doc || '';
 
-    fields.forEach(f => {
-      const val = fieldMap[f];
-      const display = document.getElementById(f + '-display');
-      display.innerHTML = val ? cleanHtml(val) : '<span style="color:#555">Not set.</span>';
-      if (canEdit) {
-        document.getElementById(f + '-edit-btn').style.display = 'inline';
+    document.getElementById('world-display').innerHTML = worldVal ? cleanHtml(worldVal) : WORLD_DEFAULT;
+    document.getElementById('rules-display').innerHTML = rulesVal ? cleanHtml(rulesVal) : RULES_DEFAULT;
+
+    if (canEdit) {
+      document.getElementById('world-actions').style.display = 'flex';
+      document.getElementById('rules-actions').style.display = 'flex';
+
+      ['world', 'rules'].forEach(f => {
+        const val = f === 'world' ? worldVal : rulesVal;
+        const def = f === 'world' ? WORLD_DEFAULT : RULES_DEFAULT;
         quills[f] = new Quill(document.getElementById(f + '-editor'), {
           theme: 'snow',
           modules: {
@@ -342,9 +316,9 @@
             ]
           }
         });
-        if (val) quills[f].root.innerHTML = val;
-      }
-    });
+        quills[f].root.innerHTML = val || def;
+      });
+    }
 
     const peopleList = document.getElementById('people-list');
     peopleList.innerHTML = '<div class="empty">Loading...</div>';
@@ -367,36 +341,33 @@
     }
   });
 
-  window.editField = function(field) {
+  window.editDoc = function(field) {
     document.getElementById(field + '-display').style.display = 'none';
+    document.getElementById(field + '-actions').style.display = 'none';
     document.getElementById(field + '-wrapper').style.display = 'block';
     document.getElementById(field + '-wrapper').classList.add('quill-active');
-    document.getElementById(field + '-save-row').style.display = 'block';
-    document.getElementById(field + '-edit-btn').style.display = 'none';
+    document.getElementById(field + '-edit-actions').style.display = 'flex';
   }
 
-  window.cancelField = function(field) {
+  window.cancelDoc = function(field) {
     document.getElementById(field + '-display').style.display = 'block';
+    document.getElementById(field + '-actions').style.display = 'flex';
     document.getElementById(field + '-wrapper').style.display = 'none';
     document.getElementById(field + '-wrapper').classList.remove('quill-active');
-    document.getElementById(field + '-save-row').style.display = 'none';
-    document.getElementById(field + '-edit-btn').style.display = 'inline';
+    document.getElementById(field + '-edit-actions').style.display = 'none';
   }
 
-  window.saveField = async function(field) {
+  window.saveDoc = async function(field) {
     const html = cleanHtml(quills[field].root.innerHTML);
     const msg = document.getElementById(field + '-msg');
+    const key = field === 'world' ? 'world_doc' : 'rules_doc';
     try {
-      if (field === 'rules') {
-        await updateDoc(doc(db, 'playgroups', pgId), { rules: html });
-      } else {
-        await updateDoc(doc(db, 'playgroups', pgId), { ['world.' + field]: html });
-      }
+      await updateDoc(doc(db, 'playgroups', pgId), { [key]: html });
       document.getElementById(field + '-display').innerHTML = html;
       msg.textContent = 'Saved!';
       setTimeout(() => {
         msg.textContent = '';
-        cancelField(field);
+        cancelDoc(field);
       }, 1000);
     } catch(e) {
       msg.textContent = 'Error saving.';
