@@ -222,7 +222,14 @@
     <div class="mental-card">
       <div class="mental-col">
         <div class="mental-col-header">
-          <div class="mental-col-title">Moral Obligations</div>
+          <div class="mental-col-title" style="position:relative;cursor:default" onmouseenter="document.getElementById('mo-tip').style.display='block'" onmouseleave="document.getElementById('mo-tip').style.display='none'">Moral Obligations
+            <div id="mo-tip" style="display:none;position:absolute;left:0;top:100%;margin-top:6px;background:#1a1a1a;border:1px solid #333;border-radius:4px;padding:10px 12px;font-size:11px;color:#aaa;width:320px;z-index:1000;line-height:1.6;font-weight:400;letter-spacing:0;text-transform:none">
+              <p style="margin-bottom:8px">When you roll poorly on a Mental Health Check you must allocate a number of Break Points equal to 6 − Result. You may choose to allocate some of these to taking on a Moral Obligation, rather than the alternatives.</p>
+              <p style="margin-bottom:8px">A Moral Obligation's requirements depend on its scale; a Minor Obligation is 1 Break Point, while a Mythical Obligation is 7. Your GM must approve of your chosen Obligation; your Obligation must be intuitive to its originating Mental Health Check.</p>
+              <p style="margin-bottom:8px">Each Obligation you have results in +1 Difficulty to any and all Mental Health Checks you make, until the Obligation is resolved or abandoned.</p>
+              <p>If you choose to abandon an Obligation, you must reroll the original Mental Health Check at +1 Difficulty, and allocate a number of Break Points as normal, with an additional amount equal to what was spent on the abandoned Obligation.</p>
+            </div>
+          </div>
           <span class="edit-btn" id="obligations-edit-btn" style="display:none" onclick="editObligations()">Edit</span>
         </div>
         <div id="obligations-view"></div>
