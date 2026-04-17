@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PRIME RPG — Home</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background: #0a0a0a;
+      color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+    .topbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 44px;
+      background: #111;
+      border-bottom: 1px solid #222;
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      gap: 4px;
+      z-index: 100;
+    }
+    .topbar-item {
+      position: relative;
+      padding: 8px 14px;
+      color: #aaa;
+      cursor: pointer;
+      font-size: 13px;
+      border-radius: 4px;
+      user-select: none;
+    }
+    .topbar-item:hover {
+      color: #fff;
+      background: #1e1e1e;
+    }
+    .topbar-item.home {
+      color: #fff;
+      font-weight: 600;
+      margin-right: 10px;
+    }
+    .dropdown {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 4px;
+      min-width: 160px;
+      z-index: 200;
+    }
+    .topbar-item:hover .dropdown {
+      display: block;
+    }
+    .dropdown a {
+      display: block;
+      padding: 9px 14px;
+      color: #aaa;
+      text-decoration: none;
+      font-size: 13px;
+    }
+    .dropdown a:hover {
+      color: #fff;
+      background: #1e1e1e;
+    }
+    .dropdown-divider {
+      border: none;
+      border-top: 1px solid #222;
+      margin: 4px 0;
+    }
+  </style>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-item home" onclick="window.location.href='home.html'">PRIME RPG</div>
+
+  <div class="topbar-item" onclick="window.location.href='home.html'">Home</div>
+
+  <div class="topbar-item">
+    Documentation
+    <div class="dropdown">
+      <a href="#">Rules</a>
+      <a href="#">Combat</a>
+      <a href="#">Characters</a>
+    </div>
+  </div>
+
+  <div class="topbar-item">
+    Navigation
+    <div class="dropdown">
+      <a href="#">My Characters</a>
+      <a href="#">My Playgroups</a>
+      <a href="#">My Scenarios</a>
+    </div>
+  </div>
+
+  <div class="topbar-item">
+    Alerts
+    <div class="dropdown" id="alerts-dropdown">
+      <a href="#">No alerts</a>
+    </div>
+  </div>
+
+  <div class="topbar-item" style="margin-left:auto">
+    Account
+    <div class="dropdown" style="left:auto;right:0">
+      <a href="#">View Account</a>
+      <a href="#">Account Settings</a>
+      <a href="#">Messages</a>
+      <hr class="dropdown-divider">
+      <a href="#" onclick="logout()">Log Out</a>
+    </div>
+  </div>
+</div>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
+  import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCf94yLvAtJ9pLgJ3FsV7ir4Qh9XXm3nHg",
+    authDomain: "prime-rpg.firebaseapp.com",
+    projectId: "prime-rpg",
+    storageBucket: "prime-rpg.firebasestorage.app",
+    messagingSenderId: "177905987748",
+    appId: "1:177905987748:web:8856ab4fdb8f81f42eb631"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+
+  onAuthStateChanged(auth, function(user) {
+    if (!user || !user.emailVerified) {
+      window.location.href = 'index.html';
+    }
+  });
+
+  window.logout = async function() {
+    await signOut(auth);
+    window.location.href = 'index.html';
+  }
+</script>
+</body>
+</html>
