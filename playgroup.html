@@ -411,9 +411,14 @@
   const fields = ['synopsis', 'description', 'events', 'rules'];
 
   onAuthStateChanged(auth, async function(user) {
-    if (!user || !user.emailVerified) {
+   if (!user || !user.emailVerified) {
       window.location.href = 'index.html';
       return;
+    }
+
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    if (userDoc.exists()) {
+      document.getElementById('nav-username').textContent = userDoc.data().username;
     }
 
     const pgDoc = await getDoc(doc(db, 'playgroups', pgId));
