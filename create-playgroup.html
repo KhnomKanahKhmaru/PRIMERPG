@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PRIME RPG — Create Playgroup</title>
   <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="nav.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -14,49 +15,6 @@
       font-size: 14px;
       min-height: 100vh;
     }
-    .topbar {
-      position: fixed;
-      top: 0; left: 0; right: 0;
-      height: 44px;
-      background: #111;
-      border-bottom: 1px solid #222;
-      display: flex;
-      align-items: center;
-      padding: 0 20px;
-      gap: 4px;
-      z-index: 100;
-    }
-    .topbar-item {
-      position: relative;
-      padding: 8px 14px;
-      color: #aaa;
-      cursor: pointer;
-      font-size: 13px;
-      border-radius: 4px;
-      user-select: none;
-    }
-    .topbar-item:hover { color: #fff; background: #1e1e1e; }
-    .topbar-item.home { color: #fff; font-weight: 600; margin-right: 10px; }
-    .dropdown {
-      display: none;
-      position: absolute;
-      top: 100%; left: 0;
-      background: #111;
-      border: 1px solid #222;
-      border-radius: 4px;
-      min-width: 160px;
-      z-index: 200;
-    }
-    .topbar-item:hover .dropdown { display: block; }
-    .dropdown a {
-      display: block;
-      padding: 9px 14px;
-      color: #aaa;
-      text-decoration: none;
-      font-size: 13px;
-    }
-    .dropdown a:hover { color: #fff; background: #1e1e1e; }
-    .dropdown-divider { border: none; border-top: 1px solid #222; margin: 4px 0; }
     .page {
       padding-top: 64px;
       max-width: 600px;
@@ -112,43 +70,7 @@
   </style>
 </head>
 <body>
-
-<div class="topbar">
-  <div class="topbar-item home" onclick="window.location.href='home.html'">PRIME RPG</div>
-  <div class="topbar-item" onclick="window.location.href='home.html'">Home</div>
-  <div class="topbar-item">
-    Documentation
-    <div class="dropdown">
-      <a href="#">Rules</a>
-      <a href="#">Combat</a>
-      <a href="#">Characters</a>
-    </div>
-  </div>
-  <div class="topbar-item">
-    Navigation
-    <div class="dropdown">
-      <a href="#">My Characters</a>
-      <a href="#">My Playgroups</a>
-      <a href="#">My Scenarios</a>
-    </div>
-  </div>
-  <div class="topbar-item">
-    Alerts
-    <div class="dropdown">
-      <a href="#">No alerts</a>
-    </div>
-  </div>
-  <div class="topbar-item" style="margin-left:auto">
-    Account
-    <div class="dropdown" style="left:auto;right:0">
-      <a href="#">View Account</a>
-      <a href="#">Account Settings</a>
-      <a href="#">Messages</a>
-      <hr class="dropdown-divider">
-      <a href="#" onclick="logout()">Log Out</a>
-    </div>
-  </div>
-</div>
+<script>injectNav();</script>
 
 <div class="page">
   <div class="page-title">Create Playgroup</div>
@@ -167,7 +89,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
-  import { getFirestore, collection, addDoc, doc, setDoc } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+  import { getFirestore, collection, addDoc, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCf94yLvAtJ9pLgJ3FsV7ir4Qh9XXm3nHg",
@@ -183,12 +105,14 @@
   const db = getFirestore(app);
   let currentUser = null;
 
-  onAuthStateChanged(auth, function(user) {
+  onAuthStateChanged(auth, async function(user) {
     if (!user || !user.emailVerified) {
       window.location.href = 'index.html';
-    } else {
-      currentUser = user;
+      return;
     }
+    currentUser = user;
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    if (userDoc.exists()) setNavUsername(userDoc.data().username);
   });
 
   window.logout = async function() {
