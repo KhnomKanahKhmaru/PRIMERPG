@@ -15,19 +15,16 @@
     min-height: 100vh;
     margin: 0;
   }
-
   .container {
     text-align: center;
     width: 320px;
   }
-
   h1 {
     font-size: 48px;
     letter-spacing: 8px;
     margin-bottom: 40px;
     color: white;
   }
-
   input {
     width: 100%;
     padding: 10px;
@@ -39,12 +36,10 @@
     border-radius: 4px;
     box-sizing: border-box;
   }
-
   input:focus {
     outline: none;
     border-color: #888;
   }
-
   button {
     width: 100%;
     padding: 10px;
@@ -56,28 +51,48 @@
     border-radius: 4px;
     cursor: pointer;
   }
-
   button:hover {
     background: #333;
   }
-
   .message {
     font-size: 12px;
     color: #888;
     margin-top: 10px;
   }
-</style>
+  .back {
+    font-size: 12px;
+    color: #666;
+    margin-top: 12px;
+    cursor: pointer;
+  }
+  .back:hover {
+    color: #aaa;
+  }
+  </style>
 </head>
 <body>
 <div class="container">
   <h1>PRIME RPG</h1>
 
-  <input type="email" id="email" placeholder="Email">
-  <input type="text" id="username" placeholder="Username (for new accounts)">
-  <input type="password" id="password" placeholder="Password">
+  <div id="view-main">
+    <button onclick="showView('login')">Login</button>
+    <button onclick="showView('create')">Create Account</button>
+  </div>
 
-  <button onclick="login()">Login</button>
-  <button onclick="createAccount()">Create Account</button>
+  <div id="view-login" style="display:none">
+    <input type="email" id="login-email" placeholder="Email">
+    <input type="password" id="login-password" placeholder="Password">
+    <button onclick="login()">Login</button>
+    <div class="back" onclick="showView('main')">← Back</div>
+  </div>
+
+  <div id="view-create" style="display:none">
+    <input type="email" id="create-email" placeholder="Email">
+    <input type="text" id="create-username" placeholder="Username">
+    <input type="password" id="create-password" placeholder="Password">
+    <button onclick="createAccount()">Create Account</button>
+    <div class="back" onclick="showView('main')">← Back</div>
+  </div>
 
   <div class="message" id="message"></div>
 </div>
@@ -86,8 +101,6 @@
   import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
   import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
 
-  
-  // YOUR CONFIG HERE - paste your firebaseConfig object from earlier
   const firebaseConfig = {
     apiKey: "AIzaSyCf94yLvAtJ9pLgJ3FsV7ir4Qh9XXm3nHg",
     authDomain: "prime-rpg.firebaseapp.com",
@@ -107,9 +120,17 @@
     el.style.color = isError ? '#ff6666' : '#66ff99';
   }
 
+  window.showView = function(view) {
+    document.getElementById('view-main').style.display = 'none';
+    document.getElementById('view-login').style.display = 'none';
+    document.getElementById('view-create').style.display = 'none';
+    document.getElementById('message').textContent = '';
+    document.getElementById('view-' + view).style.display = 'block';
+  }
+
   window.login = async function() {
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
+    const email = document.getElementById('login-email').value;
+    const password = document.getElementById('login-password').value;
     try {
       await signInWithEmailAndPassword(auth, email, password);
       showMessage('Logged in! Redirecting...', false);
@@ -120,26 +141,26 @@
   }
 
   window.createAccount = async function() {
-  const email = document.getElementById('email').value;
-  const password = document.getElementById('password').value;
-  const username = document.getElementById('username').value;
-  if (!username) {
-    showMessage('Please enter a username.', true);
-    return;
+    const email = document.getElementById('create-email').value;
+    const password = document.getElementById('create-password').value;
+    const username = document.getElementById('create-username').value;
+    if (!username) {
+      showMessage('Please enter a username.', true);
+      return;
+    }
+    try {
+      const result = await createUserWithEmailAndPassword(auth, email, password);
+      await setDoc(doc(db, 'users', result.user.uid), {
+        username: username,
+        email: email,
+        createdAt: new Date()
+      });
+      showMessage('Account created! Redirecting...', false);
+      setTimeout(() => { window.location.href = 'sheet.html'; }, 1000);
+    } catch(e) {
+      showMessage('Could not create account. Password must be at least 6 characters.', true);
+    }
   }
-  try {
-    const result = await createUserWithEmailAndPassword(auth, email, password);
-    await setDoc(doc(db, 'users', result.user.uid), {
-      username: username,
-      email: email,
-      createdAt: new Date()
-    });
-    showMessage('Account created! Redirecting...', false);
-    setTimeout(() => { window.location.href = 'sheet.html'; }, 1000);
-  } catch(e) {
-    showMessage('Could not create account. Password must be at least 6 characters.', true);
-  }
-}
 </script>
 </body>
 </html>
