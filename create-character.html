@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PRIME RPG — Create Character</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="nav.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0a0a0a;
+      color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+    .page {
+      padding-top: 104px;
+      max-width: 600px;
+      margin: 0 auto;
+      padding-left: 24px;
+      padding-right: 24px;
+      padding-bottom: 60px;
+    }
+    .page-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 24px;
+      color: #e0e0e0;
+    }
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #555;
+      margin-bottom: 16px;
+      margin-top: 28px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+    .field label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #555;
+    }
+    .field input, .field textarea {
+      background: #111;
+      border: 1px solid #222;
+      color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 13px;
+      padding: 8px 12px;
+      border-radius: 4px;
+      outline: none;
+      width: 100%;
+    }
+    .field input:focus, .field textarea:focus { border-color: #444; }
+    .field textarea { resize: vertical; min-height: 100px; line-height: 1.6; }
+    .preview {
+      background: #111;
+      border: 1px solid #1a1a1a;
+      border-radius: 4px;
+      padding: 16px;
+      margin-bottom: 24px;
+      font-size: 13px;
+      color: #888;
+      line-height: 1.8;
+    }
+    .preview-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #444;
+      margin-bottom: 8px;
+    }
+    .submit-btn {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 13px;
+      padding: 10px 24px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    .submit-btn:hover { background: #222; border-color: #555; }
+    .message { font-size: 12px; margin-top: 12px; }
+  </style>
+</head>
+<body>
+<script>injectNav();</script>
+
+<div class="page">
+  <div class="page-title">Create Character</div>
+
+  <div class="section-title">Biography</div>
+
+  <div class="field">
+    <label>Name</label>
+    <input type="text" id="c-name" oninput="updatePreview()">
+  </div>
+  <div class="field">
+    <label>Sex</label>
+    <input type="text" id="c-sex" oninput="updatePreview()">
+  </div>
+  <div class="field">
+    <label>Age</label>
+    <input type="text" id="c-age" oninput="updatePreview()">
+  </div>
+  <div class="field">
+    <label>Ethnicity</label>
+    <input type="text" id="c-ethnicity" oninput="updatePreview()">
+  </div>
+  <div class="field">
+    <label>Paradigm</label>
+    <input type="text" id="c-paradigm" oninput="updatePreview()">
+  </div>
+  <div class="field">
+    <label>Archetype</label>
+    <input type="text" id="c-archetype" oninput="updatePreview()">
+  </div>
+  <div class="field">
+    <label>Residence</label>
+    <input type="text" id="c-residence" oninput="updatePreview()">
+  </div>
+  <div class="field">
+    <label>Appearance</label>
+    <textarea id="c-appearance" oninput="updatePreview()"></textarea>
+  </div>
+
+  <div class="preview-label">Preview</div>
+  <div class="preview" id="bio-preview">Fill in the fields above to see a preview.</div>
+
+  <button class="submit-btn" onclick="createCharacter()">Create Character</button>
+  <div class="message" id="c-message"></div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
+  import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
+  import { getFirestore, doc, getDoc, collection, addDoc } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCf94yLvAtJ9pLgJ3FsV7ir4Qh9XXm3nHg",
+    authDomain: "prime-rpg.firebaseapp.com",
+    projectId: "prime-rpg",
+    storageBucket: "prime-rpg.firebasestorage.app",
+    messagingSenderId: "177905987748",
+    appId: "1:177905987748:web:8856ab4fdb8f81f42eb631"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+  let currentUser = null;
+
+  onAuthStateChanged(auth, async function(user) {
+    if (!user || !user.emailVerified) {
+      window.location.href = 'index.html';
+      return;
+    }
+    currentUser = user;
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    if (userDoc.exists()) setNavUsername(userDoc.data().username);
+  });
+
+  window.updatePreview = function() {
+    const name = document.getElementById('c-name').value.trim();
+    const sex = document.getElementById('c-sex').value.trim();
+    const age = document.getElementById('c-age').value.trim();
+    const ethnicity = document.getElementById('c-ethnicity').value.trim();
+    const paradigm = document.getElementById('c-paradigm').value.trim();
+    const archetype = document.getElementById('c-archetype').value.trim();
+    const residence = document.getElementById('c-residence').value.trim();
+    const appearance = document.getElementById('c-appearance').value.trim();
+
+    const namePart = name || '___';
+    let line1 = `${namePart} is a`;
+    if (sex) line1 += ` ${sex}`;
+    if (age) line1 += ` ${age} year old`;
+    if (ethnicity) line1 += ` ${ethnicity}`;
+    if (paradigm) line1 += ` ${paradigm}`;
+    if (archetype) line1 += ` ${archetype}`;
+    if (residence) line1 += ` living in ${residence}`;
+    line1 += '.';
+
+    let line2 = `${namePart} typically appears as`;
+    if (appearance) line2 += ` ${appearance}`;
+
+    document.getElementById('bio-preview').innerHTML = line1 + '<br><br>' + line2;
+  }
+
+  window.createCharacter = async function() {
+    const name = document.getElementById('c-name').value.trim();
+    const msg = document.getElementById('c-message');
+
+    if (!name) {
+      msg.textContent = 'Please enter a character name.';
+      msg.style.color = '#ff6666';
+      return;
+    }
+
+    try {
+      const ref = await addDoc(collection(db, 'characters'), {
+        uid: currentUser.uid,
+        name: document.getElementById('c-name').value.trim(),
+        sex: document.getElementById('c-sex').value.trim(),
+        age: document.getElementById('c-age').value.trim(),
+        ethnicity: document.getElementById('c-ethnicity').value.trim(),
+        paradigm: document.getElementById('c-paradigm').value.trim(),
+        archetype: document.getElementById('c-archetype').value.trim(),
+        residence: document.getElementById('c-residence').value.trim(),
+        appearance: document.getElementById('c-appearance').value.trim(),
+        createdAt: new Date()
+      });
+      msg.textContent = 'Character created!';
+      msg.style.color = '#66ff99';
+      setTimeout(() => {
+        window.location.href = 'character.html?id=' + ref.id;
+      }, 800);
+    } catch(e) {
+      msg.textContent = 'Error creating character. Try again.';
+      msg.style.color = '#ff6666';
+    }
+  }
+
+  window.logout = async function() {
+    await signOut(auth);
+    window.location.href = 'index.html';
+  }
+</script>
+</body>
+</html>
