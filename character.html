@@ -261,7 +261,15 @@
       </div>
       <div class="mental-col">
         <div class="mental-col-header">
-          <div class="mental-col-title">Mental Disorders</div>
+          <div class="mental-col-title" style="position:relative;cursor:default" onmouseenter="document.getElementById('mc-tip').style.display='block'" onmouseleave="document.getElementById('mc-tip').style.display='none'">Mental Conditions
+            <div id="mc-tip" style="display:none;position:absolute;left:0;top:100%;margin-top:6px;background:#1a1a1a;border:1px solid #333;border-radius:4px;padding:10px 12px;font-size:11px;color:#aaa;width:340px;z-index:1000;line-height:1.6;font-weight:400;letter-spacing:0;text-transform:none">
+              <p style="margin-bottom:8px">Mental Conditions are conditions, disorders, and traumas pertinent to one's mental state; these can be anything from phobias, to compulsions, to full-blown personality disorders, and so-on so-forth.</p>
+              <p style="margin-bottom:8px">Mental Conditions are defined by "what I have", "which means", "and if triggered I might"; a Mental Condition's trigger is intuitive to what the Mental Condition is, and what it means for you.</p>
+              <p style="margin-bottom:8px">When you fail a Mental Health Check you may choose to allocate Break Points to developing a Mental Condition; Minor is 1, Moderate is 2, so-on so-forth.</p>
+              <p style="margin-bottom:8px">When a trigger has been met for a Mental Condition, you roll a Mental Health Check with +Difficulty based on the scale of the trigger; −1 for Minor triggers, +0 for Moderate, etc. The Difficulty is also affected by the scale of your Mental Condition; −1 for Minor, +0 for Moderate, etc.</p>
+              <p>Based on your roll, you must allocate 6 − Result points to your selection of SAN loss, and/or a breakdown based on your "if triggered" with severity based on allocated points; 1 point is a minor breakdown, 2 points is moderate, 3 is major, etc.</p>
+            </div>
+          </div>
           <span class="edit-btn" id="disorders-edit-btn" style="display:none" onclick="editDisorders()">Edit</span>
         </div>
         <div id="disorders-view"></div>
