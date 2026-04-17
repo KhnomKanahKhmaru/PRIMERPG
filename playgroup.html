@@ -57,6 +57,8 @@
     }
     .world-field-content { font-size: 13px; color: #888; line-height: 1.6; }
     .world-field-content p { margin-bottom: 8px; }
+    .world-field-content p:last-child { margin-bottom: 0; }
+    .world-field-content p:last-child:empty { display: none; }
     .world-field-content h1,.world-field-content h2,.world-field-content h3 { color: #ccc; margin-bottom: 6px; }
     .world-field-content ul,.world-field-content ol { padding-left: 20px; margin-bottom: 8px; }
     .world-field-content .ql-indent-1 { padding-left: 3em; }
@@ -248,6 +250,10 @@
   const fields = ['synopsis', 'description', 'events', 'rules'];
   const quills = {};
 
+  function cleanHtml(html) {
+    return (html || '').replace(/(<p><br><\/p>)+$/, '').trim();
+  }
+
   onAuthStateChanged(auth, async function(user) {
     if (!user || !user.emailVerified) {
       window.location.href = 'index.html';
@@ -316,17 +322,13 @@
     fields.forEach(f => {
       const val = fieldMap[f];
       const display = document.getElementById(f + '-display');
-      if (val) {
-        display.innerHTML = val;
-      } else {
-        display.innerHTML = '<span style="color:#555">Not set.</span>';
-      }
+      display.innerHTML = val ? cleanHtml(val) : '<span style="color:#555">Not set.</span>';
       if (canEdit) {
         document.getElementById(f + '-edit-btn').style.display = 'inline';
         quills[f] = new Quill(document.getElementById(f + '-editor'), {
           theme: 'snow',
           modules: {
-           toolbar: [
+            toolbar: [
               ['bold', 'italic', 'underline'],
               [{ 'header': [1, 2, 3, false] }],
               [{ 'list': 'ordered' }, { 'list': 'bullet' }],
@@ -377,7 +379,7 @@
   }
 
   window.saveField = async function(field) {
-    const html = quills[field].root.innerHTML.replace(/<p><br><\/p>$/, '').trim();
+    const html = cleanHtml(quills[field].root.innerHTML);
     const msg = document.getElementById(field + '-msg');
     try {
       if (field === 'rules') {
