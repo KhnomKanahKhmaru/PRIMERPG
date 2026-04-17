@@ -11,8 +11,6 @@
     body { background: #0a0a0a; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 14px; min-height: 100vh; }
     .page { padding-top: 104px; padding-left: 24px; padding-right: 24px; padding-bottom: 60px; max-width: 1200px; margin: 0 auto; }
     .empty { color: #444; font-size: 13px; text-align: center; padding: 60px 0; }
-
-    /* ── Bio Card ── */
     .char-card { display: flex; align-items: stretch; border: 1px solid #222; border-radius: 6px; overflow: hidden; min-height: 320px; }
     .char-picture { width: 220px; flex-shrink: 0; border-right: 1px solid #222; background: #0e0e0e; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; min-height: 320px; }
     .char-picture img { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; }
@@ -24,12 +22,7 @@
     .char-header-left { flex: 1; }
     .char-name { font-size: 28px; font-weight: 700; color: #e0e0e0; margin-bottom: 4px; }
     .char-archetype { font-size: 15px; font-weight: 500; color: #666; }
-    .char-quip-box {
-      width: 280px; flex-shrink: 0; border: 1px solid #222; border-radius: 4px;
-      padding: 16px; font-size: 13px; font-style: italic; color: #555;
-      background: #0e0e0e; min-height: 80px; cursor: pointer;
-      display: flex; align-items: center; justify-content: center; text-align: center;
-    }
+    .char-quip-box { width: 280px; flex-shrink: 0; border: 1px solid #222; border-radius: 4px; padding: 16px; font-size: 13px; font-style: italic; color: #555; background: #0e0e0e; min-height: 80px; cursor: pointer; display: flex; align-items: center; justify-content: center; text-align: center; }
     .char-quip-box.has-quip { color: #aaa; }
     .section-title { font-size: 18px; font-weight: 600; color: #aaa; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #1a1a1a; display: flex; align-items: center; gap: 10px; }
     .edit-btn { font-size: 11px; color: #555; cursor: pointer; padding: 2px 8px; border: 1px solid #333; border-radius: 3px; font-weight: 400; }
@@ -51,8 +44,6 @@
     .etc-title { font-size: 14px; font-weight: 700; color: #666; margin-bottom: 12px; }
     .etc-content { font-size: 12px; color: #555; line-height: 1.7; min-height: 200px; cursor: pointer; white-space: pre-wrap; }
     .etc-content:hover { color: #777; }
-
-    /* ── Mental Card ── */
     .mental-card { display: flex; align-items: stretch; border: 1px solid #222; border-radius: 6px; min-height: 200px; margin-top: 16px; }
     .mental-col { flex: 1; padding: 16px; border-right: 1px solid #222; display: flex; flex-direction: column; }
     .mental-col:last-child { border-right: none; }
@@ -60,39 +51,18 @@
     .mental-col-title { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #555; flex: 1; }
     .add-entry-btn { background: transparent; border: 1px solid #222; color: #555; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 12px; border-radius: 3px; cursor: pointer; margin-top: 10px; display: none; }
     .add-entry-btn:hover { color: #aaa; border-color: #444; }
-
-    /* Severity select */
-    .severity-select {
-      background: #1a1a1a; border: 1px solid #333; color: #888;
-      font-family: 'Open Sans', sans-serif; font-size: 10px; padding: 2px 4px;
-      border-radius: 3px; outline: none; cursor: pointer;
-    }
-    .severity-select:disabled { opacity: 0.6; cursor: default; }
+    .severity-select { background: #1a1a1a; border: 1px solid #333; color: #888; font-family: 'Open Sans', sans-serif; font-size: 10px; padding: 2px 4px; border-radius: 3px; outline: none; cursor: pointer; }
     .severity-select option { background: #111; }
-
-    /* Obligation / Disorder entries */
-    .obligation-entry, .disorder-entry {
-      background: #111; border: 1px solid #1a1a1a; border-radius: 4px;
-      padding: 10px; margin-bottom: 8px; font-size: 12px; color: #888;
-      line-height: 1.9; position: relative;
-    }
-    .entry-header {
-      display: flex; align-items: center; gap: 6px;
-      margin-bottom: 6px; font-size: 11px; font-weight: 600; color: #777;
-    }
+    .obligation-entry, .disorder-entry { background: #111; border: 1px solid #1a1a1a; border-radius: 4px; padding: 10px; margin-bottom: 8px; font-size: 12px; color: #888; line-height: 1.9; position: relative; }
+    .entry-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 11px; font-weight: 600; color: #777; }
     .entry-header-type { color: #666; }
     .entry-delete { position: absolute; top: 6px; right: 8px; font-size: 14px; color: #333; cursor: pointer; }
     .entry-delete:hover { color: #c84b4b; }
     .entry-input { background: transparent; border: none; border-bottom: 1px solid #333; color: #ccc; font-family: 'Open Sans', sans-serif; font-size: 12px; outline: none; width: 100%; padding: 2px 0; }
     .entry-input:focus { border-bottom-color: #666; }
     .entry-text { color: #ccc; font-weight: 500; }
-
-    /* Moral cards — full width, not green */
     .moral-cards { display: flex; flex-direction: column; gap: 6px; }
-    .moral-card-item {
-      background: #111; border: 1px solid #222; border-radius: 4px;
-      padding: 10px 12px; width: 100%;
-    }
+    .moral-card-item { background: #111; border: 1px solid #222; border-radius: 4px; padding: 10px 12px; width: 100%; }
     .moral-card-top { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
     .moral-card-name { font-size: 14px; font-weight: 600; color: #ccc; }
     .moral-empty { color: #333; font-size: 12px; }
@@ -102,8 +72,6 @@
     .moral-chip { font-size: 11px; padding: 3px 10px; border-radius: 3px; border: 1px solid #222; background: #111; color: #555; cursor: pointer; user-select: none; }
     .moral-chip.selected { background: #1a1a1a; border-color: #444; color: #ccc; }
     .moral-chip:hover { border-color: #444; color: #aaa; }
-
-    /* ── Stats Card ── */
     .stats-card { display: flex; align-items: stretch; border: 1px solid #222; border-radius: 6px; margin-top: 16px; min-height: 300px; }
     .stats-col { width: 300px; flex-shrink: 0; border-right: 1px solid #222; background: #0a0a0a; padding: 16px; }
     .stats-col-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #1a1a1a; }
@@ -143,8 +111,6 @@
     .mod-add-row input[type=number] { width: 44px; background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 3px 4px; border-radius: 3px; outline: none; text-align: center; }
     .mod-add-btn { background: #1a1a1a; border: 1px solid #333; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 3px 8px; border-radius: 3px; cursor: pointer; }
     .mod-add-btn:hover { border-color: #555; }
-
-    /* ── Skills Col ── */
     .skills-col { flex: 1; padding: 16px; overflow: visible; }
     .skills-section { margin-bottom: 16px; }
     .skills-section-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
@@ -164,6 +130,16 @@
     .skill-add-btn:hover { border-color: #555; }
     .sec-skill-item { display: flex; align-items: center; gap: 4px; background: #111; border: 1px solid #1a1a1a; border-radius: 3px; padding: 4px 6px; margin-bottom: 3px; }
     .sec-skill-under { font-size: 9px; color: #444; }
+    .char-power-bar { display: flex; align-items: center; gap: 16px; margin-top: 6px; margin-bottom: 4px; flex-wrap: wrap; }
+    .power-pill { display: flex; align-items: center; gap: 6px; }
+    .power-pill .pill-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #444; }
+    .power-pill .pill-val { font-size: 13px; font-weight: 600; color: #aaa; }
+    .power-pill .pill-sub { font-size: 11px; color: #555; }
+    .power-select { background: #111; border: 1px solid #222; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 12px; font-weight: 600; padding: 2px 6px; border-radius: 4px; outline: none; cursor: pointer; }
+    .power-select option { background: #111; }
+    .power-num-input { width: 52px; background: #111; border: 1px solid #222; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 13px; font-weight: 600; text-align: center; padding: 2px 4px; border-radius: 4px; outline: none; }
+    .power-num-input:focus { border-color: #444; }
+    .power-sep { color: #333; font-size: 13px; }
   </style>
 </head>
 <body>
@@ -173,7 +149,6 @@
   <div id="loading" class="empty">Loading...</div>
   <div id="char-content" style="display:none">
 
-    <!-- Biography Card -->
     <div class="char-card">
       <div class="char-picture" id="picture-slot" onclick="triggerPicUpload()">
         <div class="char-picture-placeholder" id="pic-placeholder">Click to add picture</div>
@@ -185,6 +160,7 @@
           <div class="char-header-left">
             <div class="char-name" id="char-name"></div>
             <div class="char-archetype" id="char-archetype"></div>
+            <div class="char-power-bar" id="char-power-bar"></div>
           </div>
           <div class="char-quip-box" id="char-quip" onclick="editQuip()"></div>
         </div>
@@ -218,7 +194,6 @@
       </div>
     </div>
 
-    <!-- Mental Card -->
     <div class="mental-card">
       <div class="mental-col">
         <div class="mental-col-header">
@@ -281,7 +256,6 @@
       </div>
     </div>
 
-    <!-- Stats Card -->
     <div class="stats-card">
       <div class="stats-col">
         <div class="stats-col-header">
@@ -346,55 +320,41 @@
   const charId = params.get('id');
   if (!charId) window.location.href = 'home.html';
 
-  let charData = {};
-  let canEdit = false;
-  let userPlaygroups = [];
-  let loaded = false;
-  let availableRulesets = [];
-  let primarySkillDefs = [];
-  let statsEditMode = false;
-  let skillsEditMode = false;
+  let charData = {}, canEdit = false, userPlaygroups = [], loaded = false;
+  let availableRulesets = [], primarySkillDefs = [];
+  let statsEditMode = false, skillsEditMode = false;
 
   const SEVERITY_OPTIONS = ['Minor','Moderate','Major','Massive','Monumental','Mega','Mythical'];
-
   const MORAL_SEVERITY = [
     {value:'Minor',label:'Minor (−2 Difficulty / 1pt)'},{value:'Moderate',label:'Moderate (−1 Difficulty / 2pt)'},
     {value:'Major',label:'Major (+0 Difficulty / 3pt)'},{value:'Massive',label:'Massive (+1 Difficulty / 4pt)'},
     {value:'Monumental',label:'Monumental (+2 Difficulty / 5pt)'},{value:'Mega',label:'Mega (+3 Difficulty / 6pt)'},
     {value:'Mythical',label:'Mythical (+4 Difficulty / 7pt)'}
   ];
-
   const CONDITION_SEVERITY = [
     {value:'Minor',label:'Minor Condition (−1 Difficulty / 1 Break Point)'},{value:'Moderate',label:'Moderate Condition (+0 Difficulty / 2 Break Points)'},
     {value:'Major',label:'Major Condition (+1 Difficulty / 3 Break Points)'},{value:'Massive',label:'Massive Condition (+2 Difficulty / 4 Break Points)'},
     {value:'Monumental',label:'Monumental Condition (+3 Difficulty / 5 Break Points)'},{value:'Mega',label:'Mega Condition (+4 Difficulty / 6 Break Points)'},
     {value:'Mythical',label:'Mythical Condition (+5 Difficulty / 7 Break Points)'}
   ];
-
   const OBLIGATION_SEVERITY = [
     {value:'Minor',label:'Minor Obligation (1 Break Point)'},{value:'Moderate',label:'Moderate Obligation (2 Break Points)'},
     {value:'Major',label:'Major Obligation (3 Break Points)'},{value:'Massive',label:'Massive Obligation (4 Break Points)'},
     {value:'Monumental',label:'Monumental Obligation (5 Break Points)'},{value:'Mega',label:'Mega Obligation (6 Break Points)'},
     {value:'Mythical',label:'Mythical Obligation (7 Break Points)'}
   ];
+  const POWER_LEVELS = [
+    {value:'powerless',label:'Powerless',xpPerAp:10},{value:'low',label:'Low Power',xpPerAp:8},
+    {value:'mid',label:'Mid Power',xpPerAp:6},{value:'high',label:'High Power',xpPerAp:4},
+    {value:'very_high',label:'Very High Power',xpPerAp:2},{value:'highest',label:'Highest Power',xpPerAp:1}
+  ];
 
-  function severityLabel(value, opts) {
-    if (!opts) return value || 'Minor';
-    const o = opts.find(x => x.value === (value||'Minor'));
-    return o ? o.label : (value||'Minor');
-  }
+  function severityLabel(value,opts){if(!opts)return value||'Minor';const o=opts.find(x=>x.value===(value||'Minor'));return o?o.label:(value||'Minor');}
+  function severitySelectHtml(current,onchangeStr,opts){const options=opts||SEVERITY_OPTIONS.map(s=>({value:s,label:s}));const html=options.map(o=>`<option value="${o.value}" ${(current||'Minor')===o.value?'selected':''}>${o.label}</option>`).join('');return `<select class="severity-select" onchange="${onchangeStr}">${html}</select>`;}
+  function normalizeSelectedMorals(){return(charData.selectedMorals||[]).map(m=>typeof m==='string'?{name:m,severity:'Minor'}:m);}
+  function getPowerLevel(){return charData.powerLevel||'powerless';}
+  function getPowerDef(){return POWER_LEVELS.find(p=>p.value===getPowerLevel())||POWER_LEVELS[0];}
 
-  function severitySelectHtml(current, onchangeStr, opts) {
-    const options = opts || SEVERITY_OPTIONS.map(s=>({value:s,label:s}));
-    const html = options.map(o=>`<option value="${o.value}" ${(current||'Minor')===o.value?'selected':''}>${o.label}</option>`).join('');
-    return `<select class="severity-select" onchange="${onchangeStr}">${html}</select>`;
-  }
-
-  function normalizeSelectedMorals() {
-    return (charData.selectedMorals || []).map(m => typeof m === 'string' ? {name: m, severity: 'Minor'} : m);
-  }
-
-  // ── STAT DATA ──
   const STAT_ICONS = {
     str:`M257.375 20.313c-13.418 0-26.07 7.685-35.938 21.75-9.868 14.064-16.343 34.268-16.343 56.75 0 22.48 6.475 42.654 16.344 56.718 9.868 14.066 22.52 21.75 35.937 21.75 13.418 0 26.038-7.684 35.906-21.75 9.87-14.063 16.376-34.236 16.376-56.718 0-22.48-6.506-42.685-16.375-56.75-9.867-14.064-22.487-21.75-35.905-21.75zm-150.25 43.062c-20.305.574-23.996 13.892-31.78 29.03-23.298 45.304-55.564 164.75-55.564 164.75l160.47-5.436 29.125 137.593-22.78 106.03h149.093l-22.282-106 24.25-137.5 157.53 5.313c.002 0-32.264-119.447-55.56-164.75-7.787-15.14-11.477-28.457-31.782-29.03-17.898 0-32.406 15.552-32.406 34.718 0 19.166 14.508 34.72 32.406 34.72 3.728 0 7.258-.884 10.594-2.126l7.937 74.406L309.437 165c-.285.42-.552.867-.843 1.28-12.436 17.724-30.604 29.69-51.22 29.69-20.614 0-38.782-11.966-51.218-29.69-.277-.395-.54-.816-.812-1.218l-116.75 40.032 7.937-74.406c3.337 1.242 6.867 2.125 10.595 2.125 17.898 0 32.406-15.553 32.406-34.72 0-19.165-14.507-34.718-32.405-34.718z`,
     dex:`M372.97 24.938c-8.67.168-17.816 3.644-26.69 10.28-12.618 9.44-24.074 25.203-30.5 44.844-6.424 19.642-6.48 39.12-1.874 54.157 4.608 15.036 13.375 25.225 24.97 29 11.593 3.772 24.724.72 37.343-8.72 12.618-9.44 24.074-25.234 30.5-44.875 6.424-19.642 6.512-39.12 1.905-54.156-4.607-15.038-13.404-25.196-25-28.97a32.051 32.051 0 0 0-8.938-1.563c-.573-.018-1.14-.01-1.718 0zm-155.69 69.78c-21.696.024-43.394 2.203-65.093 7.094-24.91 29.824-43.848 60.255-52.875 98.47l37.376 17.812c8.273-30.735 21.485-53.817 43.375-77 22.706-7.844 45.418-6.237 68.125 1.5-74.24 65.137-51.17 120.676-80.344 226.47-42.653 17.867-85.098 20.53-123.25-.002L23 415.625c59.418 27.09 125.736 29.818 190.844 0 20.368-43.443 27.214-88.603 25-132.906C295.31 354.663 323.11 398.2 338.78 498.56h57.94c-3.12-14.706-6.21-28.394-9.345-41.218-22.522-92.133-47.263-139.63-100.22-198.406 9.695-36.13 22.143-59.665 52.44-74.282 11.167 19.767 29.982 36.682 51.092 48.906l97.375 1.563.47-41.03L402 191.968c-8.05-5.556-14.925-11.73-20.75-18.314-14.886 9.08-32.024 12.563-48.156 7.313-18.422-5.997-31.143-21.962-37.063-41.282-3.482-11.37-4.742-24.05-3.686-37.25-25.017-4.884-50.047-7.746-75.063-7.72z`,
@@ -404,352 +364,102 @@
     pow:`M256 38.013c-22.458 0-66.472 110.3-84.64 123.502-18.17 13.2-136.674 20.975-143.614 42.334-6.94 21.358 84.362 97.303 91.302 118.662 6.94 21.36-22.286 136.465-4.116 149.665 18.17 13.2 118.61-50.164 141.068-50.164 22.458 0 122.9 63.365 141.068 50.164 18.17-13.2-11.056-128.306-4.116-149.665 6.94-21.36 98.242-97.304 91.302-118.663-6.94-21.36-125.444-29.134-143.613-42.335-18.168-13.2-62.182-123.502-84.64-123.502z`,
     size:`M384 22.545 307.271 99.27l25.458 25.458L366 91.457v329.086l-33.271-33.272-25.458 25.458L384 489.455l76.729-76.726-25.458-25.458L402 420.543V91.457l33.271 33.272L460.73 99.27 384 22.545zm-242.443.258c-23.366 3.035-44.553 30.444-44.553 65.935 0 19.558 6.771 36.856 16.695 48.815l11.84 14.263-18.217 3.424c-12.9 2.425-22.358 9.24-30.443 20.336-8.085 11.097-14.266 26.558-18.598 44.375-7.843 32.28-9.568 71.693-9.842 106.436h42.868l11.771 157.836c29.894 6.748 61.811 6.51 90.602.025l10.414-157.861h40.816c-.027-35.168-.477-75.125-7.584-107.65-3.918-17.933-9.858-33.371-18.04-44.342-8.185-10.97-18.08-17.745-32.563-19.989l-18.592-2.88 11.736-14.704c9.495-11.897 15.932-28.997 15.932-48.082 0-37.838-23.655-65.844-49.399-65.844l-4.843-.093z`
   };
-
-  const STAT_DESCRIPTIONS = {
-    str:'Your physical strength, endurance, and constitution.',
-    dex:'Your physical speed, flexibility, and finesse.',
-    per:'Your physical sharpness of your senses.',
-    cha:'Your social aptitude and acuity.',
-    int:'Your logical aptitude and acuity.',
-    pow:'Your supernatural aptitude in your paradigm and its powers.',
-    size:'Your size.'
-  };
-
+  const STAT_DESCRIPTIONS = {str:'Your physical strength, endurance, and constitution.',dex:'Your physical speed, flexibility, and finesse.',per:'Your physical sharpness of your senses.',cha:'Your social aptitude and acuity.',int:'Your logical aptitude and acuity.',pow:'Your supernatural aptitude in your paradigm and its powers.',size:'Your size.'};
   const STAT_LABELS = ['Far Below Average','Below Average','Average','Above Average','Impressive','Exceptional','Human Limit','Lesser Superhuman','Superhuman','Greater Superhuman','Peak Superhuman','Beyond Superhuman','Lesser Legendary','Legendary','Greater Legendary','Semi-Divine','Lesser Divine','Divine','Greater Divine','Beyond Divine','Cosmic'];
+  const SIZE_OPTIONS = [{value:1,label:'1 — Nano'},{value:2,label:'2 — Micro'},{value:3,label:'3 — Tiny'},{value:4,label:'4 — Small'},{value:6,label:'6 — Medium'},{value:8,label:'8 — Large'},{value:10,label:'10 — Huge'},{value:12,label:'12 — Massive'},{value:16,label:'16 — Giant'},{value:20,label:'20 — Colossal'},{value:24,label:'24 — Behemoth'},{value:30,label:'30 — Cataclysmic'}];
+  const STAT_DEFS = [{key:'str',abbr:'STR',rest:'ength',default:2},{key:'dex',abbr:'DEX',rest:'terity',default:2},{key:'per',abbr:'PER',rest:'ception',default:2},{key:'cha',abbr:'CHA',rest:'risma',default:2},{key:'int',abbr:'INT',rest:'ellect',default:2},{key:'pow',abbr:'POW',rest:'er',default:2},{key:'size',abbr:'SIZE',rest:'',default:6}];
+  const FALLBACK_SKILLS = [{name:'Academics',description:'Learned subjects such as History or Political Science.'},{name:'Athletics',description:'Physical activities like running, swimming, jumping, climbing, etc.'},{name:'Awareness',description:'To be aware of one\'s surroundings utilizing one\'s senses.'},{name:'Crafts',description:'A particular trade, tool, art, or practice.'},{name:'Drive',description:'Operating vehicles.'},{name:'Investigation',description:'Uncovering, understanding, reasoning, and making deductions with information.'},{name:'Medical',description:'Skill in medical treatment, and knowledge of the medical sciences.'},{name:'Melee',description:'Melee combat, and melee weaponry.'},{name:'Occult',description:'The esoteric; be it rituals, the supernatural, mythology, and so-on so-forth.'},{name:'Ranged',description:'Ranged combat, and ranged weaponry.'},{name:'Science',description:'Knowledge of the sciences.'},{name:'Social',description:'Sociability, communication skills, people skills, etc.'},{name:'Society',description:'Knowledge of society, institutions, laws, etiquette, etc.'},{name:'Stealth',description:'Being stealthy, hiding, sneaking.'},{name:'Survival',description:'Wilderness skills, foraging, identifying animal footprints, natural knowledge and skills.'},{name:'Technology',description:'Knowledge, and operation, of technology.'}];
 
-  const SIZE_OPTIONS = [
-    {value:1,label:'1 — Nano'},{value:2,label:'2 — Micro'},{value:3,label:'3 — Tiny'},
-    {value:4,label:'4 — Small'},{value:6,label:'6 — Medium'},{value:8,label:'8 — Large'},
-    {value:10,label:'10 — Huge'},{value:12,label:'12 — Massive'},{value:16,label:'16 — Giant'},
-    {value:20,label:'20 — Colossal'},{value:24,label:'24 — Behemoth'},{value:30,label:'30 — Cataclysmic'}
-  ];
+  function getStatMod(v){if(v<=1)return -1;if(v<=3)return 0;if(v<=5)return 1;if(v<=7)return 2;if(v<=9)return 3;if(v<=11)return 4;if(v<=13)return 5;if(v<=15)return 6;if(v<=17)return 7;if(v===18)return 8;if(v===19)return 9;return 10;}
+  function getStatLabel(v){return STAT_LABELS[Math.min(Math.max(0,Math.floor(v)),20)]||'';}
+  function getSizeLabel(v){const o=SIZE_OPTIONS.slice().reverse().find(o=>v>=o.value);return o?o.label:'Nano';}
+  function getStatTotal(k){const d=STAT_DEFS.find(s=>s.key===k);const b=(charData.stats&&charData.stats[k]!==undefined)?charData.stats[k]:d.default;const m=(charData.statModifiers&&charData.statModifiers[k])?charData.statModifiers[k]:[];return b+m.reduce((s,x)=>s+(parseInt(x.value)||0),0);}
+  function statIcon(k){return `<svg viewBox="0 0 512 512" width="36" height="36" xmlns="http://www.w3.org/2000/svg"><rect width="512" height="512" fill="#000"/><path d="${STAT_ICONS[k]}" fill="#fff"/></svg>`;}
 
-  const STAT_DEFS = [
-    {key:'str',abbr:'STR',rest:'ength',default:2},
-    {key:'dex',abbr:'DEX',rest:'terity',default:2},
-    {key:'per',abbr:'PER',rest:'ception',default:2},
-    {key:'cha',abbr:'CHA',rest:'risma',default:2},
-    {key:'int',abbr:'INT',rest:'ellect',default:2},
-    {key:'pow',abbr:'POW',rest:'er',default:2},
-    {key:'size',abbr:'SIZE',rest:'',default:6}
-  ];
-
-  const FALLBACK_SKILLS = [
-    {name:'Academics',description:'Learned subjects such as History or Political Science.'},
-    {name:'Athletics',description:'Physical activities like running, swimming, jumping, climbing, etc.'},
-    {name:'Awareness',description:'To be aware of one\'s surroundings utilizing one\'s senses.'},
-    {name:'Crafts',description:'A particular trade, tool, art, or practice.'},
-    {name:'Drive',description:'Operating vehicles.'},
-    {name:'Investigation',description:'Uncovering, understanding, reasoning, and making deductions with information.'},
-    {name:'Medical',description:'Skill in medical treatment, and knowledge of the medical sciences.'},
-    {name:'Melee',description:'Melee combat, and melee weaponry.'},
-    {name:'Occult',description:'The esoteric; be it rituals, the supernatural, mythology, and so-on so-forth.'},
-    {name:'Ranged',description:'Ranged combat, and ranged weaponry.'},
-    {name:'Science',description:'Knowledge of the sciences.'},
-    {name:'Social',description:'Sociability, communication skills, people skills, etc.'},
-    {name:'Society',description:'Knowledge of society, institutions, laws, etiquette, etc.'},
-    {name:'Stealth',description:'Being stealthy, hiding, sneaking.'},
-    {name:'Survival',description:'Wilderness skills, foraging, identifying animal footprints, natural knowledge and skills.'},
-    {name:'Technology',description:'Knowledge, and operation, of technology.'}
-  ];
-
-  function getStatMod(val){if(val<=1)return -1;if(val<=3)return 0;if(val<=5)return 1;if(val<=7)return 2;if(val<=9)return 3;if(val<=11)return 4;if(val<=13)return 5;if(val<=15)return 6;if(val<=17)return 7;if(val===18)return 8;if(val===19)return 9;return 10;}
-  function getStatLabel(val){return STAT_LABELS[Math.min(Math.max(0,Math.floor(val)),20)]||'';}
-  function getSizeLabel(val){const opt=SIZE_OPTIONS.slice().reverse().find(o=>val>=o.value);return opt?opt.label:'Nano';}
-  function getStatTotal(key){const def=STAT_DEFS.find(s=>s.key===key);const base=(charData.stats&&charData.stats[key]!==undefined)?charData.stats[key]:def.default;const mods=(charData.statModifiers&&charData.statModifiers[key])?charData.statModifiers[key]:[];return base+mods.reduce((sum,m)=>sum+(parseInt(m.value)||0),0);}
-  function statIcon(key){return `<svg viewBox="0 0 512 512" width="36" height="36" xmlns="http://www.w3.org/2000/svg"><rect width="512" height="512" fill="#000"/><path d="${STAT_ICONS[key]}" fill="#fff"/></svg>`;}
-
-  // ── STATS ──
   function buildStatsSection(){
-    const container=document.getElementById('stats-list');
-    container.innerHTML='';
+    const container=document.getElementById('stats-list');container.innerHTML='';
     STAT_DEFS.forEach(s=>{
-      const total=getStatTotal(s.key);
-      const base=(charData.stats&&charData.stats[s.key]!==undefined)?charData.stats[s.key]:s.default;
-      const mod=s.key!=='size'?getStatMod(total):null;
-      const modStr=mod!==null?(mod>=0?'+'+mod:''+mod):'';
+      const total=getStatTotal(s.key),base=(charData.stats&&charData.stats[s.key]!==undefined)?charData.stats[s.key]:s.default;
+      const mod=s.key!=='size'?getStatMod(total):null,modStr=mod!==null?(mod>=0?'+'+mod:''+mod):'';
       const levelLabel=s.key!=='size'?getStatLabel(total):getSizeLabel(total);
       const wrapper=document.createElement('div');
-      const viewRow=document.createElement('div');
-      viewRow.className='stat-row';viewRow.id='stat-view-'+s.key;
+      const viewRow=document.createElement('div');viewRow.className='stat-row';viewRow.id='stat-view-'+s.key;
       viewRow.innerHTML=`<div class="stat-icon-wrap"><div class="stat-icon">${statIcon(s.key)}</div><div class="stat-tooltip">${STAT_DESCRIPTIONS[s.key]}</div></div><div class="stat-info"><div class="stat-label"><span class="abbr">${s.abbr}</span>${s.rest}</div><div class="stat-level-label" id="stat-level-${s.key}">${levelLabel}</div></div><div class="stat-value-area"><div class="stat-value-wrap"><span class="stat-total-display" id="stat-total-${s.key}">${s.key==='size'?getSizeLabel(total):total}</span>${mod!==null?`<span class="stat-mod-exponent" id="statmod-${s.key}">${modStr}</span>`:''}</div></div>`;
-      const editRow=document.createElement('div');
-      editRow.className='stat-row';editRow.id='stat-edit-'+s.key;editRow.style.display='none';
-      if(s.key==='size'){
-        const sizeOpts=SIZE_OPTIONS.map(o=>`<option value="${o.value}" ${base===o.value?'selected':''}>${o.label}</option>`).join('');
-        editRow.innerHTML=`<div class="stat-icon-wrap"><div class="stat-icon">${statIcon(s.key)}</div><div class="stat-tooltip">${STAT_DESCRIPTIONS[s.key]}</div></div><div class="stat-info"><div class="stat-label"><span class="abbr">${s.abbr}</span>${s.rest}</div></div><div class="stat-value-area"><select class="stat-size-select" id="stat-input-${s.key}" onchange="saveStatBase('${s.key}',this.value)">${sizeOpts}</select></div>`;
-      } else {
-        editRow.innerHTML=`<div class="stat-icon-wrap"><div class="stat-icon">${statIcon(s.key)}</div><div class="stat-tooltip">${STAT_DESCRIPTIONS[s.key]}</div></div><div class="stat-info"><div class="stat-label"><span class="abbr">${s.abbr}</span>${s.rest}</div><div class="stat-level-label" id="stat-level-edit-${s.key}">${levelLabel}</div></div><div class="stat-value-area"><div class="stat-input-row"><button class="stat-adj-btn" onclick="adjustStat('${s.key}',-1)">−</button><input type="number" class="stat-base-input" id="stat-input-${s.key}" min="0" max="20" value="${base}" oninput="onStatInput('${s.key}',this.value)" onchange="saveStatBase('${s.key}',this.value)"><button class="stat-adj-btn" onclick="adjustStat('${s.key}',1)">+</button></div><div class="stat-mod-row"><div class="stat-mod-badge" id="statmod-edit-${s.key}">${modStr}</div><button class="stat-pm-btn" onclick="toggleModPanel('${s.key}')">+/−</button></div></div>`;
-      }
-      const modPanel=document.createElement('div');
-      modPanel.className='stat-mod-panel';modPanel.id='modpanel-'+s.key;modPanel.style.display='none';
+      const editRow=document.createElement('div');editRow.className='stat-row';editRow.id='stat-edit-'+s.key;editRow.style.display='none';
+      if(s.key==='size'){const sizeOpts=SIZE_OPTIONS.map(o=>`<option value="${o.value}" ${base===o.value?'selected':''}>${o.label}</option>`).join('');editRow.innerHTML=`<div class="stat-icon-wrap"><div class="stat-icon">${statIcon(s.key)}</div><div class="stat-tooltip">${STAT_DESCRIPTIONS[s.key]}</div></div><div class="stat-info"><div class="stat-label"><span class="abbr">${s.abbr}</span>${s.rest}</div></div><div class="stat-value-area"><select class="stat-size-select" id="stat-input-${s.key}" onchange="saveStatBase('${s.key}',this.value)">${sizeOpts}</select></div>`;}
+      else{editRow.innerHTML=`<div class="stat-icon-wrap"><div class="stat-icon">${statIcon(s.key)}</div><div class="stat-tooltip">${STAT_DESCRIPTIONS[s.key]}</div></div><div class="stat-info"><div class="stat-label"><span class="abbr">${s.abbr}</span>${s.rest}</div><div class="stat-level-label" id="stat-level-edit-${s.key}">${levelLabel}</div></div><div class="stat-value-area"><div class="stat-input-row"><button class="stat-adj-btn" onclick="adjustStat('${s.key}',-1)">−</button><input type="number" class="stat-base-input" id="stat-input-${s.key}" min="0" max="20" value="${base}" oninput="onStatInput('${s.key}',this.value)" onchange="saveStatBase('${s.key}',this.value)"><button class="stat-adj-btn" onclick="adjustStat('${s.key}',1)">+</button></div><div class="stat-mod-row"><div class="stat-mod-badge" id="statmod-edit-${s.key}">${modStr}</div><button class="stat-pm-btn" onclick="toggleModPanel('${s.key}')">+/−</button></div></div>`;}
+      const modPanel=document.createElement('div');modPanel.className='stat-mod-panel';modPanel.id='modpanel-'+s.key;modPanel.style.display='none';
       modPanel.innerHTML=`<div id="modlist-${s.key}"></div><div class="mod-add-row"><input type="text" id="modname-${s.key}" placeholder="Modifier name"><input type="number" id="modval-${s.key}" value="1"><button class="mod-add-btn" onclick="addModifier('${s.key}')">Add</button></div>`;
-      wrapper.appendChild(viewRow);wrapper.appendChild(editRow);wrapper.appendChild(modPanel);
-      container.appendChild(wrapper);
-      renderModList(s.key);
+      wrapper.appendChild(viewRow);wrapper.appendChild(editRow);wrapper.appendChild(modPanel);container.appendChild(wrapper);renderModList(s.key);
     });
   }
 
-  window.toggleStatsEdit=function(){
-    statsEditMode=!statsEditMode;
-    document.getElementById('stats-edit-btn').textContent=statsEditMode?'Done':'Edit';
-    STAT_DEFS.forEach(s=>{
-      document.getElementById('stat-view-'+s.key).style.display=statsEditMode?'none':'flex';
-      document.getElementById('stat-edit-'+s.key).style.display=statsEditMode?'flex':'none';
-      if(!statsEditMode){const p=document.getElementById('modpanel-'+s.key);if(p)p.style.display='none';}
-    });
-  }
-
-  window.onStatInput=function(key,val){
-    const v=Math.max(0,Math.min(20,parseInt(val)||0));
-    if(!charData.stats)charData.stats={};
-    charData.stats[key]=v;
-    const total=getStatTotal(key);
-    const mod=getStatMod(total);
-    const modStr=mod>=0?'+'+mod:''+mod;
-    const badge=document.getElementById('statmod-edit-'+key);if(badge)badge.textContent=modStr;
-    const levelEl=document.getElementById('stat-level-edit-'+key);if(levelEl)levelEl.textContent=getStatLabel(total);
-  }
-
-  window.adjustStat=async function(key,delta){
-    if(!canEdit)return;
-    if(!charData.stats)charData.stats={};
-    const current=charData.stats[key]!==undefined?charData.stats[key]:STAT_DEFS.find(s=>s.key===key).default;
-    const newVal=Math.max(0,Math.min(20,current+delta));
-    charData.stats[key]=newVal;
-    const input=document.getElementById('stat-input-'+key);if(input)input.value=newVal;
-    await updateDoc(doc(db,'characters',charId),{[`stats.${key}`]:newVal});
-    onStatInput(key,newVal);
-    updateStatViewDisplay(key);
-  }
-
-  function renderModList(key){
-    const mods=(charData.statModifiers&&charData.statModifiers[key])?charData.statModifiers[key]:[];
-    const el=document.getElementById('modlist-'+key);if(!el)return;
-    el.innerHTML=mods.length===0?'<div style="color:#333;font-size:11px;margin-bottom:4px">No modifiers.</div>':mods.map((m,i)=>`<div class="mod-item"><span class="mod-item-name">${m.name}</span><span class="mod-item-val">${m.value>=0?'+':''}${m.value}</span><span class="mod-delete" onclick="deleteModifier('${key}',${i})">×</span></div>`).join('');
-    updateStatViewDisplay(key);
-  }
-
-  function updateStatViewDisplay(key){
-    const total=getStatTotal(key);const mod=getStatMod(total);const modStr=mod>=0?'+'+mod:''+mod;
-    const t=document.getElementById('stat-total-'+key);if(t)t.textContent=key==='size'?getSizeLabel(total):total;
-    const exp=document.getElementById('statmod-'+key);if(exp)exp.textContent=modStr;
-    const l=document.getElementById('stat-level-'+key);if(l)l.textContent=key==='size'?getSizeLabel(total):getStatLabel(total);
-    const eb=document.getElementById('statmod-edit-'+key);if(eb)eb.textContent=modStr;
-    const el=document.getElementById('stat-level-edit-'+key);if(el)el.textContent=getStatLabel(total);
-  }
-
+  window.toggleStatsEdit=function(){statsEditMode=!statsEditMode;document.getElementById('stats-edit-btn').textContent=statsEditMode?'Done':'Edit';STAT_DEFS.forEach(s=>{document.getElementById('stat-view-'+s.key).style.display=statsEditMode?'none':'flex';document.getElementById('stat-edit-'+s.key).style.display=statsEditMode?'flex':'none';if(!statsEditMode){const p=document.getElementById('modpanel-'+s.key);if(p)p.style.display='none';}});}
+  window.onStatInput=function(key,val){const v=Math.max(0,Math.min(20,parseInt(val)||0));if(!charData.stats)charData.stats={};charData.stats[key]=v;const total=getStatTotal(key),mod=getStatMod(total),modStr=mod>=0?'+'+mod:''+mod;const badge=document.getElementById('statmod-edit-'+key);if(badge)badge.textContent=modStr;const levelEl=document.getElementById('stat-level-edit-'+key);if(levelEl)levelEl.textContent=getStatLabel(total);}
+  window.adjustStat=async function(key,delta){if(!canEdit)return;if(!charData.stats)charData.stats={};const cur=charData.stats[key]!==undefined?charData.stats[key]:STAT_DEFS.find(s=>s.key===key).default;const nv=Math.max(0,Math.min(20,cur+delta));charData.stats[key]=nv;const inp=document.getElementById('stat-input-'+key);if(inp)inp.value=nv;await updateDoc(doc(db,'characters',charId),{[`stats.${key}`]:nv});onStatInput(key,nv);updateStatViewDisplay(key);}
+  function renderModList(key){const mods=(charData.statModifiers&&charData.statModifiers[key])?charData.statModifiers[key]:[];const el=document.getElementById('modlist-'+key);if(!el)return;el.innerHTML=mods.length===0?'<div style="color:#333;font-size:11px;margin-bottom:4px">No modifiers.</div>':mods.map((m,i)=>`<div class="mod-item"><span class="mod-item-name">${m.name}</span><span class="mod-item-val">${m.value>=0?'+':''}${m.value}</span><span class="mod-delete" onclick="deleteModifier('${key}',${i})">×</span></div>`).join('');updateStatViewDisplay(key);}
+  function updateStatViewDisplay(key){const total=getStatTotal(key),mod=getStatMod(total),modStr=mod>=0?'+'+mod:''+mod;const t=document.getElementById('stat-total-'+key);if(t)t.textContent=key==='size'?getSizeLabel(total):total;const exp=document.getElementById('statmod-'+key);if(exp)exp.textContent=modStr;const l=document.getElementById('stat-level-'+key);if(l)l.textContent=key==='size'?getSizeLabel(total):getStatLabel(total);const eb=document.getElementById('statmod-edit-'+key);if(eb)eb.textContent=modStr;const el=document.getElementById('stat-level-edit-'+key);if(el)el.textContent=getStatLabel(total);}
   window.toggleModPanel=function(key){const p=document.getElementById('modpanel-'+key);p.style.display=p.style.display==='none'?'block':'none';}
-  window.saveStatBase=async function(key,val){
-    if(!canEdit)return;
-    const v=key==='size'?parseInt(val):Math.max(0,Math.min(20,parseInt(val)||0));
-    if(!charData.stats)charData.stats={};charData.stats[key]=v;
-    await updateDoc(doc(db,'characters',charId),{[`stats.${key}`]:v});updateStatViewDisplay(key);
-  }
-  window.addModifier=async function(key){
-    const name=document.getElementById('modname-'+key).value.trim();
-    const val=parseInt(document.getElementById('modval-'+key).value)||0;
-    if(!name)return;
-    if(!charData.statModifiers)charData.statModifiers={};
-    if(!charData.statModifiers[key])charData.statModifiers[key]=[];
-    charData.statModifiers[key].push({name,value:val});
-    await updateDoc(doc(db,'characters',charId),{statModifiers:charData.statModifiers});
-    document.getElementById('modname-'+key).value='';document.getElementById('modval-'+key).value='1';
-    renderModList(key);
-  }
+  window.saveStatBase=async function(key,val){if(!canEdit)return;const v=key==='size'?parseInt(val):Math.max(0,Math.min(20,parseInt(val)||0));if(!charData.stats)charData.stats={};charData.stats[key]=v;await updateDoc(doc(db,'characters',charId),{[`stats.${key}`]:v});updateStatViewDisplay(key);}
+  window.addModifier=async function(key){const name=document.getElementById('modname-'+key).value.trim(),val=parseInt(document.getElementById('modval-'+key).value)||0;if(!name)return;if(!charData.statModifiers)charData.statModifiers={};if(!charData.statModifiers[key])charData.statModifiers[key]=[];charData.statModifiers[key].push({name,value:val});await updateDoc(doc(db,'characters',charId),{statModifiers:charData.statModifiers});document.getElementById('modname-'+key).value='';document.getElementById('modval-'+key).value='1';renderModList(key);}
   window.deleteModifier=async function(key,i){charData.statModifiers[key].splice(i,1);await updateDoc(doc(db,'characters',charId),{statModifiers:charData.statModifiers});renderModList(key);}
 
-  // ── SKILLS ──
   function buildSkillsSection(){renderPrimarySkills();renderSecondarySkills();renderSpecialtySkills();if(canEdit)document.getElementById('skills-edit-btn').style.display='inline';}
-
-  function renderPrimarySkills(){
-    const grid=document.getElementById('primary-skills-grid');
-    const primary=(charData.skills&&charData.skills.primary)?charData.skills.primary:{};
-    grid.innerHTML=primarySkillDefs.map(s=>`<div class="skill-item"><span class="skill-name">${s.name}</span><div class="skill-tooltip">${s.description}</div>${skillsEditMode?`<input type="number" class="skill-input" min="0" max="10" value="${primary[s.name]||0}" onchange="saveSkill('${s.name}',this.value)">`:`<span class="skill-val-display">${primary[s.name]||0}</span>`}</div>`).join('');
-  }
-
-  function renderSecondarySkills(){
-    const list=document.getElementById('secondary-skills-list');
-    const secondary=(charData.skills&&charData.skills.secondary)?charData.skills.secondary:[];
-    list.innerHTML=secondary.length===0?'<div style="color:#333;font-size:11px;margin-bottom:6px">None defined.</div>':secondary.map((s,i)=>`<div class="sec-skill-item"><span class="skill-name">${s.name}</span><span class="sec-skill-under">${s.under}</span>${skillsEditMode?`<input type="number" class="skill-input" min="0" max="10" value="${s.value||0}" onchange="saveSecSkill(${i},this.value)"><span class="mod-delete" onclick="deleteSecSkill(${i})">×</span>`:`<span class="skill-val-display">${s.value||0}</span>`}</div>`).join('');
-    if(canEdit&&skillsEditMode){document.getElementById('sec-skill-add-row').style.display='flex';document.getElementById('sec-skill-under').innerHTML=primarySkillDefs.map(s=>`<option value="${s.name}">${s.name}</option>`).join('');}
-    else document.getElementById('sec-skill-add-row').style.display='none';
-    updateSpecUnder();
-  }
-
-  function updateSpecUnder(){
-    const secondary=(charData.skills&&charData.skills.secondary)?charData.skills.secondary:[];
-    if(canEdit&&skillsEditMode){document.getElementById('spec-skill-add-row').style.display='flex';document.getElementById('spec-skill-under').innerHTML=secondary.length>0?secondary.map(s=>`<option value="${s.name}">${s.name}</option>`).join(''):'<option value="">No secondary skills yet</option>';}
-    else document.getElementById('spec-skill-add-row').style.display='none';
-  }
-
-  function renderSpecialtySkills(){
-    const list=document.getElementById('specialty-skills-list');
-    const specialty=(charData.skills&&charData.skills.specialty)?charData.skills.specialty:[];
-    list.innerHTML=specialty.length===0?'<div style="color:#333;font-size:11px;margin-bottom:6px">None defined.</div>':specialty.map((s,i)=>`<div class="sec-skill-item"><span class="skill-name">${s.name}</span><span class="sec-skill-under">${s.under}</span>${skillsEditMode?`<input type="number" class="skill-input" min="0" max="10" value="${s.value||0}" onchange="saveSpecSkill(${i},this.value)"><span class="mod-delete" onclick="deleteSpecSkill(${i})">×</span>`:`<span class="skill-val-display">${s.value||0}</span>`}</div>`).join('');
-    updateSpecUnder();
-  }
-
+  function renderPrimarySkills(){const grid=document.getElementById('primary-skills-grid'),primary=(charData.skills&&charData.skills.primary)?charData.skills.primary:{};grid.innerHTML=primarySkillDefs.map(s=>`<div class="skill-item"><span class="skill-name">${s.name}</span><div class="skill-tooltip">${s.description}</div>${skillsEditMode?`<input type="number" class="skill-input" min="0" max="10" value="${primary[s.name]||0}" onchange="saveSkill('${s.name}',this.value)">`:`<span class="skill-val-display">${primary[s.name]||0}</span>`}</div>`).join('');}
+  function renderSecondarySkills(){const list=document.getElementById('secondary-skills-list'),secondary=(charData.skills&&charData.skills.secondary)?charData.skills.secondary:[];list.innerHTML=secondary.length===0?'<div style="color:#333;font-size:11px;margin-bottom:6px">None defined.</div>':secondary.map((s,i)=>`<div class="sec-skill-item"><span class="skill-name">${s.name}</span><span class="sec-skill-under">${s.under}</span>${skillsEditMode?`<input type="number" class="skill-input" min="0" max="10" value="${s.value||0}" onchange="saveSecSkill(${i},this.value)"><span class="mod-delete" onclick="deleteSecSkill(${i})">×</span>`:`<span class="skill-val-display">${s.value||0}</span>`}</div>`).join('');if(canEdit&&skillsEditMode){document.getElementById('sec-skill-add-row').style.display='flex';document.getElementById('sec-skill-under').innerHTML=primarySkillDefs.map(s=>`<option value="${s.name}">${s.name}</option>`).join('');}else document.getElementById('sec-skill-add-row').style.display='none';updateSpecUnder();}
+  function updateSpecUnder(){const secondary=(charData.skills&&charData.skills.secondary)?charData.skills.secondary:[];if(canEdit&&skillsEditMode){document.getElementById('spec-skill-add-row').style.display='flex';document.getElementById('spec-skill-under').innerHTML=secondary.length>0?secondary.map(s=>`<option value="${s.name}">${s.name}</option>`).join(''):'<option value="">No secondary skills yet</option>';}else document.getElementById('spec-skill-add-row').style.display='none';}
+  function renderSpecialtySkills(){const list=document.getElementById('specialty-skills-list'),specialty=(charData.skills&&charData.skills.specialty)?charData.skills.specialty:[];list.innerHTML=specialty.length===0?'<div style="color:#333;font-size:11px;margin-bottom:6px">None defined.</div>':specialty.map((s,i)=>`<div class="sec-skill-item"><span class="skill-name">${s.name}</span><span class="sec-skill-under">${s.under}</span>${skillsEditMode?`<input type="number" class="skill-input" min="0" max="10" value="${s.value||0}" onchange="saveSpecSkill(${i},this.value)"><span class="mod-delete" onclick="deleteSpecSkill(${i})">×</span>`:`<span class="skill-val-display">${s.value||0}</span>`}</div>`).join('');updateSpecUnder();}
   window.toggleSkillsEdit=function(){skillsEditMode=!skillsEditMode;document.getElementById('skills-edit-btn').textContent=skillsEditMode?'Done':'Edit';renderPrimarySkills();renderSecondarySkills();renderSpecialtySkills();}
   window.saveSkill=async function(name,val){if(!charData.skills)charData.skills={};if(!charData.skills.primary)charData.skills.primary={};charData.skills.primary[name]=Math.max(0,Math.min(10,parseInt(val)||0));await updateDoc(doc(db,'characters',charId),{'skills.primary':charData.skills.primary});}
-  window.addSecondarySkill=async function(){const name=document.getElementById('sec-skill-name').value.trim();const under=document.getElementById('sec-skill-under').value;if(!name||!under)return;if(!charData.skills)charData.skills={};if(!charData.skills.secondary)charData.skills.secondary=[];charData.skills.secondary.push({name,under,value:0});await updateDoc(doc(db,'characters',charId),{'skills.secondary':charData.skills.secondary});document.getElementById('sec-skill-name').value='';renderSecondarySkills();}
+  window.addSecondarySkill=async function(){const name=document.getElementById('sec-skill-name').value.trim(),under=document.getElementById('sec-skill-under').value;if(!name||!under)return;if(!charData.skills)charData.skills={};if(!charData.skills.secondary)charData.skills.secondary=[];charData.skills.secondary.push({name,under,value:0});await updateDoc(doc(db,'characters',charId),{'skills.secondary':charData.skills.secondary});document.getElementById('sec-skill-name').value='';renderSecondarySkills();}
   window.saveSecSkill=async function(i,val){charData.skills.secondary[i].value=Math.max(0,Math.min(10,parseInt(val)||0));await updateDoc(doc(db,'characters',charId),{'skills.secondary':charData.skills.secondary});}
   window.deleteSecSkill=async function(i){charData.skills.secondary.splice(i,1);await updateDoc(doc(db,'characters',charId),{'skills.secondary':charData.skills.secondary});renderSecondarySkills();}
-  window.addSpecialtySkill=async function(){const name=document.getElementById('spec-skill-name').value.trim();const under=document.getElementById('spec-skill-under').value;if(!name||!under)return;if(!charData.skills)charData.skills={};if(!charData.skills.specialty)charData.skills.specialty=[];charData.skills.specialty.push({name,under,value:0});await updateDoc(doc(db,'characters',charId),{'skills.specialty':charData.skills.specialty});document.getElementById('spec-skill-name').value='';renderSpecialtySkills();}
+  window.addSpecialtySkill=async function(){const name=document.getElementById('spec-skill-name').value.trim(),under=document.getElementById('spec-skill-under').value;if(!name||!under)return;if(!charData.skills)charData.skills={};if(!charData.skills.specialty)charData.skills.specialty=[];charData.skills.specialty.push({name,under,value:0});await updateDoc(doc(db,'characters',charId),{'skills.specialty':charData.skills.specialty});document.getElementById('spec-skill-name').value='';renderSpecialtySkills();}
   window.saveSpecSkill=async function(i,val){charData.skills.specialty[i].value=Math.max(0,Math.min(10,parseInt(val)||0));await updateDoc(doc(db,'characters',charId),{'skills.specialty':charData.skills.specialty});}
   window.deleteSpecSkill=async function(i){charData.skills.specialty.splice(i,1);await updateDoc(doc(db,'characters',charId),{'skills.specialty':charData.skills.specialty});renderSpecialtySkills();}
 
-  // ── BIO ──
-  function buildProse(d,pgName){
-    const name=d.name?`<b>${d.name}</b>`:'___';
-    let line1=`${name} is a`;
-    if(d.sex)line1+=` <b>${d.sex}</b>`;if(d.age)line1+=` <b>${d.age}</b> year old`;if(d.ethnicity)line1+=` <b>${d.ethnicity}</b>`;if(d.paradigm)line1+=` <b>${d.paradigm}</b>`;if(d.archetype)line1+=` <b>${d.archetype}</b>`;if(d.residence)line1+=` living in <b>${d.residence}</b>`;
-    if(pgName)line1+=`, from the World of <b>${pgName}</b>.`;else line1+='. Currently, they are not an active Character in play.';
-    const name2=d.name?`<b>${d.name}</b>`:'___';
-    let line2=`${name2} <b>typically appears as</b>`;if(d.appearance)line2+=` <i>${d.appearance}</i>`;
-    return line1+'<br><br>'+line2;
+  function buildProse(d,pgName){const name=d.name?`<b>${d.name}</b>`:'___';let line1=`${name} is a`;if(d.sex)line1+=` <b>${d.sex}</b>`;if(d.age)line1+=` <b>${d.age}</b> year old`;if(d.ethnicity)line1+=` <b>${d.ethnicity}</b>`;if(d.paradigm)line1+=` <b>${d.paradigm}</b>`;if(d.archetype)line1+=` <b>${d.archetype}</b>`;if(d.residence)line1+=` living in <b>${d.residence}</b>`;if(pgName)line1+=`, from the World of <b>${pgName}</b>.`;else line1+='. Currently, they are not an active Character in play.';const name2=d.name?`<b>${d.name}</b>`:'___';let line2=`${name2} <b>typically appears as</b>`;if(d.appearance)line2+=` <i>${d.appearance}</i>`;return line1+'<br><br>'+line2;}
+
+  function renderPowerBar(){
+    const bar=document.getElementById('char-power-bar'),pl=getPowerDef();
+    const xpSpent=charData.xpSpent||0,maxXp=charData.maxXp||0,apSpent=charData.apSpent||0,maxAp=charData.maxAp||0;
+    if(canEdit){
+      const plOpts=POWER_LEVELS.map(p=>`<option value="${p.value}" ${p.value===getPowerLevel()?'selected':''}>${p.label} (${p.xpPerAp} XP/AP)</option>`).join('');
+      bar.innerHTML=`<div class="power-pill"><select class="power-select" onchange="savePowerField('powerLevel',this.value)">${plOpts}</select></div><div class="power-pill"><span class="pill-label">XP</span><span class="pill-val">${xpSpent}</span><span class="power-sep">/</span><input type="number" class="power-num-input" value="${maxXp}" min="0" onchange="savePowerField('maxXp',this.value)" title="Max XP"></div><div class="power-pill"><span class="pill-label">AP</span><span class="pill-val">${apSpent}</span><span class="power-sep">/</span><input type="number" class="power-num-input" value="${maxAp}" min="0" onchange="savePowerField('maxAp',this.value)" title="Max AP"></div>`;
+    } else {
+      bar.innerHTML=`<div class="power-pill"><span class="pill-val">${pl.label}</span><span class="pill-sub">(${pl.xpPerAp} XP/AP)</span></div><div class="power-pill"><span class="pill-label">XP</span><span class="pill-val">${xpSpent} / ${maxXp}</span></div><div class="power-pill"><span class="pill-label">AP</span><span class="pill-val">${apSpent} / ${maxAp}</span></div>`;
+    }
   }
+  window.savePowerField=async function(field,val){const v=field==='powerLevel'?val:Math.max(0,parseInt(val)||0);charData[field]=v;await updateDoc(doc(db,'characters',charId),{[field]:v});renderPowerBar();}
 
   async function getActivePgName(){if(!charData.playgroupId||!auth.currentUser)return null;const pgDoc=await getDoc(doc(db,'playgroups',charData.playgroupId));return pgDoc.exists()?pgDoc.data().name:null;}
+  async function renderBio(){const pgName=await getActivePgName();document.getElementById('bio-prose').innerHTML=buildProse(charData,pgName);document.getElementById('char-name').textContent=charData.name||'Unnamed';document.getElementById('char-archetype').textContent=[charData.paradigm,charData.archetype].filter(Boolean).join(' · ')||'';renderPowerBar();const quipEl=document.getElementById('char-quip');if(charData.quip){quipEl.textContent=`"${charData.quip}"`;quipEl.classList.add('has-quip');}else{quipEl.textContent='Tagline / Quip';quipEl.classList.remove('has-quip');}document.getElementById('etc-content').textContent=charData.etc||'—';if(charData.pictureUrl){document.getElementById('pic-placeholder').style.display='none';const img=document.getElementById('char-img');img.src=charData.pictureUrl;img.style.display='block';}}
 
-  async function renderBio(){
-    const pgName=await getActivePgName();
-    document.getElementById('bio-prose').innerHTML=buildProse(charData,pgName);
-    document.getElementById('char-name').textContent=charData.name||'Unnamed';
-    document.getElementById('char-archetype').textContent=[charData.paradigm,charData.archetype].filter(Boolean).join(' · ')||'';
-    const quipEl=document.getElementById('char-quip');
-    if(charData.quip){quipEl.textContent=`"${charData.quip}"`;quipEl.classList.add('has-quip');}
-    else{quipEl.textContent='Tagline / Quip';quipEl.classList.remove('has-quip');}
-    document.getElementById('etc-content').textContent=charData.etc||'—';
-    if(charData.pictureUrl){document.getElementById('pic-placeholder').style.display='none';const img=document.getElementById('char-img');img.src=charData.pictureUrl;img.style.display='block';}
-  }
+  async function loadMentalSection(){const basicQ=query(collection(db,'rulesets'),where('isBasicSet','==',true));const basicSnap=await getDocs(basicQ);availableRulesets=[];if(!basicSnap.empty)availableRulesets.push({name:'Basic Set',morals:basicSnap.docs[0].data().morals||[]});if(charData.playgroupId){const pgRsQ=query(collection(db,'rulesets'),where('playgroupId','==',charData.playgroupId));const pgRsSnap=await getDocs(pgRsQ);pgRsSnap.docs.forEach(d=>availableRulesets.push({name:d.data().name,morals:d.data().morals||[]}));}renderMoralsView();renderObligationsView();renderDisordersView();if(canEdit){document.getElementById('morals-edit-btn').style.display='inline';document.getElementById('obligations-edit-btn').style.display='inline';document.getElementById('disorders-edit-btn').style.display='inline';}}
 
-  // ── MENTAL ──
-  async function loadMentalSection(){
-    const basicQ=query(collection(db,'rulesets'),where('isBasicSet','==',true));
-    const basicSnap=await getDocs(basicQ);
-    availableRulesets=[];
-    if(!basicSnap.empty)availableRulesets.push({name:'Basic Set',morals:basicSnap.docs[0].data().morals||[]});
-    if(charData.playgroupId){const pgRsQ=query(collection(db,'rulesets'),where('playgroupId','==',charData.playgroupId));const pgRsSnap=await getDocs(pgRsQ);pgRsSnap.docs.forEach(d=>availableRulesets.push({name:d.data().name,morals:d.data().morals||[]}));}
-    renderMoralsView();renderObligationsView();renderDisordersView();
-    if(canEdit){document.getElementById('morals-edit-btn').style.display='inline';document.getElementById('obligations-edit-btn').style.display='inline';document.getElementById('disorders-edit-btn').style.display='inline';}
-  }
-
-  // ── MORALS ──
-  function renderMoralsView(){
-    const selected=normalizeSelectedMorals();
-    const display=document.getElementById('moral-cards-display');
-    if(selected.length===0){display.innerHTML='<div class="moral-empty">No morals selected.</div>';return;}
-    display.innerHTML=selected.map(m=>`
-      <div class="moral-card-item">
-        <div class="moral-card-top"><span style="font-size:11px;color:#888;font-weight:500">${severityLabel(m.severity,MORAL_SEVERITY)}</span></div>
-        <div class="moral-card-name">${m.name}</div>
-      </div>`).join('');
-  }
-
-  window.updateMoralSeverity=async function(i,severity){
-    const selected=normalizeSelectedMorals();
-    if(i>=0&&i<selected.length)selected[i].severity=severity;
-    charData.selectedMorals=selected;
-    await updateDoc(doc(db,'characters',charId),{selectedMorals:selected});
-  }
-
-  window.editMorals=function(){
-    document.getElementById('morals-view').style.display='none';document.getElementById('morals-edit-btn').style.display='none';document.getElementById('morals-edit-mode').style.display='block';
-    const selected=normalizeSelectedMorals();
-    const selectedNames=selected.map(m=>m.name);
-    const chipsHtml=availableRulesets.map(rs=>`<div class="moral-group"><div class="moral-group-title">${rs.name}</div><div class="moral-chips">${rs.morals.map(m=>`<div class="moral-chip ${selectedNames.includes(m)?'selected':''}" onclick="toggleMoral('${m}',this)">${m}</div>`).join('')}</div></div>`).join('');
-    const severityHtml=selected.length===0?'':
-      `<div style="margin-top:12px;border-top:1px solid #1a1a1a;padding-top:10px">
-        <div style="font-size:10px;color:#444;font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">Severity</div>
-        ${selected.map((m,i)=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:12px;color:#888">${severitySelectHtml(m.severity,`updateMoralSeverity(${i},this.value)`,MORAL_SEVERITY)}<span>${m.name}</span></div>`).join('')}
-      </div>`;
-    document.getElementById('morals-by-ruleset').innerHTML=chipsHtml+severityHtml;
-  }
-
+  function renderMoralsView(){const selected=normalizeSelectedMorals(),display=document.getElementById('moral-cards-display');if(selected.length===0){display.innerHTML='<div class="moral-empty">No morals selected.</div>';return;}display.innerHTML=selected.map(m=>`<div class="moral-card-item"><div class="moral-card-top"><span style="font-size:11px;color:#888;font-weight:500">${severityLabel(m.severity,MORAL_SEVERITY)}</span></div><div class="moral-card-name">${m.name}</div></div>`).join('');}
+  window.updateMoralSeverity=async function(i,severity){const selected=normalizeSelectedMorals();if(i>=0&&i<selected.length)selected[i].severity=severity;charData.selectedMorals=selected;await updateDoc(doc(db,'characters',charId),{selectedMorals:selected});}
+  window.editMorals=function(){document.getElementById('morals-view').style.display='none';document.getElementById('morals-edit-btn').style.display='none';document.getElementById('morals-edit-mode').style.display='block';const selected=normalizeSelectedMorals(),selectedNames=selected.map(m=>m.name);const chipsHtml=availableRulesets.map(rs=>`<div class="moral-group"><div class="moral-group-title">${rs.name}</div><div class="moral-chips">${rs.morals.map(m=>`<div class="moral-chip ${selectedNames.includes(m)?'selected':''}" onclick="toggleMoral('${m}',this)">${m}</div>`).join('')}</div></div>`).join('');const severityHtml=selected.length===0?'':`<div style="margin-top:12px;border-top:1px solid #1a1a1a;padding-top:10px"><div style="font-size:10px;color:#444;font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">Severity</div>${selected.map((m,i)=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:12px;color:#888">${severitySelectHtml(m.severity,`updateMoralSeverity(${i},this.value)`,MORAL_SEVERITY)}<span>${m.name}</span></div>`).join('')}</div>`;document.getElementById('morals-by-ruleset').innerHTML=chipsHtml+severityHtml;}
   window.doneMorals=function(){document.getElementById('morals-view').style.display='block';document.getElementById('morals-edit-btn').style.display='inline';document.getElementById('morals-edit-mode').style.display='none';renderMoralsView();}
+  window.toggleMoral=async function(moral,el){if(!canEdit)return;let selected=normalizeSelectedMorals();if(selected.some(m=>m.name===moral)){selected=selected.filter(m=>m.name!==moral);el.classList.remove('selected');}else{selected.push({name:moral,severity:'Minor'});el.classList.add('selected');}charData.selectedMorals=selected;await updateDoc(doc(db,'characters',charId),{selectedMorals:selected});}
 
-  window.toggleMoral=async function(moral,el){
-    if(!canEdit)return;
-    let selected=normalizeSelectedMorals();
-    if(selected.some(m=>m.name===moral)){selected=selected.filter(m=>m.name!==moral);el.classList.remove('selected');}
-    else{selected.push({name:moral,severity:'Minor'});el.classList.add('selected');}
-    charData.selectedMorals=selected;
-    await updateDoc(doc(db,'characters',charId),{selectedMorals:selected});
-  }
-
-  // ── OBLIGATIONS ──
-  function renderObligationsView(){
-    const o=charData.moralObligations||[];
-    document.getElementById('obligations-view').innerHTML=o.length===0?'<div style="color:#333;font-size:12px">None.</div>'
-      :o.map((x,i)=>`<div class="obligation-entry">
-        <div class="entry-header">
-          <span style="font-size:12px;font-weight:600;color:#aaa">${severityLabel(x.severity,OBLIGATION_SEVERITY)}</span>
-          ${canEdit?`<span class="entry-delete" onclick="deleteObligation(${i})">×</span>`:''}
-        </div>
-        I have to <span class="entry-text">${x.obligation||'___'}</span> because I <span class="entry-text">${x.violation||'___'}</span>
-      </div>`).join('');
-  }
-
-  function renderObligationsList(){
-    const o=charData.moralObligations||[];
-    document.getElementById('obligations-list').innerHTML=o.length===0?'<div style="color:#333;font-size:12px;margin-bottom:8px">No entries yet.</div>'
-      :o.map((x,i)=>`<div class="obligation-entry">
-        <div class="entry-header">
-          ${severitySelectHtml(x.severity,`saveObligation(${i},'severity',this.value)`,OBLIGATION_SEVERITY)}
-          <span class="entry-delete" onclick="deleteObligation(${i})">×</span>
-        </div>
-        I have to <input class="entry-input" value="${x.obligation||''}" placeholder="..." onchange="saveObligation(${i},'obligation',this.value)">
-        because I <input class="entry-input" value="${x.violation||''}" placeholder="..." onchange="saveObligation(${i},'violation',this.value)">
-      </div>`).join('');
-  }
-
+  function renderObligationsView(){const o=charData.moralObligations||[];document.getElementById('obligations-view').innerHTML=o.length===0?'<div style="color:#333;font-size:12px">None.</div>':o.map((x,i)=>`<div class="obligation-entry"><div class="entry-header"><span style="font-size:12px;font-weight:600;color:#aaa">${severityLabel(x.severity,OBLIGATION_SEVERITY)}</span>${canEdit?`<span class="entry-delete" onclick="deleteObligation(${i})">×</span>`:''}</div>I have to <span class="entry-text">${x.obligation||'___'}</span> because I <span class="entry-text">${x.violation||'___'}</span></div>`).join('');}
+  function renderObligationsList(){const o=charData.moralObligations||[];document.getElementById('obligations-list').innerHTML=o.length===0?'<div style="color:#333;font-size:12px;margin-bottom:8px">No entries yet.</div>':o.map((x,i)=>`<div class="obligation-entry"><div class="entry-header">${severitySelectHtml(x.severity,`saveObligation(${i},'severity',this.value)`,OBLIGATION_SEVERITY)}<span class="entry-delete" onclick="deleteObligation(${i})">×</span></div>I have to <input class="entry-input" value="${x.obligation||''}" placeholder="..." onchange="saveObligation(${i},'obligation',this.value)"> because I <input class="entry-input" value="${x.violation||''}" placeholder="..." onchange="saveObligation(${i},'violation',this.value)"></div>`).join('');}
   window.editObligations=function(){document.getElementById('obligations-view').style.display='none';document.getElementById('obligations-edit-btn').style.display='none';document.getElementById('obligations-edit-mode').style.display='block';document.getElementById('add-obligation-btn').style.display='inline-block';renderObligationsList();}
   window.doneObligations=function(){document.getElementById('obligations-view').style.display='block';document.getElementById('obligations-edit-btn').style.display='inline';document.getElementById('obligations-edit-mode').style.display='none';renderObligationsView();}
   window.addObligation=async function(){const o=charData.moralObligations||[];o.push({obligation:'',violation:'',severity:'Minor'});charData.moralObligations=o;await updateDoc(doc(db,'characters',charId),{moralObligations:o});renderObligationsList();}
   window.saveObligation=async function(i,f,v){const o=charData.moralObligations||[];if(o[i])o[i][f]=v;charData.moralObligations=o;await updateDoc(doc(db,'characters',charId),{moralObligations:o});}
   window.deleteObligation=async function(i){charData.moralObligations.splice(i,1);await updateDoc(doc(db,'characters',charId),{moralObligations:charData.moralObligations});renderObligationsList();}
 
-  // ── DISORDERS ──
-  function renderDisordersView(){
-    const d=charData.mentalDisorders||[];
-    document.getElementById('disorders-view').innerHTML=d.length===0?'<div style="color:#333;font-size:12px">None.</div>'
-      :d.map((x,i)=>`<div class="disorder-entry">
-        <div class="entry-header">
-          <span style="font-size:12px;font-weight:600;color:#aaa">${severityLabel(x.severity,CONDITION_SEVERITY).replace('Condition', x.disorder||'Condition')}</span>
-          ${canEdit?`<span class="entry-delete" onclick="deleteDisorder(${i})">×</span>`:''}
-        </div>
-        I have <span class="entry-text">${x.disorder||'___'}</span> which means <span class="entry-text">${x.description||'___'}</span> and if triggered I might <span class="entry-text">${x.symptoms||'___'}</span>
-      </div>`).join('');
-  }
-
-  function renderDisordersList(){
-    const d=charData.mentalDisorders||[];
-    document.getElementById('disorders-list').innerHTML=d.length===0?'<div style="color:#333;font-size:12px;margin-bottom:8px">No entries yet.</div>'
-      :d.map((x,i)=>`<div class="disorder-entry">
-        <div class="entry-header">
-          ${severitySelectHtml(x.severity,`saveDisorder(${i},'severity',this.value)`,CONDITION_SEVERITY)}
-          <span class="entry-header-type">${x.disorder||'Condition'}</span>
-          <span class="entry-delete" onclick="deleteDisorder(${i})">×</span>
-        </div>
-        I have <input class="entry-input" value="${x.disorder||''}" placeholder="condition name..." onchange="saveDisorder(${i},'disorder',this.value);rerenderDisorderHeader(${i},this.value)">
-        which means <input class="entry-input" value="${x.description||''}" placeholder="..." onchange="saveDisorder(${i},'description',this.value)">
-        and if triggered I might <input class="entry-input" value="${x.symptoms||''}" placeholder="..." onchange="saveDisorder(${i},'symptoms',this.value)">
-      </div>`).join('');
-  }
-
-  window.rerenderDisorderHeader=function(i,val){
-    const headers=document.querySelectorAll('#disorders-list .entry-header-type');
-    if(headers[i])headers[i].textContent=val||'Disorder';
-  }
-
+  function renderDisordersView(){const d=charData.mentalDisorders||[];document.getElementById('disorders-view').innerHTML=d.length===0?'<div style="color:#333;font-size:12px">None.</div>':d.map((x,i)=>`<div class="disorder-entry"><div class="entry-header"><span style="font-size:12px;font-weight:600;color:#aaa">${severityLabel(x.severity,CONDITION_SEVERITY).replace('Condition',x.disorder||'Condition')}</span>${canEdit?`<span class="entry-delete" onclick="deleteDisorder(${i})">×</span>`:''}</div>I have <span class="entry-text">${x.disorder||'___'}</span> which means <span class="entry-text">${x.description||'___'}</span> and if triggered I might <span class="entry-text">${x.symptoms||'___'}</span></div>`).join('');}
+  function renderDisordersList(){const d=charData.mentalDisorders||[];document.getElementById('disorders-list').innerHTML=d.length===0?'<div style="color:#333;font-size:12px;margin-bottom:8px">No entries yet.</div>':d.map((x,i)=>`<div class="disorder-entry"><div class="entry-header">${severitySelectHtml(x.severity,`saveDisorder(${i},'severity',this.value)`,CONDITION_SEVERITY)}<span class="entry-header-type">${x.disorder||'Condition'}</span><span class="entry-delete" onclick="deleteDisorder(${i})">×</span></div>I have <input class="entry-input" value="${x.disorder||''}" placeholder="condition name..." onchange="saveDisorder(${i},'disorder',this.value);rerenderDisorderHeader(${i},this.value)"> which means <input class="entry-input" value="${x.description||''}" placeholder="..." onchange="saveDisorder(${i},'description',this.value)"> and if triggered I might <input class="entry-input" value="${x.symptoms||''}" placeholder="..." onchange="saveDisorder(${i},'symptoms',this.value)"></div>`).join('');}
+  window.rerenderDisorderHeader=function(i,val){const headers=document.querySelectorAll('#disorders-list .entry-header-type');if(headers[i])headers[i].textContent=val||'Condition';}
   window.editDisorders=function(){document.getElementById('disorders-view').style.display='none';document.getElementById('disorders-edit-btn').style.display='none';document.getElementById('disorders-edit-mode').style.display='block';document.getElementById('add-disorder-btn').style.display='inline-block';renderDisordersList();}
   window.doneDisorders=function(){document.getElementById('disorders-view').style.display='block';document.getElementById('disorders-edit-btn').style.display='inline';document.getElementById('disorders-edit-mode').style.display='none';renderDisordersView();}
   window.addDisorder=async function(){const d=charData.mentalDisorders||[];d.push({disorder:'',description:'',symptoms:'',severity:'Minor'});charData.mentalDisorders=d;await updateDoc(doc(db,'characters',charId),{mentalDisorders:d});renderDisordersList();}
   window.saveDisorder=async function(i,f,v){const d=charData.mentalDisorders||[];if(d[i])d[i][f]=v;charData.mentalDisorders=d;await updateDoc(doc(db,'characters',charId),{mentalDisorders:d});}
   window.deleteDisorder=async function(i){charData.mentalDisorders.splice(i,1);await updateDoc(doc(db,'characters',charId),{mentalDisorders:charData.mentalDisorders});renderDisordersList();}
 
-  // ── AUTH ──
   onAuthStateChanged(auth,async function(user){
     if(!user||!user.emailVerified)return;if(loaded)return;loaded=true;
     const userDoc=await getDoc(doc(db,'users',user.uid));if(userDoc.exists())setNavUsername(userDoc.data().username);
@@ -765,28 +475,12 @@
   });
 
   window.triggerPicUpload=function(){if(canEdit)document.getElementById('pic-input').click();}
-  window.handlePicChange=async function(e){
-    const file=e.target.files[0];if(!file)return;
-    const slot=document.getElementById('picture-slot');const overlay=document.createElement('div');overlay.className='pic-uploading';overlay.textContent='Uploading...';slot.appendChild(overlay);
-    try{const storageRef=ref(storage,`characters/${charId}/portrait`);await uploadBytes(storageRef,file);const url=await getDownloadURL(storageRef);await updateDoc(doc(db,'characters',charId),{pictureUrl:url});charData.pictureUrl=url;document.getElementById('pic-placeholder').style.display='none';const img=document.getElementById('char-img');img.src=url;img.style.display='block';}
-    catch(err){alert('Upload failed.');}finally{slot.removeChild(overlay);}
-  }
+  window.handlePicChange=async function(e){const file=e.target.files[0];if(!file)return;const slot=document.getElementById('picture-slot');const overlay=document.createElement('div');overlay.className='pic-uploading';overlay.textContent='Uploading...';slot.appendChild(overlay);try{const storageRef=ref(storage,`characters/${charId}/portrait`);await uploadBytes(storageRef,file);const url=await getDownloadURL(storageRef);await updateDoc(doc(db,'characters',charId),{pictureUrl:url});charData.pictureUrl=url;document.getElementById('pic-placeholder').style.display='none';const img=document.getElementById('char-img');img.src=url;img.style.display='block';}catch(err){alert('Upload failed.');}finally{slot.removeChild(overlay);}}
   window.editQuip=function(){if(!canEdit)return;const val=prompt('Enter tagline / quip:',charData.quip||'');if(val===null)return;updateDoc(doc(db,'characters',charId),{quip:val}).then(()=>{charData.quip=val;renderBio();});}
-  window.editBio=function(){
-    document.getElementById('bio-view').style.display='none';document.getElementById('bio-edit-btn').style.display='none';document.getElementById('bio-edit').style.display='block';
-    ['name','sex','age','ethnicity','paradigm','archetype','residence','appearance'].forEach(f=>document.getElementById('e-'+f).value=charData[f]||'');
-    const sel=document.getElementById('e-playgroup');sel.innerHTML='<option value="">None — not in active play</option>';
-    userPlaygroups.forEach(pg=>{const opt=document.createElement('option');opt.value=pg.id;opt.textContent=pg.name;if(charData.playgroupId===pg.id)opt.selected=true;sel.appendChild(opt);});
-  }
+  window.editBio=function(){document.getElementById('bio-view').style.display='none';document.getElementById('bio-edit-btn').style.display='none';document.getElementById('bio-edit').style.display='block';['name','sex','age','ethnicity','paradigm','archetype','residence','appearance'].forEach(f=>document.getElementById('e-'+f).value=charData[f]||'');const sel=document.getElementById('e-playgroup');sel.innerHTML='<option value="">None — not in active play</option>';userPlaygroups.forEach(pg=>{const opt=document.createElement('option');opt.value=pg.id;opt.textContent=pg.name;if(charData.playgroupId===pg.id)opt.selected=true;sel.appendChild(opt);});}
   window.cancelBio=function(){document.getElementById('bio-view').style.display='block';document.getElementById('bio-edit-btn').style.display='inline';document.getElementById('bio-edit').style.display='none';}
   window.updatePreview=function(){const d={};['name','sex','age','ethnicity','paradigm','archetype','residence','appearance'].forEach(f=>d[f]=document.getElementById('e-'+f).value.trim());const pg=userPlaygroups.find(p=>p.id===document.getElementById('e-playgroup').value);document.getElementById('bio-prose').innerHTML=buildProse(d,pg?pg.name:null);}
-  window.saveBio=async function(){
-    const msg=document.getElementById('bio-msg');const updated={};
-    ['name','sex','age','ethnicity','paradigm','archetype','residence','appearance'].forEach(f=>updated[f]=document.getElementById('e-'+f).value.trim());
-    updated.playgroupId=document.getElementById('e-playgroup').value||null;
-    try{await updateDoc(doc(db,'characters',charId),updated);Object.assign(charData,updated);await renderBio();msg.textContent='Saved!';setTimeout(()=>{msg.textContent='';cancelBio();},1000);}
-    catch(e){msg.textContent='Error saving.';msg.style.color='#ff6666';}
-  }
+  window.saveBio=async function(){const msg=document.getElementById('bio-msg'),updated={};['name','sex','age','ethnicity','paradigm','archetype','residence','appearance'].forEach(f=>updated[f]=document.getElementById('e-'+f).value.trim());updated.playgroupId=document.getElementById('e-playgroup').value||null;try{await updateDoc(doc(db,'characters',charId),updated);Object.assign(charData,updated);await renderBio();msg.textContent='Saved!';setTimeout(()=>{msg.textContent='';cancelBio();},1000);}catch(e){msg.textContent='Error saving.';msg.style.color='#ff6666';}}
   window.editEtc=function(){if(!canEdit)return;document.getElementById('etc-content').style.display='none';document.getElementById('etc-edit').value=charData.etc||'';document.getElementById('etc-edit').style.display='block';document.getElementById('etc-btn-row').style.display='block';}
   window.cancelEtc=function(){document.getElementById('etc-content').style.display='block';document.getElementById('etc-edit').style.display='none';document.getElementById('etc-btn-row').style.display='none';}
   window.saveEtc=async function(){const val=document.getElementById('etc-edit').value.trim();try{await updateDoc(doc(db,'characters',charId),{etc:val});charData.etc=val;document.getElementById('etc-content').textContent=val||'—';cancelEtc();}catch(e){alert('Error saving.');}}
