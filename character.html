@@ -295,9 +295,10 @@
   const charId = params.get('id');
   if (!charId) window.location.href = 'home.html';
 
-  let charData = {};
+ let charData = {};
   let canEdit = false;
   let userPlaygroups = [];
+  let loaded = false;
 
   function buildProse(d, pgName) {
     const name = d.name ? `<b>${d.name}</b>` : '___';
@@ -350,9 +351,10 @@
     }
   }
 
-  onAuthStateChanged(auth, async function(user) {
-    if (!user || !user.emailVerified) {
-      return;
+ onAuthStateChanged(auth, async function(user) {
+    if (!user || !user.emailVerified) return;
+    if (loaded) return;
+    loaded = true;
     }
 
     const userDoc = await getDoc(doc(db, 'users', user.uid));
