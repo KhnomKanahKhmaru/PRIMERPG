@@ -4,9 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PRIME — Character Sheet</title>
-<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@300;400;500;600&family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
 :root{
+  --font:'Open Sans',sans-serif;
+  --font-mono:'Share Tech Mono',monospace;
   --bg:#0f0f0d;
   --bg2:#161614;
   --bg3:#1e1e1b;
@@ -24,108 +26,84 @@
   --r:3px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;font-size:14px;min-height:100vh}
-input,textarea,select{background:var(--bg3);border:1px solid var(--border2);color:var(--text);font-family:'Barlow',sans-serif;font-size:13px;border-radius:var(--r);padding:4px 8px;outline:none;width:100%}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;min-height:100vh}
+input,textarea,select{background:var(--bg3);border:1px solid var(--border2);color:var(--text);font-family:var(--font);font-size:13px;border-radius:var(--r);padding:4px 8px;outline:none;width:100%}
 input:focus,textarea:focus,select:focus{border-color:var(--accent);background:var(--bg4)}
 textarea{resize:vertical;min-height:60px;line-height:1.5}
-button{cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:12px;letter-spacing:.06em;border-radius:var(--r);border:1px solid var(--border2);padding:4px 12px;background:var(--bg3);color:var(--text2);transition:all .15s}
+button{cursor:pointer;font-family:var(--font);font-size:12px;letter-spacing:.06em;border-radius:var(--r);border:1px solid var(--border2);padding:4px 12px;background:var(--bg3);color:var(--text2);transition:all .15s}
 button:hover{border-color:var(--accent);color:var(--accent)}
 button.danger:hover{border-color:var(--danger);color:var(--danger)}
-.mono{font-family:'Share Tech Mono',monospace}
-
-/* LAYOUT */
+.mono{font-family:var(--font-mono)}
 .sheet{max-width:1200px;margin:0 auto;padding:20px}
-
-/* HEADER */
 .header{display:grid;grid-template-columns:1fr auto;gap:16px;align-items:start;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border2)}
 .char-name-wrap{display:flex;flex-direction:column;gap:4px}
-.char-name-wrap label{font-size:10px;letter-spacing:.1em;color:var(--text3);font-family:'Barlow Condensed',sans-serif;text-transform:uppercase}
-.char-name{font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:700;letter-spacing:.04em;background:transparent;border:none;border-bottom:1px solid var(--border2);border-radius:0;padding:2px 0;color:var(--text);width:100%}
+.char-name-wrap label{font-size:10px;letter-spacing:.1em;color:var(--text3);font-family:var(--font);text-transform:uppercase}
+.char-name{font-family:var(--font);font-size:28px;font-weight:700;letter-spacing:.04em;background:transparent;border:none;border-bottom:1px solid var(--border2);border-radius:0;padding:2px 0;color:var(--text);width:100%}
 .char-name:focus{border-bottom-color:var(--accent);background:transparent}
 .xp-block{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);padding:12px 16px;min-width:220px}
-.xp-title{font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px}
+.xp-title{font-family:var(--font);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px}
 .xp-row{display:flex;gap:10px;align-items:center}
 .xp-field{display:flex;flex-direction:column;gap:3px;flex:1}
 .xp-field label{font-size:10px;color:var(--text3)}
-.xp-field input{text-align:center;font-family:'Share Tech Mono',monospace;font-size:16px;font-weight:500}
+.xp-field input{text-align:center;font-family:var(--font-mono);font-size:16px;font-weight:500}
 .xp-remaining{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:56px}
-.xp-remaining .val{font-family:'Share Tech Mono',monospace;font-size:22px;color:var(--accent)}
+.xp-remaining .val{font-family:var(--font-mono);font-size:22px;color:var(--accent)}
 .xp-remaining .lbl{font-size:10px;color:var(--text3)}
-
-/* SECTIONS */
 .section{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:12px;overflow:hidden}
 .section-header{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:var(--bg3);border-bottom:1px solid var(--border);cursor:pointer;user-select:none}
 .section-header:hover{background:var(--bg4)}
-.section-title{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.section-title{font-family:var(--font);font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
 .section-toggle{font-size:10px;color:var(--text3)}
 .section-body{padding:14px}
 .section-body.collapsed{display:none}
-
-/* BIO GRID */
 .bio-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .bio-grid .full{grid-column:1/-1}
 .bio-grid .half{grid-column:span 2}
 .field{display:flex;flex-direction:column;gap:4px}
-.field label{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);font-family:'Barlow Condensed',sans-serif}
-
-/* STATS */
+.field label{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);font-family:var(--font)}
 .stats-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
 .stat-card{background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r);padding:10px 8px;text-align:center;position:relative}
-.stat-name{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);margin-bottom:6px}
-.stat-val{font-family:'Share Tech Mono',monospace;font-size:24px;font-weight:400;text-align:center;background:transparent;border:none;border-bottom:1px solid var(--border2);border-radius:0;padding:2px 0;color:var(--text);width:100%}
+.stat-name{font-family:var(--font);font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);margin-bottom:6px}
+.stat-val{font-family:var(--font-mono);font-size:24px;font-weight:400;text-align:center;background:transparent;border:none;border-bottom:1px solid var(--border2);border-radius:0;padding:2px 0;color:var(--text);width:100%}
 .stat-val:focus{border-bottom-color:var(--accent);background:transparent}
-.stat-mod{font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--accent);margin-top:5px}
+.stat-mod{font-family:var(--font-mono);font-size:12px;color:var(--accent);margin-top:5px}
 .stat-label{font-size:10px;color:var(--text3);margin-top:2px}
-
-/* DERIVED */
 .derived-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .derived-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:8px 10px}
-.derived-name{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);font-family:'Barlow Condensed',sans-serif;margin-bottom:3px}
-.derived-val{font-family:'Share Tech Mono',monospace;font-size:18px;color:var(--accent)}
+.derived-name{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);font-family:var(--font);margin-bottom:3px}
+.derived-val{font-family:var(--font-mono);font-size:18px;color:var(--accent)}
 .derived-sub{font-size:10px;color:var(--text3);margin-top:1px}
-
-/* SKILLS */
 .skills-controls{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center}
 .skill-row{display:grid;grid-template-columns:120px 1fr 50px 50px 50px auto;gap:6px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)}
 .skill-row:last-child{border-bottom:none}
-.skill-tier{font-size:10px;padding:2px 6px;border-radius:2px;font-family:'Barlow Condensed',sans-serif;letter-spacing:.05em;text-align:center}
+.skill-tier{font-size:10px;padding:2px 6px;border-radius:2px;font-family:var(--font);letter-spacing:.05em;text-align:center}
 .tier-primary{background:#1a2a1a;color:#4bc87a;border:1px solid #2a3a2a}
 .tier-secondary{background:#1a1a2a;color:#4b8ac8;border:1px solid #2a2a3a}
 .tier-specialty{background:#2a1a2a;color:#c84bc8;border:1px solid #3a2a3a}
 .skill-header{display:grid;grid-template-columns:120px 1fr 50px 50px 50px auto;gap:6px;padding:0 0 6px;border-bottom:1px solid var(--border2);margin-bottom:4px}
-.skill-header span{font-size:10px;color:var(--text3);letter-spacing:.06em;text-transform:uppercase;font-family:'Barlow Condensed',sans-serif}
-.skill-row input[type=number]{text-align:center;font-family:'Share Tech Mono',monospace}
-.skill-total{font-family:'Share Tech Mono',monospace;font-size:14px;color:var(--accent);text-align:center;padding:4px}
-
-/* MORALS / ADV / DIS */
+.skill-header span{font-size:10px;color:var(--text3);letter-spacing:.06em;text-transform:uppercase;font-family:var(--font)}
+.skill-row input[type=number]{text-align:center;font-family:var(--font-mono)}
+.skill-total{font-family:var(--font-mono);font-size:14px;color:var(--accent);text-align:center;padding:4px}
 .list-item{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:10px;margin-bottom:8px}
 .list-item-header{display:flex;gap:8px;align-items:center;margin-bottom:6px}
 .list-item-header input{flex:1}
 .tier-select{width:110px!important;flex-shrink:0}
 .list-item textarea{margin-top:4px}
-.add-btn{font-family:'Barlow Condensed',sans-serif;font-size:12px;letter-spacing:.06em;border:1px dashed var(--border2);padding:6px 14px;background:transparent;color:var(--text3);width:100%;text-align:center;border-radius:var(--r);cursor:pointer;transition:all .15s;margin-top:4px}
+.add-btn{font-family:var(--font);font-size:12px;letter-spacing:.06em;border:1px dashed var(--border2);padding:6px 14px;background:transparent;color:var(--text3);width:100%;text-align:center;border-radius:var(--r);cursor:pointer;transition:all .15s;margin-top:4px}
 .add-btn:hover{border-color:var(--accent);color:var(--accent)}
-
-/* TABS */
 .tabs{display:flex;gap:0;border-bottom:1px solid var(--border2);margin-bottom:14px}
-.tab{font-family:'Barlow Condensed',sans-serif;font-size:12px;letter-spacing:.08em;text-transform:uppercase;padding:7px 16px;cursor:pointer;color:var(--text3);border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s}
+.tab{font-family:var(--font);font-size:12px;letter-spacing:.08em;text-transform:uppercase;padding:7px 16px;cursor:pointer;color:var(--text3);border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s}
 .tab:hover{color:var(--text)}
 .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
 .tab-panel{display:none}
 .tab-panel.active{display:block}
-
-/* MORAL ROLL */
-.moral-rolls{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
-.roll-tag{font-size:10px;padding:2px 7px;border-radius:2px;font-family:'Share Tech Mono',monospace;background:var(--bg4);border:1px solid var(--border2);color:var(--text2)}
-
-/* HP BAR */
 .hp-section{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:10px}
 .hp-location{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:8px;text-align:center}
-.hp-location-name{font-size:10px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px}
+.hp-location-name{font-size:10px;color:var(--text3);font-family:var(--font);letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px}
 .hp-inputs{display:flex;gap:4px;align-items:center;justify-content:center}
-.hp-inputs input{width:40px;text-align:center;font-family:'Share Tech Mono',monospace;font-size:14px}
+.hp-inputs input{width:40px;text-align:center;font-family:var(--font-mono);font-size:14px}
 .hp-sep{color:var(--text3);font-size:12px}
-.hp-max{font-family:'Share Tech Mono',monospace;font-size:14px;color:var(--accent)}
+.hp-max{font-family:var(--font-mono);font-size:14px;color:var(--accent)}
 </style>
 </head>
 <body>
@@ -153,7 +131,6 @@ button.danger:hover{border-color:var(--danger);color:var(--danger)}
   </div>
 </div>
 
-<!-- BIOGRAPHY -->
 <div class="section">
   <div class="section-header" onclick="toggleSection(this)">
     <span class="section-title">Biography</span>
@@ -170,7 +147,6 @@ button.danger:hover{border-color:var(--danger);color:var(--danger)}
   </div>
 </div>
 
-<!-- STATS -->
 <div class="section">
   <div class="section-header" onclick="toggleSection(this)">
     <span class="section-title">STATs</span>
@@ -179,17 +155,16 @@ button.danger:hover{border-color:var(--danger);color:var(--danger)}
   <div class="section-body">
     <div class="stats-grid" id="statsGrid"></div>
     <div style="margin-top:14px">
-      <div style="font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Derived Stats</div>
+      <div style="font-family:var(--font);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Derived Stats</div>
       <div class="derived-grid" id="derivedGrid"></div>
     </div>
     <div style="margin-top:14px">
-      <div style="font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Hit Locations</div>
+      <div style="font-family:var(--font);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Hit Locations</div>
       <div class="hp-section" id="hpSection"></div>
     </div>
   </div>
 </div>
 
-<!-- SKILLS -->
 <div class="section">
   <div class="section-header" onclick="toggleSection(this)">
     <span class="section-title">SKILLs</span>
@@ -208,7 +183,6 @@ button.danger:hover{border-color:var(--danger);color:var(--danger)}
   </div>
 </div>
 
-<!-- MORALS / ADV / DIS TABS -->
 <div class="section">
   <div class="section-header" onclick="toggleSection(this)">
     <span class="section-title">Morals · Advantages · Disadvantages</span>
@@ -220,17 +194,14 @@ button.danger:hover{border-color:var(--danger);color:var(--danger)}
       <div class="tab" onclick="switchTab('advantages',this)">Advantages</div>
       <div class="tab" onclick="switchTab('disadvantages',this)">Disadvantages</div>
     </div>
-
     <div class="tab-panel active" id="tab-morals">
       <div id="moralsList"></div>
       <button class="add-btn" onclick="addMoral()">+ Add Moral</button>
     </div>
-
     <div class="tab-panel" id="tab-advantages">
       <div id="advantagesList"></div>
       <button class="add-btn" onclick="addAdvantage()">+ Add Advantage</button>
     </div>
-
     <div class="tab-panel" id="tab-disadvantages">
       <div id="disadvantagesList"></div>
       <button class="add-btn" onclick="addDisadvantage()">+ Add Disadvantage</button>
@@ -239,7 +210,6 @@ button.danger:hover{border-color:var(--danger);color:var(--danger)}
 </div>
 
 </div>
-
 <script>
 var STATS=[
   {id:'str',name:'STR',full:'Strength'},
@@ -249,272 +219,157 @@ var STATS=[
   {id:'cha',name:'CHA',full:'Charisma'},
   {id:'pow',name:'POW',full:'Power'},
 ];
-
 var STAT_LABELS=[
   'Far Below Avg','Below Average','Average','Above Average','Impressive','Exceptional',
   'Human Limit','Lesser Superhuman','Superhuman','Greater Superhuman','Peak Superhuman',
   'Beyond Superhuman','Lesser Legendary','Legendary','Greater Legendary','Semi-Divine',
   'Lesser Divine','Divine','Greater Divine','Beyond Divine','Cosmic'
 ];
-
 var SIZEMOD=6;
-
 function getStatMod(v){
   v=parseInt(v)||0;
-  if(v<=1)return -1;
-  if(v<=3)return 0;
-  if(v<=5)return 1;
-  if(v<=7)return 2;
-  if(v<=9)return 3;
-  if(v<=11)return 4;
-  if(v<=13)return 5;
-  if(v<=15)return 6;
-  if(v<=17)return 7;
-  if(v===18)return 8;
-  if(v===19)return 9;
-  return 10;
+  if(v<=1)return -1;if(v<=3)return 0;if(v<=5)return 1;if(v<=7)return 2;
+  if(v<=9)return 3;if(v<=11)return 4;if(v<=13)return 5;if(v<=15)return 6;
+  if(v<=17)return 7;if(v===18)return 8;if(v===19)return 9;return 10;
 }
-
 function fmtMod(m){return m>=0?'+'+m:''+m;}
-
 function buildStats(){
-  var g=document.getElementById('statsGrid');
-  g.innerHTML='';
+  var g=document.getElementById('statsGrid');g.innerHTML='';
   STATS.forEach(function(s){
-    var v=loadVal(s.id+'_val','2');
-    var m=getStatMod(v);
+    var v=loadVal(s.id+'_val','2');var m=getStatMod(v);
     var lbl=STAT_LABELS[Math.min(parseInt(v)||0,20)]||'';
-    g.innerHTML+=
-      '<div class="stat-card">'+
-      '<div class="stat-name">'+s.name+'</div>'+
+    g.innerHTML+='<div class="stat-card"><div class="stat-name">'+s.name+'</div>'+
       '<input class="stat-val" type="number" min="0" max="20" value="'+v+'" id="sv_'+s.id+'" oninput="onStatChange(\''+s.id+'\')" title="'+s.full+'">'+
       '<div class="stat-mod" id="sm_'+s.id+'">'+fmtMod(m)+'</div>'+
-      '<div class="stat-label" id="sl_'+s.id+'">'+lbl+'</div>'+
-      '</div>';
+      '<div class="stat-label" id="sl_'+s.id+'">'+lbl+'</div></div>';
   });
 }
-
 function onStatChange(sid){
-  var el=document.getElementById('sv_'+sid);
-  var v=parseInt(el.value)||0;
-  if(v<0){v=0;el.value=0;}
-  if(v>20){v=20;el.value=20;}
+  var el=document.getElementById('sv_'+sid);var v=parseInt(el.value)||0;
+  if(v<0){v=0;el.value=0;}if(v>20){v=20;el.value=20;}
   var m=getStatMod(v);
   document.getElementById('sm_'+sid).textContent=fmtMod(m);
   document.getElementById('sl_'+sid).textContent=STAT_LABELS[Math.min(v,20)]||'';
-  storeVal(sid+'_val',v);
-  updateDerived();
-  updateSkillTotals();
-  save();
+  storeVal(sid+'_val',v);updateDerived();updateSkillTotals();save();
 }
-
 function getStatVal(sid){return parseInt((document.getElementById('sv_'+sid)||{}).value)||0;}
-
 function updateDerived(){
   var str=getStatVal('str'),dex=getStatVal('dex'),per=getStatVal('per'),
       int_=getStatVal('int'),cha=getStatVal('cha');
   var strmod=getStatMod(str),dexmod=getStatMod(dex),permod=getStatMod(per),
       intmod=getStatMod(int_),chamod=getStatMod(cha);
-  var health=str+SIZEMOD;
-  var torso=health;
+  var health=str+SIZEMOD,torso=health;
   var head=Math.max(1,Math.floor(health/2)+Math.floor(SIZEMOD/2)-1);
   var limb=Math.floor(health/2)+Math.floor(SIZEMOD/2);
   var body=head+torso+limb*4;
-  var san=Math.floor((int_+cha)/2)+2;
-  var ex=Math.floor(health/2);
-  var focus=permod+1;
-  var agility=dexmod+permod;
-  var movspd=(dex*2.5).toFixed(1);
-  var move=(dex*2.5*6).toFixed(0);
+  var san=Math.floor((int_+cha)/2)+2,ex=Math.floor(health/2);
+  var focus=permod+1,agility=dexmod+permod;
+  var movspd=(dex*2.5).toFixed(1),move=(dex*2.5*6).toFixed(0);
   var perspd=(0.2/Math.pow(2,(dexmod+permod)/2)).toFixed(3);
-
   var derived=[
-    {n:'Health',v:health,s:'STR+SIZEMOD'},
-    {n:'Body',v:body,s:'Sum of locations'},
-    {n:'SAN',v:san,s:'(INT+CHA)/2+2'},
-    {n:'EX',v:ex,s:'Health / 2'},
-    {n:'Focus',v:focus,s:'PERMOD + 1'},
-    {n:'AGILITY',v:agility,s:'DEXMOD+PERMOD'},
-    {n:'MOVSPD',v:movspd+'ft/s',s:'DEX × 2.5'},
-    {n:'MOVE',v:move+'ft',s:'MOVSPD × 6'},
-    {n:'PERSPD',v:perspd+'s',s:'Reaction time'},
-    {n:'STRMOD',v:fmtMod(strmod),s:'STR modifier'},
-    {n:'DEXMOD',v:fmtMod(dexmod),s:'DEX modifier'},
-    {n:'PERMOD',v:fmtMod(permod),s:'PER modifier'},
+    {n:'Health',v:health,s:'STR+SIZEMOD'},{n:'Body',v:body,s:'Sum of locations'},
+    {n:'SAN',v:san,s:'(INT+CHA)/2+2'},{n:'EX',v:ex,s:'Health / 2'},
+    {n:'Focus',v:focus,s:'PERMOD + 1'},{n:'AGILITY',v:agility,s:'DEXMOD+PERMOD'},
+    {n:'MOVSPD',v:movspd+'ft/s',s:'DEX × 2.5'},{n:'MOVE',v:move+'ft',s:'MOVSPD × 6'},
+    {n:'PERSPD',v:perspd+'s',s:'Reaction time'},{n:'STRMOD',v:fmtMod(strmod),s:'STR modifier'},
+    {n:'DEXMOD',v:fmtMod(dexmod),s:'DEX modifier'},{n:'PERMOD',v:fmtMod(permod),s:'PER modifier'},
   ];
-  var dg=document.getElementById('derivedGrid');
-  dg.innerHTML=derived.map(function(d){
+  document.getElementById('derivedGrid').innerHTML=derived.map(function(d){
     return '<div class="derived-card"><div class="derived-name">'+d.n+'</div><div class="derived-val mono">'+d.v+'</div><div class="derived-sub">'+d.s+'</div></div>';
   }).join('');
-
-  // HP locations
-  var locs=[
-    {n:'Head',hp:head},
-    {n:'Torso',hp:torso},
-    {n:'R. Arm',hp:limb},
-    {n:'L. Arm',hp:limb},
-    {n:'R. Leg',hp:limb},
-    {n:'L. Leg',hp:limb},
-  ];
-  var hs=document.getElementById('hpSection');
-  hs.innerHTML=locs.map(function(l){
+  var locs=[{n:'Head',hp:head},{n:'Torso',hp:torso},{n:'R. Arm',hp:limb},{n:'L. Arm',hp:limb},{n:'R. Leg',hp:limb},{n:'L. Leg',hp:limb}];
+  document.getElementById('hpSection').innerHTML=locs.map(function(l){
     var cur=loadVal('hp_cur_'+l.n.replace(/\s/g,''),l.hp);
-    return '<div class="hp-location">'+
-      '<div class="hp-location-name">'+l.n+'</div>'+
-      '<div class="hp-inputs">'+
+    return '<div class="hp-location"><div class="hp-location-name">'+l.n+'</div><div class="hp-inputs">'+
       '<input type="number" value="'+cur+'" style="width:44px" oninput="storeVal(\'hp_cur_'+l.n.replace(/\s/g,'')+'\',this.value);save()" title="Current HP">'+
-      '<span class="hp-sep">/</span>'+
-      '<span class="hp-max">'+l.hp+'</span>'+
-      '</div></div>';
+      '<span class="hp-sep">/</span><span class="hp-max">'+l.hp+'</span></div></div>';
   }).join('');
 }
-
-// SKILLS
-var skills=[];
-var skillIdCounter=0;
-
-function addSkill(tier){
-  var id=++skillIdCounter;
-  skills.push({id:id,tier:tier,name:'',stat:'str',level:0});
-  renderSkills();
-  save();
-}
-
-function removeSkill(id){
-  skills=skills.filter(function(s){return s.id!==id;});
-  renderSkills();save();
-}
-
+var skills=[],skillIdCounter=0;
+function addSkill(tier){var id=++skillIdCounter;skills.push({id:id,tier:tier,name:'',stat:'str',level:0});renderSkills();save();}
+function removeSkill(id){skills=skills.filter(function(s){return s.id!==id;});renderSkills();save();}
 function renderSkills(){
   var el=document.getElementById('skillsList');
   if(!skills.length){el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:8px 0">No skills added yet.</div>';return;}
   el.innerHTML=skills.map(function(s){
     var tierCls={primary:'tier-primary',secondary:'tier-secondary',specialty:'tier-specialty'}[s.tier];
     var tierLabel={primary:'Primary',secondary:'Secondary',specialty:'Specialty'}[s.tier];
-    var statVal=getStatVal(s.stat);
-    var total=statVal+(parseInt(s.level)||0);
-    return '<div class="skill-row">'+
-      '<span class="skill-tier '+tierCls+'">'+tierLabel+'</span>'+
+    var total=getStatVal(s.stat)+(parseInt(s.level)||0);
+    return '<div class="skill-row"><span class="skill-tier '+tierCls+'">'+tierLabel+'</span>'+
       '<input type="text" value="'+escHtml(s.name)+'" placeholder="Skill name..." oninput="updateSkill('+s.id+',\'name\',this.value)">'+
       '<select onchange="updateSkill('+s.id+',\'stat\',this.value)">'+
         STATS.map(function(st){return '<option value="'+st.id+'"'+(s.stat===st.id?' selected':'')+'>'+st.name+'</option>';}).join('')+
       '</select>'+
-      '<input type="number" min="-1" max="10" value="'+s.level+'" oninput="updateSkill('+s.id+',\'level\',this.value)" style="text-align:center;font-family:\'Share Tech Mono\',monospace">'+
+      '<input type="number" min="-1" max="10" value="'+s.level+'" oninput="updateSkill('+s.id+',\'level\',this.value)" style="text-align:center;font-family:var(--font-mono)">'+
       '<div class="skill-total">'+total+'</div>'+
-      '<button class="danger" onclick="removeSkill('+s.id+')">✕</button>'+
-    '</div>';
+      '<button class="danger" onclick="removeSkill('+s.id+')">✕</button></div>';
   }).join('');
 }
-
-function updateSkill(id,field,val){
-  var s=skills.find(function(x){return x.id===id;});
-  if(!s)return;
-  s[field]=field==='level'?(parseInt(val)||0):val;
-  renderSkills();save();
-}
-
+function updateSkill(id,field,val){var s=skills.find(function(x){return x.id===id;});if(!s)return;s[field]=field==='level'?(parseInt(val)||0):val;renderSkills();save();}
 function updateSkillTotals(){renderSkills();}
-
-// MORALS
-var morals=[];var moralIdCounter=0;
-function addMoral(){
-  var id=++moralIdCounter;
-  morals.push({id:id,name:'',notes:''});
-  renderMorals();save();
-}
+var morals=[],moralIdCounter=0;
+function addMoral(){var id=++moralIdCounter;morals.push({id:id,name:'',notes:''});renderMorals();save();}
 function removeMoral(id){morals=morals.filter(function(m){return m.id!==id;});renderMorals();save();}
 function renderMorals(){
   var el=document.getElementById('moralsList');
   if(!morals.length){el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:8px 0">No morals defined.</div>';return;}
   el.innerHTML=morals.map(function(m){
-    return '<div class="list-item">'+
-      '<div class="list-item-header">'+
-        '<input type="text" value="'+escHtml(m.name)+'" placeholder="Moral (e.g. Humanity, Loyalty...)" oninput="updateMoral('+m.id+',\'name\',this.value)">'+
-        '<button class="danger" onclick="removeMoral('+m.id+')">✕</button>'+
-      '</div>'+
-      '<textarea placeholder="Description, infractions, fulfillments..." rows="2" oninput="updateMoral('+m.id+',\'notes\',this.value)">'+escHtml(m.notes)+'</textarea>'+
-    '</div>';
+    return '<div class="list-item"><div class="list-item-header">'+
+      '<input type="text" value="'+escHtml(m.name)+'" placeholder="Moral (e.g. Humanity, Loyalty...)" oninput="updateMoral('+m.id+',\'name\',this.value)">'+
+      '<button class="danger" onclick="removeMoral('+m.id+')">✕</button></div>'+
+      '<textarea placeholder="Description, infractions, fulfillments..." rows="2" oninput="updateMoral('+m.id+',\'notes\',this.value)">'+escHtml(m.notes)+'</textarea></div>';
   }).join('');
 }
 function updateMoral(id,field,val){var m=morals.find(function(x){return x.id===id;});if(m)m[field]=val;save();}
-
-// ADVANTAGES
-var advantages=[];var advIdCounter=0;
+var advantages=[],advIdCounter=0;
 var TIERS=['Minor','Moderate','Major','Massive','Monumental','Mythical'];
-function addAdvantage(){
-  var id=++advIdCounter;
-  advantages.push({id:id,name:'',tier:'Minor',type:'Background',notes:''});
-  renderAdvantages();save();
-}
+function addAdvantage(){var id=++advIdCounter;advantages.push({id:id,name:'',tier:'Minor',type:'Background',notes:''});renderAdvantages();save();}
 function removeAdvantage(id){advantages=advantages.filter(function(a){return a.id!==id;});renderAdvantages();save();}
 function renderAdvantages(){
   var el=document.getElementById('advantagesList');
   if(!advantages.length){el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:8px 0">No advantages.</div>';return;}
   el.innerHTML=advantages.map(function(a){
-    return '<div class="list-item">'+
-      '<div class="list-item-header">'+
-        '<input type="text" value="'+escHtml(a.name)+'" placeholder="Advantage name..." oninput="updateAdv('+a.id+',\'name\',this.value)">'+
-        '<select class="tier-select" onchange="updateAdv('+a.id+',\'tier\',this.value)">'+TIERS.map(function(t){return '<option'+(a.tier===t?' selected':'')+'>'+t+'</option>';}).join('')+'</select>'+
-        '<select class="tier-select" onchange="updateAdv('+a.id+',\'type\',this.value)">'+['Physical','Mental','Background','Special'].map(function(t){return '<option'+(a.type===t?' selected':'')+'>'+t+'</option>';}).join('')+'</select>'+
-        '<button class="danger" onclick="removeAdvantage('+a.id+')">✕</button>'+
-      '</div>'+
-      '<textarea placeholder="Description..." rows="2" oninput="updateAdv('+a.id+',\'notes\',this.value)">'+escHtml(a.notes)+'</textarea>'+
-    '</div>';
+    return '<div class="list-item"><div class="list-item-header">'+
+      '<input type="text" value="'+escHtml(a.name)+'" placeholder="Advantage name..." oninput="updateAdv('+a.id+',\'name\',this.value)">'+
+      '<select class="tier-select" onchange="updateAdv('+a.id+',\'tier\',this.value)">'+TIERS.map(function(t){return '<option'+(a.tier===t?' selected':'')+'>'+t+'</option>';}).join('')+'</select>'+
+      '<select class="tier-select" onchange="updateAdv('+a.id+',\'type\',this.value)">'+['Physical','Mental','Background','Special'].map(function(t){return '<option'+(a.type===t?' selected':'')+'>'+t+'</option>';}).join('')+'</select>'+
+      '<button class="danger" onclick="removeAdvantage('+a.id+')">✕</button></div>'+
+      '<textarea placeholder="Description..." rows="2" oninput="updateAdv('+a.id+',\'notes\',this.value)">'+escHtml(a.notes)+'</textarea></div>';
   }).join('');
 }
 function updateAdv(id,field,val){var a=advantages.find(function(x){return x.id===id;});if(a)a[field]=val;save();}
-
-// DISADVANTAGES
-var disadvantages=[];var disIdCounter=0;
-function addDisadvantage(){
-  var id=++disIdCounter;
-  disadvantages.push({id:id,name:'',tier:'Minor',notes:''});
-  renderDisadvantages();save();
-}
+var disadvantages=[],disIdCounter=0;
+function addDisadvantage(){var id=++disIdCounter;disadvantages.push({id:id,name:'',tier:'Minor',notes:''});renderDisadvantages();save();}
 function removeDisadvantage(id){disadvantages=disadvantages.filter(function(d){return d.id!==id;});renderDisadvantages();save();}
 function renderDisadvantages(){
   var el=document.getElementById('disadvantagesList');
   if(!disadvantages.length){el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:8px 0">No disadvantages.</div>';return;}
   el.innerHTML=disadvantages.map(function(d){
-    return '<div class="list-item">'+
-      '<div class="list-item-header">'+
-        '<input type="text" value="'+escHtml(d.name)+'" placeholder="Disadvantage name..." oninput="updateDis('+d.id+',\'name\',this.value)">'+
-        '<select class="tier-select" onchange="updateDis('+d.id+',\'tier\',this.value)">'+TIERS.map(function(t){return '<option'+(d.tier===t?' selected':'')+'>'+t+'</option>';}).join('')+'</select>'+
-        '<button class="danger" onclick="removeDisadvantage('+d.id+')">✕</button>'+
-      '</div>'+
-      '<textarea placeholder="Description..." rows="2" oninput="updateDis('+d.id+',\'notes\',this.value)">'+escHtml(d.notes)+'</textarea>'+
-    '</div>';
+    return '<div class="list-item"><div class="list-item-header">'+
+      '<input type="text" value="'+escHtml(d.name)+'" placeholder="Disadvantage name..." oninput="updateDis('+d.id+',\'name\',this.value)">'+
+      '<select class="tier-select" onchange="updateDis('+d.id+',\'tier\',this.value)">'+TIERS.map(function(t){return '<option'+(d.tier===t?' selected':'')+'>'+t+'</option>';}).join('')+'</select>'+
+      '<button class="danger" onclick="removeDisadvantage('+d.id+')">✕</button></div>'+
+      '<textarea placeholder="Description..." rows="2" oninput="updateDis('+d.id+',\'notes\',this.value)">'+escHtml(d.notes)+'</textarea></div>';
   }).join('');
 }
 function updateDis(id,field,val){var d=disadvantages.find(function(x){return x.id===id;});if(d)d[field]=val;save();}
-
-// UI UTILS
 function toggleSection(header){
-  var body=header.nextElementSibling;
-  var tog=header.querySelector('.section-toggle');
-  body.classList.toggle('collapsed');
-  tog.textContent=body.classList.contains('collapsed')?'▼':'▲';
+  var body=header.nextElementSibling;var tog=header.querySelector('.section-toggle');
+  body.classList.toggle('collapsed');tog.textContent=body.classList.contains('collapsed')?'▼':'▲';
 }
-
 function switchTab(name,el){
   document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});
   document.querySelectorAll('.tab-panel').forEach(function(p){p.classList.remove('active');});
-  el.classList.add('active');
-  document.getElementById('tab-'+name).classList.add('active');
+  el.classList.add('active');document.getElementById('tab-'+name).classList.add('active');
 }
-
 function updateXP(){
   var total=parseInt(document.getElementById('xpTotal').value)||0;
   var spent=parseInt(document.getElementById('xpSpent').value)||0;
   document.getElementById('xpLeft').textContent=total-spent;
 }
-
 function escHtml(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-
-// PERSIST
 function storeVal(k,v){try{localStorage.setItem('prime_'+k,v);}catch(e){}}
 function loadVal(k,def){try{var v=localStorage.getItem('prime_'+k);return v!==null?v:def;}catch(e){return def;}}
-
 function save(){
   try{
     var data={
@@ -531,26 +386,16 @@ function save(){
       bioNotes:document.getElementById('bioNotes').value,
       xpTotal:document.getElementById('xpTotal').value,
       xpSpent:document.getElementById('xpSpent').value,
-      stats:{},
-      skills:skills,
-      morals:morals,
-      advantages:advantages,
-      disadvantages:disadvantages,
-      skillIdCounter:skillIdCounter,
-      moralIdCounter:moralIdCounter,
-      advIdCounter:advIdCounter,
-      disIdCounter:disIdCounter,
+      stats:{},skills:skills,morals:morals,advantages:advantages,disadvantages:disadvantages,
+      skillIdCounter:skillIdCounter,moralIdCounter:moralIdCounter,advIdCounter:advIdCounter,disIdCounter:disIdCounter,
     };
     STATS.forEach(function(s){data.stats[s.id]=document.getElementById('sv_'+s.id).value;});
     localStorage.setItem('prime_sheet',JSON.stringify(data));
   }catch(e){}
 }
-
 function load(){
   try{
-    var raw=localStorage.getItem('prime_sheet');
-    if(!raw)return;
-    var d=JSON.parse(raw);
+    var raw=localStorage.getItem('prime_sheet');if(!raw)return;var d=JSON.parse(raw);
     ['charName','archetype','age','gender','nationality','ethnicity','background','appearance','occupation','bioNotes'].forEach(function(k){
       if(d[k]!==undefined)document.getElementById(k).value=d[k];
     });
@@ -565,23 +410,14 @@ function load(){
     if(d.disadvantages){disadvantages=d.disadvantages;disIdCounter=d.disIdCounter||disadvantages.length;}
   }catch(e){}
 }
-
-// INIT
-load();
-buildStats();
+load();buildStats();
 STATS.forEach(function(s){
-  var stored=loadVal(s.id+'_val','2');
-  var el=document.getElementById('sv_'+s.id);
+  var stored=loadVal(s.id+'_val','2');var el=document.getElementById('sv_'+s.id);
   if(el)el.value=stored;
   document.getElementById('sm_'+s.id).textContent=fmtMod(getStatMod(stored));
   document.getElementById('sl_'+s.id).textContent=STAT_LABELS[Math.min(parseInt(stored)||0,20)]||'';
 });
-updateDerived();
-renderSkills();
-renderMorals();
-renderAdvantages();
-renderDisadvantages();
-updateXP();
+updateDerived();renderSkills();renderMorals();renderAdvantages();renderDisadvantages();updateXP();
 </script>
 </body>
 </html>
