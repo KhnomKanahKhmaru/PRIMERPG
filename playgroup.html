@@ -361,6 +361,8 @@
     document.title = pg.name + ' — PRIME RPG';
     document.getElementById('pg-name').textContent = pg.name;
     document.getElementById('pg-primer').textContent = pg.primer || '';
+    document.getElementById('news-loading').style.display = 'none';
+    document.getElementById('news-empty').style.display = 'block';
 
     if (pg.world) {
       if (pg.world.synopsis) document.getElementById('world-synopsis').textContent = pg.world.synopsis;
