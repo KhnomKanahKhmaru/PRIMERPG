@@ -72,7 +72,7 @@
       text-transform: uppercase;
       color: #555;
     }
-    .field input, .field textarea {
+    .field input, .field textarea, .field select {
       background: #111;
       border: 1px solid #222;
       color: #e0e0e0;
@@ -83,9 +83,10 @@
       outline: none;
       width: 100%;
     }
-    .field input:focus, .field textarea:focus { border-color: #444; }
+    .field input:focus, .field textarea:focus, .field select:focus { border-color: #444; }
     .field textarea { resize: vertical; min-height: 100px; line-height: 1.6; }
-    .btn-row { display: flex; gap: 8px; margin-top: 16px; }
+    .field select option { background: #111; }
+    .btn-row { display: flex; gap: 8px; margin-top: 16px; align-items: center; }
     .save-btn {
       background: #1a1a1a;
       border: 1px solid #333;
@@ -97,7 +98,7 @@
       cursor: pointer;
     }
     .save-btn:hover { background: #222; border-color: #555; }
-    .save-msg { font-size: 11px; margin-left: 6px; color: #66ff99; align-self: center; }
+    .save-msg { font-size: 11px; margin-left: 6px; color: #66ff99; }
     .empty { color: #444; font-size: 13px; text-align: center; padding: 60px 0; }
   </style>
 </head>
@@ -128,6 +129,12 @@
       <div class="field"><label>Paradigm</label><input type="text" id="e-paradigm" oninput="updatePreview()"></div>
       <div class="field"><label>Archetype</label><input type="text" id="e-archetype" oninput="updatePreview()"></div>
       <div class="field"><label>Residence</label><input type="text" id="e-residence" oninput="updatePreview()"></div>
+      <div class="field">
+        <label>World (Playgroup)</label>
+        <select id="e-playgroup" onchange="updatePreview()">
+          <option value="">None — not in active play</option>
+        </select>
+      </div>
       <div class="field"><label>Appearance</label><textarea id="e-appearance" oninput="updatePreview()"></textarea></div>
       <div class="btn-row">
         <button class="save-btn" onclick="saveBio()">Save</button>
@@ -142,7 +149,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
-  import { getFirestore, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+  import { getFirestore, doc, getDoc, updateDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCf94yLvAtJ9pLgJ3FsV7ir4Qh9XXm3nHg",
@@ -163,8 +170,9 @@
 
   let charData = {};
   let canEdit = false;
+  let userPlaygroups = []; // {id, name}
 
-  function buildProse(d) {
+  function buildProse(d, pgName) {
     const name = d.name || '___';
     let line1 = `${name} is a`;
     if (d.sex) line1 += ` ${d.sex}`;
@@ -173,14 +181,28 @@
     if (d.paradigm) line1 += ` ${d.paradigm}`;
     if (d.archetype) line1 += ` ${d.archetype}`;
     if (d.residence) line1 += ` living in ${d.residence}`;
-    line1 += '.';
+    if (pgName) {
+      line1 += `, from the World of ${pgName}.`;
+    } else {
+      line1 += '. Currently, they are not an active Character in play.';
+    }
     let line2 = `${name} typically appears as`;
     if (d.appearance) line2 += ` ${d.appearance}`;
     return line1 + '<br><br>' + line2;
   }
 
-  function renderBio() {
-    document.getElementById('bio-prose').innerHTML = buildProse(charData);
+  async function getActivePgName() {
+    if (!charData.playgroupId) return null;
+    // check membership still exists
+    const mDoc = await getDoc(doc(db, 'memberships', auth.currentUser.uid + '_' + charData.playgroupId));
+    if (!mDoc.exists()) return null;
+    const pgDoc = await getDoc(doc(db, 'playgroups', charData.playgroupId));
+    return pgDoc.exists() ? pgDoc.data().name : null;
+  }
+
+  async function renderBio() {
+    const pgName = await getActivePgName();
+    document.getElementById('bio-prose').innerHTML = buildProse(charData, pgName);
     document.getElementById('char-name').textContent = charData.name || 'Unnamed';
     document.getElementById('char-sub').textContent =
       [charData.paradigm, charData.archetype].filter(Boolean).join(' · ') || '';
@@ -201,10 +223,20 @@
 
     canEdit = charData.uid === user.uid;
 
+    // load user's playgroups for the dropdown
+    const membershipsQ = query(collection(db, 'memberships'), where('uid', '==', user.uid));
+    const membershipsSnap = await getDocs(membershipsQ);
+    for (const mDoc of membershipsSnap.docs) {
+      const pgDoc = await getDoc(doc(db, 'playgroups', mDoc.data().playgroupId));
+      if (pgDoc.exists()) {
+        userPlaygroups.push({ id: pgDoc.id, name: pgDoc.data().name });
+      }
+    }
+
     document.getElementById('loading').style.display = 'none';
     document.getElementById('char-content').style.display = 'block';
 
-    renderBio();
+    await renderBio();
 
     if (canEdit) {
       document.getElementById('bio-edit-btn').style.display = 'inline';
@@ -223,6 +255,17 @@
     document.getElementById('e-archetype').value = charData.archetype || '';
     document.getElementById('e-residence').value = charData.residence || '';
     document.getElementById('e-appearance').value = charData.appearance || '';
+
+    // populate playgroup dropdown
+    const sel = document.getElementById('e-playgroup');
+    sel.innerHTML = '<option value="">None — not in active play</option>';
+    userPlaygroups.forEach(pg => {
+      const opt = document.createElement('option');
+      opt.value = pg.id;
+      opt.textContent = pg.name;
+      if (charData.playgroupId === pg.id) opt.selected = true;
+      sel.appendChild(opt);
+    });
   }
 
   window.cancelBio = function() {
@@ -242,7 +285,9 @@
       residence: document.getElementById('e-residence').value.trim(),
       appearance: document.getElementById('e-appearance').value.trim(),
     };
-    document.getElementById('bio-prose').innerHTML = buildProse(d);
+    const selPgId = document.getElementById('e-playgroup').value;
+    const pg = userPlaygroups.find(p => p.id === selPgId);
+    document.getElementById('bio-prose').innerHTML = buildProse(d, pg ? pg.name : null);
   }
 
   window.saveBio = async function() {
@@ -256,11 +301,12 @@
       archetype: document.getElementById('e-archetype').value.trim(),
       residence: document.getElementById('e-residence').value.trim(),
       appearance: document.getElementById('e-appearance').value.trim(),
+      playgroupId: document.getElementById('e-playgroup').value || null,
     };
     try {
       await updateDoc(doc(db, 'characters', charId), updated);
       Object.assign(charData, updated);
-      renderBio();
+      await renderBio();
       msg.textContent = 'Saved!';
       setTimeout(() => {
         msg.textContent = '';
