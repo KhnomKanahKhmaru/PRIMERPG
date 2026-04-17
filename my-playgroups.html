@@ -231,7 +231,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
-  import { getFirestore, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+  import { getFirestore, collection, query, where, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCf94yLvAtJ9pLgJ3FsV7ir4Qh9XXm3nHg",
@@ -253,7 +253,8 @@
     }
 
     const list = document.getElementById('pg-list');
-    const q = query(collection(db, 'playgroups'), where('members', 'array-contains', { uid: user.uid, role: 'Leader' }));
+
+    const q = query(collection(db, 'memberships'), where('uid', '==', user.uid));
     const snap = await getDocs(q);
 
     if (snap.empty) {
@@ -261,16 +262,18 @@
       return;
     }
 
-    snap.forEach(doc => {
-      const pg = doc.data();
-      const myRole = pg.members.find(m => m.uid === user.uid)?.role || 'Player';
+    for (const memberDoc of snap.docs) {
+      const membership = memberDoc.data();
+      const pgDoc = await getDoc(doc(db, 'playgroups', membership.playgroupId));
+      if (!pgDoc.exists()) continue;
+      const pg = pgDoc.data();
       list.innerHTML += `
-        <div class="pg-card" onclick="window.location.href='playgroup.html?id=${doc.id}'">
+        <div class="pg-card" onclick="window.location.href='playgroup.html?id=${pgDoc.id}'">
           <div class="pg-card-name">${pg.name}</div>
           <div class="pg-card-primer">${pg.primer || ''}</div>
-          <span class="pg-card-role">${myRole}</span>
+          <span class="pg-card-role">${membership.role}</span>
         </div>`;
-    });
+    }
   });
 
   window.logout = async function() {
