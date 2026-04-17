@@ -358,17 +358,24 @@
   const SEVERITY_OPTIONS = ['Minor','Moderate','Major','Massive','Monumental','Mega','Mythical'];
 
   const MORAL_SEVERITY = [
-    {value:'Minor',label:'Minor (−2 / 1pt)'},{value:'Moderate',label:'Moderate (−1 / 2pt)'},
-    {value:'Major',label:'Major (+0 / 3pt)'},{value:'Massive',label:'Massive (+1 / 4pt)'},
-    {value:'Monumental',label:'Monumental (+2 / 5pt)'},{value:'Mega',label:'Mega (+3 / 6pt)'},
-    {value:'Mythical',label:'Mythical (+4 / 7pt)'}
+    {value:'Minor',label:'Minor (−2 Difficulty / 1pt)'},{value:'Moderate',label:'Moderate (−1 Difficulty / 2pt)'},
+    {value:'Major',label:'Major (+0 Difficulty / 3pt)'},{value:'Massive',label:'Massive (+1 Difficulty / 4pt)'},
+    {value:'Monumental',label:'Monumental (+2 Difficulty / 5pt)'},{value:'Mega',label:'Mega (+3 Difficulty / 6pt)'},
+    {value:'Mythical',label:'Mythical (+4 Difficulty / 7pt)'}
   ];
 
   const CONDITION_SEVERITY = [
-    {value:'Minor',label:'Minor (−1)'},{value:'Moderate',label:'Moderate (+0)'},
-    {value:'Major',label:'Major (+1)'},{value:'Massive',label:'Massive (+2)'},
-    {value:'Monumental',label:'Monumental (+3)'},{value:'Mega',label:'Mega (+4)'},
-    {value:'Mythical',label:'Mythical (+5)'}
+    {value:'Minor',label:'Minor (−1 Difficulty / 1 Break Point)'},{value:'Moderate',label:'Moderate (+0 Difficulty / 2 Break Points)'},
+    {value:'Major',label:'Major (+1 Difficulty / 3 Break Points)'},{value:'Massive',label:'Massive (+2 Difficulty / 4 Break Points)'},
+    {value:'Monumental',label:'Monumental (+3 Difficulty / 5 Break Points)'},{value:'Mega',label:'Mega (+4 Difficulty / 6 Break Points)'},
+    {value:'Mythical',label:'Mythical (+5 Difficulty / 7 Break Points)'}
+  ];
+
+  const OBLIGATION_SEVERITY = [
+    {value:'Minor',label:'Minor Obligation (1 Break Point)'},{value:'Moderate',label:'Moderate Obligation (2 Break Points)'},
+    {value:'Major',label:'Major Obligation (3 Break Points)'},{value:'Massive',label:'Massive Obligation (4 Break Points)'},
+    {value:'Monumental',label:'Monumental Obligation (5 Break Points)'},{value:'Mega',label:'Mega Obligation (6 Break Points)'},
+    {value:'Mythical',label:'Mythical Obligation (7 Break Points)'}
   ];
 
   function severityLabel(value, opts) {
@@ -677,7 +684,7 @@
     document.getElementById('obligations-view').innerHTML=o.length===0?'<div style="color:#333;font-size:12px">None.</div>'
       :o.map((x,i)=>`<div class="obligation-entry">
         <div class="entry-header">
-          <span style="font-size:11px;font-weight:600;color:#777">${x.severity||'Minor'} Obligation</span>
+          <span style="font-size:11px;font-weight:600;color:#777">${severityLabel(x.severity,OBLIGATION_SEVERITY)}</span>
           ${canEdit?`<span class="entry-delete" onclick="deleteObligation(${i})">×</span>`:''}
         </div>
         I have to <span class="entry-text">${x.obligation||'___'}</span> because I <span class="entry-text">${x.violation||'___'}</span>
@@ -689,8 +696,7 @@
     document.getElementById('obligations-list').innerHTML=o.length===0?'<div style="color:#333;font-size:12px;margin-bottom:8px">No entries yet.</div>'
       :o.map((x,i)=>`<div class="obligation-entry">
         <div class="entry-header">
-          ${severitySelectHtml(x.severity,`saveObligation(${i},'severity',this.value)`)}
-          <span class="entry-header-type">Obligation</span>
+          ${severitySelectHtml(x.severity,`saveObligation(${i},'severity',this.value)`,OBLIGATION_SEVERITY)}
           <span class="entry-delete" onclick="deleteObligation(${i})">×</span>
         </div>
         I have to <input class="entry-input" value="${x.obligation||''}" placeholder="..." onchange="saveObligation(${i},'obligation',this.value)">
