@@ -73,6 +73,7 @@
   <h1>PRIME RPG</h1>
 
   <input type="email" id="email" placeholder="Email">
+  <input type="text" id="username" placeholder="Username (for new accounts)">
   <input type="password" id="password" placeholder="Password">
 
   <button onclick="login()">Login</button>
@@ -83,7 +84,9 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
   import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
+  import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
 
+  
   // YOUR CONFIG HERE - paste your firebaseConfig object from earlier
   const firebaseConfig = {
     apiKey: "AIzaSyCf94yLvAtJ9pLgJ3FsV7ir4Qh9XXm3nHg",
@@ -96,6 +99,7 @@
 
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
+  const db = getFirestore(app);
 
   function showMessage(text, isError) {
     const el = document.getElementById('message');
@@ -116,16 +120,26 @@
   }
 
   window.createAccount = async function() {
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
-    try {
-      await createUserWithEmailAndPassword(auth, email, password);
-      showMessage('Account created! Redirecting...', false);
-      setTimeout(() => { window.location.href = 'sheet.html'; }, 1000);
-    } catch(e) {
-      showMessage('Could not create account. Password must be at least 6 characters.', true);
-    }
+  const email = document.getElementById('email').value;
+  const password = document.getElementById('password').value;
+  const username = document.getElementById('username').value;
+  if (!username) {
+    showMessage('Please enter a username.', true);
+    return;
   }
+  try {
+    const result = await createUserWithEmailAndPassword(auth, email, password);
+    await setDoc(doc(db, 'users', result.user.uid), {
+      username: username,
+      email: email,
+      createdAt: new Date()
+    });
+    showMessage('Account created! Redirecting...', false);
+    setTimeout(() => { window.location.href = 'sheet.html'; }, 1000);
+  } catch(e) {
+    showMessage('Could not create account. Password must be at least 6 characters.', true);
+  }
+}
 </script>
 </body>
 </html>
