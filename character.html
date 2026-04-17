@@ -104,7 +104,7 @@
     .moral-chip:hover { border-color: #444; color: #aaa; }
 
     /* ── Stats Card ── */
-    .stats-card { display: flex; align-items: stretch; border: 1px solid #222; border-radius: 6px; overflow: hidden; margin-top: 16px; min-height: 300px; }
+    .stats-card { display: flex; align-items: stretch; border: 1px solid #222; border-radius: 6px; margin-top: 16px; min-height: 300px; }
     .stats-col { width: 300px; flex-shrink: 0; border-right: 1px solid #222; background: #0a0a0a; padding: 16px; }
     .stats-col-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #1a1a1a; }
     .stats-col-title { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #555; flex: 1; }
@@ -148,7 +148,7 @@
     .skill-name { font-size: 10px; color: #666; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
     .skill-val-display { font-size: 11px; color: #888; font-weight: 600; min-width: 16px; text-align: right; }
     .skill-input { width: 36px; background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; text-align: center; padding: 1px 2px; border-radius: 2px; outline: none; }
-    .skill-tooltip { display: none; position: absolute; bottom: 100%; left: 0; background: #1a1a1a; border: 1px solid #333; border-radius: 4px; padding: 6px 8px; font-size: 11px; color: #aaa; width: 180px; z-index: 100; pointer-events: none; white-space: normal; line-height: 1.4; margin-bottom: 4px; }
+    .skill-tooltip { display: none; position: absolute; bottom: 100%; left: 0; background: #1a1a1a; border: 1px solid #333; border-radius: 4px; padding: 6px 8px; font-size: 11px; color: #aaa; width: 180px; z-index: 1000; pointer-events: none; white-space: normal; line-height: 1.4; margin-bottom: 4px; }
     .skill-item:hover .skill-tooltip { display: block; }
     .skill-add-row { display: flex; gap: 6px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
     .skill-add-input { background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 8px; border-radius: 3px; outline: none; }
