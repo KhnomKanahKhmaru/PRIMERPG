@@ -353,6 +353,7 @@
 
   window.editField = function(field) {
     document.getElementById(field + '-display').style.display = 'none';
+    document.getElementById(field + '-editor').style.display = 'block';
     document.getElementById(field + '-editor').classList.add('quill-active');
     document.getElementById(field + '-save-row').style.display = 'block';
     document.getElementById(field + '-edit-btn').style.display = 'none';
@@ -360,6 +361,7 @@
 
   window.cancelField = function(field) {
     document.getElementById(field + '-display').style.display = 'block';
+    document.getElementById(field + '-editor').style.display = 'none';
     document.getElementById(field + '-editor').classList.remove('quill-active');
     document.getElementById(field + '-save-row').style.display = 'none';
     document.getElementById(field + '-edit-btn').style.display = 'inline';
