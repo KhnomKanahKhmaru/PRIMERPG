@@ -112,12 +112,12 @@
     .stat-icon-wrap { position: relative; width: 36px; flex-shrink: 0; }
     .stat-icon { width: 36px; height: 36px; border-radius: 4px; overflow: hidden; background: #000; cursor: default; }
     .stat-icon svg { width: 36px; height: 36px; }
-    .stat-tooltip { display: none; position: absolute; left: 44px; top: 0; background: #1a1a1a; border: 1px solid #333; border-radius: 4px; padding: 6px 8px; font-size: 11px; color: #aaa; width: 200px; z-index: 200; pointer-events: none; white-space: normal; line-height: 1.4; }
+    .stat-tooltip { display: none; position: absolute; left: 44px; top: 0; background: #1e1e1e; border: 1px solid #444; border-radius: 4px; padding: 7px 10px; font-size: 12px; color: #ccc; width: 200px; z-index: 200; pointer-events: none; white-space: normal; line-height: 1.5; }
     .stat-icon-wrap:hover .stat-tooltip { display: block; }
     .stat-info { flex: 1; min-width: 0; }
     .stat-label { font-size: 12px; font-weight: 500; color: #666; }
     .stat-label .abbr { color: #aaa; font-weight: 700; }
-    .stat-level-label { font-size: 10px; font-style: italic; color: #444; margin-top: 2px; }
+    .stat-level-label { font-size: 11px; font-style: italic; color: #666; margin-top: 2px; }
     .stat-value-area { display: flex; flex-direction: column; align-items: center; gap: 2px; flex-shrink: 0; }
     .stat-value-wrap { position: relative; display: inline-flex; align-items: flex-start; }
     .stat-total-display { font-size: 20px; font-weight: 700; color: #e0e0e0; }
@@ -154,7 +154,7 @@
     .skill-name { font-size: 10px; color: #666; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
     .skill-val-display { font-size: 11px; color: #888; font-weight: 600; min-width: 16px; text-align: right; }
     .skill-input { width: 36px; background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; text-align: center; padding: 1px 2px; border-radius: 2px; outline: none; }
-    .skill-tooltip { display: none; position: absolute; bottom: 100%; left: 0; background: #1a1a1a; border: 1px solid #333; border-radius: 4px; padding: 6px 8px; font-size: 11px; color: #aaa; width: 180px; z-index: 1000; pointer-events: none; white-space: normal; line-height: 1.4; margin-bottom: 4px; }
+    .skill-tooltip { display: none; position: absolute; bottom: 100%; left: 0; background: #1e1e1e; border: 1px solid #444; border-radius: 4px; padding: 7px 10px; font-size: 12px; color: #ccc; width: 200px; z-index: 1000; pointer-events: none; white-space: normal; line-height: 1.5; margin-bottom: 4px; }
     .skill-item:hover .skill-tooltip { display: block; }
     .skill-add-row { display: flex; gap: 6px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
     .skill-add-input { background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 8px; border-radius: 3px; outline: none; }
@@ -642,7 +642,7 @@
     if(selected.length===0){display.innerHTML='<div class="moral-empty">No morals selected.</div>';return;}
     display.innerHTML=selected.map(m=>`
       <div class="moral-card-item">
-        <div class="moral-card-top"><span style="font-size:10px;color:#555">${severityLabel(m.severity,MORAL_SEVERITY)}</span></div>
+        <div class="moral-card-top"><span style="font-size:11px;color:#888;font-weight:500">${severityLabel(m.severity,MORAL_SEVERITY)}</span></div>
         <div class="moral-card-name">${m.name}</div>
       </div>`).join('');
   }
@@ -684,7 +684,7 @@
     document.getElementById('obligations-view').innerHTML=o.length===0?'<div style="color:#333;font-size:12px">None.</div>'
       :o.map((x,i)=>`<div class="obligation-entry">
         <div class="entry-header">
-          <span style="font-size:11px;font-weight:600;color:#777">${severityLabel(x.severity,OBLIGATION_SEVERITY)}</span>
+          <span style="font-size:12px;font-weight:600;color:#aaa">${severityLabel(x.severity,OBLIGATION_SEVERITY)}</span>
           ${canEdit?`<span class="entry-delete" onclick="deleteObligation(${i})">×</span>`:''}
         </div>
         I have to <span class="entry-text">${x.obligation||'___'}</span> because I <span class="entry-text">${x.violation||'___'}</span>
@@ -716,7 +716,7 @@
     document.getElementById('disorders-view').innerHTML=d.length===0?'<div style="color:#333;font-size:12px">None.</div>'
       :d.map((x,i)=>`<div class="disorder-entry">
         <div class="entry-header">
-          <span style="font-size:11px;font-weight:600;color:#777">${severityLabel(x.severity,CONDITION_SEVERITY).replace('Condition', x.disorder||'Condition')}</span>
+          <span style="font-size:12px;font-weight:600;color:#aaa">${severityLabel(x.severity,CONDITION_SEVERITY).replace('Condition', x.disorder||'Condition')}</span>
           ${canEdit?`<span class="entry-delete" onclick="deleteDisorder(${i})">×</span>`:''}
         </div>
         I have <span class="entry-text">${x.disorder||'___'}</span> which means <span class="entry-text">${x.description||'___'}</span> and if triggered I might <span class="entry-text">${x.symptoms||'___'}</span>
