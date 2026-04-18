@@ -275,31 +275,36 @@
     } else {
       // Editing: load existing
       const rsDoc = await getDoc(doc(db, 'rulesets', rulesetId));
-      if (!rsDoc.exists()) { window.location.href = 'my-rulesets.html'; return; }
-      existingDoc = rsDoc.data();
-      state = window.normalizeRuleset(existingDoc);
+      if (!rsDoc.exists()) {
+        window.location.href = 'my-rulesets.html';
+      } else {
+        existingDoc = rsDoc.data();
+        state = window.normalizeRuleset(existingDoc);
 
-      // Permission check
-      const isOwner = existingDoc.createdBy === myUid;
-      const isBasic = existingDoc.isBasicSet;
-      const isSiteAdmin = myUid === window.SITE_ADMIN_UID;
-      let canEdit = isOwner;
-      if (isBasic) canEdit = isSiteAdmin;
-      if (existingDoc.playgroupId) {
-        // Leaders/Admins of the playgroup can edit it
-        const memb = await getDoc(doc(db, 'memberships', myUid + '_' + existingDoc.playgroupId));
-        if (memb.exists()) {
-          const r = memb.data().role;
-          if (r === 'Leader' || r === 'Administrator') canEdit = true;
+        // Permission check
+        const isOwner = existingDoc.createdBy === myUid;
+        const isBasic = existingDoc.isBasicSet;
+        const isSiteAdmin = myUid === window.SITE_ADMIN_UID;
+        let canEdit = isOwner;
+        if (isBasic) canEdit = isSiteAdmin;
+        if (existingDoc.playgroupId) {
+          const memb = await getDoc(doc(db, 'memberships', myUid + '_' + existingDoc.playgroupId));
+          if (memb.exists()) {
+            const r = memb.data().role;
+            if (r === 'Leader' || r === 'Administrator') canEdit = true;
+          }
+        }
+        if (!canEdit) {
+          alert('You do not have permission to edit this ruleset.');
+          window.location.href = 'my-rulesets.html';
+        } else {
+          document.getElementById('page-title').textContent = isBasic ? 'Edit Basic Set' : ('Edit Ruleset — ' + existingDoc.name);
+          document.getElementById('submit-btn').textContent = 'Save Changes';
+          if (!isBasic) document.getElementById('delete-btn').style.display = 'inline-block';
+          if (isBasic) document.getElementById('playgroup-field').style.display = 'none';
+          initUI();
         }
       }
-      if (!canEdit) { alert('You do not have permission to edit this ruleset.'); window.location.href = 'my-rulesets.html'; return; }
-
-      document.getElementById('page-title').textContent = isBasic ? 'Edit Basic Set' : ('Edit Ruleset — ' + existingDoc.name);
-      document.getElementById('submit-btn').textContent = 'Save Changes';
-      if (!isBasic) document.getElementById('delete-btn').style.display = 'inline-block';
-      if (isBasic) document.getElementById('playgroup-field').style.display = 'none';
-      initUI();
     }
   }
 
