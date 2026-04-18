@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PRIME RPG — Edit Ruleset</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="nav.js"></script>
+  <script src="ruleset-defaults.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0a0a0a; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 14px; min-height: 100vh; }
+    .page { padding-top: 104px; max-width: 900px; margin: 0 auto; padding: 104px 24px 80px; }
+    .page-title { font-size: 20px; font-weight: 600; margin-bottom: 4px; color: #e0e0e0; }
+    .page-sub { font-size: 12px; color: #666; margin-bottom: 24px; }
+    .section { border: 1px solid #1a1a1a; border-radius: 6px; padding: 18px 20px; margin-bottom: 14px; background: #0e0e0e; }
+    .section-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid #1a1a1a; }
+    .section-title { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #aaa; flex: 1; }
+    .section-desc { font-size: 12px; color: #666; line-height: 1.6; margin-bottom: 12px; }
+    .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+    .field label { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; }
+    .field input, .field select {
+      background: #111; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 13px; padding: 7px 10px;
+      border-radius: 4px; outline: none; width: 100%;
+    }
+    .field input:focus, .field select:focus { border-color: #444; }
+    .field select option { background: #111; }
+
+    .row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .row .field { flex: 1; min-width: 120px; }
+
+    /* XP table grid */
+    .xp-table { display: grid; grid-template-columns: 60px 1fr; gap: 4px; align-items: center; margin-bottom: 10px; max-width: 320px; }
+    .xp-table .xp-lbl { font-size: 11px; color: #888; text-align: right; padding-right: 8px; }
+    .xp-table input { width: 100%; text-align: center; font-size: 12px; padding: 5px; background: #111; border: 1px solid #222; color: #e0e0e0; border-radius: 3px; outline: none; font-family: 'Open Sans', sans-serif; }
+    .xp-table input:focus { border-color: #444; }
+    .xp-table .not-takable { color: #666; font-style: italic; font-size: 11px; text-align: center; }
+
+    /* Power levels */
+    .pl-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+    .pl-row { display: flex; gap: 6px; align-items: center; background: #111; border: 1px solid #1a1a1a; border-radius: 4px; padding: 8px 10px; }
+    .pl-row input[type=text] { flex: 1; background: transparent; border: none; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 13px; outline: none; border-bottom: 1px solid #222; padding: 2px 0; }
+    .pl-row input[type=text]:focus { border-bottom-color: #555; }
+    .pl-row .pl-xp { width: 60px; background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; padding: 4px 6px; border-radius: 3px; font-size: 12px; text-align: center; outline: none; font-family: 'Open Sans', sans-serif; }
+    .pl-row .pl-xp-lbl { font-size: 10px; color: #666; }
+    .pl-row .pl-default-wrap { display: flex; align-items: center; gap: 4px; font-size: 10px; color: #666; }
+    .pl-row .pl-default-wrap input { width: 14px; height: 14px; }
+    .pl-delete { color: #555; font-size: 18px; cursor: pointer; padding: 0 4px; line-height: 1; }
+    .pl-delete:hover { color: #c84b4b; }
+
+    /* Primary Skills list */
+    .skills-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+    .skill-row { display: flex; gap: 8px; align-items: flex-start; background: #111; border: 1px solid #1a1a1a; border-radius: 4px; padding: 8px 10px; }
+    .skill-row input { background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 5px 8px; border-radius: 3px; outline: none; }
+    .skill-row input.skill-name { width: 140px; flex-shrink: 0; }
+    .skill-row input.skill-desc { flex: 1; min-width: 0; }
+    .skill-row input:focus { border-color: #444; }
+
+    /* Morals */
+    .morals-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+    .moral-tag { display: flex; align-items: center; gap: 6px; background: #111; border: 1px solid #222; border-radius: 4px; padding: 5px 10px; font-size: 12px; color: #ccc; }
+    .moral-tag.wildcard { border-style: dashed; color: #888; font-style: italic; }
+    .moral-tag .x { cursor: pointer; color: #555; font-size: 14px; line-height: 1; }
+    .moral-tag .x:hover { color: #c84b4b; }
+
+    .add-row { display: flex; gap: 6px; margin-bottom: 10px; }
+    .add-row input {
+      flex: 1; background: #111; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 10px;
+      border-radius: 3px; outline: none;
+    }
+    .add-row input:focus { border-color: #444; }
+
+    .btn { background: #1a1a1a; border: 1px solid #333; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 14px; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+    .btn:hover { background: #222; border-color: #555; }
+    .btn.primary { background: #1f2c3a; border-color: #3a5878; color: #cfe3f6; }
+    .btn.primary:hover { background: #263747; border-color: #4a6e8f; }
+    .btn.small { font-size: 11px; padding: 4px 10px; }
+    .btn.danger { color: #c87777; border-color: #4a1a1a; }
+    .btn.danger:hover { background: #2a1313; border-color: #6a2a2a; }
+
+    .footer-actions { display: flex; gap: 8px; align-items: center; margin-top: 20px; padding: 16px 20px; border-top: 1px solid #1a1a1a; }
+    .footer-actions .save-msg { font-size: 12px; color: #66ff99; margin-left: auto; }
+
+    .empty { color: #444; font-size: 12px; font-style: italic; }
+    .hint { font-size: 11px; color: #666; margin-bottom: 8px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+<script>injectNav();</script>
+
+<div class="page">
+  <div id="loading" style="color:#555;text-align:center;padding:40px">Loading...</div>
+  <div id="content" style="display:none">
+    <div class="page-title" id="page-title">Create Ruleset</div>
+    <div class="page-sub" id="page-sub">Build a complete rules module. All fields below shape how characters using this ruleset behave.</div>
+
+    <!-- BASIC INFO -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">Basic Info</div>
+      </div>
+      <div class="field">
+        <label>Ruleset Name</label>
+        <input type="text" id="rs-name" placeholder="e.g. Shadowrun Fantasy, Hard Sci-Fi...">
+      </div>
+      <div class="field" id="playgroup-field">
+        <label>Attach to Playgroup</label>
+        <select id="rs-playgroup">
+          <option value="">None (personal ruleset)</option>
+        </select>
+      </div>
+      <div class="hint" id="basic-import-hint" style="display:none">Quickly copy every field from the Basic Set to start from a familiar baseline.</div>
+      <button class="btn small" id="import-basic-btn" onclick="importFromBasic()" style="display:none">Import from Basic Set</button>
+    </div>
+
+    <!-- STARTING XP & POWER LEVELS -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">Starting XP & Power Levels</div>
+      </div>
+      <div class="section-desc">How much XP new characters start with, and how expensive AP is to purchase at each Power Level.</div>
+      <div class="field" style="max-width:220px">
+        <label>Starting XP</label>
+        <input type="number" id="rs-startingXp" min="0" value="100">
+      </div>
+      <div style="margin-top:12px">
+        <label style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#888;display:block;margin-bottom:8px">Power Levels</label>
+        <div class="hint">Each level has a label and a cost in XP to purchase 1 AP. One must be marked as default (new characters start at this level).</div>
+        <div class="pl-list" id="pl-list"></div>
+        <button class="btn small" onclick="addPowerLevel()">+ Add Power Level</button>
+      </div>
+    </div>
+
+    <!-- STAT COSTS -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">Stat Costs</div>
+      </div>
+      <div class="section-desc">XP cost per starting STAT level. Level 0 is never takable. Characters can purchase up to the max shown below; any values beyond max must be earned through play.</div>
+      <div class="row" style="margin-bottom:10px;align-items:flex-end">
+        <div class="field" style="max-width:180px">
+          <label>Max Purchasable Level</label>
+          <input type="number" id="rs-statMax" min="1" max="20" value="6">
+        </div>
+      </div>
+      <div class="xp-table" id="stat-xp-table"></div>
+    </div>
+
+    <!-- SKILL COSTS -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">Skill Costs</div>
+      </div>
+      <div class="section-desc">XP cost per level for each skill tier. The max level determines how high players can push a skill.</div>
+      <div class="field" style="max-width:180px">
+        <label>Max Skill Level</label>
+        <input type="number" id="rs-skillMax" min="1" max="20" value="10">
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:14px">
+        <div>
+          <div style="font-size:11px;font-weight:600;color:#aaa;margin-bottom:6px">Primary</div>
+          <div class="xp-table" id="prim-xp-table"></div>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:#aaa;margin-bottom:6px">Secondary</div>
+          <div class="xp-table" id="sec-xp-table"></div>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:#aaa;margin-bottom:6px">Specialty</div>
+          <div class="xp-table" id="spec-xp-table"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PRIMARY SKILLS -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">Primary Skills</div>
+      </div>
+      <div class="section-desc">Define the Primary Skills available to characters. Each gets a name and a hover-description.</div>
+      <div class="skills-list" id="primary-skills-list"></div>
+      <div class="add-row">
+        <input type="text" id="new-skill-name" placeholder="Skill name (e.g. Piloting)" style="max-width:180px">
+        <input type="text" id="new-skill-desc" placeholder="Short description">
+        <button class="btn small" onclick="addPrimarySkill()">+ Add</button>
+      </div>
+    </div>
+
+    <!-- MORALS -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">Morals</div>
+      </div>
+      <div class="section-desc">Morals available to characters. A blank entry acts as a "Custom…" wildcard that lets players name their own.</div>
+      <div class="morals-grid" id="morals-list"></div>
+      <div class="add-row">
+        <input type="text" id="new-moral" placeholder="Add a moral..." onkeydown="if(event.key==='Enter')addMoral()">
+        <button class="btn small" onclick="addMoral()">+ Add</button>
+        <button class="btn small" onclick="addWildcardMoral()" title="Add a Custom wildcard slot">+ Wildcard</button>
+      </div>
+    </div>
+
+    <div class="footer-actions">
+      <button class="btn primary" id="submit-btn" onclick="saveRuleset()">Save</button>
+      <button class="btn" onclick="window.location.href='my-rulesets.html'">Cancel</button>
+      <button class="btn danger" id="delete-btn" onclick="deleteRuleset()" style="display:none">Delete Ruleset</button>
+      <span class="save-msg" id="save-msg"></span>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
+  import { getAuth, signOut } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
+  import { getFirestore, doc, getDoc, addDoc, updateDoc, deleteDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCf94yLvAtJ9pLgJ3FsV7ir4Qh9XXm3nHg",
+    authDomain: "prime-rpg.firebaseapp.com",
+    projectId: "prime-rpg",
+    storageBucket: "prime-rpg.firebasestorage.app",
+    messagingSenderId: "177905987748",
+    appId: "1:177905987748:web:8856ab4fdb8f81f42eb631"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  const params = new URLSearchParams(window.location.search);
+  const rulesetId = params.get('id');    // present if editing
+  const isCreating = !rulesetId;
+
+  let myUid = null;
+  let basicSetData = null;  // cache of Basic Set for "Import from Basic"
+  let state = null;          // current ruleset being edited (normalized)
+  let existingDoc = null;    // original doc if editing
+  let userPlaygroups = [];
+
+  await auth.authStateReady();
+  const user = auth.currentUser;
+  if (!user || !user.emailVerified) {
+    window.location.href = 'index.html';
+  } else {
+    myUid = user.uid;
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    if (userDoc.exists()) setNavUsername(userDoc.data().username);
+    initAlerts(db, user.uid);
+
+    // Load Basic Set for import
+    const basicQ = query(collection(db, 'rulesets'), where('isBasicSet', '==', true));
+    const basicSnap = await getDocs(basicQ);
+    if (!basicSnap.empty) basicSetData = Object.assign({ id: basicSnap.docs[0].id }, basicSnap.docs[0].data());
+
+    // Load user's playgroups where they are Leader/Admin
+    const membQ = query(collection(db, 'memberships'), where('uid', '==', user.uid));
+    const membSnap = await getDocs(membQ);
+    for (const mDoc of membSnap.docs) {
+      const role = mDoc.data().role;
+      if (role !== 'Leader' && role !== 'Administrator') continue;
+      const pgDoc = await getDoc(doc(db, 'playgroups', mDoc.data().playgroupId));
+      if (pgDoc.exists()) userPlaygroups.push({ id: pgDoc.id, name: pgDoc.data().name });
+    }
+
+    if (isCreating) {
+      // Brand-new ruleset: start from Basic Set if available, else defaults
+      state = window.normalizeRuleset({ name: '', morals: [] });
+      document.getElementById('page-title').textContent = 'Create Ruleset';
+      document.getElementById('submit-btn').textContent = 'Create Ruleset';
+      document.getElementById('import-basic-btn').style.display = basicSetData ? 'inline-block' : 'none';
+      document.getElementById('basic-import-hint').style.display = basicSetData ? 'block' : 'none';
+      initUI();
+    } else {
+      // Editing: load existing
+      const rsDoc = await getDoc(doc(db, 'rulesets', rulesetId));
+      if (!rsDoc.exists()) { window.location.href = 'my-rulesets.html'; return; }
+      existingDoc = rsDoc.data();
+      state = window.normalizeRuleset(existingDoc);
+
+      // Permission check
+      const isOwner = existingDoc.createdBy === myUid;
+      const isBasic = existingDoc.isBasicSet;
+      const isSiteAdmin = myUid === window.SITE_ADMIN_UID;
+      let canEdit = isOwner;
+      if (isBasic) canEdit = isSiteAdmin;
+      if (existingDoc.playgroupId) {
+        // Leaders/Admins of the playgroup can edit it
+        const memb = await getDoc(doc(db, 'memberships', myUid + '_' + existingDoc.playgroupId));
+        if (memb.exists()) {
+          const r = memb.data().role;
+          if (r === 'Leader' || r === 'Administrator') canEdit = true;
+        }
+      }
+      if (!canEdit) { alert('You do not have permission to edit this ruleset.'); window.location.href = 'my-rulesets.html'; return; }
+
+      document.getElementById('page-title').textContent = isBasic ? 'Edit Basic Set' : ('Edit Ruleset — ' + existingDoc.name);
+      document.getElementById('submit-btn').textContent = 'Save Changes';
+      if (!isBasic) document.getElementById('delete-btn').style.display = 'inline-block';
+      if (isBasic) document.getElementById('playgroup-field').style.display = 'none';
+      initUI();
+    }
+  }
+
+  function initUI() {
+    // Basic info
+    document.getElementById('rs-name').value = state.name || '';
+    const sel = document.getElementById('rs-playgroup');
+    sel.innerHTML = '<option value="">None (personal ruleset)</option>';
+    userPlaygroups.forEach(pg => {
+      const opt = document.createElement('option');
+      opt.value = pg.id; opt.textContent = pg.name;
+      if (state.playgroupId === pg.id) opt.selected = true;
+      sel.appendChild(opt);
+    });
+
+    // Simple scalar fields
+    document.getElementById('rs-startingXp').value = state.startingXp ?? 100;
+    document.getElementById('rs-statMax').value = state.statMaxPurchasable ?? 6;
+    document.getElementById('rs-skillMax').value = state.skillMax ?? 10;
+
+    document.getElementById('rs-statMax').oninput = () => { syncStatMaxFromInput(); renderStatXp(); };
+    document.getElementById('rs-skillMax').oninput = () => { syncSkillMaxFromInput(); renderSkillXpTables(); };
+
+    renderPowerLevels();
+    renderStatXp();
+    renderSkillXpTables();
+    renderPrimarySkills();
+    renderMorals();
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+  }
+
+  function syncStatMaxFromInput() {
+    const v = parseInt(document.getElementById('rs-statMax').value) || 6;
+    state.statMaxPurchasable = Math.max(1, Math.min(20, v));
+    // Resize statXp array — index 0 = not takable, length should be max+1
+    const old = state.statXp || [];
+    const newArr = [null]; // index 0 stays null
+    for (let i = 1; i <= state.statMaxPurchasable; i++) {
+      newArr[i] = (old[i] !== undefined && old[i] !== null) ? old[i] : 0;
+    }
+    state.statXp = newArr;
+  }
+
+  function syncSkillMaxFromInput() {
+    const v = parseInt(document.getElementById('rs-skillMax').value) || 10;
+    state.skillMax = Math.max(1, Math.min(20, v));
+    const resize = (arr) => {
+      const out = [];
+      for (let i = 0; i <= state.skillMax; i++) {
+        out[i] = (arr && arr[i] !== undefined) ? arr[i] : 0;
+      }
+      return out;
+    };
+    state.primarySkillXp = resize(state.primarySkillXp);
+    state.secondarySkillXp = resize(state.secondarySkillXp);
+    state.specialtySkillXp = resize(state.specialtySkillXp);
+  }
+
+  // ── POWER LEVELS ──
+  function renderPowerLevels() {
+    const list = document.getElementById('pl-list');
+    if (state.powerLevels.length === 0) { list.innerHTML = '<div class="empty">No power levels. Click below to add one.</div>'; return; }
+    list.innerHTML = state.powerLevels.map((p, i) => `
+      <div class="pl-row">
+        <input type="text" value="${(p.label||'').replace(/"/g,'&quot;')}" placeholder="Label" oninput="updatePl(${i},'label',this.value)">
+        <span class="pl-xp-lbl">XP/AP:</span>
+        <input type="number" class="pl-xp" min="0" value="${p.xpPerAp ?? 0}" oninput="updatePl(${i},'xpPerAp',this.value)">
+        <label class="pl-default-wrap"><input type="radio" name="default-pl" ${p.value === state.defaultPowerLevel ? 'checked' : ''} onchange="setDefaultPl(${i})">Default</label>
+        <span class="pl-delete" onclick="removePl(${i})" title="Remove">×</span>
+      </div>
+    `).join('');
+  }
+
+  window.updatePl = function(i, field, value) {
+    if (field === 'xpPerAp') state.powerLevels[i][field] = Math.max(0, parseInt(value) || 0);
+    else state.powerLevels[i][field] = value;
+  }
+  window.setDefaultPl = function(i) {
+    state.defaultPowerLevel = state.powerLevels[i].value;
+  }
+  window.addPowerLevel = function() {
+    state.powerLevels.push({ value: 'pl_' + Date.now(), label: 'New Power Level', xpPerAp: 5 });
+    if (!state.defaultPowerLevel) state.defaultPowerLevel = state.powerLevels[state.powerLevels.length-1].value;
+    renderPowerLevels();
+  }
+  window.removePl = function(i) {
+    const was = state.powerLevels[i].value;
+    state.powerLevels.splice(i, 1);
+    if (state.defaultPowerLevel === was && state.powerLevels.length > 0) state.defaultPowerLevel = state.powerLevels[0].value;
+    renderPowerLevels();
+  }
+
+  // ── STAT XP ──
+  function renderStatXp() {
+    const container = document.getElementById('stat-xp-table');
+    const max = state.statMaxPurchasable;
+    const rows = [];
+    for (let i = 0; i <= max; i++) {
+      const label = i === 0 ? 'Level 0' : 'Level ' + i;
+      if (i === 0) {
+        rows.push(`<div class="xp-lbl">${label}</div><div class="not-takable">Not takable</div>`);
+      } else {
+        const v = (state.statXp && state.statXp[i] !== undefined && state.statXp[i] !== null) ? state.statXp[i] : 0;
+        rows.push(`<div class="xp-lbl">${label}</div><input type="number" value="${v}" oninput="updateStatXp(${i},this.value)">`);
+      }
+    }
+    container.innerHTML = rows.join('');
+  }
+  window.updateStatXp = function(i, val) {
+    if (!Array.isArray(state.statXp)) state.statXp = [];
+    state.statXp[i] = parseInt(val) || 0;
+  }
+
+  // ── SKILL XP TABLES ──
+  function renderSkillXpTables() {
+    const renderOne = (containerId, arr, updater) => {
+      const max = state.skillMax;
+      const rows = [];
+      for (let i = 0; i <= max; i++) {
+        const v = (arr && arr[i] !== undefined) ? arr[i] : 0;
+        rows.push(`<div class="xp-lbl">Level ${i}</div><input type="number" min="0" value="${v}" oninput="${updater}(${i},this.value)">`);
+      }
+      document.getElementById(containerId).innerHTML = rows.join('');
+    };
+    renderOne('prim-xp-table', state.primarySkillXp, 'updatePrimXp');
+    renderOne('sec-xp-table', state.secondarySkillXp, 'updateSecXp');
+    renderOne('spec-xp-table', state.specialtySkillXp, 'updateSpecXp');
+  }
+  window.updatePrimXp = function(i, v) { state.primarySkillXp[i] = Math.max(0, parseInt(v)||0); }
+  window.updateSecXp = function(i, v) { state.secondarySkillXp[i] = Math.max(0, parseInt(v)||0); }
+  window.updateSpecXp = function(i, v) { state.specialtySkillXp[i] = Math.max(0, parseInt(v)||0); }
+
+  // ── PRIMARY SKILLS ──
+  function renderPrimarySkills() {
+    const list = document.getElementById('primary-skills-list');
+    if (!state.primarySkills || state.primarySkills.length === 0) {
+      list.innerHTML = '<div class="empty">No primary skills yet.</div>';
+      return;
+    }
+    list.innerHTML = state.primarySkills.map((s, i) => `
+      <div class="skill-row">
+        <input type="text" class="skill-name" value="${(s.name||'').replace(/"/g,'&quot;')}" placeholder="Name" oninput="updateSkill(${i},'name',this.value)">
+        <input type="text" class="skill-desc" value="${(s.description||'').replace(/"/g,'&quot;')}" placeholder="Description" oninput="updateSkill(${i},'description',this.value)">
+        <span class="pl-delete" onclick="removeSkill(${i})" title="Remove">×</span>
+      </div>`).join('');
+  }
+  window.updateSkill = function(i, field, value) { state.primarySkills[i][field] = value; }
+  window.removeSkill = function(i) { state.primarySkills.splice(i, 1); renderPrimarySkills(); }
+  window.addPrimarySkill = function() {
+    const name = document.getElementById('new-skill-name').value.trim();
+    const desc = document.getElementById('new-skill-desc').value.trim();
+    if (!name) return;
+    state.primarySkills.push({ name, description: desc });
+    document.getElementById('new-skill-name').value = '';
+    document.getElementById('new-skill-desc').value = '';
+    renderPrimarySkills();
+  }
+
+  // ── MORALS ──
+  function renderMorals() {
+    const list = document.getElementById('morals-list');
+    if (state.morals.length === 0) { list.innerHTML = '<span class="empty">No morals added yet.</span>'; return; }
+    list.innerHTML = state.morals.map((m, i) => {
+      const isWild = !m || !m.trim();
+      const label = isWild ? 'Custom… (wildcard)' : m;
+      return `<div class="moral-tag${isWild ? ' wildcard' : ''}">${label}<span class="x" onclick="removeMoral(${i})">×</span></div>`;
+    }).join('');
+  }
+  window.addMoral = function() {
+    const input = document.getElementById('new-moral');
+    const val = input.value.trim();
+    if (!val) return;
+    if (state.morals.includes(val)) { input.value = ''; return; }
+    state.morals.push(val);
+    input.value = '';
+    renderMorals();
+  }
+  window.addWildcardMoral = function() {
+    if (state.morals.includes('')) return;
+    state.morals.push('');
+    renderMorals();
+  }
+  window.removeMoral = function(i) { state.morals.splice(i, 1); renderMorals(); }
+
+  // ── IMPORT FROM BASIC ──
+  window.importFromBasic = function() {
+    if (!basicSetData) return;
+    if (!confirm('Import all fields from the Basic Set? This will overwrite your current values.')) return;
+    const src = window.normalizeRuleset(basicSetData);
+    // Don't clobber name or playgroup
+    state.startingXp = src.startingXp;
+    state.statXp = src.statXp.slice();
+    state.statMaxPurchasable = src.statMaxPurchasable;
+    state.primarySkillXp = src.primarySkillXp.slice();
+    state.secondarySkillXp = src.secondarySkillXp.slice();
+    state.specialtySkillXp = src.specialtySkillXp.slice();
+    state.skillMax = src.skillMax;
+    state.powerLevels = JSON.parse(JSON.stringify(src.powerLevels));
+    state.defaultPowerLevel = src.defaultPowerLevel;
+    state.primarySkills = JSON.parse(JSON.stringify(src.primarySkills));
+    state.morals = src.morals.slice();
+    initUI();
+  }
+
+  // ── SAVE ──
+  window.saveRuleset = async function() {
+    const msg = document.getElementById('save-msg');
+    const btn = document.getElementById('submit-btn');
+
+    state.name = document.getElementById('rs-name').value.trim();
+    if (!state.name) { msg.textContent = 'Please enter a ruleset name.'; msg.style.color = '#ff6666'; return; }
+
+    if (!existingDoc || !existingDoc.isBasicSet) {
+      const pgSel = document.getElementById('rs-playgroup');
+      state.playgroupId = pgSel.value || null;
+    }
+
+    // Make sure there's at least one power level and a valid default
+    if (state.powerLevels.length === 0) {
+      msg.textContent = 'Please add at least one Power Level.'; msg.style.color = '#ff6666'; return;
+    }
+    if (!state.powerLevels.some(p => p.value === state.defaultPowerLevel)) {
+      state.defaultPowerLevel = state.powerLevels[0].value;
+    }
+
+    btn.disabled = true;
+    const originalBtnText = btn.textContent;
+    btn.textContent = 'Saving...';
+
+    const payload = {
+      name: state.name,
+      startingXp: state.startingXp,
+      statXp: state.statXp,
+      statMaxPurchasable: state.statMaxPurchasable,
+      primarySkillXp: state.primarySkillXp,
+      secondarySkillXp: state.secondarySkillXp,
+      specialtySkillXp: state.specialtySkillXp,
+      skillMax: state.skillMax,
+      powerLevels: state.powerLevels,
+      defaultPowerLevel: state.defaultPowerLevel,
+      primarySkills: state.primarySkills,
+      morals: state.morals
+    };
+
+    try {
+      if (isCreating) {
+        payload.isBasicSet = false;
+        payload.createdBy = myUid;
+        payload.playgroupId = state.playgroupId || null;
+        payload.createdAt = new Date();
+        await addDoc(collection(db, 'rulesets'), payload);
+        msg.textContent = 'Created!'; msg.style.color = '#66ff99';
+        setTimeout(() => window.location.href = 'my-rulesets.html', 700);
+      } else {
+        // Don't overwrite isBasicSet / createdBy / createdAt
+        if (!existingDoc.isBasicSet) payload.playgroupId = state.playgroupId || null;
+        await updateDoc(doc(db, 'rulesets', rulesetId), payload);
+        msg.textContent = 'Saved!'; msg.style.color = '#66ff99';
+        btn.disabled = false; btn.textContent = originalBtnText;
+        setTimeout(() => { msg.textContent = ''; }, 2000);
+      }
+    } catch (e) {
+      console.error(e);
+      msg.textContent = 'Error: ' + e.message; msg.style.color = '#ff6666';
+      btn.disabled = false; btn.textContent = originalBtnText;
+    }
+  }
+
+  window.deleteRuleset = async function() {
+    if (!rulesetId || existingDoc.isBasicSet) return;
+    if (!confirm('Delete this ruleset? Characters using it will fall back to defaults.')) return;
+    try {
+      await deleteDoc(doc(db, 'rulesets', rulesetId));
+      window.location.href = 'my-rulesets.html';
+    } catch (e) { alert('Error: ' + e.message); }
+  }
+
+  window.logout = async function() { await signOut(auth); window.location.href = 'index.html'; }
+</script>
+</body>
+</html>
