@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PRIME RPG — My Characters</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="nav.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0a0a0a; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 14px; min-height: 100vh; }
+    .page { padding-top: 104px; padding-left: 24px; padding-right: 24px; padding-bottom: 60px; max-width: 1100px; margin: 0 auto; }
+    .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 1px solid #1a1a1a; }
+    .page-title { font-size: 20px; font-weight: 600; color: #e0e0e0; letter-spacing: .02em; }
+    .new-btn { background: #1a1a1a; border: 1px solid #333; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 7px 16px; border-radius: 4px; cursor: pointer; text-decoration: none; }
+    .new-btn:hover { background: #222; border-color: #555; }
+    .empty { color: #444; font-size: 13px; text-align: center; padding: 60px 0; }
+    .char-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+    .char-card {
+      background: #0e0e0e;
+      border: 1px solid #222;
+      border-radius: 6px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: border-color 0.1s, background 0.1s;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+    .char-card:hover { border-color: #444; background: #141414; }
+    .char-card-img-wrap { width: 100%; aspect-ratio: 16 / 10; background: #000; position: relative; overflow: hidden; }
+    .char-card-img-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .char-card-img-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #333; font-size: 11px; font-style: italic; }
+    .char-card-body { padding: 14px 16px; flex: 1; display: flex; flex-direction: column; gap: 4px; }
+    .char-card-name { font-size: 16px; font-weight: 600; color: #e0e0e0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .char-card-sub { font-size: 12px; color: #777; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .char-card-pg { font-size: 11px; color: #555; margin-top: 4px; }
+    .char-card-pg.inactive { color: #444; font-style: italic; }
+    .char-card-delete {
+      position: absolute; top: 8px; right: 8px;
+      width: 24px; height: 24px;
+      background: rgba(0,0,0,0.6);
+      border: 1px solid #333;
+      border-radius: 4px;
+      color: #777;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0;
+      transition: opacity 0.1s;
+      z-index: 2;
+    }
+    .char-card:hover .char-card-delete { opacity: 1; }
+    .char-card-delete:hover { color: #c84b4b; border-color: #c84b4b; background: rgba(40,0,0,0.8); }
+  </style>
+</head>
+<body>
+<script>injectNav();</script>
+
+<div class="page">
+  <div class="page-header">
+    <div class="page-title">My Characters</div>
+    <a class="new-btn" href="create-character.html">+ New Character</a>
+  </div>
+  <div id="loading" class="empty">Loading...</div>
+  <div id="empty-state" class="empty" style="display:none">
+    You haven't created any characters yet. <a href="create-character.html" style="color:#888;text-decoration:underline">Create your first one</a>.
+  </div>
+  <div id="char-grid" class="char-grid" style="display:none"></div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
+  import { getAuth, signOut } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
+  import { getFirestore, doc, getDoc, deleteDoc, collection, query, where, getDocs, orderBy } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCf94yLvAtJ9pLgJ3FsV7ir4Qh9XXm3nHg",
+    authDomain: "prime-rpg.firebaseapp.com",
+    projectId: "prime-rpg",
+    storageBucket: "prime-rpg.firebasestorage.app",
+    messagingSenderId: "177905987748",
+    appId: "1:177905987748:web:8856ab4fdb8f81f42eb631"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  await auth.authStateReady();
+  const user = auth.currentUser;
+  if (!user || !user.emailVerified) {
+    window.location.href = 'index.html';
+  } else {
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    if (userDoc.exists()) setNavUsername(userDoc.data().username);
+
+    const q = query(collection(db, 'characters'), where('uid', '==', user.uid));
+    const snap = await getDocs(q);
+
+    const loadingEl = document.getElementById('loading');
+    const emptyEl = document.getElementById('empty-state');
+    const gridEl = document.getElementById('char-grid');
+
+    loadingEl.style.display = 'none';
+
+    if (snap.empty) {
+      emptyEl.style.display = 'block';
+    } else {
+      gridEl.style.display = 'grid';
+
+      // resolve playgroup names for each character
+      const pgIds = [...new Set(snap.docs.map(d => d.data().playgroupId).filter(Boolean))];
+      const pgMap = {};
+      for (const id of pgIds) {
+        try {
+          const pgDoc = await getDoc(doc(db, 'playgroups', id));
+          if (pgDoc.exists()) pgMap[id] = pgDoc.data().name;
+        } catch(e) {}
+      }
+
+      const cards = snap.docs.map(d => {
+        const data = d.data();
+        const name = data.name || 'Unnamed';
+        const paradigm = data.paradigm || '';
+        const archetype = data.archetype || '';
+        const sub = [paradigm, archetype].filter(Boolean).join(' · ');
+        const pgText = data.playgroupId && pgMap[data.playgroupId]
+          ? `World of ${pgMap[data.playgroupId]}`
+          : 'Not in active play';
+        const pgClass = data.playgroupId && pgMap[data.playgroupId] ? '' : 'inactive';
+        const img = data.pictureUrl
+          ? `<img src="${data.pictureUrl}" alt="">`
+          : `<div class="char-card-img-placeholder">No picture</div>`;
+        return `
+          <div class="char-card" onclick="openChar('${d.id}')">
+            <div class="char-card-delete" onclick="event.stopPropagation();deleteChar('${d.id}','${name.replace(/'/g,"\\'")}')" title="Delete character">×</div>
+            <div class="char-card-img-wrap">${img}</div>
+            <div class="char-card-body">
+              <div class="char-card-name">${name}</div>
+              <div class="char-card-sub">${sub || '&nbsp;'}</div>
+              <div class="char-card-pg ${pgClass}">${pgText}</div>
+            </div>
+          </div>`;
+      }).join('');
+
+      gridEl.innerHTML = cards;
+    }
+  }
+
+  window.openChar = function(id) {
+    window.location.href = `character.html?id=${id}`;
+  }
+
+  window.deleteChar = async function(id, name) {
+    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+    try {
+      await deleteDoc(doc(db, 'characters', id));
+      window.location.reload();
+    } catch (e) {
+      alert('Failed to delete: ' + e.message);
+    }
+  }
+
+  window.logout = async function() {
+    await signOut(auth);
+    window.location.href = 'index.html';
+  }
+</script>
+</body>
+</html>
