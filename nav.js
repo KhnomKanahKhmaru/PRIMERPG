@@ -289,6 +289,38 @@ async function createAlert(db, uid, text, link) {
   }
 }
 
+async function createPlaygroupNews(db, playgroupId, playgroupName, text) {
+  const mod = await import('https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js');
+  try {
+    await mod.addDoc(mod.collection(db, 'playgroupNews'), {
+      playgroupId,
+      playgroupName,
+      text,
+      createdAt: mod.serverTimestamp()
+    });
+  } catch (e) {
+    console.error('Failed to create news:', e);
+  }
+}
+
+function formatNewsTime(ts) {
+  if (!ts) return '';
+  const then = ts.toMillis ? ts.toMillis() : (typeof ts === 'number' ? ts : Date.parse(ts));
+  const diff = Date.now() - then;
+  const m = Math.floor(diff / 60000);
+  const h = Math.floor(diff / 3600000);
+  const d = Math.floor(diff / 86400000);
+  if (m < 1) return 'just now';
+  if (m < 60) return m + 'm ago';
+  if (h < 24) return h + 'h ago';
+  if (d < 7) return d + 'd ago';
+  return new Date(then).toLocaleDateString();
+}
+
+function renderNewsText(text) {
+  return (text || '').replace(/</g, '&lt;').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+}
+
 window.markAlertRead = async function(id) {
   const alert = _navAlertsCache.find(a => a.id === id);
   if (!alert || alert.read) return;
@@ -337,3 +369,6 @@ window.clearAllAlerts = async function() {
 
 window.initAlerts = initAlerts;
 window.createAlert = createAlert;
+window.createPlaygroupNews = createPlaygroupNews;
+window.formatNewsTime = formatNewsTime;
+window.renderNewsText = renderNewsText;
