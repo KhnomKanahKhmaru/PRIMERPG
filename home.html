@@ -31,7 +31,15 @@
       color: #aaa;
       margin-bottom: 16px;
     }
-    .news-empty { color: #666; font-size: 13px; text-align: center; padding: 60px 0; }
+    .news-empty { color: #555; font-size: 13px; text-align: center; padding: 60px 0; font-style: italic; }
+    .news-item { padding: 12px 14px; border: 1px solid #1a1a1a; border-radius: 4px; background: #111; display: flex; gap: 12px; align-items: flex-start; }
+    .news-source { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #888; margin-bottom: 4px; }
+    .news-source a { color: #aaa; text-decoration: none; }
+    .news-source a:hover { color: #fff; }
+    .news-text { color: #ccc; font-size: 13px; line-height: 1.5; }
+    .news-text strong { color: #fff; font-weight: 600; }
+    .news-time { font-size: 11px; color: #666; margin-top: 4px; }
+    .news-body { flex: 1; min-width: 0; }
     .panel-section { margin-bottom: 24px; }
     .panel-title {
       font-size: 10px;
@@ -90,7 +98,8 @@
   </div>
   <div class="center-panel">
     <div class="section-title">Playgroup News</div>
-    <div class="news-empty">No news yet!</div>
+    <div id="news-feed" style="max-width:680px;margin:0 auto;text-align:left;display:flex;flex-direction:column;gap:6px"></div>
+    <div class="news-empty" id="news-empty" style="display:none">No news yet!</div>
   </div>
   <div class="right-panel"></div>
 </div>
@@ -149,6 +158,42 @@
         const name = d.data().name || 'Unnamed';
         return `<a class="panel-link" href="character.html?id=${d.id}">${name}</a>`;
       }).join('');
+    }
+
+    // ── News Feed ──
+    const myPgIds = snap.docs.map(m => m.data().playgroupId).filter(Boolean);
+    const feedEl = document.getElementById('news-feed');
+    const emptyEl = document.getElementById('news-empty');
+    if (myPgIds.length === 0) {
+      emptyEl.textContent = 'Join a playgroup to see news here.';
+      emptyEl.style.display = 'block';
+    } else {
+      // Firestore `in` query caps at 30; for now this is fine
+      const chunks = [];
+      for (let i = 0; i < myPgIds.length; i += 30) chunks.push(myPgIds.slice(i, i + 30));
+      const allItems = [];
+      for (const chunk of chunks) {
+        const newsQ = query(collection(db, 'playgroupNews'), where('playgroupId', 'in', chunk));
+        const newsSnap = await getDocs(newsQ);
+        newsSnap.docs.forEach(d => allItems.push({ id: d.id, ...d.data() }));
+      }
+      allItems.sort((a, b) => {
+        const at = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0;
+        const bt = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0;
+        return bt - at;
+      });
+      if (allItems.length === 0) {
+        emptyEl.style.display = 'block';
+      } else {
+        feedEl.innerHTML = allItems.slice(0, 50).map(n => `
+          <div class="news-item">
+            <div class="news-body">
+              <div class="news-source"><a href="playgroup.html?id=${n.playgroupId}">${n.playgroupName || 'Playgroup'}</a></div>
+              <div class="news-text">${renderNewsText(n.text)}</div>
+              <div class="news-time">${formatNewsTime(n.createdAt)}</div>
+            </div>
+          </div>`).join('');
+      }
     }
   }
 
