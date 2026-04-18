@@ -54,6 +54,7 @@
     .role-Leader { background: #3b2615; color: #e8b66e; border: 1px solid #5a3a1d; }
     .role-Administrator { background: #1f2c3a; color: #78b4e0; border: 1px solid #2f4a63; }
     .role-Member { background: #1a1a1a; color: #888; border: 1px solid #2a2a2a; }
+    .role-Player { background: #1a1a1a; color: #888; border: 1px solid #2a2a2a; }
     .role-Banned { background: #2a1313; color: #c87777; border: 1px solid #4a1a1a; }
     .action-menu-wrap { position: relative; }
     .action-menu-btn { background: transparent; border: 1px solid #222; color: #777; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 10px; border-radius: 3px; cursor: pointer; }
@@ -293,7 +294,7 @@
     if (membershipsSnap.empty) {
       peopleList.innerHTML = '<div class="empty">No members yet.</div>';
     } else {
-      const roleOrder = { Leader: 0, Administrator: 1, Member: 2 };
+      const roleOrder = { Leader: 0, Administrator: 1, Member: 2, Player: 2 };
       const docs = membershipsSnap.docs.slice().sort((a, b) => {
         const ra = roleOrder[a.data().role] ?? 99;
         const rb = roleOrder[b.data().role] ?? 99;
@@ -364,7 +365,7 @@
     const safeName = targetName.replace(/'/g, "\\'");
 
     if (myRole === 'Leader') {
-      if (targetRole === 'Member') {
+      if (targetRole === 'Member' || targetRole === 'Player') {
         items.push(`<a onclick="promoteToAdmin('${targetUid}','${safeName}')">Promote to Administrator</a>`);
         items.push(`<a onclick="transferLeader('${targetUid}','${safeName}')">Transfer Leader role</a>`);
         items.push(`<a class="danger" onclick="kickUser('${targetUid}','${safeName}')">Kick</a>`);
@@ -376,7 +377,7 @@
         items.push(`<a class="danger" onclick="banUser('${targetUid}','${safeName}')">Ban</a>`);
       }
     } else if (myRole === 'Administrator') {
-      if (targetRole === 'Member') {
+      if (targetRole === 'Member' || targetRole === 'Player') {
         items.push(`<a class="danger" onclick="kickUser('${targetUid}','${safeName}')">Kick</a>`);
         items.push(`<a class="danger" onclick="banUser('${targetUid}','${safeName}')">Ban</a>`);
       }
