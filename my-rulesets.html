@@ -142,6 +142,7 @@
     const startingXp = rs.startingXp ?? 100;
     const pLevels = (rs.powerLevels || []).length || 6;
     const pSkills = (rs.primarySkills || []).length || 16;
+    const statCount = (rs.stats || []).length || 7;
     const moralCount = (rs.morals || []).length;
 
     const editBtn = canEdit ? `<a class="rs-btn edit" href="edit-ruleset.html?id=${d.id}">Edit</a>` : '';
@@ -157,6 +158,7 @@
         <div class="rs-card-stats">
           <span>Start: <strong>${startingXp} XP</strong></span>
           <span>Power Levels: <strong>${pLevels}</strong></span>
+          <span>Stats: <strong>${statCount}</strong></span>
           <span>Primary Skills: <strong>${pSkills}</strong></span>
           <span>Morals: <strong>${moralCount}</strong></span>
         </div>
