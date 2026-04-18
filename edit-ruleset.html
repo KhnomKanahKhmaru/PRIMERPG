@@ -94,6 +94,9 @@
 
     .empty { color: #444; font-size: 12px; font-style: italic; }
     .hint { font-size: 11px; color: #666; margin-bottom: 8px; line-height: 1.5; }
+    .scale-summary { display: flex; flex-wrap: wrap; gap: 14px; padding: 10px 14px; background: #111; border: 1px solid #1a1a1a; border-radius: 6px; margin-bottom: 18px; font-size: 12px; color: #888; }
+    .scale-summary strong { color: #ccc; font-weight: 600; }
+    .scale-summary .sep { color: #333; }
   </style>
 </head>
 <body>
@@ -104,6 +107,7 @@
   <div id="content" style="display:none">
     <div class="page-title" id="page-title">Create Ruleset</div>
     <div class="page-sub" id="page-sub">Build a complete rules module. All fields below shape how characters using this ruleset behave.</div>
+    <div class="scale-summary" id="scale-summary"></div>
 
     <!-- BASIC INFO -->
     <div class="section">
@@ -113,6 +117,10 @@
       <div class="field">
         <label>Ruleset Name</label>
         <input type="text" id="rs-name" placeholder="e.g. Shadowrun Fantasy, Hard Sci-Fi...">
+      </div>
+      <div class="field">
+        <label>Tagline <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#555">— short one-line subtitle</span></label>
+        <input type="text" id="rs-tagline" placeholder="e.g. A grim near-future Earth setting" maxlength="140">
       </div>
       <div class="field" id="playgroup-field">
         <label>Attach to Playgroup</label>
@@ -180,6 +188,26 @@
         <label style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#888;display:block;margin-bottom:8px">Per-Level Table</label>
         <div class="hint">XP cost only applies up to Max Purchasable. STATMOD and Label apply across the full scale.</div>
         <div class="stat-level-table" id="stat-level-table"></div>
+      </div>
+    </div>
+
+    <!-- SIZE -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">Size</div>
+      </div>
+      <div class="section-desc">Size is a separate scale from regular stats. Define the tiers available and what each one is called. Size has no STATMOD — it's purely a scale + label that affects other math elsewhere in the game.</div>
+      <div class="hint">Each tier has a numeric level, a label, and an optional XP cost for starting characters to choose it.</div>
+      <div class="skills-list" id="size-tiers-list"></div>
+      <div class="add-row">
+        <input type="number" id="new-size-level" placeholder="Level" style="max-width:90px">
+        <input type="text" id="new-size-label" placeholder="Label (e.g. Medium)" style="max-width:200px">
+        <input type="number" id="new-size-cost" placeholder="XP Cost" value="0" style="max-width:100px">
+        <button class="btn small" onclick="addSizeTier()">+ Add Tier</button>
+      </div>
+      <div class="field" style="max-width:220px;margin-top:14px">
+        <label>Default Starting Tier</label>
+        <select id="rs-size-default"></select>
       </div>
     </div>
 
@@ -346,6 +374,10 @@
   function initUI() {
     // Basic info
     document.getElementById('rs-name').value = state.name || '';
+    document.getElementById('rs-tagline').value = state.tagline || '';
+    document.getElementById('rs-tagline').oninput = (e) => { state.tagline = e.target.value; renderScaleSummary(); };
+    document.getElementById('rs-name').oninput = (e) => { state.name = e.target.value; };
+
     const sel = document.getElementById('rs-playgroup');
     sel.innerHTML = '<option value="">None (personal ruleset)</option>';
     userPlaygroups.forEach(pg => {
@@ -361,20 +393,41 @@
     document.getElementById('rs-statAbsMax').value = state.statMax ?? 20;
     document.getElementById('rs-skillMax').value = state.skillMax ?? 10;
 
-    document.getElementById('rs-startingXp').oninput = (e) => { state.startingXp = Math.max(0, parseInt(e.target.value) || 0); };
-    document.getElementById('rs-statMax').oninput = () => { syncStatMaxFromInput(); renderStatLevelTable(); };
-    document.getElementById('rs-statAbsMax').oninput = () => { syncStatAbsMaxFromInput(); renderStatLevelTable(); };
-    document.getElementById('rs-skillMax').oninput = () => { syncSkillMaxFromInput(); renderSkillXpTables(); };
+    document.getElementById('rs-startingXp').oninput = (e) => { state.startingXp = Math.max(0, parseInt(e.target.value) || 0); renderScaleSummary(); };
+    document.getElementById('rs-statMax').oninput = () => { syncStatMaxFromInput(); renderStatLevelTable(); renderScaleSummary(); };
+    document.getElementById('rs-statAbsMax').oninput = () => { syncStatAbsMaxFromInput(); renderStatLevelTable(); renderScaleSummary(); };
+    document.getElementById('rs-skillMax').oninput = () => { syncSkillMaxFromInput(); renderSkillXpTables(); renderScaleSummary(); };
 
     renderPowerLevels();
     renderStatsList();
     renderStatLevelTable();
+    renderSizeTiers();
     renderSkillXpTables();
     renderPrimarySkills();
     renderMorals();
+    renderScaleSummary();
 
     document.getElementById('loading').style.display = 'none';
     document.getElementById('content').style.display = 'block';
+  }
+
+  function renderScaleSummary() {
+    const box = document.getElementById('scale-summary');
+    const stats = (state.stats || []).length;
+    const pSkills = (state.primarySkills || []).length;
+    const pLevels = (state.powerLevels || []).length;
+    const sizeTiers = (state.size && state.size.tiers) ? state.size.tiers.length : 0;
+    box.innerHTML = [
+      `<span>Starting XP: <strong>${state.startingXp}</strong></span>`,
+      `<span class="sep">·</span>`,
+      `<span>Stats: <strong>${stats}</strong> (0–${state.statMax}, purchasable to ${state.statMaxPurchasable})</span>`,
+      `<span class="sep">·</span>`,
+      `<span>Skills: <strong>${pSkills}</strong> primary, 0–${state.skillMax}</span>`,
+      `<span class="sep">·</span>`,
+      `<span>Size Tiers: <strong>${sizeTiers}</strong></span>`,
+      `<span class="sep">·</span>`,
+      `<span>Power Levels: <strong>${pLevels}</strong></span>`
+    ].join('');
   }
 
   function syncStatMaxFromInput() {
@@ -424,7 +477,7 @@
       </div>`).join('');
   }
   window.updateStat = function(i, field, value) { state.stats[i][field] = value; }
-  window.removeStat = function(i) { state.stats.splice(i, 1); renderStatsList(); }
+  window.removeStat = function(i) { state.stats.splice(i, 1); renderStatsList(); renderScaleSummary(); }
   window.addStat = function() {
     const code = document.getElementById('new-stat-code').value.trim().toUpperCase();
     const name = document.getElementById('new-stat-name').value.trim();
@@ -439,6 +492,62 @@
     document.getElementById('new-stat-name').value = '';
     document.getElementById('new-stat-desc').value = '';
     renderStatsList();
+    renderScaleSummary();
+  }
+
+  // ── SIZE TIERS ──
+  function renderSizeTiers() {
+    const list = document.getElementById('size-tiers-list');
+    if (!state.size || !state.size.tiers || state.size.tiers.length === 0) {
+      list.innerHTML = '<div class="empty">No size tiers defined.</div>';
+    } else {
+      // Sort by level for display (but don't mutate state order — actually do sort state to keep UX sane)
+      state.size.tiers.sort((a, b) => (a.level || 0) - (b.level || 0));
+      list.innerHTML = state.size.tiers.map((t, i) => `
+        <div class="skill-row">
+          <input type="number" class="skill-name" style="max-width:70px;text-align:center" value="${t.level ?? 0}" placeholder="Level" oninput="updateSizeTier(${i},'level',this.value)">
+          <input type="text" class="skill-name" style="max-width:180px" value="${(t.label||'').replace(/"/g,'&quot;')}" placeholder="Label" oninput="updateSizeTier(${i},'label',this.value)">
+          <input type="number" class="skill-name" style="max-width:100px;text-align:center" value="${t.xpCost ?? 0}" placeholder="XP Cost" oninput="updateSizeTier(${i},'xpCost',this.value)">
+          <span class="pl-delete" onclick="removeSizeTier(${i})" title="Remove">×</span>
+        </div>`).join('');
+    }
+    // Rebuild default-tier dropdown
+    const sel = document.getElementById('rs-size-default');
+    sel.innerHTML = '';
+    (state.size.tiers || []).forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.level;
+      opt.textContent = `Lv ${t.level} — ${t.label || ''}`;
+      if (state.size.default === t.level) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.onchange = () => { state.size.default = parseInt(sel.value) || 0; };
+  }
+  window.updateSizeTier = function(i, field, value) {
+    if (field === 'label') state.size.tiers[i].label = value;
+    else state.size.tiers[i][field] = parseInt(value) || 0;
+    renderScaleSummary();
+  }
+  window.removeSizeTier = function(i) {
+    state.size.tiers.splice(i, 1);
+    renderSizeTiers();
+    renderScaleSummary();
+  }
+  window.addSizeTier = function() {
+    const level = parseInt(document.getElementById('new-size-level').value) || 0;
+    const label = document.getElementById('new-size-label').value.trim();
+    const cost = parseInt(document.getElementById('new-size-cost').value) || 0;
+    if (!label) return;
+    if (state.size.tiers.some(t => t.level === level)) {
+      alert('A tier with that level already exists.');
+      return;
+    }
+    state.size.tiers.push({ level, label, xpCost: cost });
+    document.getElementById('new-size-level').value = '';
+    document.getElementById('new-size-label').value = '';
+    document.getElementById('new-size-cost').value = '0';
+    renderSizeTiers();
+    renderScaleSummary();
   }
 
   // ── PER-LEVEL TABLE (XP / STATMOD / LABEL) ──
@@ -525,12 +634,14 @@
     state.powerLevels.push({ value: 'pl_' + Date.now(), label: 'New Power Level', xpPerAp: 5 });
     if (!state.defaultPowerLevel) state.defaultPowerLevel = state.powerLevels[state.powerLevels.length-1].value;
     renderPowerLevels();
+    renderScaleSummary();
   }
   window.removePl = function(i) {
     const was = state.powerLevels[i].value;
     state.powerLevels.splice(i, 1);
     if (state.defaultPowerLevel === was && state.powerLevels.length > 0) state.defaultPowerLevel = state.powerLevels[0].value;
     renderPowerLevels();
+    renderScaleSummary();
   }
 
   // ── SKILL XP TABLES ──
@@ -567,7 +678,7 @@
       </div>`).join('');
   }
   window.updateSkill = function(i, field, value) { state.primarySkills[i][field] = value; }
-  window.removeSkill = function(i) { state.primarySkills.splice(i, 1); renderPrimarySkills(); }
+  window.removeSkill = function(i) { state.primarySkills.splice(i, 1); renderPrimarySkills(); renderScaleSummary(); }
   window.addPrimarySkill = function() {
     const name = document.getElementById('new-skill-name').value.trim();
     const desc = document.getElementById('new-skill-desc').value.trim();
@@ -576,6 +687,7 @@
     document.getElementById('new-skill-name').value = '';
     document.getElementById('new-skill-desc').value = '';
     renderPrimarySkills();
+    renderScaleSummary();
   }
 
   // ── MORALS ──
@@ -609,7 +721,7 @@
     if (!basicSetData) return;
     if (!confirm('Import all fields from the Basic Set? This will overwrite your current values.')) return;
     const src = window.normalizeRuleset(basicSetData);
-    // Don't clobber name or playgroup
+    // Don't clobber name, tagline, or playgroup
     state.startingXp = src.startingXp;
     state.statXp = src.statXp.slice();
     state.statMaxPurchasable = src.statMaxPurchasable;
@@ -617,6 +729,7 @@
     state.stats = JSON.parse(JSON.stringify(src.stats));
     state.statMods = src.statMods.slice();
     state.statLabels = src.statLabels.slice();
+    state.size = JSON.parse(JSON.stringify(src.size));
     state.primarySkillXp = src.primarySkillXp.slice();
     state.secondarySkillXp = src.secondarySkillXp.slice();
     state.specialtySkillXp = src.specialtySkillXp.slice();
@@ -655,6 +768,7 @@
 
     const payload = {
       name: state.name,
+      tagline: state.tagline || '',
       startingXp: state.startingXp,
       statXp: state.statXp,
       statMaxPurchasable: state.statMaxPurchasable,
@@ -662,6 +776,7 @@
       stats: state.stats,
       statMods: state.statMods,
       statLabels: state.statLabels,
+      size: state.size,
       primarySkillXp: state.primarySkillXp,
       secondarySkillXp: state.secondarySkillXp,
       specialtySkillXp: state.specialtySkillXp,
