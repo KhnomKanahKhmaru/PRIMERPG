@@ -318,18 +318,12 @@
     resolveActiveRuleset
   } from './char-firestore.js';
 
-  // Only the pieces character.html itself still uses — most game data now
-  // lives in the section modules that import from char-constants directly.
+  // Only the pieces character.html itself still uses. Most game data
+  // now comes from the active ruleset via ctx.getRuleset(); the modules
+  // import char-constants directly for anything else they need.
   import {
-    STAT_DEFS, SKILL_LABELS, FALLBACK_SKILLS,
-    PRIM_XP, SEC_XP, SPEC_XP
+    SKILL_LABELS, FALLBACK_SKILLS
   } from './char-constants.js';
-
-  // Pure helper functions — char-util.js has many more, but only these
-  // three are still referenced from this file.
-  import {
-    statXp, skillXpLabel, skillLevelText
-  } from './char-util.js';
 
   // Section render modules. These are factories — we pass a context with
   // getters for the live state, and they return a bundle of bound handlers.
@@ -339,10 +333,29 @@
   import { createStatsSection } from './char-stats.js';
   import { createBioSection } from './char-bio.js';
 
-  // Inline event handlers in our HTML still call these by name, so expose
-  // them on window until the event-delegation pass replaces those handlers.
-  window.skillXpLabel = skillXpLabel;
-  window.skillLevelText = skillLevelText;
+  // Inline event handlers in dynamically-generated markup call these by
+  // name. They're ruleset-aware wrappers that read tables from the
+  // currently-loaded ruleset — redefining these on window keeps the
+  // inline oninput handlers short and self-contained. These go away
+  // once we migrate to event delegation.
+  window.skillLabelAt = function(v) {
+    const i = Math.min(SKILL_LABELS.length - 1, Math.max(0, v));
+    return SKILL_LABELS[i] || '';
+  };
+  window.skillLevelText = function(v) {
+    return window.skillLabelAt(parseInt(v) || 0);
+  };
+  window.skillXpLabel = function(val, type) {
+    const rs = activeRuleset || {};
+    const v = Math.max(0, parseInt(val) || 0);
+    const table = type === 'p' ? (rs.primarySkillXp   || [])
+                : type === 's' ? (rs.secondarySkillXp || [])
+                               : (rs.specialtySkillXp || []);
+    return (table[v] || 0) + 'xp';
+  };
+
+  // Legacy global — older oninput handlers reference this directly.
+  window.SKILL_LABELS_GLOBAL = SKILL_LABELS;
 
   const params = new URLSearchParams(window.location.search);
   const charId = params.get('id');
@@ -447,20 +460,40 @@
     handlePicChange: bio.handlePicChange,
   });
 
-  // Keep SKILL_LABELS on window so inline oninput handlers can reach it.
-  // (Those inline handlers will go away during the event-delegation pass.)
-  window.SKILL_LABELS_GLOBAL = SKILL_LABELS;
+  // calcTotalXp sums XP spent across stats and skills. Reads all cost
+  // tables from the active ruleset. Called by saveXpSpent after any
+  // stat or skill edit.
+  //
+  // SIZE doesn't contribute to XP — size-changing is a narrative cost
+  // paid elsewhere.
+  function calcTotalXp() {
+    if (!activeRuleset) return 0;
+    let xp = 0;
+    const statXpTable = activeRuleset.statXp || [];
+    const primXp      = activeRuleset.primarySkillXp   || [];
+    const secXp       = activeRuleset.secondarySkillXp || [];
+    const specXp      = activeRuleset.specialtySkillXp || [];
 
-  // calcTotalXp sums XP spent across stats and skills. Stays here because
-  // it needs to read both section's data; will move to char-xp.js in a
-  // later pass along with saveXpSpent.
-  function calcTotalXp(){
-    let xp=0;
-    STAT_DEFS.forEach(s=>{if(s.key==='size')return;const v=charData.stats&&charData.stats[s.key]!==undefined?charData.stats[s.key]:s.default;xp+=statXp(v);});
-    const pr=(charData.skills&&charData.skills.primary)||{};
-    primarySkillDefs.forEach(s=>xp+=(PRIM_XP[pr[s.name]||0]||0));
-    ((charData.skills&&charData.skills.secondary)||[]).forEach(s=>xp+=(SEC_XP[s.value||0]||0));
-    ((charData.skills&&charData.skills.specialty)||[]).forEach(s=>xp+=(SPEC_XP[s.value||0]||0));
+    // Stat bases. Iterate the ruleset's stat list (no SIZE).
+    const rulesetStats = activeRuleset.stats || [];
+    rulesetStats.forEach(statDef => {
+      const key = (statDef.code || '').toLowerCase();
+      const v = (charData.stats && charData.stats[key] !== undefined)
+        ? charData.stats[key] : 2;
+      xp += (statXpTable[v] || 0);
+    });
+
+    // Primary skills.
+    const pr = (charData.skills && charData.skills.primary) || {};
+    primarySkillDefs.forEach(s => { xp += (primXp[pr[s.name] || 0] || 0); });
+
+    // Secondary & specialty skills.
+    ((charData.skills && charData.skills.secondary) || []).forEach(s => {
+      xp += (secXp[s.value || 0] || 0);
+    });
+    ((charData.skills && charData.skills.specialty) || []).forEach(s => {
+      xp += (specXp[s.value || 0] || 0);
+    });
     return xp;
   }
   async function saveXpSpent() {
@@ -590,11 +623,11 @@
     // "attach to playgroup" dropdown in edit mode.
     userPlaygroups = await loadUserPlaygroups(user.uid);
 
-    // Pull primary skills from the Basic Set if it defines any; else
-    // fall back to the bundled skill list. Ruleset wiring will later
-    // replace this with the character's active ruleset.
-    const basic = await loadBasicSet();
-    primarySkillDefs = (basic && basic.primarySkills) ? basic.primarySkills : FALLBACK_SKILLS;
+    // Primary skills come from the active ruleset. If the ruleset has
+    // none defined (unusual), fall back to the bundled FALLBACK_SKILLS.
+    primarySkillDefs = (activeRuleset.primarySkills && activeRuleset.primarySkills.length > 0)
+      ? activeRuleset.primarySkills
+      : FALLBACK_SKILLS;
 
     // Everything's loaded — swap loading screen for the sheet.
     document.getElementById('loading').style.display = 'none';
