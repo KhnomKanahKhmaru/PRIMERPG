@@ -37,6 +37,15 @@
     .xp-table input:focus { border-color: #444; }
     .xp-table .not-takable { color: #666; font-style: italic; font-size: 11px; text-align: center; }
 
+    /* Stat per-level table */
+    .stat-level-table { display: grid; grid-template-columns: 60px 90px 70px 1fr; gap: 4px 8px; align-items: center; max-width: 620px; }
+    .stat-level-table .slt-head { font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #888; padding: 4px 2px 6px; border-bottom: 1px solid #1a1a1a; }
+    .stat-level-table .slt-lbl { font-size: 11px; color: #888; text-align: right; padding-right: 4px; }
+    .stat-level-table input { width: 100%; font-size: 12px; padding: 5px 8px; background: #111; border: 1px solid #222; color: #e0e0e0; border-radius: 3px; outline: none; font-family: 'Open Sans', sans-serif; }
+    .stat-level-table input:focus { border-color: #444; }
+    .stat-level-table input.locked { background: #0a0a0a; color: #555; cursor: not-allowed; }
+    .stat-level-table input[type=number] { text-align: center; }
+
     /* Power levels */
     .pl-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
     .pl-row { display: flex; gap: 6px; align-items: center; background: #111; border: 1px solid #1a1a1a; border-radius: 4px; padding: 8px 10px; }
@@ -133,19 +142,45 @@
       </div>
     </div>
 
-    <!-- STAT COSTS -->
+    <!-- STATS -->
     <div class="section">
       <div class="section-header">
-        <div class="section-title">Stat Costs</div>
+        <div class="section-title">Stats</div>
       </div>
-      <div class="section-desc">XP cost per starting STAT level. Level 0 is never takable. Characters can purchase up to the max shown below; any values beyond max must be earned through play.</div>
+      <div class="section-desc">Define the stats available to characters, their scaling caps, XP costs, STATMOD per level, and flavor labels.</div>
+
+      <!-- Stat list -->
+      <div style="margin-bottom:16px">
+        <label style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#888;display:block;margin-bottom:8px">Stat List</label>
+        <div class="hint">Each stat has a short code (e.g. STR), a name, and a description shown on hover.</div>
+        <div class="skills-list" id="stats-list"></div>
+        <div class="add-row">
+          <input type="text" id="new-stat-code" placeholder="Code (e.g. TECH)" style="max-width:120px;text-transform:uppercase">
+          <input type="text" id="new-stat-name" placeholder="Name" style="max-width:160px">
+          <input type="text" id="new-stat-desc" placeholder="Description">
+          <button class="btn small" onclick="addStat()">+ Add</button>
+        </div>
+      </div>
+
+      <!-- Caps -->
       <div class="row" style="margin-bottom:10px;align-items:flex-end">
         <div class="field" style="max-width:180px">
           <label>Max Purchasable Level</label>
-          <input type="number" id="rs-statMax" min="1" max="20" value="6">
+          <input type="number" id="rs-statMax" min="1" max="40" value="6">
+        </div>
+        <div class="field" style="max-width:180px">
+          <label>Absolute Max Level</label>
+          <input type="number" id="rs-statAbsMax" min="1" max="40" value="20">
         </div>
       </div>
-      <div class="xp-table" id="stat-xp-table"></div>
+      <div class="hint">Max Purchasable is the highest level a player can start a stat at with XP. Absolute Max is the hard ceiling even through play.</div>
+
+      <!-- Per-level: XP cost, STATMOD, Label -->
+      <div style="margin-top:14px">
+        <label style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#888;display:block;margin-bottom:8px">Per-Level Table</label>
+        <div class="hint">XP cost only applies up to Max Purchasable. STATMOD and Label apply across the full scale.</div>
+        <div class="stat-level-table" id="stat-level-table"></div>
+      </div>
     </div>
 
     <!-- SKILL COSTS -->
@@ -323,13 +358,17 @@
     // Simple scalar fields
     document.getElementById('rs-startingXp').value = state.startingXp ?? 100;
     document.getElementById('rs-statMax').value = state.statMaxPurchasable ?? 6;
+    document.getElementById('rs-statAbsMax').value = state.statMax ?? 20;
     document.getElementById('rs-skillMax').value = state.skillMax ?? 10;
 
-    document.getElementById('rs-statMax').oninput = () => { syncStatMaxFromInput(); renderStatXp(); };
+    document.getElementById('rs-startingXp').oninput = (e) => { state.startingXp = Math.max(0, parseInt(e.target.value) || 0); };
+    document.getElementById('rs-statMax').oninput = () => { syncStatMaxFromInput(); renderStatLevelTable(); };
+    document.getElementById('rs-statAbsMax').oninput = () => { syncStatAbsMaxFromInput(); renderStatLevelTable(); };
     document.getElementById('rs-skillMax').oninput = () => { syncSkillMaxFromInput(); renderSkillXpTables(); };
 
     renderPowerLevels();
-    renderStatXp();
+    renderStatsList();
+    renderStatLevelTable();
     renderSkillXpTables();
     renderPrimarySkills();
     renderMorals();
@@ -340,14 +379,109 @@
 
   function syncStatMaxFromInput() {
     const v = parseInt(document.getElementById('rs-statMax').value) || 6;
-    state.statMaxPurchasable = Math.max(1, Math.min(20, v));
-    // Resize statXp array — index 0 = not takable, length should be max+1
+    state.statMaxPurchasable = Math.max(1, Math.min(40, v));
+    // Keep statMax >= statMaxPurchasable
+    if (state.statMax < state.statMaxPurchasable) {
+      state.statMax = state.statMaxPurchasable;
+      document.getElementById('rs-statAbsMax').value = state.statMax;
+    }
+    // Resize statXp array
     const old = state.statXp || [];
-    const newArr = [null]; // index 0 stays null
+    const newArr = [null];
     for (let i = 1; i <= state.statMaxPurchasable; i++) {
       newArr[i] = (old[i] !== undefined && old[i] !== null) ? old[i] : 0;
     }
     state.statXp = newArr;
+  }
+
+  function syncStatAbsMaxFromInput() {
+    const v = parseInt(document.getElementById('rs-statAbsMax').value) || 20;
+    state.statMax = Math.max(state.statMaxPurchasable || 1, Math.min(40, v));
+    // Resize statMods and statLabels arrays
+    while (state.statMods.length < state.statMax + 1) {
+      state.statMods.push(state.statMods[state.statMods.length-1] ?? 0);
+    }
+    while (state.statLabels.length < state.statMax + 1) {
+      state.statLabels.push('Level ' + state.statLabels.length);
+    }
+    state.statMods = state.statMods.slice(0, state.statMax + 1);
+    state.statLabels = state.statLabels.slice(0, state.statMax + 1);
+  }
+
+  // ── STATS LIST ──
+  function renderStatsList() {
+    const list = document.getElementById('stats-list');
+    if (!state.stats || state.stats.length === 0) {
+      list.innerHTML = '<div class="empty">No stats defined.</div>';
+      return;
+    }
+    list.innerHTML = state.stats.map((s, i) => `
+      <div class="skill-row">
+        <input type="text" class="skill-name" style="max-width:90px;text-transform:uppercase" value="${(s.code||'').replace(/"/g,'&quot;')}" placeholder="Code" oninput="updateStat(${i},'code',this.value.toUpperCase())">
+        <input type="text" class="skill-name" style="max-width:140px" value="${(s.name||'').replace(/"/g,'&quot;')}" placeholder="Name" oninput="updateStat(${i},'name',this.value)">
+        <input type="text" class="skill-desc" value="${(s.description||'').replace(/"/g,'&quot;')}" placeholder="Description" oninput="updateStat(${i},'description',this.value)">
+        <span class="pl-delete" onclick="removeStat(${i})" title="Remove">×</span>
+      </div>`).join('');
+  }
+  window.updateStat = function(i, field, value) { state.stats[i][field] = value; }
+  window.removeStat = function(i) { state.stats.splice(i, 1); renderStatsList(); }
+  window.addStat = function() {
+    const code = document.getElementById('new-stat-code').value.trim().toUpperCase();
+    const name = document.getElementById('new-stat-name').value.trim();
+    const desc = document.getElementById('new-stat-desc').value.trim();
+    if (!code || !name) return;
+    if (state.stats.some(s => s.code === code)) {
+      alert('A stat with that code already exists.');
+      return;
+    }
+    state.stats.push({ code, name, description: desc });
+    document.getElementById('new-stat-code').value = '';
+    document.getElementById('new-stat-name').value = '';
+    document.getElementById('new-stat-desc').value = '';
+    renderStatsList();
+  }
+
+  // ── PER-LEVEL TABLE (XP / STATMOD / LABEL) ──
+  function renderStatLevelTable() {
+    const container = document.getElementById('stat-level-table');
+    const absMax = state.statMax;
+    const purchMax = state.statMaxPurchasable;
+    // Header row
+    const rows = [
+      '<div class="slt-head" style="text-align:right">Level</div>',
+      '<div class="slt-head" style="text-align:center">XP Cost</div>',
+      '<div class="slt-head" style="text-align:center">STATMOD</div>',
+      '<div class="slt-head">Label</div>'
+    ];
+    for (let i = 0; i <= absMax; i++) {
+      rows.push(`<div class="slt-lbl">Level ${i}</div>`);
+      // XP cost column — only meaningful up to purchMax; level 0 = not takable
+      if (i === 0) {
+        rows.push('<input type="text" class="locked" value="N/A" disabled>');
+      } else if (i <= purchMax) {
+        const v = (state.statXp && state.statXp[i] !== undefined && state.statXp[i] !== null) ? state.statXp[i] : 0;
+        rows.push(`<input type="number" value="${v}" oninput="updateStatXp(${i},this.value)">`);
+      } else {
+        rows.push('<input type="text" class="locked" value="—" disabled title="Beyond Max Purchasable">');
+      }
+      // STATMOD
+      const m = state.statMods[i] ?? 0;
+      rows.push(`<input type="number" value="${m}" oninput="updateStatMod(${i},this.value)">`);
+      // Label
+      const lbl = state.statLabels[i] ?? '';
+      rows.push(`<input type="text" value="${lbl.replace(/"/g,'&quot;')}" placeholder="Level ${i}" oninput="updateStatLabel(${i},this.value)">`);
+    }
+    container.innerHTML = rows.join('');
+  }
+  window.updateStatXp = function(i, val) {
+    if (!Array.isArray(state.statXp)) state.statXp = [];
+    state.statXp[i] = parseInt(val) || 0;
+  }
+  window.updateStatMod = function(i, val) {
+    state.statMods[i] = parseInt(val) || 0;
+  }
+  window.updateStatLabel = function(i, val) {
+    state.statLabels[i] = val;
   }
 
   function syncSkillMaxFromInput() {
@@ -397,27 +531,6 @@
     state.powerLevels.splice(i, 1);
     if (state.defaultPowerLevel === was && state.powerLevels.length > 0) state.defaultPowerLevel = state.powerLevels[0].value;
     renderPowerLevels();
-  }
-
-  // ── STAT XP ──
-  function renderStatXp() {
-    const container = document.getElementById('stat-xp-table');
-    const max = state.statMaxPurchasable;
-    const rows = [];
-    for (let i = 0; i <= max; i++) {
-      const label = i === 0 ? 'Level 0' : 'Level ' + i;
-      if (i === 0) {
-        rows.push(`<div class="xp-lbl">${label}</div><div class="not-takable">Not takable</div>`);
-      } else {
-        const v = (state.statXp && state.statXp[i] !== undefined && state.statXp[i] !== null) ? state.statXp[i] : 0;
-        rows.push(`<div class="xp-lbl">${label}</div><input type="number" value="${v}" oninput="updateStatXp(${i},this.value)">`);
-      }
-    }
-    container.innerHTML = rows.join('');
-  }
-  window.updateStatXp = function(i, val) {
-    if (!Array.isArray(state.statXp)) state.statXp = [];
-    state.statXp[i] = parseInt(val) || 0;
   }
 
   // ── SKILL XP TABLES ──
@@ -500,6 +613,10 @@
     state.startingXp = src.startingXp;
     state.statXp = src.statXp.slice();
     state.statMaxPurchasable = src.statMaxPurchasable;
+    state.statMax = src.statMax;
+    state.stats = JSON.parse(JSON.stringify(src.stats));
+    state.statMods = src.statMods.slice();
+    state.statLabels = src.statLabels.slice();
     state.primarySkillXp = src.primarySkillXp.slice();
     state.secondarySkillXp = src.secondarySkillXp.slice();
     state.specialtySkillXp = src.specialtySkillXp.slice();
@@ -541,6 +658,10 @@
       startingXp: state.startingXp,
       statXp: state.statXp,
       statMaxPurchasable: state.statMaxPurchasable,
+      statMax: state.statMax,
+      stats: state.stats,
+      statMods: state.statMods,
+      statLabels: state.statLabels,
       primarySkillXp: state.primarySkillXp,
       secondarySkillXp: state.secondarySkillXp,
       specialtySkillXp: state.specialtySkillXp,
