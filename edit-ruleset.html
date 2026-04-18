@@ -19,16 +19,32 @@
     .section-desc { font-size: 12px; color: #666; line-height: 1.6; margin-bottom: 12px; }
     .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
     .field label { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; }
-    .field input, .field select {
+    .field input, .field select, .field textarea {
       background: #111; border: 1px solid #222; color: #e0e0e0;
       font-family: 'Open Sans', sans-serif; font-size: 13px; padding: 7px 10px;
       border-radius: 4px; outline: none; width: 100%;
     }
-    .field input:focus, .field select:focus { border-color: #444; }
+    .field input:focus, .field select:focus, .field textarea:focus { border-color: #444; }
     .field select option { background: #111; }
 
     .row { display: flex; gap: 12px; flex-wrap: wrap; }
     .row .field { flex: 1; min-width: 120px; }
+
+    /* Top-level tabs (Core / A&D) */
+    .top-tabs { display: flex; gap: 0; border-bottom: 1px solid #1a1a1a; margin-bottom: 18px; }
+    .top-tab { padding: 10px 20px; font-size: 13px; font-weight: 500; color: #666; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; user-select: none; letter-spacing: .02em; }
+    .top-tab:hover { color: #aaa; }
+    .top-tab.active { color: #e0e0e0; border-bottom-color: #e0e0e0; }
+    .top-panel { display: none; }
+    .top-panel.active { display: block; }
+
+    /* Sub-tabs (inside A&D) */
+    .sub-tabs { display: flex; gap: 0; border-bottom: 1px solid #1a1a1a; margin-bottom: 14px; }
+    .sub-tab { padding: 7px 16px; font-size: 12px; font-weight: 500; color: #666; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; user-select: none; }
+    .sub-tab:hover { color: #aaa; }
+    .sub-tab.active { color: #e0e0e0; border-bottom-color: #3a5878; }
+    .sub-panel { display: none; }
+    .sub-panel.active { display: block; }
 
     /* XP table grid */
     .xp-table { display: grid; grid-template-columns: 60px 1fr; gap: 4px; align-items: center; margin-bottom: 10px; max-width: 320px; }
@@ -45,6 +61,34 @@
     .stat-level-table input:focus { border-color: #444; }
     .stat-level-table input.locked { background: #0a0a0a; color: #555; cursor: not-allowed; }
     .stat-level-table input[type=number] { text-align: center; }
+
+    /* A/D Tier table (7 rows: Label, Description, XP) */
+    .tier-table { display: grid; grid-template-columns: 140px 1fr 80px 24px; gap: 6px 10px; align-items: center; margin-bottom: 12px; }
+    .tier-table .tt-head { font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #888; padding: 4px 2px 6px; border-bottom: 1px solid #1a1a1a; }
+    .tier-table input { background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 5px 8px; border-radius: 3px; outline: none; }
+    .tier-table input:focus { border-color: #444; }
+    .tier-table input.tt-label { font-weight: 500; }
+    .tier-table input.tt-xp { text-align: center; }
+    .tier-table .tt-idx { font-size: 10px; color: #555; text-align: center; font-weight: 500; }
+
+    /* A/D entries list */
+    .ad-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+    .ad-row { display: grid; grid-template-columns: 170px 110px 120px 1fr 24px; gap: 6px; align-items: start; background: #111; border: 1px solid #1a1a1a; border-radius: 4px; padding: 8px 10px; }
+    .ad-row input, .ad-row select, .ad-row textarea { background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 5px 8px; border-radius: 3px; outline: none; width: 100%; }
+    .ad-row input:focus, .ad-row select:focus, .ad-row textarea:focus { border-color: #444; }
+    .ad-row textarea { resize: vertical; min-height: 26px; line-height: 1.4; font-family: 'Open Sans', sans-serif; }
+    .ad-row .delete-x { color: #555; font-size: 18px; cursor: pointer; padding: 0 4px; line-height: 1.6; align-self: center; }
+    .ad-row .delete-x:hover { color: #c84b4b; }
+
+    .ad-add-row { display: grid; grid-template-columns: 170px 110px 120px 1fr auto; gap: 6px; align-items: center; margin-top: 6px; }
+    .ad-add-row input, .ad-add-row select { background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 8px; border-radius: 3px; outline: none; width: 100%; }
+    .ad-add-row input:focus, .ad-add-row select:focus { border-color: #444; }
+
+    /* Category filter chips */
+    .filter-chips { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 10px; }
+    .filter-chip { font-size: 11px; padding: 4px 10px; border: 1px solid #222; border-radius: 12px; background: #111; color: #888; cursor: pointer; user-select: none; }
+    .filter-chip:hover { color: #ccc; border-color: #444; }
+    .filter-chip.active { background: #1f2c3a; border-color: #3a5878; color: #cfe3f6; }
 
     /* Power levels */
     .pl-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
@@ -109,161 +153,234 @@
     <div class="page-sub" id="page-sub">Build a complete rules module. All fields below shape how characters using this ruleset behave.</div>
     <div class="scale-summary" id="scale-summary"></div>
 
-    <!-- BASIC INFO -->
-    <div class="section">
-      <div class="section-header">
-        <div class="section-title">Basic Info</div>
-      </div>
-      <div class="field">
-        <label>Ruleset Name</label>
-        <input type="text" id="rs-name" placeholder="e.g. Shadowrun Fantasy, Hard Sci-Fi...">
-      </div>
-      <div class="field">
-        <label>Tagline <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#555">— short one-line subtitle</span></label>
-        <input type="text" id="rs-tagline" placeholder="e.g. A grim near-future Earth setting" maxlength="140">
-      </div>
-      <div class="field" id="playgroup-field">
-        <label>Attach to Playgroup</label>
-        <select id="rs-playgroup">
-          <option value="">None (personal ruleset)</option>
-        </select>
-      </div>
-      <div class="hint" id="basic-import-hint" style="display:none">Quickly copy every field from the Basic Set to start from a familiar baseline.</div>
-      <button class="btn small" id="import-basic-btn" onclick="importFromBasic()" style="display:none">Import from Basic Set</button>
+    <!-- TOP-LEVEL TABS -->
+    <div class="top-tabs">
+      <div class="top-tab active" id="top-tab-core"   onclick="switchTopTab('core')">Core Rules</div>
+      <div class="top-tab"        id="top-tab-ad"     onclick="switchTopTab('ad')">Advantages &amp; Disadvantages</div>
     </div>
 
-    <!-- STARTING XP & POWER LEVELS -->
-    <div class="section">
-      <div class="section-header">
-        <div class="section-title">Starting XP & Power Levels</div>
-      </div>
-      <div class="section-desc">How much XP new characters start with, and how expensive AP is to purchase at each Power Level.</div>
-      <div class="field" style="max-width:220px">
-        <label>Starting XP</label>
-        <input type="number" id="rs-startingXp" min="0" value="100">
-      </div>
-      <div style="margin-top:12px">
-        <label style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#888;display:block;margin-bottom:8px">Power Levels</label>
-        <div class="hint">Each level has a label and a cost in XP to purchase 1 AP. One must be marked as default (new characters start at this level).</div>
-        <div class="pl-list" id="pl-list"></div>
-        <button class="btn small" onclick="addPowerLevel()">+ Add Power Level</button>
-      </div>
-    </div>
+    <!-- ═══════════════════════ CORE RULES TAB ═══════════════════════ -->
+    <div class="top-panel active" id="top-panel-core">
 
-    <!-- STATS -->
-    <div class="section">
-      <div class="section-header">
-        <div class="section-title">Stats</div>
+      <!-- BASIC INFO -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Basic Info</div>
+        </div>
+        <div class="field">
+          <label>Ruleset Name</label>
+          <input type="text" id="rs-name" placeholder="e.g. Shadowrun Fantasy, Hard Sci-Fi...">
+        </div>
+        <div class="field">
+          <label>Tagline <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#555">— short one-line subtitle</span></label>
+          <input type="text" id="rs-tagline" placeholder="e.g. A grim near-future Earth setting" maxlength="140">
+        </div>
+        <div class="field" id="playgroup-field">
+          <label>Attach to Playgroup</label>
+          <select id="rs-playgroup">
+            <option value="">None (personal ruleset)</option>
+          </select>
+        </div>
+        <div class="hint" id="basic-import-hint" style="display:none">Quickly copy every field from the Basic Set to start from a familiar baseline.</div>
+        <button class="btn small" id="import-basic-btn" onclick="importFromBasic()" style="display:none">Import from Basic Set</button>
       </div>
-      <div class="section-desc">Define the stats available to characters, their scaling caps, XP costs, STATMOD per level, and flavor labels.</div>
 
-      <!-- Stat list -->
-      <div style="margin-bottom:16px">
-        <label style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#888;display:block;margin-bottom:8px">Stat List</label>
-        <div class="hint">Each stat has a short code (e.g. STR), a name, and a description shown on hover.</div>
-        <div class="skills-list" id="stats-list"></div>
+      <!-- STARTING XP & POWER LEVELS -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Starting XP & Power Levels</div>
+        </div>
+        <div class="section-desc">How much XP new characters start with, and how expensive AP is to purchase at each Power Level.</div>
+        <div class="field" style="max-width:220px">
+          <label>Starting XP</label>
+          <input type="number" id="rs-startingXp" min="0" value="100">
+        </div>
+        <div style="margin-top:12px">
+          <label style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#888;display:block;margin-bottom:8px">Power Levels</label>
+          <div class="hint">Each level has a label and a cost in XP to purchase 1 AP. One must be marked as default (new characters start at this level).</div>
+          <div class="pl-list" id="pl-list"></div>
+          <button class="btn small" onclick="addPowerLevel()">+ Add Power Level</button>
+        </div>
+      </div>
+
+      <!-- STATS -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Stats</div>
+        </div>
+        <div class="section-desc">Define the stats available to characters, their scaling caps, XP costs, STATMOD per level, and flavor labels.</div>
+
+        <div style="margin-bottom:16px">
+          <label style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#888;display:block;margin-bottom:8px">Stat List</label>
+          <div class="hint">Each stat has a short code (e.g. STR), a name, and a description shown on hover.</div>
+          <div class="skills-list" id="stats-list"></div>
+          <div class="add-row">
+            <input type="text" id="new-stat-code" placeholder="Code (e.g. TECH)" style="max-width:120px;text-transform:uppercase">
+            <input type="text" id="new-stat-name" placeholder="Name" style="max-width:160px">
+            <input type="text" id="new-stat-desc" placeholder="Description">
+            <button class="btn small" onclick="addStat()">+ Add</button>
+          </div>
+        </div>
+
+        <div class="row" style="margin-bottom:10px;align-items:flex-end">
+          <div class="field" style="max-width:180px">
+            <label>Max Purchasable Level</label>
+            <input type="number" id="rs-statMax" min="1" max="40" value="6">
+          </div>
+          <div class="field" style="max-width:180px">
+            <label>Absolute Max Level</label>
+            <input type="number" id="rs-statAbsMax" min="1" max="40" value="20">
+          </div>
+        </div>
+        <div class="hint">Max Purchasable is the highest level a player can start a stat at with XP. Absolute Max is the hard ceiling even through play.</div>
+
+        <div style="margin-top:14px">
+          <label style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#888;display:block;margin-bottom:8px">Per-Level Table</label>
+          <div class="hint">XP cost only applies up to Max Purchasable. STATMOD and Label apply across the full scale.</div>
+          <div class="stat-level-table" id="stat-level-table"></div>
+        </div>
+      </div>
+
+      <!-- SIZE -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Size</div>
+        </div>
+        <div class="section-desc">Size is a separate scale from regular stats. Define the tiers available and what each one is called. Size has no STATMOD — it's purely a scale + label that affects other math elsewhere in the game.</div>
+        <div class="hint">Each tier has a numeric level, a label, and an optional XP cost for starting characters to choose it.</div>
+        <div class="skills-list" id="size-tiers-list"></div>
         <div class="add-row">
-          <input type="text" id="new-stat-code" placeholder="Code (e.g. TECH)" style="max-width:120px;text-transform:uppercase">
-          <input type="text" id="new-stat-name" placeholder="Name" style="max-width:160px">
-          <input type="text" id="new-stat-desc" placeholder="Description">
-          <button class="btn small" onclick="addStat()">+ Add</button>
+          <input type="number" id="new-size-level" placeholder="Level" style="max-width:90px">
+          <input type="text" id="new-size-label" placeholder="Label (e.g. Medium)" style="max-width:200px">
+          <input type="number" id="new-size-cost" placeholder="XP Cost" value="0" style="max-width:100px">
+          <button class="btn small" onclick="addSizeTier()">+ Add Tier</button>
+        </div>
+        <div class="field" style="max-width:220px;margin-top:14px">
+          <label>Default Starting Tier</label>
+          <select id="rs-size-default"></select>
         </div>
       </div>
 
-      <!-- Caps -->
-      <div class="row" style="margin-bottom:10px;align-items:flex-end">
+      <!-- SKILL COSTS -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Skill Costs</div>
+        </div>
+        <div class="section-desc">XP cost per level for each skill tier. The max level determines how high players can push a skill.</div>
         <div class="field" style="max-width:180px">
-          <label>Max Purchasable Level</label>
-          <input type="number" id="rs-statMax" min="1" max="40" value="6">
+          <label>Max Skill Level</label>
+          <input type="number" id="rs-skillMax" min="1" max="20" value="10">
         </div>
-        <div class="field" style="max-width:180px">
-          <label>Absolute Max Level</label>
-          <input type="number" id="rs-statAbsMax" min="1" max="40" value="20">
-        </div>
-      </div>
-      <div class="hint">Max Purchasable is the highest level a player can start a stat at with XP. Absolute Max is the hard ceiling even through play.</div>
-
-      <!-- Per-level: XP cost, STATMOD, Label -->
-      <div style="margin-top:14px">
-        <label style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#888;display:block;margin-bottom:8px">Per-Level Table</label>
-        <div class="hint">XP cost only applies up to Max Purchasable. STATMOD and Label apply across the full scale.</div>
-        <div class="stat-level-table" id="stat-level-table"></div>
-      </div>
-    </div>
-
-    <!-- SIZE -->
-    <div class="section">
-      <div class="section-header">
-        <div class="section-title">Size</div>
-      </div>
-      <div class="section-desc">Size is a separate scale from regular stats. Define the tiers available and what each one is called. Size has no STATMOD — it's purely a scale + label that affects other math elsewhere in the game.</div>
-      <div class="hint">Each tier has a numeric level, a label, and an optional XP cost for starting characters to choose it.</div>
-      <div class="skills-list" id="size-tiers-list"></div>
-      <div class="add-row">
-        <input type="number" id="new-size-level" placeholder="Level" style="max-width:90px">
-        <input type="text" id="new-size-label" placeholder="Label (e.g. Medium)" style="max-width:200px">
-        <input type="number" id="new-size-cost" placeholder="XP Cost" value="0" style="max-width:100px">
-        <button class="btn small" onclick="addSizeTier()">+ Add Tier</button>
-      </div>
-      <div class="field" style="max-width:220px;margin-top:14px">
-        <label>Default Starting Tier</label>
-        <select id="rs-size-default"></select>
-      </div>
-    </div>
-
-    <!-- SKILL COSTS -->
-    <div class="section">
-      <div class="section-header">
-        <div class="section-title">Skill Costs</div>
-      </div>
-      <div class="section-desc">XP cost per level for each skill tier. The max level determines how high players can push a skill.</div>
-      <div class="field" style="max-width:180px">
-        <label>Max Skill Level</label>
-        <input type="number" id="rs-skillMax" min="1" max="20" value="10">
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:14px">
-        <div>
-          <div style="font-size:11px;font-weight:600;color:#aaa;margin-bottom:6px">Primary</div>
-          <div class="xp-table" id="prim-xp-table"></div>
-        </div>
-        <div>
-          <div style="font-size:11px;font-weight:600;color:#aaa;margin-bottom:6px">Secondary</div>
-          <div class="xp-table" id="sec-xp-table"></div>
-        </div>
-        <div>
-          <div style="font-size:11px;font-weight:600;color:#aaa;margin-bottom:6px">Specialty</div>
-          <div class="xp-table" id="spec-xp-table"></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:14px">
+          <div>
+            <div style="font-size:11px;font-weight:600;color:#aaa;margin-bottom:6px">Primary</div>
+            <div class="xp-table" id="prim-xp-table"></div>
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:600;color:#aaa;margin-bottom:6px">Secondary</div>
+            <div class="xp-table" id="sec-xp-table"></div>
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:600;color:#aaa;margin-bottom:6px">Specialty</div>
+            <div class="xp-table" id="spec-xp-table"></div>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- PRIMARY SKILLS -->
-    <div class="section">
-      <div class="section-header">
-        <div class="section-title">Primary Skills</div>
+      <!-- PRIMARY SKILLS -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Primary Skills</div>
+        </div>
+        <div class="section-desc">Define the Primary Skills available to characters. Each gets a name and a hover-description.</div>
+        <div class="skills-list" id="primary-skills-list"></div>
+        <div class="add-row">
+          <input type="text" id="new-skill-name" placeholder="Skill name (e.g. Piloting)" style="max-width:180px">
+          <input type="text" id="new-skill-desc" placeholder="Short description">
+          <button class="btn small" onclick="addPrimarySkill()">+ Add</button>
+        </div>
       </div>
-      <div class="section-desc">Define the Primary Skills available to characters. Each gets a name and a hover-description.</div>
-      <div class="skills-list" id="primary-skills-list"></div>
-      <div class="add-row">
-        <input type="text" id="new-skill-name" placeholder="Skill name (e.g. Piloting)" style="max-width:180px">
-        <input type="text" id="new-skill-desc" placeholder="Short description">
-        <button class="btn small" onclick="addPrimarySkill()">+ Add</button>
-      </div>
-    </div>
 
-    <!-- MORALS -->
-    <div class="section">
-      <div class="section-header">
-        <div class="section-title">Morals</div>
+      <!-- MORALS -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Morals</div>
+        </div>
+        <div class="section-desc">Morals available to characters. A blank entry acts as a "Custom…" wildcard that lets players name their own.</div>
+        <div class="morals-grid" id="morals-list"></div>
+        <div class="add-row">
+          <input type="text" id="new-moral" placeholder="Add a moral..." onkeydown="if(event.key==='Enter')addMoral()">
+          <button class="btn small" onclick="addMoral()">+ Add</button>
+          <button class="btn small" onclick="addWildcardMoral()" title="Add a Custom wildcard slot">+ Wildcard</button>
+        </div>
       </div>
-      <div class="section-desc">Morals available to characters. A blank entry acts as a "Custom…" wildcard that lets players name their own.</div>
-      <div class="morals-grid" id="morals-list"></div>
-      <div class="add-row">
-        <input type="text" id="new-moral" placeholder="Add a moral..." onkeydown="if(event.key==='Enter')addMoral()">
-        <button class="btn small" onclick="addMoral()">+ Add</button>
-        <button class="btn small" onclick="addWildcardMoral()" title="Add a Custom wildcard slot">+ Wildcard</button>
+
+    </div><!-- /top-panel-core -->
+
+    <!-- ═══════════════ ADVANTAGES & DISADVANTAGES TAB ═══════════════ -->
+    <div class="top-panel" id="top-panel-ad">
+
+      <!-- Sub-tabs: Advantages | Disadvantages -->
+      <div class="sub-tabs">
+        <div class="sub-tab active" id="sub-tab-adv" onclick="switchSubTab('adv')">Advantages</div>
+        <div class="sub-tab"        id="sub-tab-dis" onclick="switchSubTab('dis')">Disadvantages</div>
       </div>
-    </div>
+
+      <!-- ADVANTAGES sub-panel -->
+      <div class="sub-panel active" id="sub-panel-adv">
+        <div class="section">
+          <div class="section-header">
+            <div class="section-title">Advantage Tiers</div>
+          </div>
+          <div class="section-desc">Seven tiers that advantage entries are rated on. Each tier has its own XP cost — picking a Minor advantage costs the XP value of Minor, etc.</div>
+          <div class="tier-table" id="adv-tier-table"></div>
+        </div>
+
+        <div class="section">
+          <div class="section-header">
+            <div class="section-title">Advantages</div>
+          </div>
+          <div class="section-desc">The catalog of advantages players can pick from. Each is tagged with a category and a tier.</div>
+          <div class="filter-chips" id="adv-filter-chips"></div>
+          <div class="ad-list" id="adv-list"></div>
+          <div class="ad-add-row">
+            <input type="text"   id="new-adv-name"        placeholder="Name (e.g. Keen Senses)">
+            <select              id="new-adv-category"></select>
+            <select              id="new-adv-tier"></select>
+            <input type="text"   id="new-adv-description" placeholder="Short description">
+            <button class="btn small" onclick="addAdvantage()">+ Add</button>
+          </div>
+        </div>
+      </div><!-- /sub-panel-adv -->
+
+      <!-- DISADVANTAGES sub-panel -->
+      <div class="sub-panel" id="sub-panel-dis">
+        <div class="section">
+          <div class="section-header">
+            <div class="section-title">Disadvantage Tiers</div>
+          </div>
+          <div class="section-desc">Seven tiers that disadvantage entries are rated on. The XP value here is what the player <strong>gains</strong> for taking one (so a positive number grants XP).</div>
+          <div class="tier-table" id="dis-tier-table"></div>
+        </div>
+
+        <div class="section">
+          <div class="section-header">
+            <div class="section-title">Disadvantages</div>
+          </div>
+          <div class="section-desc">The catalog of disadvantages players can take on. Each is tagged with a category and a tier.</div>
+          <div class="filter-chips" id="dis-filter-chips"></div>
+          <div class="ad-list" id="dis-list"></div>
+          <div class="ad-add-row">
+            <input type="text"   id="new-dis-name"        placeholder="Name (e.g. One Eye)">
+            <select              id="new-dis-category"></select>
+            <select              id="new-dis-tier"></select>
+            <input type="text"   id="new-dis-description" placeholder="Short description">
+            <button class="btn small" onclick="addDisadvantage()">+ Add</button>
+          </div>
+        </div>
+      </div><!-- /sub-panel-dis -->
+
+    </div><!-- /top-panel-ad -->
 
     <div class="footer-actions">
       <button class="btn primary" id="submit-btn" onclick="saveRuleset()">Save</button>
@@ -293,14 +410,27 @@
   const db = getFirestore(app);
 
   const params = new URLSearchParams(window.location.search);
-  const rulesetId = params.get('id');    // present if editing
+  const rulesetId = params.get('id');
   const isCreating = !rulesetId;
 
   let myUid = null;
-  let basicSetData = null;  // cache of Basic Set for "Import from Basic"
-  let state = null;          // current ruleset being edited (normalized)
-  let existingDoc = null;    // original doc if editing
+  let basicSetData = null;
+  let state = null;
+  let existingDoc = null;
   let userPlaygroups = [];
+
+  // Fixed category codes — display labels can change but the stored code never does.
+  const AD_CATEGORIES = [
+    { code: 'physical',   label: 'Physical'   },
+    { code: 'mental',     label: 'Mental'     },
+    { code: 'social',     label: 'Social'     },
+    { code: 'background', label: 'Background' },
+    { code: 'special',    label: 'Special'    }
+  ];
+
+  // Per-tab filter state — 'all' or a category code. Independent for A and D.
+  let advFilter = 'all';
+  let disFilter = 'all';
 
   await auth.authStateReady();
   const user = auth.currentUser;
@@ -312,12 +442,10 @@
     if (userDoc.exists()) setNavUsername(userDoc.data().username);
     initAlerts(db, user.uid);
 
-    // Load Basic Set for import
     const basicQ = query(collection(db, 'rulesets'), where('isBasicSet', '==', true));
     const basicSnap = await getDocs(basicQ);
     if (!basicSnap.empty) basicSetData = Object.assign({ id: basicSnap.docs[0].id }, basicSnap.docs[0].data());
 
-    // Load user's playgroups where they are Leader/Admin
     const membQ = query(collection(db, 'memberships'), where('uid', '==', user.uid));
     const membSnap = await getDocs(membQ);
     for (const mDoc of membSnap.docs) {
@@ -328,7 +456,6 @@
     }
 
     if (isCreating) {
-      // Brand-new ruleset: start from Basic Set if available, else defaults
       state = window.normalizeRuleset({ name: '', morals: [] });
       document.getElementById('page-title').textContent = 'Create Ruleset';
       document.getElementById('submit-btn').textContent = 'Create Ruleset';
@@ -336,7 +463,6 @@
       document.getElementById('basic-import-hint').style.display = basicSetData ? 'block' : 'none';
       initUI();
     } else {
-      // Editing: load existing
       const rsDoc = await getDoc(doc(db, 'rulesets', rulesetId));
       if (!rsDoc.exists()) {
         window.location.href = 'my-rulesets.html';
@@ -344,7 +470,6 @@
         existingDoc = rsDoc.data();
         state = window.normalizeRuleset(existingDoc);
 
-        // Permission check
         const isOwner = existingDoc.createdBy === myUid;
         const isBasic = existingDoc.isBasicSet;
         const isSiteAdmin = myUid === window.SITE_ADMIN_UID;
@@ -387,7 +512,6 @@
       sel.appendChild(opt);
     });
 
-    // Simple scalar fields
     document.getElementById('rs-startingXp').value = state.startingXp ?? 100;
     document.getElementById('rs-statMax').value = state.statMaxPurchasable ?? 6;
     document.getElementById('rs-statAbsMax').value = state.statMax ?? 20;
@@ -405,10 +529,36 @@
     renderSkillXpTables();
     renderPrimarySkills();
     renderMorals();
+
+    // A/D
+    renderTierTable('adv');
+    renderTierTable('dis');
+    populateAddRowDropdowns('adv');
+    populateAddRowDropdowns('dis');
+    renderFilterChips('adv');
+    renderFilterChips('dis');
+    renderAdList('adv');
+    renderAdList('dis');
+
     renderScaleSummary();
 
     document.getElementById('loading').style.display = 'none';
     document.getElementById('content').style.display = 'block';
+  }
+
+  // ── TAB SWITCHING ──
+  window.switchTopTab = function(which) {
+    document.querySelectorAll('.top-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.top-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('top-tab-' + which).classList.add('active');
+    document.getElementById('top-panel-' + which).classList.add('active');
+  }
+
+  window.switchSubTab = function(which) {
+    document.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.sub-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('sub-tab-' + which).classList.add('active');
+    document.getElementById('sub-panel-' + which).classList.add('active');
   }
 
   function renderScaleSummary() {
@@ -417,6 +567,8 @@
     const pSkills = (state.primarySkills || []).length;
     const pLevels = (state.powerLevels || []).length;
     const sizeTiers = (state.size && state.size.tiers) ? state.size.tiers.length : 0;
+    const advCount = (state.advantages    || []).length;
+    const disCount = (state.disadvantages || []).length;
     box.innerHTML = [
       `<span>Starting XP: <strong>${state.startingXp}</strong></span>`,
       `<span class="sep">·</span>`,
@@ -426,19 +578,19 @@
       `<span class="sep">·</span>`,
       `<span>Size Tiers: <strong>${sizeTiers}</strong></span>`,
       `<span class="sep">·</span>`,
-      `<span>Power Levels: <strong>${pLevels}</strong></span>`
+      `<span>Power Levels: <strong>${pLevels}</strong></span>`,
+      `<span class="sep">·</span>`,
+      `<span>A/D: <strong>${advCount}</strong> / <strong>${disCount}</strong></span>`
     ].join('');
   }
 
   function syncStatMaxFromInput() {
     const v = parseInt(document.getElementById('rs-statMax').value) || 6;
     state.statMaxPurchasable = Math.max(1, Math.min(40, v));
-    // Keep statMax >= statMaxPurchasable
     if (state.statMax < state.statMaxPurchasable) {
       state.statMax = state.statMaxPurchasable;
       document.getElementById('rs-statAbsMax').value = state.statMax;
     }
-    // Resize statXp array
     const old = state.statXp || [];
     const newArr = [null];
     for (let i = 1; i <= state.statMaxPurchasable; i++) {
@@ -450,7 +602,6 @@
   function syncStatAbsMaxFromInput() {
     const v = parseInt(document.getElementById('rs-statAbsMax').value) || 20;
     state.statMax = Math.max(state.statMaxPurchasable || 1, Math.min(40, v));
-    // Resize statMods and statLabels arrays
     while (state.statMods.length < state.statMax + 1) {
       state.statMods.push(state.statMods[state.statMods.length-1] ?? 0);
     }
@@ -501,7 +652,6 @@
     if (!state.size || !state.size.tiers || state.size.tiers.length === 0) {
       list.innerHTML = '<div class="empty">No size tiers defined.</div>';
     } else {
-      // Sort by level for display (but don't mutate state order — actually do sort state to keep UX sane)
       state.size.tiers.sort((a, b) => (a.level || 0) - (b.level || 0));
       list.innerHTML = state.size.tiers.map((t, i) => `
         <div class="skill-row">
@@ -511,7 +661,6 @@
           <span class="pl-delete" onclick="removeSizeTier(${i})" title="Remove">×</span>
         </div>`).join('');
     }
-    // Rebuild default-tier dropdown
     const sel = document.getElementById('rs-size-default');
     sel.innerHTML = '';
     (state.size.tiers || []).forEach(t => {
@@ -550,12 +699,11 @@
     renderScaleSummary();
   }
 
-  // ── PER-LEVEL TABLE (XP / STATMOD / LABEL) ──
+  // ── PER-LEVEL TABLE ──
   function renderStatLevelTable() {
     const container = document.getElementById('stat-level-table');
     const absMax = state.statMax;
     const purchMax = state.statMaxPurchasable;
-    // Header row
     const rows = [
       '<div class="slt-head" style="text-align:right">Level</div>',
       '<div class="slt-head" style="text-align:center">XP Cost</div>',
@@ -564,7 +712,6 @@
     ];
     for (let i = 0; i <= absMax; i++) {
       rows.push(`<div class="slt-lbl">Level ${i}</div>`);
-      // XP cost column — only meaningful up to purchMax; level 0 = not takable
       if (i === 0) {
         rows.push('<input type="text" class="locked" value="N/A" disabled>');
       } else if (i <= purchMax) {
@@ -573,10 +720,8 @@
       } else {
         rows.push('<input type="text" class="locked" value="—" disabled title="Beyond Max Purchasable">');
       }
-      // STATMOD
       const m = state.statMods[i] ?? 0;
       rows.push(`<input type="number" value="${m}" oninput="updateStatMod(${i},this.value)">`);
-      // Label
       const lbl = state.statLabels[i] ?? '';
       rows.push(`<input type="text" value="${lbl.replace(/"/g,'&quot;')}" placeholder="Level ${i}" oninput="updateStatLabel(${i},this.value)">`);
     }
@@ -622,7 +767,6 @@
       </div>
     `).join('');
   }
-
   window.updatePl = function(i, field, value) {
     if (field === 'xpPerAp') state.powerLevels[i][field] = Math.max(0, parseInt(value) || 0);
     else state.powerLevels[i][field] = value;
@@ -716,12 +860,154 @@
   }
   window.removeMoral = function(i) { state.morals.splice(i, 1); renderMorals(); }
 
+  // ── A/D: TIER TABLE ──
+  // side = 'adv' or 'dis'. The state key is advantageTiers / disadvantageTiers.
+  function tierArrayKey(side) { return side === 'adv' ? 'advantageTiers' : 'disadvantageTiers'; }
+  function entryArrayKey(side) { return side === 'adv' ? 'advantages' : 'disadvantages'; }
+
+  function renderTierTable(side) {
+    const tiers = state[tierArrayKey(side)];
+    const container = document.getElementById(side + '-tier-table');
+    const rows = [
+      '<div class="tt-head" style="text-align:center">#</div>',
+      '<div class="tt-head">Label</div>',
+      '<div class="tt-head">Description</div>',
+      '<div class="tt-head" style="text-align:center">XP</div>',
+      '<div class="tt-head"></div>'
+    ];
+    tiers.forEach((t, i) => {
+      rows.push(`<div class="tt-idx">${i + 1}</div>`);
+      rows.push(`<input type="text" class="tt-label" value="${(t.label||'').replace(/"/g,'&quot;')}" oninput="updateTier('${side}',${i},'label',this.value)">`);
+      rows.push(`<input type="text" value="${(t.description||'').replace(/"/g,'&quot;')}" placeholder="Description of this tier" oninput="updateTier('${side}',${i},'description',this.value)">`);
+      rows.push(`<input type="number" class="tt-xp" value="${t.xp ?? 0}" oninput="updateTier('${side}',${i},'xp',this.value)">`);
+      rows.push('<div></div>');
+    });
+    container.innerHTML = rows.join('');
+    // Re-populate the Add-new dropdown so tier label changes show up immediately.
+    populateAddRowDropdowns(side);
+    // Re-render entries so any displayed tier labels update.
+    renderAdList(side);
+  }
+
+  window.updateTier = function(side, i, field, value) {
+    const tiers = state[tierArrayKey(side)];
+    if (field === 'xp') tiers[i].xp = parseInt(value) || 0;
+    else                tiers[i][field] = value;
+    // Only the entries list cares when XP changes (for the cost display).
+    if (field === 'xp' || field === 'label') renderAdList(side);
+    if (field === 'label') populateAddRowDropdowns(side);
+  };
+
+  // ── A/D: ADD-ROW DROPDOWNS ──
+  function populateAddRowDropdowns(side) {
+    const catSel = document.getElementById('new-' + side + '-category');
+    const tierSel = document.getElementById('new-' + side + '-tier');
+    if (!catSel || !tierSel) return;
+    catSel.innerHTML = AD_CATEGORIES
+      .map(c => `<option value="${c.code}">${c.label}</option>`).join('');
+    const tiers = state[tierArrayKey(side)];
+    tierSel.innerHTML = tiers
+      .map((t, i) => `<option value="${i}">${i+1}. ${t.label || ('Tier ' + (i+1))}</option>`).join('');
+  }
+
+  // ── A/D: CATEGORY FILTER CHIPS ──
+  function renderFilterChips(side) {
+    const box = document.getElementById(side + '-filter-chips');
+    const active = side === 'adv' ? advFilter : disFilter;
+    const chips = [
+      { code: 'all', label: 'All' },
+      ...AD_CATEGORIES
+    ];
+    box.innerHTML = chips.map(c =>
+      `<span class="filter-chip ${c.code === active ? 'active' : ''}" onclick="setAdFilter('${side}','${c.code}')">${c.label}</span>`
+    ).join('');
+  }
+
+  window.setAdFilter = function(side, code) {
+    if (side === 'adv') advFilter = code;
+    else                disFilter = code;
+    renderFilterChips(side);
+    renderAdList(side);
+  };
+
+  // ── A/D: ENTRIES LIST ──
+  function renderAdList(side) {
+    const list = document.getElementById(side + '-list');
+    const entries = state[entryArrayKey(side)] || [];
+    const tiers = state[tierArrayKey(side)];
+    const filter = side === 'adv' ? advFilter : disFilter;
+
+    // Apply filter. Track original indices so edit/delete still target the
+    // correct array slot regardless of what's being shown.
+    const visible = entries
+      .map((e, origIdx) => ({ e, origIdx }))
+      .filter(({ e }) => filter === 'all' || e.category === filter);
+
+    if (visible.length === 0) {
+      list.innerHTML = `<div class="empty">${filter === 'all' ? 'No entries defined yet.' : 'No entries in this category.'}</div>`;
+      return;
+    }
+
+    list.innerHTML = visible.map(({ e, origIdx }) => {
+      const tierOptions = tiers.map((t, i) =>
+        `<option value="${i}" ${i === e.tier ? 'selected' : ''}>${i+1}. ${t.label || ('Tier ' + (i+1))}</option>`
+      ).join('');
+      const catOptions = AD_CATEGORIES.map(c =>
+        `<option value="${c.code}" ${c.code === e.category ? 'selected' : ''}>${c.label}</option>`
+      ).join('');
+      const xp = tiers[e.tier]?.xp ?? 0;
+      const xpLabel = side === 'adv' ? `costs ${xp} XP` : `grants ${xp} XP`;
+      return `
+        <div class="ad-row" title="${xpLabel}">
+          <input type="text" value="${(e.name||'').replace(/"/g,'&quot;')}" placeholder="Name" oninput="updateAdEntry('${side}',${origIdx},'name',this.value)">
+          <select onchange="updateAdEntry('${side}',${origIdx},'category',this.value)">${catOptions}</select>
+          <select onchange="updateAdEntry('${side}',${origIdx},'tier',parseInt(this.value))">${tierOptions}</select>
+          <textarea rows="1" placeholder="Description" oninput="updateAdEntry('${side}',${origIdx},'description',this.value)">${(e.description||'').replace(/</g,'&lt;')}</textarea>
+          <span class="delete-x" onclick="removeAdEntry('${side}',${origIdx})" title="Remove">×</span>
+        </div>`;
+    }).join('');
+  }
+
+  window.updateAdEntry = function(side, i, field, value) {
+    const arr = state[entryArrayKey(side)];
+    if (!arr[i]) return;
+    arr[i][field] = value;
+    // Changing category means the entry may fall outside the filter; re-render
+    // so the list stays truthful. Same for tier (XP label updates).
+    if (field === 'category' || field === 'tier') renderAdList(side);
+  };
+
+  window.removeAdEntry = function(side, i) {
+    const arr = state[entryArrayKey(side)];
+    arr.splice(i, 1);
+    renderAdList(side);
+    renderScaleSummary();
+  };
+
+  window.addAdvantage    = function() { addAdEntry('adv'); };
+  window.addDisadvantage = function() { addAdEntry('dis'); };
+
+  function addAdEntry(side) {
+    const name = document.getElementById('new-' + side + '-name').value.trim();
+    const category = document.getElementById('new-' + side + '-category').value;
+    const tier = parseInt(document.getElementById('new-' + side + '-tier').value) || 0;
+    const description = document.getElementById('new-' + side + '-description').value.trim();
+    if (!name) return;
+    const arr = state[entryArrayKey(side)];
+    arr.push({ name, category, tier, description });
+    document.getElementById('new-' + side + '-name').value = '';
+    document.getElementById('new-' + side + '-description').value = '';
+    // Leave category and tier selections sticky — often several entries in a row
+    // share the same category/tier, so not resetting them speeds up data entry.
+    renderAdList(side);
+    renderScaleSummary();
+  }
+
   // ── IMPORT FROM BASIC ──
   window.importFromBasic = function() {
     if (!basicSetData) return;
     if (!confirm('Import all fields from the Basic Set? This will overwrite your current values.')) return;
     const src = window.normalizeRuleset(basicSetData);
-    // Don't clobber name, tagline, or playgroup
     state.startingXp = src.startingXp;
     state.statXp = src.statXp.slice();
     state.statMaxPurchasable = src.statMaxPurchasable;
@@ -738,6 +1024,11 @@
     state.defaultPowerLevel = src.defaultPowerLevel;
     state.primarySkills = JSON.parse(JSON.stringify(src.primarySkills));
     state.morals = src.morals.slice();
+    // A/D
+    state.advantageTiers    = JSON.parse(JSON.stringify(src.advantageTiers));
+    state.disadvantageTiers = JSON.parse(JSON.stringify(src.disadvantageTiers));
+    state.advantages        = JSON.parse(JSON.stringify(src.advantages));
+    state.disadvantages     = JSON.parse(JSON.stringify(src.disadvantages));
     initUI();
   }
 
@@ -754,7 +1045,6 @@
       state.playgroupId = pgSel.value || null;
     }
 
-    // Make sure there's at least one power level and a valid default
     if (state.powerLevels.length === 0) {
       msg.textContent = 'Please add at least one Power Level.'; msg.style.color = '#ff6666'; return;
     }
@@ -784,7 +1074,12 @@
       powerLevels: state.powerLevels,
       defaultPowerLevel: state.defaultPowerLevel,
       primarySkills: state.primarySkills,
-      morals: state.morals
+      morals: state.morals,
+      // A/D
+      advantageTiers:    state.advantageTiers,
+      disadvantageTiers: state.disadvantageTiers,
+      advantages:        state.advantages,
+      disadvantages:     state.disadvantages
     };
 
     try {
@@ -797,7 +1092,6 @@
         msg.textContent = 'Created!'; msg.style.color = '#66ff99';
         setTimeout(() => window.location.href = 'my-rulesets.html', 700);
       } else {
-        // Don't overwrite isBasicSet / createdBy / createdAt
         if (!existingDoc.isBasicSet) payload.playgroupId = state.playgroupId || null;
         await updateDoc(doc(db, 'rulesets', rulesetId), payload);
         msg.textContent = 'Saved!'; msg.style.color = '#66ff99';
