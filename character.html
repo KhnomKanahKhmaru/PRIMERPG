@@ -213,6 +213,76 @@
     .ad-form-btn:disabled { opacity: 0.4; cursor: not-allowed; }
     .ad-form-btn-primary { background: #1f2c3a; border-color: #3a5878; color: #cfe3f6; }
     .ad-form-btn-primary:hover:not(:disabled) { background: #263747; border-color: #4a6e8f; }
+
+    /* ═══ SITUATIONS ═══ */
+    .sit-block { margin-top: 14px; padding: 18px 20px; border: 1px solid #1a1a1a; border-radius: 6px; background: #0d0d0d; }
+    .sit-block-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid #1a1a1a; }
+    .sit-block-title { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #aaa; flex: 1; }
+    .sit-add-btn { background: #1a1a1a; border: 1px solid #333; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 500; padding: 5px 12px; border-radius: 4px; cursor: pointer; }
+    .sit-add-btn:hover { background: #222; border-color: #555; color: #ccc; }
+
+    .sit-empty { color: #444; font-size: 12px; font-style: italic; text-align: center; padding: 20px 0; }
+
+    .sit-list { display: flex; flex-direction: column; gap: 10px; }
+
+    /* Individual card */
+    .sit-card { background: #111; border: 1px solid #1f1f1f; border-radius: 4px; padding: 12px 14px; position: relative; transition: border-color 0.15s; }
+    .sit-card-paused { background: #0e0d0b; border-color: #332a1c; }
+    .sit-card-expired { background: #140e0c; border-color: #4a2e22; }
+    .sit-card-hidden { border-style: dashed; opacity: 0.82; }
+    .sit-card-gm-face { border-color: #3a4d6a; background: #0c1118; }
+
+    .sit-card-top { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+    .sit-clock { font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #cfe3f6; background: #1f2c3a; padding: 3px 10px; border-radius: 3px; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+    .sit-card-expired .sit-clock { background: #3a2318; color: #f6c9a8; text-transform: none; letter-spacing: 0; font-weight: 600; font-size: 12px; font-style: italic; }
+    .sit-card-paused:not(.sit-card-expired) .sit-clock { background: #2a2316; color: #d9c28a; }
+
+    .sit-badges { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
+    .sit-badge { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; padding: 2px 6px; border-radius: 2px; }
+    .sit-badge-hidden  { background: #2a2a2a; color: #aaa; border: 1px solid #3a3a3a; }
+    .sit-badge-paused  { background: #2a2316; color: #d9c28a; border: 1px solid #4a3a20; }
+    .sit-badge-expired { background: #3a2318; color: #f6c9a8; border: 1px solid #5a382a; }
+
+    .sit-card-name { font-size: 15px; font-weight: 600; color: #e8e8e8; margin-bottom: 4px; }
+    .sit-card-body { font-size: 12px; color: #bbb; line-height: 1.55; }
+    .sit-card-gm-face .sit-card-body { color: #d8e0ea; }
+
+    .sit-assigned { font-size: 10px; color: #555; margin-top: 8px; font-style: italic; letter-spacing: .02em; }
+
+    /* GM controls */
+    .sit-gm-controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid #1e1e1e; }
+    .sit-ctrl-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 10px; border-radius: 3px; cursor: pointer; }
+    .sit-ctrl-btn:hover { background: #222; border-color: #3f3f3f; color: #ddd; }
+    .sit-ctrl-primary { background: #1f2c3a; border-color: #3a5878; color: #cfe3f6; }
+    .sit-ctrl-primary:hover { background: #263747; border-color: #4a6e8f; }
+    .sit-ctrl-danger { color: #c87777; border-color: #4a1a1a; }
+    .sit-ctrl-danger:hover { background: #2a1313; border-color: #6a2a2a; color: #ff8888; }
+    .sit-flip-btn { background: #1a2330; border-color: #2a3a50; color: #9dbfe0; }
+    .sit-flip-btn:hover { background: #1e2a3c; border-color: #3a5878; color: #c8dcef; }
+
+    .sit-clock-ticker { display: flex; align-items: center; gap: 4px; }
+    .sit-tick-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 14px; font-weight: 700; width: 26px; height: 26px; padding: 0; border-radius: 3px; cursor: pointer; line-height: 1; }
+    .sit-tick-btn:hover { background: #222; border-color: #3f3f3f; color: #fff; }
+    .sit-clock-input { width: 56px; text-align: center; background: #0a0a0a; border: 1px solid #2a2a2a; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 13px; font-weight: 600; padding: 4px 6px; border-radius: 3px; outline: none; }
+    .sit-clock-input:focus { border-color: #444; }
+    .sit-clock-input:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Edit form (per-card and new) */
+    .sit-card-editing { background: #0c0c0c; border-color: #2a3a50; }
+    .sit-edit-form { display: flex; flex-direction: column; gap: 10px; }
+    .sit-edit-header { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #9dbfe0; margin-bottom: 4px; }
+    .sit-edit-row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .sit-edit-field { display: flex; flex-direction: column; gap: 4px; }
+    .sit-edit-field label { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; }
+    .sit-edit-sublabel { color: #555; font-weight: 400; text-transform: none; letter-spacing: 0; }
+    .sit-edit-field input, .sit-edit-field textarea {
+      background: #111; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 9px;
+      border-radius: 3px; outline: none; width: 100%;
+    }
+    .sit-edit-field input:focus, .sit-edit-field textarea:focus { border-color: #444; }
+    .sit-edit-field textarea { resize: vertical; line-height: 1.5; font-family: 'Open Sans', sans-serif; min-height: 44px; }
+    .sit-edit-actions { display: flex; gap: 8px; margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -387,6 +457,16 @@
       </div>
     </div>
 
+    <!-- ═══ SITUATIONS ═══ -->
+    <div class="sit-block">
+      <div class="sit-block-header">
+        <div class="sit-block-title">Situations</div>
+        <button class="sit-add-btn" id="situations-add-btn" style="display:none" onclick="openNewSituation()">+ Add Situation</button>
+      </div>
+      <div class="sit-list" id="situations-list"></div>
+      <div id="situations-add-form"></div>
+    </div>
+
     <div id="danger-zone" style="display:none;margin-top:32px;padding:16px 20px;border:1px solid #3a1a1a;border-radius:6px;background:#140808">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
         <div>
@@ -409,7 +489,7 @@
     loadCharacter, saveCharacter, deleteCharacter as deleteCharacterDoc,
     loadUser, loadUserPlaygroups,
     loadBasicSet, loadPlaygroupRulesets,
-    resolveActiveRuleset
+    resolveActiveRuleset, loadMembershipRole
   } from './char-firestore.js';
 
   // Only the pieces character.html itself still uses. Most game data
@@ -427,6 +507,7 @@
   import { createStatsSection } from './char-stats.js';
   import { createBioSection } from './char-bio.js';
   import { createAdvantagesSection } from './char-advantages.js';
+  import { createSituationsSection } from './char-situations.js';
 
   // Inline event handlers in dynamically-generated markup call these by
   // name. They're ruleset-aware wrappers that read tables from the
@@ -460,6 +541,13 @@
   let availableRulesets = [], primarySkillDefs = [];
   let statsEditMode = false, skillsEditMode = false;
 
+  // Situations-specific state. isGM is true if the logged-in user is
+  // Leader or Administrator of the character's current playgroup. Gives
+  // them access to Situation editing, flipping, and hidden-card visibility.
+  let isGM = false;
+  let myUid = null;
+  let myUsername = '';
+
   // The ruleset that governs this character — resolved once during load.
   // Always a fully-normalized ruleset object (no nulls anywhere). Section
   // modules read from this via ctx.getRuleset().
@@ -489,6 +577,12 @@
     // power levels, etc. through this getter so a ruleset swap flows through
     // without needing to re-instantiate modules.
     getRuleset: () => activeRuleset,
+
+    // Situations-specific: exposes GM status + current user identity so
+    // new Situations can be stamped with who created them.
+    getIsGM: () => isGM,
+    getMyUid: () => myUid,
+    getMyUsername: () => myUsername,
   };
 
   const mental = createMentalSection(sectionCtx);
@@ -497,6 +591,7 @@
   const stats = createStatsSection(sectionCtx);
   const bio = createBioSection(sectionCtx);
   const advantages = createAdvantagesSection(sectionCtx);
+  const situations = createSituationsSection(sectionCtx);
 
   // Expose section handlers on window so inline onclick handlers in the
   // HTML (and in dynamically-generated markup) can reach them. These go
@@ -564,6 +659,19 @@
     commitAdFormCatalog:  (side) => advantages.commitCatalog(side),
     commitAdFormCustom:   (side) => advantages.commitCustom(side),
     removeAdEntry:        (side, i) => advantages.removeEntry(side, i),
+    // Situations
+    openNewSituation:     () => situations.openAddForm(),
+    closeNewSituation:    () => situations.closeAddForm(),
+    commitNewSituation:   () => situations.commitNew(),
+    flipSituation:        (id) => situations.flip(id),
+    tickSituation:        (id, delta) => situations.tick(id, delta),
+    setSituationClock:    (id, val) => situations.setClock(id, val),
+    togglePauseSituation: (id) => situations.togglePause(id),
+    toggleHideSituation:  (id) => situations.toggleHide(id),
+    deleteSituation:      (id) => situations.remove(id),
+    startEditSituation:   (id) => situations.startEdit(id),
+    cancelEditSituation:  (id) => situations.cancelEdit(id),
+    saveEditSituation:    (id) => situations.saveEdit(id),
   });
 
   // calcTotalXp sums XP spent across stats and skills. Reads all cost
@@ -723,9 +831,16 @@
     if (loaded) return;
     loaded = true;
 
+    // Stash logged-in user's identity for Situations "assigned by" tracking
+    // and any future feature that needs to know who's viewing.
+    myUid = user.uid;
+
     // Populate the nav's username + alerts dropdown.
     const userData = await loadUser(user.uid);
-    if (userData) setNavUsername(userData.username);
+    if (userData) {
+      setNavUsername(userData.username);
+      myUsername = userData.username || '';
+    }
     initAlerts(db, user.uid);
 
     // Load the character. Bounce back to home if it's missing.
@@ -733,6 +848,16 @@
     if (!char) { window.location.href = 'home.html'; return; }
     charData = char;
     canEdit = charData.uid === user.uid;
+
+    // GM check: Leader or Administrator of this character's playgroup.
+    // Character owners get GM powers on their own sheet too, so a solo
+    // character (no playgroup) still gets Situation-editing rights.
+    if (charData.playgroupId) {
+      const role = await loadMembershipRole(user.uid, charData.playgroupId);
+      isGM = role === 'Leader' || role === 'Administrator';
+    } else {
+      isGM = canEdit;
+    }
 
     // Resolve the ruleset that governs this character — playgroup's
     // attached ruleset, else Basic Set, else defaults. Always returns a
@@ -765,6 +890,7 @@
     stats.buildStatsSection();
     skills.buildSkillsSection();
     advantages.renderAll();
+    situations.renderAll();
 
     // Owner-only UI elements.
     if (canEdit) {
