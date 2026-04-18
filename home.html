@@ -70,6 +70,10 @@
       <div class="panel-title">My Playgroups</div>
       <div id="pg-links"><div class="panel-empty">Loading...</div></div>
     </div>
+    <div class="panel-section">
+      <div class="panel-title">My Characters</div>
+      <div id="char-links"><div class="panel-empty">Loading...</div></div>
+    </div>
   </div>
   <div class="center-panel">
     <div class="section-title">Playgroup News</div>
@@ -119,6 +123,18 @@
         if (!pgDoc.exists()) continue;
         pgLinks.innerHTML += `<a class="panel-link" href="playgroup.html?id=${pgDoc.id}">${pgDoc.data().name}</a>`;
       }
+    }
+
+    const charLinks = document.getElementById('char-links');
+    const charQ = query(collection(db, 'characters'), where('uid', '==', user.uid));
+    const charSnap = await getDocs(charQ);
+    if (charSnap.empty) {
+      charLinks.innerHTML = '<div class="panel-empty">None yet.</div>';
+    } else {
+      charLinks.innerHTML = charSnap.docs.map(d => {
+        const name = d.data().name || 'Unnamed';
+        return `<a class="panel-link" href="character.html?id=${d.id}">${name}</a>`;
+      }).join('');
     }
   }
 
