@@ -1,32 +1,45 @@
 // char-xp.js
 // The XP / AP / Power Level bar shown in the character sheet header.
-// Read-only for non-owners, editable for owners (Power Level dropdown,
-// Max XP, Max AP).
+// Read-only for non-owners, editable for owners.
 //
-// XP spent is calculated elsewhere from stat and skill values; this module
-// only renders and saves Power Level and max-value fields. The main file
-// calls xpBar.renderPowerBar() whenever xpSpent changes.
+// Power levels come from the active ruleset — homebrew rulesets can
+// redefine the scale entirely (rename tiers, change XP/AP conversion).
+// We look up the current character's powerLevel in the ruleset's
+// powerLevels array; if it's not found (e.g. the ruleset removed that
+// tier), we fall back to the first entry so rendering still works.
+//
+// XP spent is calculated elsewhere; this module only renders and saves
+// Power Level and max-value fields.
 
-import { POWER_LEVELS } from './char-constants.js';
 import { saveCharacter } from './char-firestore.js';
 
 export function createXpBar(ctx) {
   // ctx shape:
-  //   getCharData()  -> the live charData object
+  //   getCharData()  -> live charData
   //   getCanEdit()   -> boolean
   //   getCharId()    -> string
+  //   getRuleset()   -> active ruleset object (has .powerLevels, .defaultPowerLevel)
 
   function getPowerLevel() {
-    return ctx.getCharData().powerLevel || 'powerless';
+    const charData = ctx.getCharData();
+    const ruleset = ctx.getRuleset();
+    return charData.powerLevel || (ruleset && ruleset.defaultPowerLevel) || 'powerless';
   }
 
   function getPowerDef() {
-    return POWER_LEVELS.find(p => p.value === getPowerLevel()) || POWER_LEVELS[0];
+    const ruleset = ctx.getRuleset();
+    const levels = (ruleset && ruleset.powerLevels) || [];
+    const current = getPowerLevel();
+    return levels.find(p => p.value === current)
+      || levels[0]
+      || { value: 'powerless', label: 'Powerless', xpPerAp: 10 };
   }
 
   function renderPowerBar() {
     const charData = ctx.getCharData();
     const canEdit = ctx.getCanEdit();
+    const ruleset = ctx.getRuleset();
+    const levels = (ruleset && ruleset.powerLevels) || [];
     const bar = document.getElementById('char-power-bar');
     const pl = getPowerDef();
     const xpSpent = charData.xpSpent || 0;
@@ -35,7 +48,7 @@ export function createXpBar(ctx) {
     const maxAp = charData.maxAp || 0;
 
     if (canEdit) {
-      const plOpts = POWER_LEVELS.map(p =>
+      const plOpts = levels.map(p =>
         `<option value="${p.value}" ${p.value === getPowerLevel() ? 'selected' : ''}>` +
         `${p.label} (${p.xpPerAp} XP/AP)</option>`
       ).join('');
@@ -76,7 +89,6 @@ export function createXpBar(ctx) {
 
   async function savePowerField(field, val) {
     const charData = ctx.getCharData();
-    // powerLevel is a string key; everything else is a non-negative int.
     const v = field === 'powerLevel' ? val : Math.max(0, parseInt(val) || 0);
     charData[field] = v;
     await saveCharacter(ctx.getCharId(), { [field]: v });
