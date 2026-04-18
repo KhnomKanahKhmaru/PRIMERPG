@@ -90,14 +90,42 @@
     .ql-toolbar.ql-snow { display: none; } .ql-container.ql-snow { display: none; }
     .quill-wrapper.quill-active .ql-toolbar.ql-snow { display: block; }
     .quill-wrapper.quill-active .ql-container.ql-snow { display: block; }
+
+    .pg-header-row { display: flex; align-items: flex-start; gap: 16px; }
+    .pg-header-left { flex: 1; min-width: 0; }
+    .pg-header-actions { flex-shrink: 0; display: flex; gap: 8px; align-items: center; padding-top: 4px; }
+    .header-btn { background: #1a1a1a; border: 1px solid #333; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 7px 14px; border-radius: 4px; cursor: pointer; }
+    .header-btn:hover { background: #222; border-color: #555; }
+    .header-btn.primary { background: #1f2c3a; border-color: #3a5878; color: #cfe3f6; }
+    .header-btn.primary:hover { background: #263747; border-color: #4a6e8f; }
+    .header-btn.banned { background: #2a1313; border-color: #4a1a1a; color: #c87777; cursor: default; }
+    .header-btn:disabled { opacity: 0.5; cursor: default; }
+
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+    .modal { background: #111; border: 1px solid #333; border-radius: 6px; padding: 22px 24px; max-width: 500px; width: 90%; }
+    .modal-title { font-size: 14px; font-weight: 600; color: #e0e0e0; margin-bottom: 10px; letter-spacing: .02em; }
+    .modal-desc { font-size: 12px; color: #888; margin-bottom: 14px; line-height: 1.6; }
+    .modal-url-row { display: flex; gap: 6px; margin-bottom: 16px; }
+    .modal-url { flex: 1; background: #0a0a0a; border: 1px solid #222; color: #cfe3f6; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 8px 10px; border-radius: 4px; outline: none; }
+    .modal-btn-row { display: flex; gap: 8px; justify-content: flex-end; }
+    .modal-btn { background: #1a1a1a; border: 1px solid #333; color: #ccc; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 14px; border-radius: 4px; cursor: pointer; }
+    .modal-btn:hover { background: #222; border-color: #555; }
+    .modal-btn.danger { color: #c87777; border-color: #4a1a1a; }
+    .modal-btn.danger:hover { background: #2a1313; border-color: #6a2a2a; }
+    .copied-msg { font-size: 11px; color: #66ff99; margin-left: auto; align-self: center; }
   </style>
 </head>
 <body>
 <script>injectNav();</script>
 
 <div class="pg-header">
-  <div class="pg-name" id="pg-name">Loading...</div>
-  <div class="pg-primer" id="pg-primer"></div>
+  <div class="pg-header-row">
+    <div class="pg-header-left">
+      <div class="pg-name" id="pg-name">Loading...</div>
+      <div class="pg-primer" id="pg-primer"></div>
+    </div>
+    <div class="pg-header-actions" id="pg-header-actions"></div>
+  </div>
   <div class="pg-tabs">
     <div class="pg-tab active" onclick="switchTab('news', this)">News</div>
     <div class="pg-tab" onclick="switchTab('people', this)">People</div>
@@ -169,6 +197,7 @@
 
   const params = new URLSearchParams(window.location.search);
   const pgId = params.get('id');
+  const inviteParam = params.get('invite');
   if (!pgId) window.location.href = 'home.html';
 
   let canEditDocs = false;
@@ -177,6 +206,13 @@
   let myUid = null;
   let myUsername = '';
   const quills = {};
+
+  function randomToken(n) {
+    const chars = 'abcdefghijkmnpqrstuvwxyz23456789';
+    let out = '';
+    for (let i = 0; i < n; i++) out += chars[Math.floor(Math.random() * chars.length)];
+    return out;
+  }
 
   const WORLD_DEFAULT = '<h1>Setting Synopsis</h1><p><br></p><h1>Setting Description</h1><p><br></p>';
   const RULES_DEFAULT = '<h1>Playgroup Rules</h1><p><br></p>';
@@ -192,6 +228,10 @@
   await auth.authStateReady();
   const user = auth.currentUser;
   if (!user || !user.emailVerified) {
+    // preserve invite URL so login can redirect back
+    if (inviteParam) {
+      try { sessionStorage.setItem('postLoginRedirect', window.location.href); } catch(e) {}
+    }
     window.location.href = 'index.html';
   } else {
     myUid = user.uid;
@@ -218,6 +258,20 @@
         if (!mData.joinNewsPosted) {
           await createPlaygroupNews(db, pgId, pgData.name, `**${myUsername}** joined the playgroup.`);
           await updateDoc(doc(db, 'memberships', user.uid + '_' + pgId), { joinNewsPosted: true });
+        }
+      }
+
+      await renderHeaderActions();
+
+      // If they arrived via invite link and aren't a member, prompt to join
+      if (inviteParam && !myRole && pgData.inviteToken === inviteParam) {
+        const bannedUids = pgData.bannedUids || [];
+        if (!bannedUids.includes(myUid)) {
+          setTimeout(() => {
+            if (confirm(`You were invited to join "${pgData.name}". Join now?`)) {
+              doJoin();
+            }
+          }, 300);
         }
       }
 
@@ -343,6 +397,138 @@
       await deleteDoc(doc(db, 'playgroupNews', id));
       await loadNews();
     } catch (e) { alert('Failed: ' + e.message); }
+  }
+
+  // ── HEADER ACTIONS (Join / Invite) ──
+  async function renderHeaderActions() {
+    const box = document.getElementById('pg-header-actions');
+    box.innerHTML = '';
+
+    const bannedUids = pgData.bannedUids || [];
+    const isBanned = bannedUids.includes(myUid);
+
+    // Not a member — show Join button (unless banned)
+    if (!myRole) {
+      if (isBanned) {
+        const banned = document.createElement('div');
+        banned.className = 'header-btn banned';
+        banned.textContent = 'Banned';
+        box.appendChild(banned);
+        return;
+      }
+      const joinBtn = document.createElement('button');
+      joinBtn.className = 'header-btn primary';
+      joinBtn.textContent = 'Join Playgroup';
+      joinBtn.onclick = doJoin;
+      box.appendChild(joinBtn);
+      return;
+    }
+
+    // Leader/Admin — show Invite Link button
+    if (myRole === 'Leader' || myRole === 'Administrator') {
+      const inviteBtn = document.createElement('button');
+      inviteBtn.className = 'header-btn';
+      inviteBtn.textContent = 'Invite Link';
+      inviteBtn.onclick = openInviteModal;
+      box.appendChild(inviteBtn);
+    }
+  }
+
+  async function doJoin() {
+    try {
+      // re-check ban
+      const fresh = await getDoc(doc(db, 'playgroups', pgId));
+      const banned = (fresh.data().bannedUids || []);
+      if (banned.includes(myUid)) { alert('You have been banned from this playgroup.'); return; }
+
+      await (await import('https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js')).setDoc(doc(db, 'memberships', myUid + '_' + pgId), {
+        uid: myUid,
+        playgroupId: pgId,
+        role: 'Member',
+        joinedAt: new Date(),
+        joinNewsPosted: true
+      });
+
+      await createPlaygroupNews(db, pgId, pgData.name, `**${myUsername}** joined the playgroup.`);
+
+      // alert Leader + Admins
+      const staffSnap = await getDocs(query(collection(db, 'memberships'), where('playgroupId', '==', pgId)));
+      for (const mDoc of staffSnap.docs) {
+        const r = mDoc.data().role;
+        if ((r === 'Leader' || r === 'Administrator') && mDoc.data().uid !== myUid) {
+          await createAlert(db, mDoc.data().uid, `**${myUsername}** joined your playgroup **${pgData.name}**.`, `playgroup.html?id=${pgId}`);
+        }
+      }
+
+      // clean up invite param from URL if present
+      if (inviteParam) {
+        const clean = new URL(window.location.href);
+        clean.searchParams.delete('invite');
+        window.history.replaceState({}, '', clean.toString());
+      }
+
+      window.location.reload();
+    } catch (e) {
+      alert('Failed to join: ' + e.message);
+    }
+  }
+
+  async function openInviteModal() {
+    let token = pgData.inviteToken;
+    if (!token) {
+      token = randomToken(8);
+      try {
+        await updateDoc(doc(db, 'playgroups', pgId), { inviteToken: token });
+        pgData.inviteToken = token;
+      } catch (e) {
+        alert('Failed to create invite: ' + e.message);
+        return;
+      }
+    }
+
+    const url = `${window.location.origin}${window.location.pathname.replace(/[^/]*$/, '')}playgroup.html?id=${pgId}&invite=${token}`;
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.onclick = (e) => { if (e.target === backdrop) backdrop.remove(); };
+    backdrop.innerHTML = `
+      <div class="modal">
+        <div class="modal-title">Invite Link</div>
+        <div class="modal-desc">Share this link to invite people to <strong>${pgData.name}</strong>. Anyone with the link can join. Revoking the link generates a new token and breaks the old one.</div>
+        <div class="modal-url-row">
+          <input type="text" class="modal-url" id="invite-url-input" readonly value="${url}">
+          <button class="modal-btn" id="invite-copy-btn">Copy</button>
+        </div>
+        <div class="modal-btn-row">
+          <button class="modal-btn danger" id="invite-revoke-btn">Revoke &amp; regenerate</button>
+          <span id="invite-copied" class="copied-msg"></span>
+          <button class="modal-btn" id="invite-close-btn" style="margin-left:auto">Close</button>
+        </div>
+      </div>`;
+    document.body.appendChild(backdrop);
+
+    document.getElementById('invite-copy-btn').onclick = async () => {
+      const input = document.getElementById('invite-url-input');
+      input.select();
+      try {
+        await navigator.clipboard.writeText(url);
+        document.getElementById('invite-copied').textContent = 'Copied!';
+        setTimeout(() => { const el = document.getElementById('invite-copied'); if (el) el.textContent = ''; }, 1500);
+      } catch (e) {
+        document.execCommand('copy');
+      }
+    };
+    document.getElementById('invite-revoke-btn').onclick = async () => {
+      if (!confirm('Revoke this invite link? The old URL will stop working, and a new one will be generated.')) return;
+      const newToken = randomToken(8);
+      try {
+        await updateDoc(doc(db, 'playgroups', pgId), { inviteToken: newToken });
+        pgData.inviteToken = newToken;
+        backdrop.remove();
+        openInviteModal();
+      } catch (e) { alert('Failed: ' + e.message); }
+    };
+    document.getElementById('invite-close-btn').onclick = () => backdrop.remove();
   }
 
   // ── PEOPLE ──
