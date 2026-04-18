@@ -3,29 +3,25 @@
 // Included as a non-module script so edit-ruleset.html can use it directly.
 
 window.RULESET_DEFAULTS = {
+  tagline: '',
   startingXp: 100,
 
-  // Stat caps / costs. The last index is the max purchasable base value.
-  // A stat at level 0 means "not takable", level 2 is free, etc.
-  // statXp[n] = XP cost to start a character at that level.
+  // Stat caps / costs.
   statXp: [null, -10, 0, 10, 30, 60, 100],  // index 0 = not takable
   statMaxPurchasable: 6,                     // max level a player can START at
   statMax: 20,                               // absolute ceiling a stat can reach
 
-  // List of stats (code + name + description).
-  // Code is used internally (e.g. on character sheet), name is the full word.
+  // Regular stats (SIZE is handled separately below).
   stats: [
-    { code:'STR',  name:'Strength',     description:'Physical power, raw force.' },
-    { code:'DEX',  name:'Dexterity',    description:'Fine motor control, reflexes, agility.' },
-    { code:'PER',  name:'Perception',   description:'Awareness of surroundings, sensory acuity.' },
-    { code:'INT',  name:'Intellect',    description:'Reasoning, memory, learning capacity.' },
-    { code:'CHA',  name:'Charisma',     description:'Social presence, force of personality.' },
-    { code:'POW',  name:'Power',        description:'Willpower, mental fortitude, resolve.' },
-    { code:'SIZE', name:'Size',         description:'Physical mass and stature.' }
+    { code:'STR', name:'Strength',   description:'Physical power, raw force.' },
+    { code:'DEX', name:'Dexterity',  description:'Fine motor control, reflexes, agility.' },
+    { code:'PER', name:'Perception', description:'Awareness of surroundings, sensory acuity.' },
+    { code:'INT', name:'Intellect',  description:'Reasoning, memory, learning capacity.' },
+    { code:'CHA', name:'Charisma',   description:'Social presence, force of personality.' },
+    { code:'POW', name:'Power',      description:'Willpower, mental fortitude, resolve.' }
   ],
 
   // STATMOD per level (index = level, 0..statMax).
-  // Default: 0-1 = -1, 2-3 = 0, 4-5 = +1, ... (step +1 every 2 levels)
   statMods: [-1,-1,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,9,10],
 
   // Stat flavor labels (index = level, 0..statMax).
@@ -34,6 +30,30 @@ window.RULESET_DEFAULTS = {
     'Superhuman','Extraordinary','Legendary','Heroic','Titanic','Mythic','Godly','Divine',
     'Transcendent','Ascendant','Empyrean','Omnipotent','Absolute','Cosmic'
   ],
+
+  // SIZE: its own scale, XP costs, and tier labels. Has no STATMOD.
+  // size.tiers is an array of { level, label, xpCost } objects.
+  // Level 0 is "not takable"; real tiers start at 1.
+  size: {
+    default: 6,  // default starting tier for new characters (index into tiers)
+    tiers: [
+      { level: 1,  label: 'Nano',        xpCost: 0 },
+      { level: 2,  label: 'Micro',       xpCost: 0 },
+      { level: 3,  label: 'Tiny',        xpCost: 0 },
+      { level: 4,  label: 'Small',       xpCost: 0 },
+      { level: 5,  label: 'Below Average', xpCost: 0 },
+      { level: 6,  label: 'Medium',      xpCost: 0 },
+      { level: 7,  label: 'Above Average', xpCost: 0 },
+      { level: 8,  label: 'Large',       xpCost: 0 },
+      { level: 9,  label: 'Very Large',  xpCost: 0 },
+      { level: 10, label: 'Huge',        xpCost: 0 },
+      { level: 12, label: 'Massive',     xpCost: 0 },
+      { level: 16, label: 'Giant',       xpCost: 0 },
+      { level: 20, label: 'Colossal',    xpCost: 0 },
+      { level: 24, label: 'Behemoth',    xpCost: 0 },
+      { level: 30, label: 'Cataclysmic', xpCost: 0 }
+    ]
+  },
 
   // Skills: arrays of XP costs, index = level (0..10)
   primarySkillXp:   [0, 2, 4, 8, 14, 22, 30, 40, 52, 66, 80],
@@ -81,6 +101,7 @@ window.RULESET_DEFAULTS = {
 window.normalizeRuleset = function(rs) {
   const d = window.RULESET_DEFAULTS;
   const out = Object.assign({}, rs);
+  if (typeof out.tagline !== 'string') out.tagline = '';
   if (out.startingXp == null) out.startingXp = d.startingXp;
   if (!Array.isArray(out.statXp)) out.statXp = d.statXp.slice();
   if (out.statMaxPurchasable == null) out.statMaxPurchasable = d.statMaxPurchasable;
@@ -89,9 +110,12 @@ window.normalizeRuleset = function(rs) {
   if (!Array.isArray(out.stats) || out.stats.length === 0) out.stats = JSON.parse(JSON.stringify(d.stats));
   if (!Array.isArray(out.statMods) || out.statMods.length === 0) out.statMods = d.statMods.slice();
   if (!Array.isArray(out.statLabels) || out.statLabels.length === 0) out.statLabels = d.statLabels.slice();
-  // Resize statMods and statLabels to length statMax+1 if needed
   while (out.statMods.length < out.statMax + 1) out.statMods.push(out.statMods[out.statMods.length-1] ?? 0);
   while (out.statLabels.length < out.statMax + 1) out.statLabels.push('Level ' + out.statLabels.length);
+  // SIZE block
+  if (!out.size || typeof out.size !== 'object') out.size = JSON.parse(JSON.stringify(d.size));
+  if (!Array.isArray(out.size.tiers) || out.size.tiers.length === 0) out.size.tiers = JSON.parse(JSON.stringify(d.size.tiers));
+  if (out.size.default == null) out.size.default = d.size.default;
   if (!Array.isArray(out.primarySkillXp)) out.primarySkillXp = d.primarySkillXp.slice();
   if (!Array.isArray(out.secondarySkillXp)) out.secondarySkillXp = d.secondarySkillXp.slice();
   if (!Array.isArray(out.specialtySkillXp)) out.specialtySkillXp = d.specialtySkillXp.slice();
