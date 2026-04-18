@@ -10,41 +10,15 @@
   <script src="nav.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background: #0a0a0a;
-      color: #e0e0e0;
-      font-family: 'Open Sans', sans-serif;
-      font-size: 14px;
-      min-height: 100vh;
-    }
-    .pg-header {
-      position: fixed;
-      top: 84px; left: 0; right: 0;
-      background: #0a0a0a;
-      border-bottom: 1px solid #1a1a1a;
-      padding: 14px 24px 0;
-      z-index: 80;
-    }
+    body { background: #0a0a0a; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 14px; min-height: 100vh; }
+    .pg-header { position: fixed; top: 84px; left: 0; right: 0; background: #0a0a0a; border-bottom: 1px solid #1a1a1a; padding: 14px 24px 0; z-index: 80; }
     .pg-name { font-size: 20px; font-weight: 600; color: #e0e0e0; margin-bottom: 4px; }
     .pg-primer { font-size: 12px; color: #555; margin-bottom: 12px; }
     .pg-tabs { display: flex; gap: 0; }
-    .pg-tab {
-      padding: 7px 18px;
-      font-size: 12px;
-      color: #555;
-      cursor: pointer;
-      border-bottom: 2px solid transparent;
-      margin-bottom: -1px;
-      user-select: none;
-    }
+    .pg-tab { padding: 7px 18px; font-size: 12px; color: #555; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; user-select: none; }
     .pg-tab:hover { color: #aaa; }
     .pg-tab.active { color: #e0e0e0; border-bottom-color: #e0e0e0; }
-    .page {
-      padding-top: 200px;
-      padding-bottom: 60px;
-      padding-left: 24px;
-      padding-right: 24px;
-    }
+    .page { padding-top: 200px; padding-bottom: 60px; padding-left: 24px; padding-right: 24px; }
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
     .empty { color: #444; font-size: 13px; text-align: center; padding: 60px 0; }
@@ -67,65 +41,35 @@
     .doc-display li.ql-indent-2::before { left: 3em; content: '▪'; }
     .doc-display li.ql-indent-3::before { left: 4.5em; content: '◦'; }
     .doc-actions { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-    .edit-btn {
-      font-size: 11px;
-      color: #555;
-      cursor: pointer;
-      padding: 3px 10px;
-      border: 1px solid #333;
-      border-radius: 3px;
-    }
+    .edit-btn { font-size: 11px; color: #555; cursor: pointer; padding: 3px 10px; border: 1px solid #333; border-radius: 3px; }
     .edit-btn:hover { color: #aaa; border-color: #555; }
-    .save-btn {
-      background: #1a1a1a;
-      border: 1px solid #333;
-      color: #e0e0e0;
-      font-family: 'Open Sans', sans-serif;
-      font-size: 12px;
-      padding: 6px 16px;
-      border-radius: 4px;
-      cursor: pointer;
-    }
+    .save-btn { background: #1a1a1a; border: 1px solid #333; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 16px; border-radius: 4px; cursor: pointer; }
     .save-btn:hover { background: #222; border-color: #555; }
     .save-msg { font-size: 11px; margin-left: 6px; color: #66ff99; }
-    .people-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 10px 0;
-      border-bottom: 1px solid #1a1a1a;
-    }
-    .people-row:last-child { border-bottom: none; }
-    .people-name { font-size: 13px; color: #e0e0e0; flex: 1; }
-    .people-role {
-      font-size: 11px;
-      padding: 2px 8px;
-      border-radius: 3px;
-      background: #1a1a1a;
-      color: #666;
-    }
-    .bottom-bar {
-      position: fixed;
-      bottom: 0; left: 0; right: 0;
-      height: 44px;
-      background: #111;
-      border-top: 1px solid #222;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      z-index: 100;
-    }
-    .bottom-btn {
-      padding: 6px 16px;
-      font-size: 12px;
-      color: #666;
-      cursor: pointer;
-      border-radius: 4px;
-      border: 1px solid #222;
-      background: transparent;
-      font-family: 'Open Sans', sans-serif;
-    }
+
+    .people-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid #1a1a1a; border-radius: 4px; background: #111; margin-bottom: 6px; }
+    .people-name { font-size: 13px; color: #e0e0e0; flex: 1; min-width: 0; }
+    .people-name strong { color: #fff; font-weight: 600; }
+    .role-badge { font-size: 10px; font-weight: 600; padding: 3px 10px; border-radius: 3px; letter-spacing: .04em; text-transform: uppercase; }
+    .role-Leader { background: #3b2615; color: #e8b66e; border: 1px solid #5a3a1d; }
+    .role-Administrator { background: #1f2c3a; color: #78b4e0; border: 1px solid #2f4a63; }
+    .role-Member { background: #1a1a1a; color: #888; border: 1px solid #2a2a2a; }
+    .role-Banned { background: #2a1313; color: #c87777; border: 1px solid #4a1a1a; }
+    .action-menu-wrap { position: relative; }
+    .action-menu-btn { background: transparent; border: 1px solid #222; color: #777; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 10px; border-radius: 3px; cursor: pointer; }
+    .action-menu-btn:hover { color: #ccc; border-color: #444; }
+    .action-menu { display: none; position: absolute; right: 0; top: 100%; margin-top: 4px; background: #111; border: 1px solid #333; border-radius: 4px; min-width: 200px; z-index: 500; box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
+    .action-menu.open { display: block; }
+    .action-menu a { display: block; padding: 8px 12px; color: #aaa; text-decoration: none; font-size: 12px; cursor: pointer; border-bottom: 1px solid #1a1a1a; }
+    .action-menu a:last-child { border-bottom: none; }
+    .action-menu a:hover { background: #1a1a1a; color: #fff; }
+    .action-menu a.danger { color: #c87777; }
+    .action-menu a.danger:hover { background: #2a1313; color: #ff8888; }
+
+    .people-section-title { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #888; margin: 20px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #1a1a1a; }
+
+    .bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; height: 44px; background: #111; border-top: 1px solid #222; display: flex; align-items: center; justify-content: center; gap: 8px; z-index: 100; }
+    .bottom-btn { padding: 6px 16px; font-size: 12px; color: #666; cursor: pointer; border-radius: 4px; border: 1px solid #222; background: transparent; font-family: 'Open Sans', sans-serif; }
     .bottom-btn:hover { color: #ccc; border-color: #444; }
     .ql-toolbar { border-color: #222 !important; background: #1a1a1a; }
     .ql-container { border-color: #222 !important; background: #111; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 13px; min-height: 300px; }
@@ -165,6 +109,10 @@
   </div>
   <div class="tab-panel" id="tab-people">
     <div id="people-list"></div>
+    <div id="banned-section" style="display:none">
+      <div class="people-section-title">Banned</div>
+      <div id="banned-list"></div>
+    </div>
   </div>
   <div class="tab-panel" id="tab-world">
     <div id="world-actions" class="doc-actions" style="display:none">
@@ -203,8 +151,8 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
-  import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
-  import { getFirestore, doc, getDoc, updateDoc, deleteDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+  import { getAuth, signOut } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
+  import { getFirestore, doc, getDoc, updateDoc, deleteDoc, collection, query, where, getDocs, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCf94yLvAtJ9pLgJ3FsV7ir4Qh9XXm3nHg",
@@ -223,135 +171,297 @@
   const pgId = params.get('id');
   if (!pgId) window.location.href = 'home.html';
 
-  let canEdit = false;
+  let canEditDocs = false;
   let pgData = {};
+  let myRole = null;
+  let myUid = null;
   const quills = {};
 
   const WORLD_DEFAULT = '<h1>Setting Synopsis</h1><p><br></p><h1>Setting Description</h1><p><br></p>';
   const RULES_DEFAULT = '<h1>Playgroup Rules</h1><p><br></p>';
 
-  function cleanHtml(html) {
-    return (html || '').replace(/(<p><br><\/p>)+$/, '').trim();
-  }
+  function cleanHtml(html) { return (html || '').replace(/(<p><br><\/p>)+$/, '').trim(); }
 
-  onAuthStateChanged(auth, async function(user) {
-    if (!user || !user.emailVerified) {
-      window.location.href = 'index.html';
-      return;
+  // close action menus when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.action-menu-wrap')) {
+      document.querySelectorAll('.action-menu.open').forEach(m => m.classList.remove('open'));
     }
+  });
 
+  await auth.authStateReady();
+  const user = auth.currentUser;
+  if (!user || !user.emailVerified) {
+    window.location.href = 'index.html';
+  } else {
+    myUid = user.uid;
     const userDoc = await getDoc(doc(db, 'users', user.uid));
     if (userDoc.exists()) setNavUsername(userDoc.data().username);
 
     const pgDoc = await getDoc(doc(db, 'playgroups', pgId));
-    if (!pgDoc.exists()) { window.location.href = 'home.html'; return; }
-    pgData = pgDoc.data();
+    if (!pgDoc.exists()) {
+      window.location.href = 'home.html';
+    } else {
+      pgData = pgDoc.data();
+      document.title = pgData.name + ' — PRIME RPG';
+      document.getElementById('pg-name').textContent = pgData.name;
+      document.getElementById('pg-primer').textContent = pgData.primer || '';
+      document.getElementById('news-loading').style.display = 'none';
+      document.getElementById('news-empty').style.display = 'block';
 
-    document.title = pgData.name + ' — PRIME RPG';
-    document.getElementById('pg-name').textContent = pgData.name;
-    document.getElementById('pg-primer').textContent = pgData.primer || '';
-    document.getElementById('news-loading').style.display = 'none';
-    document.getElementById('news-empty').style.display = 'block';
+      const membershipDoc = await getDoc(doc(db, 'memberships', user.uid + '_' + pgId));
+      if (membershipDoc.exists()) {
+        myRole = membershipDoc.data().role;
+        canEditDocs = myRole === 'Leader' || myRole === 'Administrator';
+      }
 
-    const membershipDoc = await getDoc(doc(db, 'memberships', user.uid + '_' + pgId));
-    let userRole = null;
-    if (membershipDoc.exists()) {
-      userRole = membershipDoc.data().role;
-      canEdit = userRole === 'Leader' || userRole === 'Administrator';
-    }
+      if (myRole && myRole !== 'Leader') {
+        const leaveBtn = document.createElement('button');
+        leaveBtn.className = 'bottom-btn';
+        leaveBtn.textContent = 'Leave Playgroup';
+        leaveBtn.style.color = '#c84b4b';
+        leaveBtn.style.borderColor = '#4a1a1a';
+        leaveBtn.onclick = async function() {
+          if (!confirm('Are you sure you want to leave this playgroup?')) return;
+          const charsQ = query(collection(db, 'characters'), where('uid', '==', user.uid), where('playgroupId', '==', pgId));
+          const charsSnap = await getDocs(charsQ);
+          for (const c of charsSnap.docs) await updateDoc(c.ref, { playgroupId: null });
+          await deleteDoc(doc(db, 'memberships', user.uid + '_' + pgId));
+          window.location.href = 'my-playgroups.html';
+        };
+        document.querySelector('.bottom-bar').appendChild(leaveBtn);
+      }
 
-    if (userRole && userRole !== 'Leader') {
-      const leaveBtn = document.createElement('button');
-      leaveBtn.className = 'bottom-btn';
-      leaveBtn.textContent = 'Leave Playgroup';
-      leaveBtn.style.color = '#c84b4b';
-      leaveBtn.style.borderColor = '#4a1a1a';
-      leaveBtn.onclick = async function() {
-        if (!confirm('Are you sure you want to leave this playgroup?')) return;
-        await deleteDoc(doc(db, 'memberships', user.uid + '_' + pgId));
-        window.location.href = 'my-playgroups.html';
-      };
-      document.querySelector('.bottom-bar').appendChild(leaveBtn);
-    }
+      if (myRole === 'Leader') {
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'bottom-btn';
+        deleteBtn.textContent = 'Delete Playgroup';
+        deleteBtn.style.color = '#c84b4b';
+        deleteBtn.style.borderColor = '#4a1a1a';
+        deleteBtn.onclick = async function() {
+          if (!confirm('Are you sure you want to delete this playgroup? This cannot be undone.')) return;
+          const membershipsQ = query(collection(db, 'memberships'), where('playgroupId', '==', pgId));
+          const membershipsSnap = await getDocs(membershipsQ);
+          for (const mDoc of membershipsSnap.docs) await deleteDoc(mDoc.ref);
+          const allCharsQ = query(collection(db, 'characters'), where('playgroupId', '==', pgId));
+          const allCharsSnap = await getDocs(allCharsQ);
+          for (const c of allCharsSnap.docs) await updateDoc(c.ref, { playgroupId: null });
+          await deleteDoc(doc(db, 'playgroups', pgId));
+          window.location.href = 'my-playgroups.html';
+        };
+        document.querySelector('.bottom-bar').appendChild(deleteBtn);
+      }
 
-    if (userRole === 'Leader') {
-      const deleteBtn = document.createElement('button');
-      deleteBtn.className = 'bottom-btn';
-      deleteBtn.textContent = 'Delete Playgroup';
-      deleteBtn.style.color = '#c84b4b';
-      deleteBtn.style.borderColor = '#4a1a1a';
-      deleteBtn.onclick = async function() {
-        if (!confirm('Are you sure you want to delete this playgroup? This cannot be undone.')) return;
-        const membershipsQ = query(collection(db, 'memberships'), where('playgroupId', '==', pgId));
-        const membershipsSnap = await getDocs(membershipsQ);
-        for (const mDoc of membershipsSnap.docs) await deleteDoc(mDoc.ref);
-        await deleteDoc(doc(db, 'playgroups', pgId));
-        window.location.href = 'my-playgroups.html';
-      };
-      document.querySelector('.bottom-bar').appendChild(deleteBtn);
-    }
+      const worldVal = pgData.world_doc || '';
+      const rulesVal = pgData.rules_doc || '';
+      document.getElementById('world-display').innerHTML = worldVal ? cleanHtml(worldVal) : WORLD_DEFAULT;
+      document.getElementById('rules-display').innerHTML = rulesVal ? cleanHtml(rulesVal) : RULES_DEFAULT;
 
-    const worldVal = pgData.world_doc || '';
-    const rulesVal = pgData.rules_doc || '';
-
-    document.getElementById('world-display').innerHTML = worldVal ? cleanHtml(worldVal) : WORLD_DEFAULT;
-    document.getElementById('rules-display').innerHTML = rulesVal ? cleanHtml(rulesVal) : RULES_DEFAULT;
-
-    if (canEdit) {
-      document.getElementById('world-actions').style.display = 'flex';
-      document.getElementById('rules-actions').style.display = 'flex';
-
-      ['world', 'rules'].forEach(f => {
-        const val = f === 'world' ? worldVal : rulesVal;
-        const def = f === 'world' ? WORLD_DEFAULT : RULES_DEFAULT;
-        quills[f] = new Quill(document.getElementById(f + '-editor'), {
-          theme: 'snow',
-          modules: {
-            toolbar: [
-              ['bold', 'italic', 'underline'],
-              [{ 'header': [1, 2, 3, false] }],
-              [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-              [{ 'indent': '-1' }, { 'indent': '+1' }],
-              ['clean']
-            ]
-          }
+      if (canEditDocs) {
+        document.getElementById('world-actions').style.display = 'flex';
+        document.getElementById('rules-actions').style.display = 'flex';
+        ['world', 'rules'].forEach(f => {
+          const val = f === 'world' ? worldVal : rulesVal;
+          const def = f === 'world' ? WORLD_DEFAULT : RULES_DEFAULT;
+          quills[f] = new Quill(document.getElementById(f + '-editor'), {
+            theme: 'snow',
+            modules: {
+              toolbar: [
+                ['bold', 'italic', 'underline'],
+                [{ 'header': [1, 2, 3, false] }],
+                [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                [{ 'indent': '-1' }, { 'indent': '+1' }],
+                ['clean']
+              ]
+            }
+          });
+          quills[f].root.innerHTML = val || def;
         });
-        quills[f].root.innerHTML = val || def;
-      });
-    }
+      }
 
-   const peopleList = document.getElementById('people-list');
+      await loadPeople();
+    }
+  }
+
+  async function loadPeople() {
+    const peopleList = document.getElementById('people-list');
     peopleList.innerHTML = '<div class="empty">Loading...</div>';
+
     const membershipsQ = query(collection(db, 'memberships'), where('playgroupId', '==', pgId));
     const membershipsSnap = await getDocs(membershipsQ);
+
     if (membershipsSnap.empty) {
       peopleList.innerHTML = '<div class="empty">No members yet.</div>';
     } else {
-      peopleList.innerHTML = '';
-      for (const mDoc of membershipsSnap.docs) {
+      const roleOrder = { Leader: 0, Administrator: 1, Member: 2 };
+      const docs = membershipsSnap.docs.slice().sort((a, b) => {
+        const ra = roleOrder[a.data().role] ?? 99;
+        const rb = roleOrder[b.data().role] ?? 99;
+        return ra - rb;
+      });
+
+      const rows = [];
+      for (const mDoc of docs) {
         const m = mDoc.data();
-        const userDoc = await getDoc(doc(db, 'users', m.uid));
-        const username = userDoc.exists() ? userDoc.data().username : 'Unknown';
+        const uDoc = await getDoc(doc(db, 'users', m.uid));
+        const username = uDoc.exists() ? uDoc.data().username : 'Unknown';
         const charsQ = query(collection(db, 'characters'), where('uid', '==', m.uid));
         const charsSnap = await getDocs(charsQ);
-        const filteredChars = charsSnap.docs.filter(c => c.data().playgroupId === pgId);
+        const filtered = charsSnap.docs.filter(c => c.data().playgroupId === pgId);
         let charsHtml = '';
-        if (filteredChars.length > 0) {
-          const links = filteredChars.map(c =>
+        if (filtered.length > 0) {
+          const links = filtered.map(c =>
             `<a href="character.html?id=${c.id}" style="color:#888;font-style:italic;text-decoration:none;font-size:12px">${c.data().name || 'Unnamed'}</a>`
           );
           charsHtml = '<span style="color:#444;margin:0 8px">—</span>' + links.join('<span style="color:#444">, </span>');
         }
-        peopleList.innerHTML += `
+
+        const actionsHtml = buildActionMenu(m.uid, username, m.role);
+        const youBadge = m.uid === myUid ? '<span style="color:#555;font-size:11px;margin-left:4px">(you)</span>' : '';
+
+        rows.push(`
           <div class="people-row">
             <div class="people-name" style="display:flex;align-items:center;flex-wrap:wrap;gap:4px">
-              <strong>${username}</strong>${charsHtml}
+              <strong>${username}</strong>${youBadge}${charsHtml}
             </div>
-            <div class="people-role">${m.role}</div>
-          </div>`;
+            <div class="role-badge role-${m.role}">${m.role}</div>
+            ${actionsHtml}
+          </div>`);
+      }
+      peopleList.innerHTML = rows.join('');
+    }
+
+    const bannedUids = pgData.bannedUids || [];
+    const bannedSection = document.getElementById('banned-section');
+    const bannedList = document.getElementById('banned-list');
+    if (bannedUids.length > 0 && (myRole === 'Leader' || myRole === 'Administrator')) {
+      bannedSection.style.display = 'block';
+      const bannedRows = [];
+      for (const uid of bannedUids) {
+        const uDoc = await getDoc(doc(db, 'users', uid));
+        const uname = uDoc.exists() ? uDoc.data().username : 'Unknown';
+        const unbanBtn = myRole === 'Leader'
+          ? `<button class="action-menu-btn" onclick="unbanUser('${uid}','${uname.replace(/'/g,"\\'")}')">Unban</button>`
+          : '';
+        bannedRows.push(`
+          <div class="people-row">
+            <div class="people-name"><strong>${uname}</strong></div>
+            <div class="role-badge role-Banned">Banned</div>
+            ${unbanBtn}
+          </div>`);
+      }
+      bannedList.innerHTML = bannedRows.join('');
+    } else {
+      bannedSection.style.display = 'none';
+      bannedList.innerHTML = '';
+    }
+  }
+
+  function buildActionMenu(targetUid, targetName, targetRole) {
+    if (targetUid === myUid) return '';
+
+    const items = [];
+    const safeName = targetName.replace(/'/g, "\\'");
+
+    if (myRole === 'Leader') {
+      if (targetRole === 'Member') {
+        items.push(`<a onclick="promoteToAdmin('${targetUid}','${safeName}')">Promote to Administrator</a>`);
+        items.push(`<a onclick="transferLeader('${targetUid}','${safeName}')">Transfer Leader role</a>`);
+        items.push(`<a class="danger" onclick="kickUser('${targetUid}','${safeName}')">Kick</a>`);
+        items.push(`<a class="danger" onclick="banUser('${targetUid}','${safeName}')">Ban</a>`);
+      } else if (targetRole === 'Administrator') {
+        items.push(`<a onclick="demoteToMember('${targetUid}','${safeName}')">Demote to Member</a>`);
+        items.push(`<a onclick="transferLeader('${targetUid}','${safeName}')">Transfer Leader role</a>`);
+        items.push(`<a class="danger" onclick="kickUser('${targetUid}','${safeName}')">Kick</a>`);
+        items.push(`<a class="danger" onclick="banUser('${targetUid}','${safeName}')">Ban</a>`);
+      }
+    } else if (myRole === 'Administrator') {
+      if (targetRole === 'Member') {
+        items.push(`<a class="danger" onclick="kickUser('${targetUid}','${safeName}')">Kick</a>`);
+        items.push(`<a class="danger" onclick="banUser('${targetUid}','${safeName}')">Ban</a>`);
       }
     }
-  });
+
+    if (items.length === 0) return '';
+
+    const menuId = 'menu-' + targetUid;
+    return `
+      <div class="action-menu-wrap">
+        <button class="action-menu-btn" onclick="toggleActionMenu('${menuId}')">Actions ▾</button>
+        <div class="action-menu" id="${menuId}">${items.join('')}</div>
+      </div>`;
+  }
+
+  window.toggleActionMenu = function(id) {
+    const target = document.getElementById(id);
+    document.querySelectorAll('.action-menu.open').forEach(m => { if (m.id !== id) m.classList.remove('open'); });
+    target.classList.toggle('open');
+  }
+
+  async function unlinkUserCharacters(uid) {
+    const charsQ = query(collection(db, 'characters'), where('uid', '==', uid), where('playgroupId', '==', pgId));
+    const charsSnap = await getDocs(charsQ);
+    for (const c of charsSnap.docs) await updateDoc(c.ref, { playgroupId: null });
+  }
+
+  window.promoteToAdmin = async function(uid, name) {
+    if (!confirm(`Promote ${name} to Administrator?`)) return;
+    try {
+      await updateDoc(doc(db, 'memberships', uid + '_' + pgId), { role: 'Administrator' });
+      await loadPeople();
+    } catch (e) { alert('Failed: ' + e.message); }
+  }
+
+  window.demoteToMember = async function(uid, name) {
+    if (!confirm(`Demote ${name} to Member?`)) return;
+    try {
+      await updateDoc(doc(db, 'memberships', uid + '_' + pgId), { role: 'Member' });
+      await loadPeople();
+    } catch (e) { alert('Failed: ' + e.message); }
+  }
+
+  window.transferLeader = async function(uid, name) {
+    const confirmText = prompt(`This will transfer full Leader control to ${name}. You will become an Administrator.\n\nType "${name}" to confirm:`);
+    if (confirmText === null) return;
+    if (confirmText.trim() !== name) { alert('Name did not match. Cancelled.'); return; }
+    try {
+      await updateDoc(doc(db, 'memberships', uid + '_' + pgId), { role: 'Leader' });
+      await updateDoc(doc(db, 'memberships', myUid + '_' + pgId), { role: 'Administrator' });
+      await updateDoc(doc(db, 'playgroups', pgId), { leader: uid });
+      window.location.reload();
+    } catch (e) { alert('Failed: ' + e.message); }
+  }
+
+  window.kickUser = async function(uid, name) {
+    if (!confirm(`Kick ${name} from this playgroup? Their characters in this world will be unlinked (not deleted).`)) return;
+    try {
+      await unlinkUserCharacters(uid);
+      await deleteDoc(doc(db, 'memberships', uid + '_' + pgId));
+      await loadPeople();
+    } catch (e) { alert('Failed: ' + e.message); }
+  }
+
+  window.banUser = async function(uid, name) {
+    if (!confirm(`Ban ${name}? They will be kicked, their characters unlinked, and they will be blocked from rejoining.`)) return;
+    try {
+      await unlinkUserCharacters(uid);
+      await deleteDoc(doc(db, 'memberships', uid + '_' + pgId));
+      await updateDoc(doc(db, 'playgroups', pgId), { bannedUids: arrayUnion(uid) });
+      const fresh = await getDoc(doc(db, 'playgroups', pgId));
+      pgData = fresh.data();
+      await loadPeople();
+    } catch (e) { alert('Failed: ' + e.message); }
+  }
+
+  window.unbanUser = async function(uid, name) {
+    if (!confirm(`Unban ${name}? They will be able to rejoin this playgroup.`)) return;
+    try {
+      await updateDoc(doc(db, 'playgroups', pgId), { bannedUids: arrayRemove(uid) });
+      const fresh = await getDoc(doc(db, 'playgroups', pgId));
+      pgData = fresh.data();
+      await loadPeople();
+    } catch (e) { alert('Failed: ' + e.message); }
+  }
 
   window.editDoc = function(field) {
     document.getElementById(field + '-display').style.display = 'none';
@@ -360,7 +470,6 @@
     document.getElementById(field + '-wrapper').classList.add('quill-active');
     document.getElementById(field + '-edit-actions').style.display = 'flex';
   }
-
   window.cancelDoc = function(field) {
     document.getElementById(field + '-display').style.display = 'block';
     document.getElementById(field + '-actions').style.display = 'flex';
@@ -368,7 +477,6 @@
     document.getElementById(field + '-wrapper').classList.remove('quill-active');
     document.getElementById(field + '-edit-actions').style.display = 'none';
   }
-
   window.saveDoc = async function(field) {
     const html = cleanHtml(quills[field].root.innerHTML);
     const msg = document.getElementById(field + '-msg');
@@ -377,10 +485,7 @@
       await updateDoc(doc(db, 'playgroups', pgId), { [key]: html });
       document.getElementById(field + '-display').innerHTML = html;
       msg.textContent = 'Saved!';
-      setTimeout(() => {
-        msg.textContent = '';
-        cancelDoc(field);
-      }, 1000);
+      setTimeout(() => { msg.textContent = ''; cancelDoc(field); }, 1000);
     } catch(e) {
       msg.textContent = 'Error saving.';
       msg.style.color = '#ff6666';
