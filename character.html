@@ -6,6 +6,7 @@
   <title>PRIME RPG — Character</title>
   <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <script src="nav.js"></script>
+  <script src="ruleset-defaults.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #0a0a0a; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 14px; min-height: 100vh; }
@@ -313,7 +314,8 @@
     auth, db, onAuthStateChanged, signOut,
     loadCharacter, saveCharacter, deleteCharacter as deleteCharacterDoc,
     loadUser, loadUserPlaygroups,
-    loadBasicSet, loadPlaygroupRulesets
+    loadBasicSet, loadPlaygroupRulesets,
+    resolveActiveRuleset
   } from './char-firestore.js';
 
   // Only the pieces character.html itself still uses — most game data now
@@ -350,6 +352,11 @@
   let availableRulesets = [], primarySkillDefs = [];
   let statsEditMode = false, skillsEditMode = false;
 
+  // The ruleset that governs this character — resolved once during load.
+  // Always a fully-normalized ruleset object (no nulls anywhere). Section
+  // modules read from this via ctx.getRuleset().
+  let activeRuleset = null;
+
   // Build a context for section modules. The getters always fetch the
   // current state — safe even though charData gets reassigned once during
   // initial load.
@@ -370,6 +377,10 @@
     // Bio section needs access to xpBar to refresh the power bar alongside
     // its own renders. Returned via getter so the reference is always fresh.
     getXpBar: () => xpBar,
+    // Active ruleset — every module reads stat caps, skill caps, XP tables,
+    // power levels, etc. through this getter so a ruleset swap flows through
+    // without needing to re-instantiate modules.
+    getRuleset: () => activeRuleset,
   };
 
   const mental = createMentalSection(sectionCtx);
@@ -459,6 +470,73 @@
     xpBar.renderPowerBar();
   }
 
+  // Silent auto-clamp: enforce the active ruleset's caps on the character's
+  // stat and skill values. Runs once during load, before anything renders.
+  // Persists any changes so the saved data stays in sync with what's shown.
+  //
+  // Stat caps use statMax (absolute ceiling — modifiers can push *total*
+  // higher via statModifiers, but the base value is bounded here).
+  // Size uses the highest tier level defined by the ruleset.
+  // Skills use skillMax uniformly across primary/secondary/specialty.
+  async function clampCharacterToRuleset() {
+    if (!activeRuleset) return;
+    const updates = {};
+
+    const statMax = activeRuleset.statMax || 20;
+    const sizeTiers = (activeRuleset.size && activeRuleset.size.tiers) || [];
+    const sizeMax = sizeTiers.length
+      ? Math.max(...sizeTiers.map(t => t.level || 0))
+      : 30;
+    const skillMax = activeRuleset.skillMax || 10;
+
+    // ── STATS ──
+    if (charData.stats) {
+      for (const key of Object.keys(charData.stats)) {
+        const cap = key === 'size' ? sizeMax : statMax;
+        const cur = charData.stats[key];
+        if (typeof cur === 'number' && cur > cap) {
+          charData.stats[key] = cap;
+          updates[`stats.${key}`] = cap;
+        }
+      }
+    }
+
+    // ── PRIMARY SKILLS ──
+    if (charData.skills && charData.skills.primary) {
+      let primaryChanged = false;
+      for (const name of Object.keys(charData.skills.primary)) {
+        if (charData.skills.primary[name] > skillMax) {
+          charData.skills.primary[name] = skillMax;
+          primaryChanged = true;
+        }
+      }
+      if (primaryChanged) updates['skills.primary'] = charData.skills.primary;
+    }
+
+    // ── SECONDARY SKILLS ──
+    if (charData.skills && Array.isArray(charData.skills.secondary)) {
+      let secondaryChanged = false;
+      charData.skills.secondary.forEach(s => {
+        if ((s.value || 0) > skillMax) { s.value = skillMax; secondaryChanged = true; }
+      });
+      if (secondaryChanged) updates['skills.secondary'] = charData.skills.secondary;
+    }
+
+    // ── SPECIALTY SKILLS ──
+    if (charData.skills && Array.isArray(charData.skills.specialty)) {
+      let specialtyChanged = false;
+      charData.skills.specialty.forEach(s => {
+        if ((s.value || 0) > skillMax) { s.value = skillMax; specialtyChanged = true; }
+      });
+      if (specialtyChanged) updates['skills.specialty'] = charData.skills.specialty;
+    }
+
+    // Only hit the database if something actually changed.
+    if (Object.keys(updates).length > 0) {
+      await saveCharacter(charId, updates);
+    }
+  }
+
   async function loadMentalSection() {
     availableRulesets = [];
     const basic = await loadBasicSet();
@@ -496,6 +574,17 @@
     if (!char) { window.location.href = 'home.html'; return; }
     charData = char;
     canEdit = charData.uid === user.uid;
+
+    // Resolve the ruleset that governs this character — playgroup's
+    // attached ruleset, else Basic Set, else defaults. Always returns a
+    // fully-normalized ruleset object.
+    activeRuleset = await resolveActiveRuleset(charData);
+
+    // Silently clamp any stat/skill values that exceed the ruleset's caps.
+    // This can happen if the ruleset was swapped or had its caps lowered
+    // after the character was built. Persists the clamped values so future
+    // loads don't need to re-clamp.
+    await clampCharacterToRuleset();
 
     // Load all playgroups this user is in — used by the bio's
     // "attach to playgroup" dropdown in edit mode.
