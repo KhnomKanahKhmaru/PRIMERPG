@@ -18,6 +18,7 @@
     .rs-card:hover { border-color: #333; }
     .rs-card-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 6px; }
     .rs-card-name { font-size: 15px; font-weight: 600; color: #e0e0e0; flex: 1; }
+    .rs-card-tagline { font-size: 12px; color: #888; font-style: italic; margin-bottom: 8px; line-height: 1.4; }
     .rs-card-actions { display: flex; gap: 6px; flex-shrink: 0; }
     .rs-btn { font-size: 11px; font-family: 'Open Sans', sans-serif; padding: 4px 10px; border-radius: 3px; cursor: pointer; text-decoration: none; display: inline-block; }
     .rs-btn.edit { background: #1a1a1a; border: 1px solid #333; color: #ccc; }
@@ -138,12 +139,17 @@
     const { isBasic, canEdit, canDelete, pgName } = opts;
     const morals = (rs.morals || []).map(m => `<span>${m || '<em style="opacity:.6">Custom…</em>'}</span>`).join('');
     const meta = isBasic ? 'Basic Set — always available to all characters' : pgName ? `Playgroup: ${pgName}` : 'Personal ruleset';
+    const tagline = rs.tagline ? `<div class="rs-card-tagline">${rs.tagline}</div>` : '';
 
     const startingXp = rs.startingXp ?? 100;
     const pLevels = (rs.powerLevels || []).length || 6;
     const pSkills = (rs.primarySkills || []).length || 16;
-    const statCount = (rs.stats || []).length || 7;
+    const statCount = (rs.stats || []).length || 6;
+    const sizeTiers = (rs.size && rs.size.tiers) ? rs.size.tiers.length : 0;
     const moralCount = (rs.morals || []).length;
+    const statMax = rs.statMax ?? 20;
+    const statPurch = rs.statMaxPurchasable ?? 6;
+    const skillMax = rs.skillMax ?? 10;
 
     const editBtn = canEdit ? `<a class="rs-btn edit" href="edit-ruleset.html?id=${d.id}">Edit</a>` : '';
     const deleteBtn = canDelete ? `<button class="rs-btn delete" onclick="deleteRuleset('${d.id}', event)">Delete</button>` : '';
@@ -154,12 +160,14 @@
           <div class="rs-card-name">${rs.name}</div>
           <div class="rs-card-actions">${editBtn}${deleteBtn}</div>
         </div>
+        ${tagline}
         <div class="rs-card-meta">${meta}</div>
         <div class="rs-card-stats">
           <span>Start: <strong>${startingXp} XP</strong></span>
+          <span>Stats: <strong>${statCount}</strong> (0–${statMax}, purchasable to ${statPurch})</span>
+          <span>Skills: <strong>${pSkills}</strong> primary (0–${skillMax})</span>
+          <span>Size Tiers: <strong>${sizeTiers}</strong></span>
           <span>Power Levels: <strong>${pLevels}</strong></span>
-          <span>Stats: <strong>${statCount}</strong></span>
-          <span>Primary Skills: <strong>${pSkills}</strong></span>
           <span>Morals: <strong>${moralCount}</strong></span>
         </div>
         ${morals ? `<div class="rs-card-morals">${morals}</div>` : ''}
