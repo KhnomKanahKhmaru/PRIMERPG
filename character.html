@@ -306,10 +306,17 @@
 </div>
 
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
-  import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
-  import { getFirestore, doc, getDoc, updateDoc, deleteDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
-  import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-storage.js";
+  // All Firebase I/O lives in char-firestore.js. We pull in the handles
+  // we still need (auth, db for ad-hoc queries, onAuthStateChanged to boot)
+  // along with named data helpers. No more direct Firestore calls in
+  // this file — use the helpers.
+  import {
+    auth, db, storage, onAuthStateChanged, signOut,
+    loadCharacter, saveCharacter, deleteCharacter as deleteCharacterDoc,
+    loadUser, loadPlaygroup, loadUserPlaygroups,
+    loadBasicSet, loadPlaygroupRulesets,
+    uploadCharacterPortrait
+  } from './char-firestore.js';
 
   // Game data and XP cost tables. Will be replaced by ruleset lookups
   // once ruleset wiring lands — for now these are the hardcoded defaults.
@@ -329,20 +336,6 @@
   // them on window until the event-delegation pass replaces those handlers.
   window.skillXpLabel = skillXpLabel;
   window.skillLevelText = skillLevelText;
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyCf94yLvAtJ9pLgJ3FsV7ir4Qh9XXm3nHg",
-    authDomain: "prime-rpg.firebaseapp.com",
-    projectId: "prime-rpg",
-    storageBucket: "prime-rpg.firebasestorage.app",
-    messagingSenderId: "177905987748",
-    appId: "1:177905987748:web:8856ab4fdb8f81f42eb631"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db = getFirestore(app);
-  const storage = getStorage(app);
 
   const params = new URLSearchParams(window.location.search);
   const charId = params.get('id');
@@ -396,13 +389,48 @@
 
   window.toggleStatsEdit=function(){statsEditMode=!statsEditMode;document.getElementById('stats-edit-btn').textContent=statsEditMode?'Done':'Edit';STAT_DEFS.forEach(s=>{document.getElementById('stat-view-'+s.key).style.display=statsEditMode?'none':'flex';document.getElementById('stat-edit-'+s.key).style.display=statsEditMode?'flex':'none';if(!statsEditMode){const p=document.getElementById('modpanel-'+s.key);if(p)p.style.display='none';}});}
   window.onStatInput=function(key,val){const v=Math.max(1,Math.min(20,parseInt(val)||1));if(!charData.stats)charData.stats={};charData.stats[key]=v;const total=getStatTotal(key),mod=getStatMod(total),modStr=mod>=0?'+'+mod:''+mod;const badge=document.getElementById('statmod-edit-'+key);if(badge)badge.textContent=modStr;const levelEl=document.getElementById('stat-level-edit-'+key);if(levelEl)levelEl.textContent=getStatLevelText(key,total);const xpEl=document.getElementById('stat-xp-'+key);if(xpEl){const c=STAT_XP[Math.min(Math.max(1,v),6)]||0;xpEl.textContent=(c>0?'+'+c:c)+'xp';}}
-  window.adjustStat=async function(key,delta){if(!canEdit)return;if(!charData.stats)charData.stats={};const cur=charData.stats[key]!==undefined?charData.stats[key]:STAT_DEFS.find(s=>s.key===key).default;const nv=Math.max(1,Math.min(20,cur+delta));charData.stats[key]=nv;const inp=document.getElementById('stat-input-'+key);if(inp)inp.value=nv;await updateDoc(doc(db,'characters',charId),{[`stats.${key}`]:nv});onStatInput(key,nv);updateStatViewDisplay(key);if(key!=='size')await saveXpSpent();}
+  window.adjustStat = async function(key, delta) {
+    if (!canEdit) return;
+    if (!charData.stats) charData.stats = {};
+    const cur = charData.stats[key] !== undefined ? charData.stats[key] : STAT_DEFS.find(s => s.key === key).default;
+    const nv = Math.max(1, Math.min(20, cur + delta));
+    charData.stats[key] = nv;
+    const inp = document.getElementById('stat-input-' + key);
+    if (inp) inp.value = nv;
+    await saveCharacter(charId, { [`stats.${key}`]: nv });
+    onStatInput(key, nv);
+    updateStatViewDisplay(key);
+    if (key !== 'size') await saveXpSpent();
+  }
   function renderModList(key){const mods=(charData.statModifiers&&charData.statModifiers[key])?charData.statModifiers[key]:[];const el=document.getElementById('modlist-'+key);if(!el)return;el.innerHTML=mods.length===0?'<div style="color:#333;font-size:11px;margin-bottom:4px">No modifiers.</div>':mods.map((m,i)=>`<div class="mod-item"><span class="mod-item-name">${m.name}</span><span class="mod-item-val">${m.value>=0?'+':''}${m.value}</span><span class="mod-delete" onclick="deleteModifier('${key}',${i})">×</span></div>`).join('');updateStatViewDisplay(key);}
   function updateStatViewDisplay(key){const total=getStatTotal(key),mod=getStatMod(total),modStr=mod>=0?'+'+mod:''+mod;const t=document.getElementById('stat-total-'+key);if(t)t.textContent=key==='size'?getSizeLabel(total):total;const exp=document.getElementById('statmod-'+key);if(exp)exp.textContent=modStr;const l=document.getElementById('stat-level-'+key);if(l)l.textContent=getStatLevelText(key,total);const eb=document.getElementById('statmod-edit-'+key);if(eb)eb.textContent=modStr;const el=document.getElementById('stat-level-edit-'+key);if(el)el.textContent=getStatLevelText(key,total);}
   window.toggleModPanel=function(key){const p=document.getElementById('modpanel-'+key);p.style.display=p.style.display==='none'?'block':'none';}
-  window.saveStatBase=async function(key,val){if(!canEdit)return;const v=key==='size'?parseInt(val):Math.max(1,Math.min(20,parseInt(val)||1));if(!charData.stats)charData.stats={};charData.stats[key]=v;await updateDoc(doc(db,'characters',charId),{[`stats.${key}`]:v});updateStatViewDisplay(key);if(key!=='size')await saveXpSpent();}
-  window.addModifier=async function(key){const name=document.getElementById('modname-'+key).value.trim(),val=parseInt(document.getElementById('modval-'+key).value)||0;if(!name)return;if(!charData.statModifiers)charData.statModifiers={};if(!charData.statModifiers[key])charData.statModifiers[key]=[];charData.statModifiers[key].push({name,value:val});await updateDoc(doc(db,'characters',charId),{statModifiers:charData.statModifiers});document.getElementById('modname-'+key).value='';document.getElementById('modval-'+key).value='1';renderModList(key);}
-  window.deleteModifier=async function(key,i){charData.statModifiers[key].splice(i,1);await updateDoc(doc(db,'characters',charId),{statModifiers:charData.statModifiers});renderModList(key);}
+  window.saveStatBase = async function(key, val) {
+    if (!canEdit) return;
+    const v = key === 'size' ? parseInt(val) : Math.max(1, Math.min(20, parseInt(val) || 1));
+    if (!charData.stats) charData.stats = {};
+    charData.stats[key] = v;
+    await saveCharacter(charId, { [`stats.${key}`]: v });
+    updateStatViewDisplay(key);
+    if (key !== 'size') await saveXpSpent();
+  }
+  window.addModifier = async function(key) {
+    const name = document.getElementById('modname-' + key).value.trim();
+    const val = parseInt(document.getElementById('modval-' + key).value) || 0;
+    if (!name) return;
+    if (!charData.statModifiers) charData.statModifiers = {};
+    if (!charData.statModifiers[key]) charData.statModifiers[key] = [];
+    charData.statModifiers[key].push({ name, value: val });
+    await saveCharacter(charId, { statModifiers: charData.statModifiers });
+    document.getElementById('modname-' + key).value = '';
+    document.getElementById('modval-' + key).value = '1';
+    renderModList(key);
+  }
+  window.deleteModifier = async function(key, i) {
+    charData.statModifiers[key].splice(i, 1);
+    await saveCharacter(charId, { statModifiers: charData.statModifiers });
+    renderModList(key);
+  }
 
   function calcTotalXp(){
     let xp=0;
@@ -413,7 +441,12 @@
     ((charData.skills&&charData.skills.specialty)||[]).forEach(s=>xp+=(SPEC_XP[s.value||0]||0));
     return xp;
   }
-  async function saveXpSpent(){const v=calcTotalXp();charData.xpSpent=v;await updateDoc(doc(db,'characters',charId),{xpSpent:v});renderPowerBar();}
+  async function saveXpSpent() {
+    const v = calcTotalXp();
+    charData.xpSpent = v;
+    await saveCharacter(charId, { xpSpent: v });
+    renderPowerBar();
+  }
 
   function getPrimaryVal(name){return((charData.skills&&charData.skills.primary)||{})[name]||0;}
   function getSecondaryVal(name){return(((charData.skills&&charData.skills.secondary)||[]).find(s=>s.name===name)||{value:0}).value;}
@@ -424,15 +457,93 @@
   function updateSpecUnder(){const secondary=(charData.skills&&charData.skills.secondary)?charData.skills.secondary:[];if(canEdit&&skillsEditMode){document.getElementById('spec-skill-add-row').style.display='flex';document.getElementById('spec-skill-under').innerHTML=secondary.length>0?secondary.map(s=>`<option value="${s.name}">${s.name}</option>`).join(''):'<option value="">No secondary skills yet</option>';}else document.getElementById('spec-skill-add-row').style.display='none';}
   function renderSpecialtySkills(){const list=document.getElementById('specialty-skills-list'),specialty=(charData.skills&&charData.skills.specialty)?charData.skills.specialty:[];list.innerHTML=specialty.length===0?'<div style="grid-column:1/-1;color:#555;font-size:11px;font-style:italic;padding:4px 2px">None defined.</div>':specialty.map((s,i)=>{const sec=(charData.skills&&charData.skills.secondary)||[];const secEntry=sec.find(x=>x.name===s.under)||{value:0,under:''};const cap=Math.min(10,getSecondaryVal(s.under)+getPrimaryVal(secEntry.under));const cost=SPEC_XP[s.value||0]||0;const levelText=SKILL_LABELS[s.value||0];const nameBlock=skillsEditMode?`<div style="display:flex;flex-direction:column;width:90px;flex-shrink:0;min-width:0;gap:2px"><input type="text" value="${(s.name||'').replace(/"/g,'&quot;')}" onchange="renameSpecSkill(${i},this.value)" style="background:#0a0a0a;border:1px solid #222;color:#e0e0e0;font-family:'Open Sans',sans-serif;font-size:11px;padding:2px 4px;border-radius:2px;outline:none;width:100%;box-sizing:border-box"><span class="sec-skill-under">under ${s.under}</span></div>`:`<div style="display:flex;flex-direction:column;width:90px;flex-shrink:0;min-width:0"><span class="skill-name">${s.name}</span><span class="sec-skill-under">under ${s.under}</span></div>`;return`<div class="skill-item">${nameBlock}<span style="font-size:10px;color:#888;flex:1 1 0;min-width:0;max-width:100%;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${levelText}</span>${skillsEditMode?`<input type="number" class="skill-input" min="0" max="${cap}" value="${s.value||0}" oninput="this.previousElementSibling.textContent=window.SKILL_LABELS_GLOBAL[Math.min(10,Math.max(0,parseInt(this.value)||0))];this.nextElementSibling.textContent=skillXpLabel(this.value,'sp')" onchange="saveSpecSkill(${i},this.value)" title="Max: min(${s.under}+primary, 10) = ${cap}"><span style="font-size:9px;color:#666;width:34px;flex-shrink:0;text-align:right">${cost}xp</span><span class="mod-delete" onclick="deleteSpecSkill(${i})">×</span>`:`<span class="skill-val-display" style="width:20px;flex-shrink:0">${s.value||0}</span>`}</div>`;}).join('');updateSpecUnder();}
   window.toggleSkillsEdit=function(){skillsEditMode=!skillsEditMode;document.getElementById('skills-edit-btn').textContent=skillsEditMode?'Done':'Edit';renderPrimarySkills();renderSecondarySkills();renderSpecialtySkills();}
-  window.saveSkill=async function(name,val){if(!charData.skills)charData.skills={};if(!charData.skills.primary)charData.skills.primary={};charData.skills.primary[name]=Math.max(0,Math.min(10,parseInt(val)||0));await updateDoc(doc(db,'characters',charId),{'skills.primary':charData.skills.primary});await saveXpSpent();renderSecondarySkills();renderSpecialtySkills();}
-  window.addSecondarySkill=async function(){const name=document.getElementById('sec-skill-name').value.trim(),under=document.getElementById('sec-skill-under').value;if(!name||!under)return;if(!charData.skills)charData.skills={};if(!charData.skills.secondary)charData.skills.secondary=[];charData.skills.secondary.push({name,under,value:0});await updateDoc(doc(db,'characters',charId),{'skills.secondary':charData.skills.secondary});document.getElementById('sec-skill-name').value='';renderSecondarySkills();}
-  window.saveSecSkill=async function(i,val){const sec=charData.skills.secondary[i];const cap=Math.min(10,2*getPrimaryVal(sec.under));const v=Math.max(0,Math.min(cap,parseInt(val)||0));if(v<(parseInt(val)||0))alert(`Secondary skill cannot exceed min(2× its Primary, 10). ${sec.under} = ${getPrimaryVal(sec.under)}, max = ${cap}.`);sec.value=v;await updateDoc(doc(db,'characters',charId),{'skills.secondary':charData.skills.secondary});await saveXpSpent();renderSpecialtySkills();}
-  window.renameSecSkill=async function(i,val){const name=(val||'').trim();if(!name){alert('Skill name cannot be empty.');renderSecondarySkills();return;}const oldName=charData.skills.secondary[i].name;charData.skills.secondary[i].name=name;(charData.skills.specialty||[]).forEach(sp=>{if(sp.under===oldName)sp.under=name;});await updateDoc(doc(db,'characters',charId),{'skills.secondary':charData.skills.secondary,'skills.specialty':charData.skills.specialty||[]});renderSecondarySkills();renderSpecialtySkills();}
-  window.deleteSecSkill=async function(i){charData.skills.secondary.splice(i,1);await updateDoc(doc(db,'characters',charId),{'skills.secondary':charData.skills.secondary});await saveXpSpent();renderSecondarySkills();}
-  window.addSpecialtySkill=async function(){const name=document.getElementById('spec-skill-name').value.trim(),under=document.getElementById('spec-skill-under').value;if(!name||!under)return;if(!charData.skills)charData.skills={};if(!charData.skills.specialty)charData.skills.specialty=[];charData.skills.specialty.push({name,under,value:0});await updateDoc(doc(db,'characters',charId),{'skills.specialty':charData.skills.specialty});document.getElementById('spec-skill-name').value='';renderSpecialtySkills();}
-  window.saveSpecSkill=async function(i,val){const spec=charData.skills.specialty[i];const sec=(charData.skills.secondary||[]).find(x=>x.name===spec.under)||{value:0,under:''};const cap=Math.min(10,getSecondaryVal(spec.under)+getPrimaryVal(sec.under));const v=Math.max(0,Math.min(cap,parseInt(val)||0));if(v<(parseInt(val)||0))alert(`Specialty cannot exceed min(Secondary + Primary, 10). Max = ${cap}.`);spec.value=v;await updateDoc(doc(db,'characters',charId),{'skills.specialty':charData.skills.specialty});await saveXpSpent();}
-  window.renameSpecSkill=async function(i,val){const name=(val||'').trim();if(!name){alert('Skill name cannot be empty.');renderSpecialtySkills();return;}charData.skills.specialty[i].name=name;await updateDoc(doc(db,'characters',charId),{'skills.specialty':charData.skills.specialty});renderSpecialtySkills();}
-  window.deleteSpecSkill=async function(i){charData.skills.specialty.splice(i,1);await updateDoc(doc(db,'characters',charId),{'skills.specialty':charData.skills.specialty});await saveXpSpent();renderSpecialtySkills();}
+  window.saveSkill = async function(name, val) {
+    if (!charData.skills) charData.skills = {};
+    if (!charData.skills.primary) charData.skills.primary = {};
+    charData.skills.primary[name] = Math.max(0, Math.min(10, parseInt(val) || 0));
+    await saveCharacter(charId, { 'skills.primary': charData.skills.primary });
+    await saveXpSpent();
+    renderSecondarySkills();
+    renderSpecialtySkills();
+  }
+  window.addSecondarySkill = async function() {
+    const name = document.getElementById('sec-skill-name').value.trim();
+    const under = document.getElementById('sec-skill-under').value;
+    if (!name || !under) return;
+    if (!charData.skills) charData.skills = {};
+    if (!charData.skills.secondary) charData.skills.secondary = [];
+    charData.skills.secondary.push({ name, under, value: 0 });
+    await saveCharacter(charId, { 'skills.secondary': charData.skills.secondary });
+    document.getElementById('sec-skill-name').value = '';
+    renderSecondarySkills();
+  }
+  window.saveSecSkill = async function(i, val) {
+    const sec = charData.skills.secondary[i];
+    const cap = Math.min(10, 2 * getPrimaryVal(sec.under));
+    const v = Math.max(0, Math.min(cap, parseInt(val) || 0));
+    if (v < (parseInt(val) || 0)) {
+      alert(`Secondary skill cannot exceed min(2× its Primary, 10). ${sec.under} = ${getPrimaryVal(sec.under)}, max = ${cap}.`);
+    }
+    sec.value = v;
+    await saveCharacter(charId, { 'skills.secondary': charData.skills.secondary });
+    await saveXpSpent();
+    renderSpecialtySkills();
+  }
+  window.renameSecSkill = async function(i, val) {
+    const name = (val || '').trim();
+    if (!name) { alert('Skill name cannot be empty.'); renderSecondarySkills(); return; }
+    const oldName = charData.skills.secondary[i].name;
+    charData.skills.secondary[i].name = name;
+    (charData.skills.specialty || []).forEach(sp => { if (sp.under === oldName) sp.under = name; });
+    await saveCharacter(charId, {
+      'skills.secondary': charData.skills.secondary,
+      'skills.specialty': charData.skills.specialty || []
+    });
+    renderSecondarySkills();
+    renderSpecialtySkills();
+  }
+  window.deleteSecSkill = async function(i) {
+    charData.skills.secondary.splice(i, 1);
+    await saveCharacter(charId, { 'skills.secondary': charData.skills.secondary });
+    await saveXpSpent();
+    renderSecondarySkills();
+  }
+  window.addSpecialtySkill = async function() {
+    const name = document.getElementById('spec-skill-name').value.trim();
+    const under = document.getElementById('spec-skill-under').value;
+    if (!name || !under) return;
+    if (!charData.skills) charData.skills = {};
+    if (!charData.skills.specialty) charData.skills.specialty = [];
+    charData.skills.specialty.push({ name, under, value: 0 });
+    await saveCharacter(charId, { 'skills.specialty': charData.skills.specialty });
+    document.getElementById('spec-skill-name').value = '';
+    renderSpecialtySkills();
+  }
+  window.saveSpecSkill = async function(i, val) {
+    const spec = charData.skills.specialty[i];
+    const sec = (charData.skills.secondary || []).find(x => x.name === spec.under) || { value: 0, under: '' };
+    const cap = Math.min(10, getSecondaryVal(spec.under) + getPrimaryVal(sec.under));
+    const v = Math.max(0, Math.min(cap, parseInt(val) || 0));
+    if (v < (parseInt(val) || 0)) {
+      alert(`Specialty cannot exceed min(Secondary + Primary, 10). Max = ${cap}.`);
+    }
+    spec.value = v;
+    await saveCharacter(charId, { 'skills.specialty': charData.skills.specialty });
+    await saveXpSpent();
+  }
+  window.renameSpecSkill = async function(i, val) {
+    const name = (val || '').trim();
+    if (!name) { alert('Skill name cannot be empty.'); renderSpecialtySkills(); return; }
+    charData.skills.specialty[i].name = name;
+    await saveCharacter(charId, { 'skills.specialty': charData.skills.specialty });
+    renderSpecialtySkills();
+  }
+  window.deleteSpecSkill = async function(i) {
+    charData.skills.specialty.splice(i, 1);
+    await saveCharacter(charId, { 'skills.specialty': charData.skills.specialty });
+    await saveXpSpent();
+    renderSpecialtySkills();
+  }
 
   function buildProse(d,pgName){const name=d.name?`<b>${d.name}</b>`:'___';let line1=`${name} is a`;if(d.sex)line1+=` <b>${d.sex}</b>`;if(d.age)line1+=` <b>${d.age}</b> year old`;if(d.ethnicity)line1+=` <b>${d.ethnicity}</b>`;if(d.paradigm)line1+=` <b>${d.paradigm}</b>`;if(d.archetype)line1+=` <b>${d.archetype}</b>`;if(d.residence)line1+=` living in <b>${d.residence}</b>`;if(pgName)line1+=`, from the World of <b>${pgName}</b>.`;else line1+='. Currently, they are not an active Character in play.';const name2=d.name?`<b>${d.name}</b>`:'___';let line2=`${name2} <b>typically appears as</b>`;if(d.appearance)line2+=` <i>${d.appearance}</i>`;return line1+'<br><br>'+line2;}
 
@@ -446,72 +557,259 @@
       bar.innerHTML=`<div class="power-pill"><span class="pill-val">${pl.label}</span><span class="pill-sub">(${pl.xpPerAp} XP/AP)</span></div><div class="power-pill"><span class="pill-label">XP</span><span class="pill-val">${xpSpent} / ${maxXp}</span></div><div class="power-pill"><span class="pill-label">AP</span><span class="pill-val">${apSpent} / ${maxAp}</span></div>`;
     }
   }
-  window.savePowerField=async function(field,val){const v=field==='powerLevel'?val:Math.max(0,parseInt(val)||0);charData[field]=v;await updateDoc(doc(db,'characters',charId),{[field]:v});renderPowerBar();}
+  window.savePowerField = async function(field, val) {
+    const v = field === 'powerLevel' ? val : Math.max(0, parseInt(val) || 0);
+    charData[field] = v;
+    await saveCharacter(charId, { [field]: v });
+    renderPowerBar();
+  }
 
-  async function getActivePgName(){if(!charData.playgroupId||!auth.currentUser)return null;const pgDoc=await getDoc(doc(db,'playgroups',charData.playgroupId));return pgDoc.exists()?pgDoc.data().name:null;}
+  async function getActivePgName() {
+    if (!charData.playgroupId || !auth.currentUser) return null;
+    const pg = await loadPlaygroup(charData.playgroupId);
+    return pg ? pg.name : null;
+  }
   async function renderBio(){const pgName=await getActivePgName();document.getElementById('bio-prose').innerHTML=buildProse(charData,pgName);document.getElementById('char-name').textContent=charData.name||'Unnamed';document.getElementById('char-archetype').textContent=[charData.paradigm,charData.archetype].filter(Boolean).join(' · ')||'';renderPowerBar();const quipEl=document.getElementById('char-quip');if(charData.quip){quipEl.textContent=`"${charData.quip}"`;quipEl.classList.add('has-quip');}else{quipEl.textContent='Tagline / Quip';quipEl.classList.remove('has-quip');}document.getElementById('etc-content').textContent=charData.etc||'—';if(charData.pictureUrl){document.getElementById('pic-placeholder').style.display='none';const img=document.getElementById('char-img');img.src=charData.pictureUrl;img.style.display='block';}}
 
-  async function loadMentalSection(){const basicQ=query(collection(db,'rulesets'),where('isBasicSet','==',true));const basicSnap=await getDocs(basicQ);availableRulesets=[];if(!basicSnap.empty)availableRulesets.push({name:'Basic Set',morals:basicSnap.docs[0].data().morals||[]});if(charData.playgroupId){const pgRsQ=query(collection(db,'rulesets'),where('playgroupId','==',charData.playgroupId));const pgRsSnap=await getDocs(pgRsQ);pgRsSnap.docs.forEach(d=>availableRulesets.push({name:d.data().name,morals:d.data().morals||[]}));}renderMoralsView();renderObligationsView();renderDisordersView();if(canEdit){document.getElementById('morals-edit-btn').style.display='inline';document.getElementById('obligations-edit-btn').style.display='inline';document.getElementById('disorders-edit-btn').style.display='inline';}}
+  async function loadMentalSection() {
+    availableRulesets = [];
+    const basic = await loadBasicSet();
+    if (basic) availableRulesets.push({ name: 'Basic Set', morals: basic.morals || [] });
+    if (charData.playgroupId) {
+      const pgRulesets = await loadPlaygroupRulesets(charData.playgroupId);
+      pgRulesets.forEach(r => availableRulesets.push({ name: r.name, morals: r.morals || [] }));
+    }
+    renderMoralsView();
+    renderObligationsView();
+    renderDisordersView();
+    if (canEdit) {
+      document.getElementById('morals-edit-btn').style.display = 'inline';
+      document.getElementById('obligations-edit-btn').style.display = 'inline';
+      document.getElementById('disorders-edit-btn').style.display = 'inline';
+    }
+  }
 
   function renderMoralsView(){const selected=normalizeSelectedMorals(),display=document.getElementById('moral-cards-display');if(selected.length===0){display.innerHTML='<div class="moral-empty">No morals selected.</div>';return;}display.innerHTML=selected.map(m=>`<div class="moral-card-item"><div class="moral-card-top"><span style="font-size:11px;color:#888;font-weight:500">${severityLabel(m.severity,MORAL_SEVERITY)}</span></div><div class="moral-card-name">${m.name}</div></div>`).join('');}
-  window.updateMoralSeverity=async function(i,severity){const selected=normalizeSelectedMorals();if(i>=0&&i<selected.length)selected[i].severity=severity;charData.selectedMorals=selected;await updateDoc(doc(db,'characters',charId),{selectedMorals:selected});}
+  window.updateMoralSeverity = async function(i, severity) {
+    const selected = normalizeSelectedMorals();
+    if (i >= 0 && i < selected.length) selected[i].severity = severity;
+    charData.selectedMorals = selected;
+    await saveCharacter(charId, { selectedMorals: selected });
+  }
   window.editMorals=function(){document.getElementById('morals-view').style.display='none';document.getElementById('morals-edit-btn').style.display='none';document.getElementById('morals-edit-mode').style.display='block';const selected=normalizeSelectedMorals(),selectedNames=selected.map(m=>m.name);const chipsHtml=availableRulesets.map(rs=>{let hasWildcard=false;const regularChips=rs.morals.map(m=>{if(!m||!m.trim()){hasWildcard=true;return '';}return `<div class="moral-chip ${selectedNames.includes(m)?'selected':''}" onclick="toggleMoral('${m.replace(/'/g,"\\'")}',this)">${m}</div>`;}).filter(x=>x).join('');const wildcardChip=hasWildcard?`<div class="moral-chip" style="border-style:dashed;color:#888" onclick="addCustomMoral()">+ Custom…</div>`:'';return `<div class="moral-group"><div class="moral-group-title">${rs.name}</div><div class="moral-chips">${regularChips}${wildcardChip}</div></div>`;}).join('');const severityHtml=selected.length===0?'':`<div style="margin-top:12px;border-top:1px solid #1a1a1a;padding-top:10px"><div style="font-size:10px;color:#444;font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">Severity</div>${selected.map((m,i)=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:12px;color:#888">${severitySelectHtml(m.severity,`updateMoralSeverity(${i},this.value)`,MORAL_SEVERITY)}<span>${m.name}</span><span class="mod-delete" onclick="removeMoralByIndex(${i})" style="margin-left:auto">×</span></div>`).join('')}</div>`;document.getElementById('morals-by-ruleset').innerHTML=chipsHtml+severityHtml;}
 
-  window.addCustomMoral=async function(){const name=prompt('Enter custom moral (one word or short phrase):');if(!name||!name.trim())return;const trimmed=name.trim();let selected=normalizeSelectedMorals();if(selected.some(m=>m.name.toLowerCase()===trimmed.toLowerCase())){alert('You already have that moral.');return;}selected.push({name:trimmed,severity:'Minor'});charData.selectedMorals=selected;await updateDoc(doc(db,'characters',charId),{selectedMorals:selected});editMorals();}
+  window.addCustomMoral = async function() {
+    const name = prompt('Enter custom moral (one word or short phrase):');
+    if (!name || !name.trim()) return;
+    const trimmed = name.trim();
+    let selected = normalizeSelectedMorals();
+    if (selected.some(m => m.name.toLowerCase() === trimmed.toLowerCase())) {
+      alert('You already have that moral.');
+      return;
+    }
+    selected.push({ name: trimmed, severity: 'Minor' });
+    charData.selectedMorals = selected;
+    await saveCharacter(charId, { selectedMorals: selected });
+    editMorals();
+  }
 
-  window.removeMoralByIndex=async function(i){let selected=normalizeSelectedMorals();selected.splice(i,1);charData.selectedMorals=selected;await updateDoc(doc(db,'characters',charId),{selectedMorals:selected});editMorals();}
+  window.removeMoralByIndex = async function(i) {
+    let selected = normalizeSelectedMorals();
+    selected.splice(i, 1);
+    charData.selectedMorals = selected;
+    await saveCharacter(charId, { selectedMorals: selected });
+    editMorals();
+  }
   window.doneMorals=function(){document.getElementById('morals-view').style.display='block';document.getElementById('morals-edit-btn').style.display='inline';document.getElementById('morals-edit-mode').style.display='none';renderMoralsView();}
-  window.toggleMoral=async function(moral,el){if(!canEdit)return;let selected=normalizeSelectedMorals();if(selected.some(m=>m.name===moral)){selected=selected.filter(m=>m.name!==moral);el.classList.remove('selected');}else{selected.push({name:moral,severity:'Minor'});el.classList.add('selected');}charData.selectedMorals=selected;await updateDoc(doc(db,'characters',charId),{selectedMorals:selected});}
+  window.toggleMoral = async function(moral, el) {
+    if (!canEdit) return;
+    let selected = normalizeSelectedMorals();
+    if (selected.some(m => m.name === moral)) {
+      selected = selected.filter(m => m.name !== moral);
+      el.classList.remove('selected');
+    } else {
+      selected.push({ name: moral, severity: 'Minor' });
+      el.classList.add('selected');
+    }
+    charData.selectedMorals = selected;
+    await saveCharacter(charId, { selectedMorals: selected });
+  }
 
   function renderObligationsView(){const o=charData.moralObligations||[];document.getElementById('obligations-view').innerHTML=o.length===0?'<div style="color:#333;font-size:12px">None.</div>':o.map((x,i)=>`<div class="obligation-entry"><div class="entry-header"><span style="font-size:12px;font-weight:600;color:#aaa">${severityLabel(x.severity,OBLIGATION_SEVERITY)}</span>${canEdit?`<span class="entry-delete" onclick="deleteObligation(${i})">×</span>`:''}</div>I have to <span class="entry-text">${x.obligation||'___'}</span> because I <span class="entry-text">${x.violation||'___'}</span></div>`).join('');}
   function renderObligationsList(){const o=charData.moralObligations||[];document.getElementById('obligations-list').innerHTML=o.length===0?'<div style="color:#333;font-size:12px;margin-bottom:8px">No entries yet.</div>':o.map((x,i)=>`<div class="obligation-entry"><div class="entry-header">${severitySelectHtml(x.severity,`saveObligation(${i},'severity',this.value)`,OBLIGATION_SEVERITY)}<span class="entry-delete" onclick="deleteObligation(${i})">×</span></div>I have to <input class="entry-input" value="${x.obligation||''}" placeholder="..." onchange="saveObligation(${i},'obligation',this.value)"> because I <input class="entry-input" value="${x.violation||''}" placeholder="..." onchange="saveObligation(${i},'violation',this.value)"></div>`).join('');}
   window.editObligations=function(){document.getElementById('obligations-view').style.display='none';document.getElementById('obligations-edit-btn').style.display='none';document.getElementById('obligations-edit-mode').style.display='block';document.getElementById('add-obligation-btn').style.display='inline-block';renderObligationsList();}
   window.doneObligations=function(){document.getElementById('obligations-view').style.display='block';document.getElementById('obligations-edit-btn').style.display='inline';document.getElementById('obligations-edit-mode').style.display='none';renderObligationsView();}
-  window.addObligation=async function(){const o=charData.moralObligations||[];o.push({obligation:'',violation:'',severity:'Minor'});charData.moralObligations=o;await updateDoc(doc(db,'characters',charId),{moralObligations:o});renderObligationsList();}
-  window.saveObligation=async function(i,f,v){const o=charData.moralObligations||[];if(o[i])o[i][f]=v;charData.moralObligations=o;await updateDoc(doc(db,'characters',charId),{moralObligations:o});}
-  window.deleteObligation=async function(i){charData.moralObligations.splice(i,1);await updateDoc(doc(db,'characters',charId),{moralObligations:charData.moralObligations});renderObligationsList();}
+  window.addObligation = async function() {
+    const o = charData.moralObligations || [];
+    o.push({ obligation: '', violation: '', severity: 'Minor' });
+    charData.moralObligations = o;
+    await saveCharacter(charId, { moralObligations: o });
+    renderObligationsList();
+  }
+  window.saveObligation = async function(i, f, v) {
+    const o = charData.moralObligations || [];
+    if (o[i]) o[i][f] = v;
+    charData.moralObligations = o;
+    await saveCharacter(charId, { moralObligations: o });
+  }
+  window.deleteObligation = async function(i) {
+    charData.moralObligations.splice(i, 1);
+    await saveCharacter(charId, { moralObligations: charData.moralObligations });
+    renderObligationsList();
+  }
 
   function renderDisordersView(){const d=charData.mentalDisorders||[];document.getElementById('disorders-view').innerHTML=d.length===0?'<div style="color:#333;font-size:12px">None.</div>':d.map((x,i)=>`<div class="disorder-entry"><div class="entry-header"><span style="font-size:12px;font-weight:600;color:#aaa">${severityLabel(x.severity,CONDITION_SEVERITY).replace('Condition',x.disorder||'Condition')}</span>${canEdit?`<span class="entry-delete" onclick="deleteDisorder(${i})">×</span>`:''}</div>I have <span class="entry-text">${x.disorder||'___'}</span> which means <span class="entry-text">${x.description||'___'}</span> and if triggered I might <span class="entry-text">${x.symptoms||'___'}</span></div>`).join('');}
   function renderDisordersList(){const d=charData.mentalDisorders||[];document.getElementById('disorders-list').innerHTML=d.length===0?'<div style="color:#333;font-size:12px;margin-bottom:8px">No entries yet.</div>':d.map((x,i)=>`<div class="disorder-entry"><div class="entry-header">${severitySelectHtml(x.severity,`saveDisorder(${i},'severity',this.value)`,CONDITION_SEVERITY)}<span class="entry-header-type">${x.disorder||'Condition'}</span><span class="entry-delete" onclick="deleteDisorder(${i})">×</span></div>I have <input class="entry-input" value="${x.disorder||''}" placeholder="condition name..." onchange="saveDisorder(${i},'disorder',this.value);rerenderDisorderHeader(${i},this.value)"> which means <input class="entry-input" value="${x.description||''}" placeholder="..." onchange="saveDisorder(${i},'description',this.value)"> and if triggered I might <input class="entry-input" value="${x.symptoms||''}" placeholder="..." onchange="saveDisorder(${i},'symptoms',this.value)"></div>`).join('');}
   window.rerenderDisorderHeader=function(i,val){const headers=document.querySelectorAll('#disorders-list .entry-header-type');if(headers[i])headers[i].textContent=val||'Condition';}
   window.editDisorders=function(){document.getElementById('disorders-view').style.display='none';document.getElementById('disorders-edit-btn').style.display='none';document.getElementById('disorders-edit-mode').style.display='block';document.getElementById('add-disorder-btn').style.display='inline-block';renderDisordersList();}
   window.doneDisorders=function(){document.getElementById('disorders-view').style.display='block';document.getElementById('disorders-edit-btn').style.display='inline';document.getElementById('disorders-edit-mode').style.display='none';renderDisordersView();}
-  window.addDisorder=async function(){const d=charData.mentalDisorders||[];d.push({disorder:'',description:'',symptoms:'',severity:'Minor'});charData.mentalDisorders=d;await updateDoc(doc(db,'characters',charId),{mentalDisorders:d});renderDisordersList();}
-  window.saveDisorder=async function(i,f,v){const d=charData.mentalDisorders||[];if(d[i])d[i][f]=v;charData.mentalDisorders=d;await updateDoc(doc(db,'characters',charId),{mentalDisorders:d});}
-  window.deleteDisorder=async function(i){charData.mentalDisorders.splice(i,1);await updateDoc(doc(db,'characters',charId),{mentalDisorders:charData.mentalDisorders});renderDisordersList();}
+  window.addDisorder = async function() {
+    const d = charData.mentalDisorders || [];
+    d.push({ disorder: '', description: '', symptoms: '', severity: 'Minor' });
+    charData.mentalDisorders = d;
+    await saveCharacter(charId, { mentalDisorders: d });
+    renderDisordersList();
+  }
+  window.saveDisorder = async function(i, f, v) {
+    const d = charData.mentalDisorders || [];
+    if (d[i]) d[i][f] = v;
+    charData.mentalDisorders = d;
+    await saveCharacter(charId, { mentalDisorders: d });
+  }
+  window.deleteDisorder = async function(i) {
+    charData.mentalDisorders.splice(i, 1);
+    await saveCharacter(charId, { mentalDisorders: charData.mentalDisorders });
+    renderDisordersList();
+  }
 
-  onAuthStateChanged(auth,async function(user){
-    if(!user||!user.emailVerified)return;if(loaded)return;loaded=true;
-    const userDoc=await getDoc(doc(db,'users',user.uid));if(userDoc.exists())setNavUsername(userDoc.data().username);initAlerts(db,user.uid);
-    const charDoc=await getDoc(doc(db,'characters',charId));if(!charDoc.exists()){window.location.href='home.html';return;}
-    charData=charDoc.data();canEdit=charData.uid===user.uid;
-    const membQ=query(collection(db,'memberships'),where('uid','==',user.uid));const membSnap=await getDocs(membQ);
-    for(const mDoc of membSnap.docs){const pgDoc=await getDoc(doc(db,'playgroups',mDoc.data().playgroupId));if(pgDoc.exists())userPlaygroups.push({id:pgDoc.id,name:pgDoc.data().name});}
-    const basicQ=query(collection(db,'rulesets'),where('isBasicSet','==',true));const basicSnap=await getDocs(basicQ);
-    primarySkillDefs=(!basicSnap.empty&&basicSnap.docs[0].data().primarySkills)?basicSnap.docs[0].data().primarySkills:FALLBACK_SKILLS;
-    document.getElementById('loading').style.display='none';document.getElementById('char-content').style.display='block';
-    await renderBio();await loadMentalSection();buildStatsSection();buildSkillsSection();
-    if(canEdit){document.getElementById('bio-edit-btn').style.display='inline';document.getElementById('stats-edit-btn').style.display='inline';document.getElementById('danger-zone').style.display='block';}
+  // ── MAIN LOAD FLOW ──
+  // Called once Firebase auth resolves. Pulls the character, figures out
+  // permissions, loads related playgroups and the Basic Set, then kicks
+  // off all the section renderers.
+  onAuthStateChanged(auth, async function(user) {
+    if (!user || !user.emailVerified) return;
+    if (loaded) return;
+    loaded = true;
+
+    // Populate the nav's username + alerts dropdown.
+    const userData = await loadUser(user.uid);
+    if (userData) setNavUsername(userData.username);
+    initAlerts(db, user.uid);
+
+    // Load the character. Bounce back to home if it's missing.
+    const char = await loadCharacter(charId);
+    if (!char) { window.location.href = 'home.html'; return; }
+    charData = char;
+    canEdit = charData.uid === user.uid;
+
+    // Load all playgroups this user is in — used by the bio's
+    // "attach to playgroup" dropdown in edit mode.
+    userPlaygroups = await loadUserPlaygroups(user.uid);
+
+    // Pull primary skills from the Basic Set if it defines any; else
+    // fall back to the bundled skill list. Ruleset wiring will later
+    // replace this with the character's active ruleset.
+    const basic = await loadBasicSet();
+    primarySkillDefs = (basic && basic.primarySkills) ? basic.primarySkills : FALLBACK_SKILLS;
+
+    // Everything's loaded — swap loading screen for the sheet.
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('char-content').style.display = 'block';
+
+    // Render every section.
+    await renderBio();
+    await loadMentalSection();
+    buildStatsSection();
+    buildSkillsSection();
+
+    // Owner-only UI elements.
+    if (canEdit) {
+      document.getElementById('bio-edit-btn').style.display = 'inline';
+      document.getElementById('stats-edit-btn').style.display = 'inline';
+      document.getElementById('danger-zone').style.display = 'block';
+    }
   });
 
   window.triggerPicUpload=function(){if(canEdit)document.getElementById('pic-input').click();}
-  window.handlePicChange=async function(e){const file=e.target.files[0];if(!file)return;const slot=document.getElementById('picture-slot');const overlay=document.createElement('div');overlay.className='pic-uploading';overlay.textContent='Uploading...';slot.appendChild(overlay);try{const storageRef=ref(storage,`characters/${charId}/portrait`);await uploadBytes(storageRef,file);const url=await getDownloadURL(storageRef);await updateDoc(doc(db,'characters',charId),{pictureUrl:url});charData.pictureUrl=url;document.getElementById('pic-placeholder').style.display='none';const img=document.getElementById('char-img');img.src=url;img.style.display='block';}catch(err){alert('Upload failed.');}finally{slot.removeChild(overlay);}}
-  window.editQuip=function(){if(!canEdit)return;const val=prompt('Enter tagline / quip:',charData.quip||'');if(val===null)return;updateDoc(doc(db,'characters',charId),{quip:val}).then(()=>{charData.quip=val;renderBio();});}
+  window.handlePicChange = async function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const slot = document.getElementById('picture-slot');
+    const overlay = document.createElement('div');
+    overlay.className = 'pic-uploading';
+    overlay.textContent = 'Uploading...';
+    slot.appendChild(overlay);
+    try {
+      const url = await uploadCharacterPortrait(charId, file);
+      await saveCharacter(charId, { pictureUrl: url });
+      charData.pictureUrl = url;
+      document.getElementById('pic-placeholder').style.display = 'none';
+      const img = document.getElementById('char-img');
+      img.src = url;
+      img.style.display = 'block';
+    } catch (err) {
+      alert('Upload failed.');
+    } finally {
+      slot.removeChild(overlay);
+    }
+  }
+  window.editQuip = function() {
+    if (!canEdit) return;
+    const val = prompt('Enter tagline / quip:', charData.quip || '');
+    if (val === null) return;
+    saveCharacter(charId, { quip: val }).then(() => {
+      charData.quip = val;
+      renderBio();
+    });
+  }
   window.editBio=function(){document.getElementById('bio-view').style.display='none';document.getElementById('bio-edit-btn').style.display='none';document.getElementById('bio-edit').style.display='block';['name','sex','age','ethnicity','paradigm','archetype','residence','appearance'].forEach(f=>document.getElementById('e-'+f).value=charData[f]||'');const sel=document.getElementById('e-playgroup');sel.innerHTML='<option value="">None — not in active play</option>';userPlaygroups.forEach(pg=>{const opt=document.createElement('option');opt.value=pg.id;opt.textContent=pg.name;if(charData.playgroupId===pg.id)opt.selected=true;sel.appendChild(opt);});}
   window.cancelBio=function(){document.getElementById('bio-view').style.display='block';document.getElementById('bio-edit-btn').style.display='inline';document.getElementById('bio-edit').style.display='none';}
   window.updatePreview=function(){const d={};['name','sex','age','ethnicity','paradigm','archetype','residence','appearance'].forEach(f=>d[f]=document.getElementById('e-'+f).value.trim());const pg=userPlaygroups.find(p=>p.id===document.getElementById('e-playgroup').value);document.getElementById('bio-prose').innerHTML=buildProse(d,pg?pg.name:null);}
-  window.saveBio=async function(){const msg=document.getElementById('bio-msg'),updated={};['name','sex','age','ethnicity','paradigm','archetype','residence','appearance'].forEach(f=>updated[f]=document.getElementById('e-'+f).value.trim());updated.playgroupId=document.getElementById('e-playgroup').value||null;try{await updateDoc(doc(db,'characters',charId),updated);Object.assign(charData,updated);await renderBio();msg.textContent='Saved!';setTimeout(()=>{msg.textContent='';cancelBio();},1000);}catch(e){msg.textContent='Error saving.';msg.style.color='#ff6666';}}
+  window.saveBio = async function() {
+    const msg = document.getElementById('bio-msg');
+    const updated = {};
+    ['name','sex','age','ethnicity','paradigm','archetype','residence','appearance']
+      .forEach(f => updated[f] = document.getElementById('e-' + f).value.trim());
+    updated.playgroupId = document.getElementById('e-playgroup').value || null;
+    try {
+      await saveCharacter(charId, updated);
+      Object.assign(charData, updated);
+      await renderBio();
+      msg.textContent = 'Saved!';
+      setTimeout(() => { msg.textContent = ''; cancelBio(); }, 1000);
+    } catch (e) {
+      msg.textContent = 'Error saving.';
+      msg.style.color = '#ff6666';
+    }
+  }
   window.editEtc=function(){if(!canEdit)return;document.getElementById('etc-content').style.display='none';document.getElementById('etc-edit').value=charData.etc||'';document.getElementById('etc-edit').style.display='block';document.getElementById('etc-btn-row').style.display='block';}
   window.cancelEtc=function(){document.getElementById('etc-content').style.display='block';document.getElementById('etc-edit').style.display='none';document.getElementById('etc-btn-row').style.display='none';}
-  window.saveEtc=async function(){const val=document.getElementById('etc-edit').value.trim();try{await updateDoc(doc(db,'characters',charId),{etc:val});charData.etc=val;document.getElementById('etc-content').textContent=val||'—';cancelEtc();}catch(e){alert('Error saving.');}}
-  window.deleteCharacter=async function(){
-    if(!canEdit)return;
-    const name=charData.name||'this character';
-    const confirm1=prompt(`Type the character's name ("${name}") to confirm permanent deletion:`);
-    if(confirm1===null)return;
-    if(confirm1.trim().toLowerCase()!==name.trim().toLowerCase()){alert('Name did not match. Deletion cancelled.');return;}
-    try{await deleteDoc(doc(db,'characters',charId));window.location.href='my-characters.html';}
-    catch(e){alert('Failed to delete: '+e.message);}
+  window.saveEtc = async function() {
+    const val = document.getElementById('etc-edit').value.trim();
+    try {
+      await saveCharacter(charId, { etc: val });
+      charData.etc = val;
+      document.getElementById('etc-content').textContent = val || '—';
+      cancelEtc();
+    } catch (e) {
+      alert('Error saving.');
+    }
+  }
+  window.deleteCharacter = async function() {
+    if (!canEdit) return;
+    const name = charData.name || 'this character';
+    const confirm1 = prompt(`Type the character's name ("${name}") to confirm permanent deletion:`);
+    if (confirm1 === null) return;
+    if (confirm1.trim().toLowerCase() !== name.trim().toLowerCase()) {
+      alert('Name did not match. Deletion cancelled.');
+      return;
+    }
+    try {
+      await deleteCharacterDoc(charId);
+      window.location.href = 'my-characters.html';
+    } catch (e) {
+      alert('Failed to delete: ' + e.message);
+    }
   }
   window.logout=async function(){await signOut(auth);window.location.href='index.html';}
 </script>
