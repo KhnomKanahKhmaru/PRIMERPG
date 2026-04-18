@@ -182,8 +182,12 @@ window.normalizeRuleset = function(rs) {
   out.disadvantageTiers = normalizeTierArray(out.disadvantageTiers, d.disadvantageTiers);
 
   // ── A/D ENTRIES ──
-  // Each entry normalized to { name, category, tier, description }.
+  // Each entry normalized to { name, category, tier, description, system, repeatable }.
   // Drop entries with no name (treat as corrupt/empty).
+  //
+  //   description = flavor text ("You've always been great at throwing.")
+  //   system      = mechanical effect ("You benefit from 2 Difficulty Mitigation…")
+  //   repeatable  = whether a character can take this entry multiple times
   const validCategories = ['physical','mental','social','background','special'];
   const normalizeEntry = (e) => {
     if (!e || typeof e !== 'object') return null;
@@ -192,7 +196,9 @@ window.normalizeRuleset = function(rs) {
     const cat = validCategories.includes(e.category) ? e.category : 'physical';
     const tier = Number.isInteger(e.tier) ? Math.max(0, Math.min(6, e.tier)) : 0;
     const desc = (typeof e.description === 'string') ? e.description : '';
-    return { name, category: cat, tier, description: desc };
+    const sys  = (typeof e.system === 'string') ? e.system : '';
+    const rep  = e.repeatable === true;  // defaults to false unless explicitly true
+    return { name, category: cat, tier, description: desc, system: sys, repeatable: rep };
   };
   out.advantages    = Array.isArray(out.advantages)    ? out.advantages.map(normalizeEntry).filter(Boolean)    : [];
   out.disadvantages = Array.isArray(out.disadvantages) ? out.disadvantages.map(normalizeEntry).filter(Boolean) : [];
