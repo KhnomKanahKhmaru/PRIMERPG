@@ -106,6 +106,13 @@ export async function loadPlaygroupRulesets(pgId) {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
+// Load a specific ruleset by ID. Returns {id, ...data} or null.
+export async function loadRuleset(rulesetId) {
+  if (!rulesetId) return null;
+  const snap = await getDoc(doc(db, 'rulesets', rulesetId));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+}
+
 // ── STORAGE ──
 
 // Upload a character portrait and return its public download URL.
@@ -117,29 +124,38 @@ export async function uploadCharacterPortrait(charId, file) {
 
 // ── RULESET RESOLUTION ──
 
-// Pick the ruleset that governs a character. Policy: use the first
-// ruleset attached to the character's playgroup; fall back to the Basic
-// Set; fall back to the hardcoded defaults. Returns a fully-normalized
-// ruleset object (every schema field populated), never null.
+// Pick the ruleset that governs a character. Resolution order:
+//   1. The character's playgroup has a rulesetId set → use that ruleset
+//   2. Legacy: first ruleset with playgroupId = this playgroup (old behavior,
+//      kept so pre-rulesetId data still resolves sensibly)
+//   3. Basic Set
+//   4. Hardcoded defaults (if no Basic Set exists)
 //
-// Relies on window.normalizeRuleset being defined — that comes from
-// ruleset-defaults.js, loaded as a classic <script> tag in the HTML
-// head (not an ES import, because it's shared across non-module pages).
+// Always returns a fully-normalized ruleset object (every schema field
+// populated), never null. Normalization uses window.normalizeRuleset from
+// ruleset-defaults.js (loaded as a classic <script> tag in the HTML head).
 export async function resolveActiveRuleset(charData) {
   let raw = null;
 
-  // 1. Try the playgroup's attached ruleset(s). If multiple are attached
-  //    we use the first one — a "primary ruleset" flag can come later.
   if (charData && charData.playgroupId) {
-    const rulesets = await loadPlaygroupRulesets(charData.playgroupId);
-    if (rulesets.length > 0) raw = rulesets[0];
+    const pg = await loadPlaygroup(charData.playgroupId);
+
+    // 1. New path: playgroup points at a ruleset.
+    if (pg && pg.rulesetId) {
+      raw = await loadRuleset(pg.rulesetId);
+    }
+
+    // 2. Legacy path: ruleset points at this playgroup.
+    if (!raw) {
+      const rulesets = await loadPlaygroupRulesets(charData.playgroupId);
+      if (rulesets.length > 0) raw = rulesets[0];
+    }
   }
 
-  // 2. Fall back to the Basic Set.
+  // 3. Fall back to the Basic Set.
   if (!raw) raw = await loadBasicSet();
 
-  // 3. Normalize (fills in every missing field from RULESET_DEFAULTS).
-  //    If normalizeRuleset isn't loaded for some reason, pass through.
+  // 4. Normalize. Fills in every missing field from RULESET_DEFAULTS.
   const normalize = (typeof window !== 'undefined' && window.normalizeRuleset)
     ? window.normalizeRuleset
     : (rs => rs || {});
