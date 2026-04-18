@@ -144,13 +144,16 @@ export function createMentalSection(ctx) {
     let selected = normalizeSelectedMorals();
     if (selected.some(m => m.name === moral)) {
       selected = selected.filter(m => m.name !== moral);
-      el.classList.remove('selected');
     } else {
       selected.push({ name: moral, severity: 'Minor' });
-      el.classList.add('selected');
     }
     charData.selectedMorals = selected;
     await saveCharacter(ctx.getCharId(), { selectedMorals: selected });
+    // Re-render the edit panel so the severity picker for the newly-added
+    // moral appears (and disappears on untoggle) without needing to close
+    // and reopen edit mode. editMorals() rebuilds the whole panel from
+    // current state, including chip selection visuals.
+    editMorals();
   }
 
   // ─── OBLIGATIONS ───
