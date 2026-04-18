@@ -505,7 +505,7 @@
 
   onAuthStateChanged(auth,async function(user){
     if(!user||!user.emailVerified)return;if(loaded)return;loaded=true;
-    const userDoc=await getDoc(doc(db,'users',user.uid));if(userDoc.exists())setNavUsername(userDoc.data().username);
+    const userDoc=await getDoc(doc(db,'users',user.uid));if(userDoc.exists())setNavUsername(userDoc.data().username);initAlerts(db,user.uid);
     const charDoc=await getDoc(doc(db,'characters',charId));if(!charDoc.exists()){window.location.href='home.html';return;}
     charData=charDoc.data();canEdit=charData.uid===user.uid;
     const membQ=query(collection(db,'memberships'),where('uid','==',user.uid));const membSnap=await getDocs(membQ);
