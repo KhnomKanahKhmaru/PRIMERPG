@@ -93,7 +93,45 @@ window.RULESET_DEFAULTS = {
   ],
 
   // Morals — plain string list. "" (blank) = Custom wildcard entry.
-  morals: []
+  morals: [],
+
+  // ── ADVANTAGES & DISADVANTAGES ──
+  // Both sides share the same shape: a tier scale + a catalog of entries.
+  //
+  // Tiers: 7 named rungs. Each has a label, a free-text description
+  // (what "Minor" means at the table), and an XP cost/grant. Tier labels
+  // and XP values are editable per ruleset so homebrew can re-balance.
+  //
+  // Entries reference a tier by *index* (0..6) rather than by label, so
+  // renaming a tier in the ruleset doesn't orphan existing entries.
+  //
+  // Categories are a fixed list — Physical, Mental, Social, Background,
+  // Special. Stored as a lowercase code so the display label can evolve
+  // without touching saved data.
+
+  advantageTiers: [
+    { label: 'Minor',      description: '', xp: 0 },
+    { label: 'Moderate',   description: '', xp: 0 },
+    { label: 'Major',      description: '', xp: 0 },
+    { label: 'Massive',    description: '', xp: 0 },
+    { label: 'Monumental', description: '', xp: 0 },
+    { label: 'Mega',       description: '', xp: 0 },
+    { label: 'Mythical',   description: '', xp: 0 }
+  ],
+  disadvantageTiers: [
+    { label: 'Minor',      description: '', xp: 0 },
+    { label: 'Moderate',   description: '', xp: 0 },
+    { label: 'Major',      description: '', xp: 0 },
+    { label: 'Massive',    description: '', xp: 0 },
+    { label: 'Monumental', description: '', xp: 0 },
+    { label: 'Mega',       description: '', xp: 0 },
+    { label: 'Mythical',   description: '', xp: 0 }
+  ],
+
+  // Catalog entries. tier = index into advantageTiers / disadvantageTiers.
+  // category is one of: physical, mental, social, background, special.
+  advantages: [],
+  disadvantages: []
 };
 
 // Normalize any ruleset doc by filling in missing fields from defaults.
@@ -124,5 +162,40 @@ window.normalizeRuleset = function(rs) {
   if (!out.defaultPowerLevel) out.defaultPowerLevel = d.defaultPowerLevel;
   if (!Array.isArray(out.primarySkills) || out.primarySkills.length === 0) out.primarySkills = JSON.parse(JSON.stringify(d.primarySkills));
   if (!Array.isArray(out.morals)) out.morals = [];
+
+  // ── A/D TIERS ──
+  // Keep 7 entries; fill any missing slots with defaults. Any existing
+  // label/description/xp values are preserved.
+  const normalizeTierArray = (arr, defaults) => {
+    const result = [];
+    for (let i = 0; i < 7; i++) {
+      const src = (Array.isArray(arr) && arr[i]) ? arr[i] : {};
+      result.push({
+        label: typeof src.label === 'string' && src.label ? src.label : defaults[i].label,
+        description: typeof src.description === 'string' ? src.description : '',
+        xp: Number.isFinite(src.xp) ? src.xp : 0
+      });
+    }
+    return result;
+  };
+  out.advantageTiers    = normalizeTierArray(out.advantageTiers,    d.advantageTiers);
+  out.disadvantageTiers = normalizeTierArray(out.disadvantageTiers, d.disadvantageTiers);
+
+  // ── A/D ENTRIES ──
+  // Each entry normalized to { name, category, tier, description }.
+  // Drop entries with no name (treat as corrupt/empty).
+  const validCategories = ['physical','mental','social','background','special'];
+  const normalizeEntry = (e) => {
+    if (!e || typeof e !== 'object') return null;
+    const name = (typeof e.name === 'string') ? e.name.trim() : '';
+    if (!name) return null;
+    const cat = validCategories.includes(e.category) ? e.category : 'physical';
+    const tier = Number.isInteger(e.tier) ? Math.max(0, Math.min(6, e.tier)) : 0;
+    const desc = (typeof e.description === 'string') ? e.description : '';
+    return { name, category: cat, tier, description: desc };
+  };
+  out.advantages    = Array.isArray(out.advantages)    ? out.advantages.map(normalizeEntry).filter(Boolean)    : [];
+  out.disadvantages = Array.isArray(out.disadvantages) ? out.disadvantages.map(normalizeEntry).filter(Boolean) : [];
+
   return out;
 };
