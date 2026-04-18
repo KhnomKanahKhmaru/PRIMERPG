@@ -94,6 +94,7 @@
   } else {
     const userDoc = await getDoc(doc(db, 'users', user.uid));
     if (userDoc.exists()) setNavUsername(userDoc.data().username);
+    initAlerts(db, user.uid);
 
     const q = query(collection(db, 'characters'), where('uid', '==', user.uid));
     const snap = await getDocs(q);
