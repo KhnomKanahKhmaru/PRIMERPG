@@ -73,16 +73,29 @@
 
     /* A/D entries list */
     .ad-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
-    .ad-row { display: grid; grid-template-columns: 170px 110px 120px 1fr 24px; gap: 6px; align-items: start; background: #111; border: 1px solid #1a1a1a; border-radius: 4px; padding: 8px 10px; }
+    .ad-row { display: grid; grid-template-columns: 150px 100px 110px 1fr 1fr 32px 24px; gap: 6px; align-items: start; background: #111; border: 1px solid #1a1a1a; border-radius: 4px; padding: 8px 10px; }
     .ad-row input, .ad-row select, .ad-row textarea { background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 5px 8px; border-radius: 3px; outline: none; width: 100%; }
     .ad-row input:focus, .ad-row select:focus, .ad-row textarea:focus { border-color: #444; }
     .ad-row textarea { resize: vertical; min-height: 26px; line-height: 1.4; font-family: 'Open Sans', sans-serif; }
     .ad-row .delete-x { color: #555; font-size: 18px; cursor: pointer; padding: 0 4px; line-height: 1.6; align-self: center; }
     .ad-row .delete-x:hover { color: #c84b4b; }
 
-    .ad-add-row { display: grid; grid-template-columns: 170px 110px 120px 1fr auto; gap: 6px; align-items: center; margin-top: 6px; }
-    .ad-add-row input, .ad-add-row select { background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 8px; border-radius: 3px; outline: none; width: 100%; }
-    .ad-add-row input:focus, .ad-add-row select:focus { border-color: #444; }
+    /* Repeatable toggle: small pill with ∞ / 1 symbol, click to flip */
+    .ad-repeat-toggle { align-self: center; text-align: center; cursor: pointer; user-select: none; border: 1px solid #222; border-radius: 3px; padding: 4px 0; font-size: 12px; font-weight: 600; background: #0a0a0a; color: #555; transition: all .1s; }
+    .ad-repeat-toggle:hover { border-color: #444; }
+    .ad-repeat-toggle.on { background: #1f2c3a; border-color: #3a5878; color: #cfe3f6; }
+    .ad-repeat-toggle-lbl { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #666; text-align: center; margin-bottom: 2px; }
+
+    /* Header row sits above the list, in the same grid, to label each column */
+    .ad-list-header { display: grid; grid-template-columns: 150px 100px 110px 1fr 1fr 32px 24px; gap: 6px; padding: 0 10px 4px; font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #666; border-bottom: 1px solid #1a1a1a; margin-bottom: 8px; }
+
+    .ad-add-row { display: grid; grid-template-columns: 150px 100px 110px 1fr 1fr 32px auto; gap: 6px; align-items: start; margin-top: 6px; }
+    .ad-add-row input, .ad-add-row select, .ad-add-row textarea { background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 8px; border-radius: 3px; outline: none; width: 100%; }
+    .ad-add-row input:focus, .ad-add-row select:focus, .ad-add-row textarea:focus { border-color: #444; }
+    .ad-add-row textarea { resize: vertical; min-height: 30px; line-height: 1.4; font-family: 'Open Sans', sans-serif; }
+    .ad-add-row .ad-add-btn { align-self: center; }
+
+    .ad-add-msg { font-size: 11px; color: #c87777; margin-top: 4px; min-height: 14px; padding-left: 10px; }
 
     /* Category filter chips */
     .filter-chips { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -340,16 +353,22 @@
           <div class="section-header">
             <div class="section-title">Advantages</div>
           </div>
-          <div class="section-desc">The catalog of advantages players can pick from. Each is tagged with a category and a tier.</div>
+          <div class="section-desc">The catalog of advantages players can pick from. Each is tagged with a category and a tier. Entries appear on the character sheet as <em>XP — Name "Description" (System)</em>. Toggle the ∞/1 button to allow an advantage to be taken multiple times.</div>
           <div class="filter-chips" id="adv-filter-chips"></div>
+          <div class="ad-list-header" id="adv-list-header" style="display:none">
+            <div>Name</div><div>Category</div><div>Tier</div><div>Description</div><div>System</div><div style="text-align:center">Rpt</div><div></div>
+          </div>
           <div class="ad-list" id="adv-list"></div>
           <div class="ad-add-row">
-            <input type="text"   id="new-adv-name"        placeholder="Name (e.g. Keen Senses)">
-            <select              id="new-adv-category"></select>
-            <select              id="new-adv-tier"></select>
-            <input type="text"   id="new-adv-description" placeholder="Short description">
-            <button class="btn small" onclick="addAdvantage()">+ Add</button>
+            <input type="text"     id="new-adv-name"        placeholder="Name (e.g. Slugger)">
+            <select                id="new-adv-category"></select>
+            <select                id="new-adv-tier"></select>
+            <textarea rows="1"     id="new-adv-description" placeholder="Flavor / description"></textarea>
+            <textarea rows="1"     id="new-adv-system"      placeholder="Mechanical effect (System)"></textarea>
+            <div class="ad-repeat-toggle" id="new-adv-repeatable" onclick="toggleNewRepeatable('adv')" title="Can this advantage be taken more than once?">1×</div>
+            <button class="btn small ad-add-btn" onclick="addAdvantage()">+ Add</button>
           </div>
+          <div class="ad-add-msg" id="new-adv-msg"></div>
         </div>
       </div><!-- /sub-panel-adv -->
 
@@ -367,16 +386,22 @@
           <div class="section-header">
             <div class="section-title">Disadvantages</div>
           </div>
-          <div class="section-desc">The catalog of disadvantages players can take on. Each is tagged with a category and a tier.</div>
+          <div class="section-desc">The catalog of disadvantages players can take on. Each is tagged with a category and a tier. Toggle the ∞/1 button to allow a disadvantage to be taken multiple times.</div>
           <div class="filter-chips" id="dis-filter-chips"></div>
+          <div class="ad-list-header" id="dis-list-header" style="display:none">
+            <div>Name</div><div>Category</div><div>Tier</div><div>Description</div><div>System</div><div style="text-align:center">Rpt</div><div></div>
+          </div>
           <div class="ad-list" id="dis-list"></div>
           <div class="ad-add-row">
-            <input type="text"   id="new-dis-name"        placeholder="Name (e.g. One Eye)">
-            <select              id="new-dis-category"></select>
-            <select              id="new-dis-tier"></select>
-            <input type="text"   id="new-dis-description" placeholder="Short description">
-            <button class="btn small" onclick="addDisadvantage()">+ Add</button>
+            <input type="text"     id="new-dis-name"        placeholder="Name (e.g. One Eye)">
+            <select                id="new-dis-category"></select>
+            <select                id="new-dis-tier"></select>
+            <textarea rows="1"     id="new-dis-description" placeholder="Flavor / description"></textarea>
+            <textarea rows="1"     id="new-dis-system"      placeholder="Mechanical effect (System)"></textarea>
+            <div class="ad-repeat-toggle" id="new-dis-repeatable" onclick="toggleNewRepeatable('dis')" title="Can this disadvantage be taken more than once?">1×</div>
+            <button class="btn small ad-add-btn" onclick="addDisadvantage()">+ Add</button>
           </div>
+          <div class="ad-add-msg" id="new-dis-msg"></div>
         </div>
       </div><!-- /sub-panel-dis -->
 
@@ -431,6 +456,10 @@
   // Per-tab filter state — 'all' or a category code. Independent for A and D.
   let advFilter = 'all';
   let disFilter = 'all';
+
+  // Per-tab "new entry" repeat-toggle state. Resets after each successful add.
+  let advNewRepeatable = false;
+  let disNewRepeatable = false;
 
   await auth.authStateReady();
   const user = auth.currentUser;
@@ -931,6 +960,7 @@
   // ── A/D: ENTRIES LIST ──
   function renderAdList(side) {
     const list = document.getElementById(side + '-list');
+    const header = document.getElementById(side + '-list-header');
     const entries = state[entryArrayKey(side)] || [];
     const tiers = state[tierArrayKey(side)];
     const filter = side === 'adv' ? advFilter : disFilter;
@@ -942,9 +972,11 @@
       .filter(({ e }) => filter === 'all' || e.category === filter);
 
     if (visible.length === 0) {
+      if (header) header.style.display = 'none';
       list.innerHTML = `<div class="empty">${filter === 'all' ? 'No entries defined yet.' : 'No entries in this category.'}</div>`;
       return;
     }
+    if (header) header.style.display = 'grid';
 
     list.innerHTML = visible.map(({ e, origIdx }) => {
       const tierOptions = tiers.map((t, i) =>
@@ -955,12 +987,17 @@
       ).join('');
       const xp = tiers[e.tier]?.xp ?? 0;
       const xpLabel = side === 'adv' ? `costs ${xp} XP` : `grants ${xp} XP`;
+      const repClass  = e.repeatable ? 'on' : '';
+      const repSymbol = e.repeatable ? '∞' : '1×';
+      const repTitle  = e.repeatable ? 'Can be taken multiple times — click to restrict to once' : 'Can only be taken once — click to allow multiple';
       return `
         <div class="ad-row" title="${xpLabel}">
           <input type="text" value="${(e.name||'').replace(/"/g,'&quot;')}" placeholder="Name" oninput="updateAdEntry('${side}',${origIdx},'name',this.value)">
           <select onchange="updateAdEntry('${side}',${origIdx},'category',this.value)">${catOptions}</select>
           <select onchange="updateAdEntry('${side}',${origIdx},'tier',parseInt(this.value))">${tierOptions}</select>
-          <textarea rows="1" placeholder="Description" oninput="updateAdEntry('${side}',${origIdx},'description',this.value)">${(e.description||'').replace(/</g,'&lt;')}</textarea>
+          <textarea rows="1" placeholder="Flavor / description" oninput="updateAdEntry('${side}',${origIdx},'description',this.value)">${(e.description||'').replace(/</g,'&lt;')}</textarea>
+          <textarea rows="1" placeholder="Mechanical effect (System)" oninput="updateAdEntry('${side}',${origIdx},'system',this.value)">${(e.system||'').replace(/</g,'&lt;')}</textarea>
+          <div class="ad-repeat-toggle ${repClass}" onclick="toggleEntryRepeatable('${side}',${origIdx})" title="${repTitle}">${repSymbol}</div>
           <span class="delete-x" onclick="removeAdEntry('${side}',${origIdx})" title="Remove">×</span>
         </div>`;
     }).join('');
@@ -975,6 +1012,35 @@
     if (field === 'category' || field === 'tier') renderAdList(side);
   };
 
+  // Flip the repeatable flag on an existing entry. Re-render only the list —
+  // filter/headers don't change.
+  window.toggleEntryRepeatable = function(side, i) {
+    const arr = state[entryArrayKey(side)];
+    if (!arr[i]) return;
+    arr[i].repeatable = !arr[i].repeatable;
+    renderAdList(side);
+  };
+
+  // Flip the repeatable flag on the add-row (before the entry is saved). The
+  // toggle button in the add-row reflects this state so the user can see
+  // what'll be saved.
+  window.toggleNewRepeatable = function(side) {
+    if (side === 'adv') advNewRepeatable = !advNewRepeatable;
+    else                disNewRepeatable = !disNewRepeatable;
+    refreshNewRepeatableButton(side);
+  };
+
+  function refreshNewRepeatableButton(side) {
+    const btn = document.getElementById('new-' + side + '-repeatable');
+    if (!btn) return;
+    const on = side === 'adv' ? advNewRepeatable : disNewRepeatable;
+    btn.classList.toggle('on', on);
+    btn.textContent = on ? '∞' : '1×';
+    btn.title = on
+      ? 'Can be taken multiple times — click to restrict to once'
+      : 'Can only be taken once — click to allow multiple';
+  }
+
   window.removeAdEntry = function(side, i) {
     const arr = state[entryArrayKey(side)];
     arr.splice(i, 1);
@@ -986,17 +1052,37 @@
   window.addDisadvantage = function() { addAdEntry('dis'); };
 
   function addAdEntry(side) {
-    const name = document.getElementById('new-' + side + '-name').value.trim();
+    const nameInput = document.getElementById('new-' + side + '-name');
+    const name = nameInput.value.trim();
+    const msg = document.getElementById('new-' + side + '-msg');
+
+    // Validate — give visible feedback rather than silently bailing.
+    if (!name) {
+      if (msg) msg.textContent = 'Please enter a name for this entry.';
+      nameInput.focus();
+      return;
+    }
+    if (msg) msg.textContent = '';
+
     const category = document.getElementById('new-' + side + '-category').value;
     const tier = parseInt(document.getElementById('new-' + side + '-tier').value) || 0;
     const description = document.getElementById('new-' + side + '-description').value.trim();
-    if (!name) return;
+    const system = document.getElementById('new-' + side + '-system').value.trim();
+    const repeatable = side === 'adv' ? advNewRepeatable : disNewRepeatable;
+
     const arr = state[entryArrayKey(side)];
-    arr.push({ name, category, tier, description });
-    document.getElementById('new-' + side + '-name').value = '';
+    arr.push({ name, category, tier, description, system, repeatable });
+
+    // Clear name/description/system fields. Leave category/tier sticky —
+    // bulk data entry usually chains entries in the same category/tier.
+    // Repeatable resets to the default (1×/false) to avoid surprise.
+    nameInput.value = '';
     document.getElementById('new-' + side + '-description').value = '';
-    // Leave category and tier selections sticky — often several entries in a row
-    // share the same category/tier, so not resetting them speeds up data entry.
+    document.getElementById('new-' + side + '-system').value = '';
+    if (side === 'adv') advNewRepeatable = false;
+    else                disNewRepeatable = false;
+    refreshNewRepeatableButton(side);
+
     renderAdList(side);
     renderScaleSummary();
   }
