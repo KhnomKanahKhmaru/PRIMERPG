@@ -293,13 +293,23 @@
       </div>
     </div>
 
+    <div id="danger-zone" style="display:none;margin-top:32px;padding:16px 20px;border:1px solid #3a1a1a;border-radius:6px;background:#140808">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#a33;margin-bottom:4px">Danger Zone</div>
+          <div style="font-size:12px;color:#777">Permanently delete this character. This cannot be undone.</div>
+        </div>
+        <button onclick="deleteCharacter()" style="background:#2a0d0d;border:1px solid #6a2020;color:#d88;font-family:'Open Sans',sans-serif;font-size:12px;font-weight:600;padding:8px 18px;border-radius:4px;cursor:pointer">Delete Character</button>
+      </div>
+    </div>
+
   </div>
 </div>
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
-  import { getFirestore, doc, getDoc, updateDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+  import { getFirestore, doc, getDoc, updateDoc, deleteDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
   import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-storage.js";
 
   const firebaseConfig = {
@@ -365,7 +375,7 @@
     size:`M384 22.545 307.271 99.27l25.458 25.458L366 91.457v329.086l-33.271-33.272-25.458 25.458L384 489.455l76.729-76.726-25.458-25.458L402 420.543V91.457l33.271 33.272L460.73 99.27 384 22.545zm-242.443.258c-23.366 3.035-44.553 30.444-44.553 65.935 0 19.558 6.771 36.856 16.695 48.815l11.84 14.263-18.217 3.424c-12.9 2.425-22.358 9.24-30.443 20.336-8.085 11.097-14.266 26.558-18.598 44.375-7.843 32.28-9.568 71.693-9.842 106.436h42.868l11.771 157.836c29.894 6.748 61.811 6.51 90.602.025l10.414-157.861h40.816c-.027-35.168-.477-75.125-7.584-107.65-3.918-17.933-9.858-33.371-18.04-44.342-8.185-10.97-18.08-17.745-32.563-19.989l-18.592-2.88 11.736-14.704c9.495-11.897 15.932-28.997 15.932-48.082 0-37.838-23.655-65.844-49.399-65.844l-4.843-.093z`
   };
   const STAT_DESCRIPTIONS = {str:'Your physical strength, endurance, and constitution.',dex:'Your physical speed, flexibility, and finesse.',per:'Your physical sharpness of your senses.',cha:'Your social aptitude and acuity.',int:'Your logical aptitude and acuity.',pow:'Your supernatural aptitude in your paradigm and its powers.',size:'Your size.'};
-  const STAT_LABELS = ['Far Below Average','Below Average','Average','Above Average','Impressive','Exceptional','Human Limit','Lesser Superhuman','Superhuman','Greater Superhuman','Peak Superhuman','Beyond Superhuman','Lesser Legendary','Legendary','Greater Legendary','Semi-Divine','Lesser Divine','Divine','Greater Divine','Beyond Divine','Cosmic'];
+  const STAT_LABELS = ['Far Below Average','Below Average','Average','Above Average','Impressive','Exceptional','Peak Human','Lesser Superhuman','Superhuman','Greater Superhuman','Peak Superhuman','Beyond Superhuman','Lesser Legendary','Legendary','Greater Legendary','Semi-Divine','Lesser Divine','Divine','Greater Divine','Beyond Divine','Cosmic'];
   const SIZE_OPTIONS = [{value:1,label:'1 — Nano'},{value:2,label:'2 — Micro'},{value:3,label:'3 — Tiny'},{value:4,label:'4 — Small'},{value:6,label:'6 — Medium'},{value:8,label:'8 — Large'},{value:10,label:'10 — Huge'},{value:12,label:'12 — Massive'},{value:16,label:'16 — Giant'},{value:20,label:'20 — Colossal'},{value:24,label:'24 — Behemoth'},{value:30,label:'30 — Cataclysmic'}];
   const STAT_DEFS = [{key:'str',abbr:'STR',rest:'ength',default:2},{key:'dex',abbr:'DEX',rest:'terity',default:2},{key:'per',abbr:'PER',rest:'ception',default:2},{key:'cha',abbr:'CHA',rest:'risma',default:2},{key:'int',abbr:'INT',rest:'ellect',default:2},{key:'pow',abbr:'POW',rest:'er',default:2},{key:'size',abbr:'SIZE',rest:'',default:6}];
   const FALLBACK_SKILLS = [{name:'Academics',description:'Learned subjects such as History or Political Science.'},{name:'Athletics',description:'Physical activities like running, swimming, jumping, climbing, etc.'},{name:'Awareness',description:'To be aware of one\'s surroundings utilizing one\'s senses.'},{name:'Crafts',description:'A particular trade, tool, art, or practice.'},{name:'Drive',description:'Operating vehicles.'},{name:'Investigation',description:'Uncovering, understanding, reasoning, and making deductions with information.'},{name:'Medical',description:'Skill in medical treatment, and knowledge of the medical sciences.'},{name:'Melee',description:'Melee combat, and melee weaponry.'},{name:'Occult',description:'The esoteric; be it rituals, the supernatural, mythology, and so-on so-forth.'},{name:'Ranged',description:'Ranged combat, and ranged weaponry.'},{name:'Science',description:'Knowledge of the sciences.'},{name:'Social',description:'Sociability, communication skills, people skills, etc.'},{name:'Society',description:'Knowledge of society, institutions, laws, etiquette, etc.'},{name:'Stealth',description:'Being stealthy, hiding, sneaking.'},{name:'Survival',description:'Wilderness skills, foraging, identifying animal footprints, natural knowledge and skills.'},{name:'Technology',description:'Knowledge, and operation, of technology.'}];
@@ -467,7 +477,11 @@
 
   function renderMoralsView(){const selected=normalizeSelectedMorals(),display=document.getElementById('moral-cards-display');if(selected.length===0){display.innerHTML='<div class="moral-empty">No morals selected.</div>';return;}display.innerHTML=selected.map(m=>`<div class="moral-card-item"><div class="moral-card-top"><span style="font-size:11px;color:#888;font-weight:500">${severityLabel(m.severity,MORAL_SEVERITY)}</span></div><div class="moral-card-name">${m.name}</div></div>`).join('');}
   window.updateMoralSeverity=async function(i,severity){const selected=normalizeSelectedMorals();if(i>=0&&i<selected.length)selected[i].severity=severity;charData.selectedMorals=selected;await updateDoc(doc(db,'characters',charId),{selectedMorals:selected});}
-  window.editMorals=function(){document.getElementById('morals-view').style.display='none';document.getElementById('morals-edit-btn').style.display='none';document.getElementById('morals-edit-mode').style.display='block';const selected=normalizeSelectedMorals(),selectedNames=selected.map(m=>m.name);const chipsHtml=availableRulesets.map(rs=>`<div class="moral-group"><div class="moral-group-title">${rs.name}</div><div class="moral-chips">${rs.morals.map(m=>`<div class="moral-chip ${selectedNames.includes(m)?'selected':''}" onclick="toggleMoral('${m}',this)">${m}</div>`).join('')}</div></div>`).join('');const severityHtml=selected.length===0?'':`<div style="margin-top:12px;border-top:1px solid #1a1a1a;padding-top:10px"><div style="font-size:10px;color:#444;font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">Severity</div>${selected.map((m,i)=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:12px;color:#888">${severitySelectHtml(m.severity,`updateMoralSeverity(${i},this.value)`,MORAL_SEVERITY)}<span>${m.name}</span></div>`).join('')}</div>`;document.getElementById('morals-by-ruleset').innerHTML=chipsHtml+severityHtml;}
+  window.editMorals=function(){document.getElementById('morals-view').style.display='none';document.getElementById('morals-edit-btn').style.display='none';document.getElementById('morals-edit-mode').style.display='block';const selected=normalizeSelectedMorals(),selectedNames=selected.map(m=>m.name);const chipsHtml=availableRulesets.map(rs=>{let hasWildcard=false;const regularChips=rs.morals.map(m=>{if(!m||!m.trim()){hasWildcard=true;return '';}return `<div class="moral-chip ${selectedNames.includes(m)?'selected':''}" onclick="toggleMoral('${m.replace(/'/g,"\\'")}',this)">${m}</div>`;}).filter(x=>x).join('');const wildcardChip=hasWildcard?`<div class="moral-chip" style="border-style:dashed;color:#888" onclick="addCustomMoral()">+ Custom…</div>`:'';return `<div class="moral-group"><div class="moral-group-title">${rs.name}</div><div class="moral-chips">${regularChips}${wildcardChip}</div></div>`;}).join('');const severityHtml=selected.length===0?'':`<div style="margin-top:12px;border-top:1px solid #1a1a1a;padding-top:10px"><div style="font-size:10px;color:#444;font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">Severity</div>${selected.map((m,i)=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:12px;color:#888">${severitySelectHtml(m.severity,`updateMoralSeverity(${i},this.value)`,MORAL_SEVERITY)}<span>${m.name}</span><span class="mod-delete" onclick="removeMoralByIndex(${i})" style="margin-left:auto">×</span></div>`).join('')}</div>`;document.getElementById('morals-by-ruleset').innerHTML=chipsHtml+severityHtml;}
+
+  window.addCustomMoral=async function(){const name=prompt('Enter custom moral (one word or short phrase):');if(!name||!name.trim())return;const trimmed=name.trim();let selected=normalizeSelectedMorals();if(selected.some(m=>m.name.toLowerCase()===trimmed.toLowerCase())){alert('You already have that moral.');return;}selected.push({name:trimmed,severity:'Minor'});charData.selectedMorals=selected;await updateDoc(doc(db,'characters',charId),{selectedMorals:selected});editMorals();}
+
+  window.removeMoralByIndex=async function(i){let selected=normalizeSelectedMorals();selected.splice(i,1);charData.selectedMorals=selected;await updateDoc(doc(db,'characters',charId),{selectedMorals:selected});editMorals();}
   window.doneMorals=function(){document.getElementById('morals-view').style.display='block';document.getElementById('morals-edit-btn').style.display='inline';document.getElementById('morals-edit-mode').style.display='none';renderMoralsView();}
   window.toggleMoral=async function(moral,el){if(!canEdit)return;let selected=normalizeSelectedMorals();if(selected.some(m=>m.name===moral)){selected=selected.filter(m=>m.name!==moral);el.classList.remove('selected');}else{selected.push({name:moral,severity:'Minor'});el.classList.add('selected');}charData.selectedMorals=selected;await updateDoc(doc(db,'characters',charId),{selectedMorals:selected});}
 
@@ -499,7 +513,7 @@
     primarySkillDefs=(!basicSnap.empty&&basicSnap.docs[0].data().primarySkills)?basicSnap.docs[0].data().primarySkills:FALLBACK_SKILLS;
     document.getElementById('loading').style.display='none';document.getElementById('char-content').style.display='block';
     await renderBio();await loadMentalSection();buildStatsSection();buildSkillsSection();
-    if(canEdit){document.getElementById('bio-edit-btn').style.display='inline';document.getElementById('stats-edit-btn').style.display='inline';}
+    if(canEdit){document.getElementById('bio-edit-btn').style.display='inline';document.getElementById('stats-edit-btn').style.display='inline';document.getElementById('danger-zone').style.display='block';}
   });
 
   window.triggerPicUpload=function(){if(canEdit)document.getElementById('pic-input').click();}
@@ -512,6 +526,15 @@
   window.editEtc=function(){if(!canEdit)return;document.getElementById('etc-content').style.display='none';document.getElementById('etc-edit').value=charData.etc||'';document.getElementById('etc-edit').style.display='block';document.getElementById('etc-btn-row').style.display='block';}
   window.cancelEtc=function(){document.getElementById('etc-content').style.display='block';document.getElementById('etc-edit').style.display='none';document.getElementById('etc-btn-row').style.display='none';}
   window.saveEtc=async function(){const val=document.getElementById('etc-edit').value.trim();try{await updateDoc(doc(db,'characters',charId),{etc:val});charData.etc=val;document.getElementById('etc-content').textContent=val||'—';cancelEtc();}catch(e){alert('Error saving.');}}
+  window.deleteCharacter=async function(){
+    if(!canEdit)return;
+    const name=charData.name||'this character';
+    const confirm1=prompt(`Type the character's name ("${name}") to confirm permanent deletion:`);
+    if(confirm1===null)return;
+    if(confirm1.trim().toLowerCase()!==name.trim().toLowerCase()){alert('Name did not match. Deletion cancelled.');return;}
+    try{await deleteDoc(doc(db,'characters',charId));window.location.href='my-characters.html';}
+    catch(e){alert('Failed to delete: '+e.message);}
+  }
   window.logout=async function(){await signOut(auth);window.location.href='index.html';}
 </script>
 </body>
