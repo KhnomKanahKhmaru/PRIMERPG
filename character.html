@@ -142,7 +142,13 @@
     .power-sep { color: #333; font-size: 13px; }
 
     /* ═══ ADVANTAGES / DISADVANTAGES ═══ */
-    .ad-block { margin-top: 24px; padding: 18px 20px; border: 1px solid #1a1a1a; border-radius: 6px; background: #0d0d0d; }
+    /* Row wrapper: two blocks side-by-side on wide screens, stacked on narrow */
+    .ad-row { display: flex; gap: 14px; margin-top: 24px; align-items: flex-start; }
+    .ad-row > .ad-block { flex: 1; min-width: 0; margin-top: 0; }
+    @media (max-width: 900px) {
+      .ad-row { flex-direction: column; }
+    }
+    .ad-block { padding: 18px 20px; border: 1px solid #1a1a1a; border-radius: 6px; background: #0d0d0d; }
     .ad-block-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid #1a1a1a; }
     .ad-block-title { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #aaa; flex: 1; }
     .ad-add-btn { background: #1a1a1a; border: 1px solid #333; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 500; padding: 5px 12px; border-radius: 4px; cursor: pointer; }
@@ -360,24 +366,25 @@
       </div>
     </div>
 
-    <!-- ═══ ADVANTAGES ═══ -->
-    <div class="ad-block">
-      <div class="ad-block-header">
-        <div class="ad-block-title">Advantages</div>
-        <button class="ad-add-btn" id="adv-add-btn" style="display:none" onclick="openAdForm('adv')">+ Add Advantage</button>
+    <!-- ═══ ADVANTAGES & DISADVANTAGES ═══ -->
+    <div class="ad-row">
+      <div class="ad-block">
+        <div class="ad-block-header">
+          <div class="ad-block-title">Advantages</div>
+          <button class="ad-add-btn" id="adv-add-btn" style="display:none" onclick="openAdForm('adv')">+ Add Advantage</button>
+        </div>
+        <div id="adv-list"></div>
+        <div class="ad-add-form-container" id="adv-add-form"></div>
       </div>
-      <div id="adv-list"></div>
-      <div class="ad-add-form-container" id="adv-add-form"></div>
-    </div>
 
-    <!-- ═══ DISADVANTAGES ═══ -->
-    <div class="ad-block">
-      <div class="ad-block-header">
-        <div class="ad-block-title">Disadvantages</div>
-        <button class="ad-add-btn" id="dis-add-btn" style="display:none" onclick="openAdForm('dis')">+ Add Disadvantage</button>
+      <div class="ad-block">
+        <div class="ad-block-header">
+          <div class="ad-block-title">Disadvantages</div>
+          <button class="ad-add-btn" id="dis-add-btn" style="display:none" onclick="openAdForm('dis')">+ Add Disadvantage</button>
+        </div>
+        <div id="dis-list"></div>
+        <div class="ad-add-form-container" id="dis-add-form"></div>
       </div>
-      <div id="dis-list"></div>
-      <div class="ad-add-form-container" id="dis-add-form"></div>
     </div>
 
     <div id="danger-zone" style="display:none;margin-top:32px;padding:16px 20px;border:1px solid #3a1a1a;border-radius:6px;background:#140808">
