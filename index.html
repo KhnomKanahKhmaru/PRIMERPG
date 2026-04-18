@@ -68,11 +68,25 @@
   .back:hover {
     color: #aaa;
   }
+  .invite-banner {
+    font-size: 12px;
+    color: #78b4e0;
+    background: #1f2c3a;
+    border: 1px solid #2f4a63;
+    padding: 8px 12px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    display: none;
+  }
   </style>
 </head>
 <body>
 <div class="container">
   <h1>PRIME RPG</h1>
+
+  <div id="invite-banner" class="invite-banner">
+    You've been invited to a playgroup. Log in or create an account to join.
+  </div>
 
   <div id="view-main">
     <button onclick="showView('login')">Login</button>
@@ -114,10 +128,29 @@
   const auth = getAuth(app);
   const db = getFirestore(app);
 
+  // Show invite banner if there's a pending redirect with ?invite=
+  try {
+    const pending = sessionStorage.getItem('postLoginRedirect');
+    if (pending && pending.includes('invite=')) {
+      document.getElementById('invite-banner').style.display = 'block';
+    }
+  } catch (e) {}
+
   function showMessage(text, isError) {
     const el = document.getElementById('message');
     el.textContent = text;
     el.style.color = isError ? '#ff6666' : '#66ff99';
+  }
+
+  function getRedirectTarget() {
+    try {
+      const pending = sessionStorage.getItem('postLoginRedirect');
+      if (pending) {
+        sessionStorage.removeItem('postLoginRedirect');
+        return pending;
+      }
+    } catch (e) {}
+    return 'home.html';
   }
 
   window.showView = function(view) {
@@ -129,27 +162,28 @@
   }
 
   window.login = async function() {
-  const username = document.getElementById('login-username').value;
-  const password = document.getElementById('login-password').value;
-  try {
-    const q = query(collection(db, 'users'), where('username', '==', username));
-    const results = await getDocs(q);
-    if (results.empty) {
-      showMessage('Username not found.', true);
-      return;
+    const username = document.getElementById('login-username').value;
+    const password = document.getElementById('login-password').value;
+    try {
+      const q = query(collection(db, 'users'), where('username', '==', username));
+      const results = await getDocs(q);
+      if (results.empty) {
+        showMessage('Username not found.', true);
+        return;
+      }
+      const email = results.docs[0].data().email;
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      if (!userCredential.user.emailVerified) {
+        showMessage('Please verify your email before logging in.', true);
+        return;
+      }
+      showMessage('Logged in! Redirecting...', false);
+      const target = getRedirectTarget();
+      setTimeout(() => { window.location.href = target; }, 1000);
+    } catch(e) {
+      showMessage('Login failed. Check your username and password.', true);
     }
-    const email = results.docs[0].data().email;
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    if (!userCredential.user.emailVerified) {
-     showMessage('Please verify your email before logging in.', true);
-     return;
-}
-showMessage('Logged in! Redirecting...', false);
-setTimeout(() => { window.location.href = 'home.html'; }, 1000);
-  } catch(e) {
-    showMessage('Login failed. Check your username and password.', true);
   }
-}
 
   window.createAccount = async function() {
     const email = document.getElementById('create-email').value;
@@ -162,23 +196,23 @@ setTimeout(() => { window.location.href = 'home.html'; }, 1000);
     try {
       const result = await createUserWithEmailAndPassword(auth, email, password);
       await sendEmailVerification(result.user, {
-  url: 'https://khnomkanahkhmaru.github.io/PRIMERPG/'
-});
+        url: 'https://khnomkanahkhmaru.github.io/PRIMERPG/'
+      });
       await setDoc(doc(db, 'users', result.user.uid), {
         username: username,
         email: email,
         createdAt: new Date()
       });
-     showMessage('Account created! Please check your email to verify your account.', false);
+      showMessage('Account created! Please check your email to verify your account.', false);
     } catch(e) {
-    if (e.code === 'auth/email-already-in-use') {
-  showMessage('That email is already registered.', true);
-} else if (e.code === 'auth/weak-password') {
-  showMessage('Password must be at least 6 characters.', true);
-} else {
-  showMessage('Could not create account. Try again.', true);
-}
-     }
+      if (e.code === 'auth/email-already-in-use') {
+        showMessage('That email is already registered.', true);
+      } else if (e.code === 'auth/weak-password') {
+        showMessage('Password must be at least 6 characters.', true);
+      } else {
+        showMessage('Could not create account. Try again.', true);
+      }
+    }
   }
 </script>
 </body>
