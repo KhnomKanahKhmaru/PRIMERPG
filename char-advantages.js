@@ -174,8 +174,12 @@ export function createAdvantagesSection(ctx) {
 
   function renderCard(side, entry, origIdx, details) {
     const xp = xpValueFor(side, entry);
-    const xpPrefix = side === 'adv' ? '+' : '−';
-    const xpStr = xp === 0 ? '0 XP' : `${xpPrefix}${xp} XP`;
+    // Display convention:
+    //   Advantages cost XP — show plain "12 XP"
+    //   Disadvantages grant XP — show "+12 XP" to signal the positive gain
+    const xpStr = xp === 0
+      ? '0 XP'
+      : (side === 'adv' ? `${xp} XP` : `+${xp} XP`);
     const xpClass = side === 'adv' ? 'ad-card-xp-adv' : 'ad-card-xp-dis';
     const tierLabel = tierLabelFor(side, entry);
     const customBadge = entry.isCustom ? `<span class="ad-card-custom" title="Custom / GM-granted">Custom</span>` : '';
@@ -289,9 +293,10 @@ export function createAdvantagesSection(ctx) {
             items.map(e => {
               const xp = xpValueFor(side, e);
               const tierLbl = (tiers[e.tier] && tiers[e.tier].label) || TIER_FALLBACK[e.tier] || '?';
-              const xpStr = side === 'adv' ? `+${xp}` : `−${xp}`;
+              // Match card convention: advantages = plain "12 XP", disadvantages = "+12 XP".
+              const xpStr = side === 'adv' ? `${xp} XP` : `+${xp} XP`;
               const selected = e.name === st.catalogName ? 'selected' : '';
-              return `<option value="${escapeHtml(e.name)}" ${selected}>${xpStr} XP · ${tierLbl} · ${escapeHtml(e.name)}</option>`;
+              return `<option value="${escapeHtml(e.name)}" ${selected}>${xpStr} · ${tierLbl} · ${escapeHtml(e.name)}</option>`;
             }).join('') +
           `</optgroup>`;
         })
@@ -342,7 +347,7 @@ export function createAdvantagesSection(ctx) {
       `<option value="${c.code}" ${c.code === st.customCategory ? 'selected' : ''}>${c.label}</option>`
     ).join('');
     const tierOptions = tiers.map((t, i) =>
-      `<option value="${i}" ${i === st.customTier ? 'selected' : ''}>${i+1}. ${escapeHtml(t.label || ('Tier ' + (i+1)))} (${side === 'adv' ? '+' : '−'}${t.xp || 0} XP)</option>`
+      `<option value="${i}" ${i === st.customTier ? 'selected' : ''}>${i+1}. ${escapeHtml(t.label || ('Tier ' + (i+1)))} (${side === 'adv' ? '' : '+'}${t.xp || 0} XP)</option>`
     ).join('');
 
     container.innerHTML = `
