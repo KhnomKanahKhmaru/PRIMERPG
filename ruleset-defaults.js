@@ -10,6 +10,30 @@ window.RULESET_DEFAULTS = {
   // statXp[n] = XP cost to start a character at that level.
   statXp: [null, -10, 0, 10, 30, 60, 100],  // index 0 = not takable
   statMaxPurchasable: 6,                     // max level a player can START at
+  statMax: 20,                               // absolute ceiling a stat can reach
+
+  // List of stats (code + name + description).
+  // Code is used internally (e.g. on character sheet), name is the full word.
+  stats: [
+    { code:'STR',  name:'Strength',     description:'Physical power, raw force.' },
+    { code:'DEX',  name:'Dexterity',    description:'Fine motor control, reflexes, agility.' },
+    { code:'PER',  name:'Perception',   description:'Awareness of surroundings, sensory acuity.' },
+    { code:'INT',  name:'Intellect',    description:'Reasoning, memory, learning capacity.' },
+    { code:'CHA',  name:'Charisma',     description:'Social presence, force of personality.' },
+    { code:'POW',  name:'Power',        description:'Willpower, mental fortitude, resolve.' },
+    { code:'SIZE', name:'Size',         description:'Physical mass and stature.' }
+  ],
+
+  // STATMOD per level (index = level, 0..statMax).
+  // Default: 0-1 = -1, 2-3 = 0, 4-5 = +1, ... (step +1 every 2 levels)
+  statMods: [-1,-1,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,9,10],
+
+  // Stat flavor labels (index = level, 0..statMax).
+  statLabels: [
+    'Far Below Average','Below Average','Average','Above Average','Gifted','Exceptional','Peak Human',
+    'Superhuman','Extraordinary','Legendary','Heroic','Titanic','Mythic','Godly','Divine',
+    'Transcendent','Ascendant','Empyrean','Omnipotent','Absolute','Cosmic'
+  ],
 
   // Skills: arrays of XP costs, index = level (0..10)
   primarySkillXp:   [0, 2, 4, 8, 14, 22, 30, 40, 52, 66, 80],
@@ -60,6 +84,14 @@ window.normalizeRuleset = function(rs) {
   if (out.startingXp == null) out.startingXp = d.startingXp;
   if (!Array.isArray(out.statXp)) out.statXp = d.statXp.slice();
   if (out.statMaxPurchasable == null) out.statMaxPurchasable = d.statMaxPurchasable;
+  if (out.statMax == null) out.statMax = d.statMax;
+  if (out.statMax < out.statMaxPurchasable) out.statMax = out.statMaxPurchasable;
+  if (!Array.isArray(out.stats) || out.stats.length === 0) out.stats = JSON.parse(JSON.stringify(d.stats));
+  if (!Array.isArray(out.statMods) || out.statMods.length === 0) out.statMods = d.statMods.slice();
+  if (!Array.isArray(out.statLabels) || out.statLabels.length === 0) out.statLabels = d.statLabels.slice();
+  // Resize statMods and statLabels to length statMax+1 if needed
+  while (out.statMods.length < out.statMax + 1) out.statMods.push(out.statMods[out.statMods.length-1] ?? 0);
+  while (out.statLabels.length < out.statMax + 1) out.statLabels.push('Level ' + out.statLabels.length);
   if (!Array.isArray(out.primarySkillXp)) out.primarySkillXp = d.primarySkillXp.slice();
   if (!Array.isArray(out.secondarySkillXp)) out.secondarySkillXp = d.secondarySkillXp.slice();
   if (!Array.isArray(out.specialtySkillXp)) out.specialtySkillXp = d.specialtySkillXp.slice();
