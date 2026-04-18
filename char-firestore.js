@@ -114,3 +114,34 @@ export async function uploadCharacterPortrait(charId, file) {
   await uploadBytes(storageRef, file);
   return await getDownloadURL(storageRef);
 }
+
+// ── RULESET RESOLUTION ──
+
+// Pick the ruleset that governs a character. Policy: use the first
+// ruleset attached to the character's playgroup; fall back to the Basic
+// Set; fall back to the hardcoded defaults. Returns a fully-normalized
+// ruleset object (every schema field populated), never null.
+//
+// Relies on window.normalizeRuleset being defined — that comes from
+// ruleset-defaults.js, loaded as a classic <script> tag in the HTML
+// head (not an ES import, because it's shared across non-module pages).
+export async function resolveActiveRuleset(charData) {
+  let raw = null;
+
+  // 1. Try the playgroup's attached ruleset(s). If multiple are attached
+  //    we use the first one — a "primary ruleset" flag can come later.
+  if (charData && charData.playgroupId) {
+    const rulesets = await loadPlaygroupRulesets(charData.playgroupId);
+    if (rulesets.length > 0) raw = rulesets[0];
+  }
+
+  // 2. Fall back to the Basic Set.
+  if (!raw) raw = await loadBasicSet();
+
+  // 3. Normalize (fills in every missing field from RULESET_DEFAULTS).
+  //    If normalizeRuleset isn't loaded for some reason, pass through.
+  const normalize = (typeof window !== 'undefined' && window.normalizeRuleset)
+    ? window.normalizeRuleset
+    : (rs => rs || {});
+  return normalize(raw || {});
+}
