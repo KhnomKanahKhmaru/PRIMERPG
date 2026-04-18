@@ -3,85 +3,304 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PRIME RPG — Home</title>
+  <title>PRIME RPG — Character</title>
   <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <script src="nav.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background: #0a0a0a;
-      color: #e0e0e0;
-      font-family: 'Open Sans', sans-serif;
-      font-size: 14px;
-      min-height: 100vh;
-    }
-    .page {
-      padding-top: 84px;
-      display: flex;
-      min-height: 100vh;
-    }
-    .left-panel { width: 220px; flex-shrink: 0; border-right: 1px solid #1a1a1a; padding: 16px 0; }
-    .right-panel { width: 220px; flex-shrink: 0; border-left: 1px solid #1a1a1a; }
-    .center-panel { flex: 1; padding: 24px; text-align: center; }
-    .section-title {
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-      color: #555;
-      margin-bottom: 16px;
-    }
-    .news-empty { color: #444; font-size: 13px; text-align: center; padding: 60px 0; }
-    .panel-section { margin-bottom: 24px; }
-    .panel-title {
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-      color: #444;
-      padding: 0 14px;
-      margin-bottom: 6px;
-    }
-    .panel-link {
-      display: block;
-      padding: 6px 14px;
-      font-size: 12px;
-      color: #666;
-      text-decoration: none;
-      cursor: pointer;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .panel-link:hover { color: #ccc; background: #111; }
-    .panel-empty {
-      padding: 6px 14px;
-      font-size: 12px;
-      color: #333;
-    }
+    body { background: #0a0a0a; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 14px; min-height: 100vh; }
+    .page { padding-top: 104px; padding-left: 24px; padding-right: 24px; padding-bottom: 60px; max-width: 1200px; margin: 0 auto; }
+    .empty { color: #444; font-size: 13px; text-align: center; padding: 60px 0; }
+    .char-card { display: flex; align-items: stretch; border: 1px solid #222; border-radius: 6px; overflow: hidden; min-height: 320px; }
+    .char-picture { width: 220px; flex-shrink: 0; border-right: 1px solid #222; background: #0e0e0e; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; min-height: 320px; }
+    .char-picture img { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; }
+    .char-picture-placeholder { color: #333; font-size: 12px; text-align: center; padding: 16px; z-index: 1; }
+    .char-picture input[type=file] { display: none; }
+    .pic-uploading { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; font-size: 12px; color: #aaa; z-index: 2; }
+    .char-bio-col { flex: 1; padding: 20px 24px; border-right: 1px solid #222; display: flex; flex-direction: column; }
+    .char-header { display: flex; align-items: flex-start; gap: 20px; margin-bottom: 16px; }
+    .char-header-left { flex: 1; }
+    .char-name { font-size: 28px; font-weight: 700; color: #e0e0e0; margin-bottom: 4px; }
+    .char-archetype { font-size: 15px; font-weight: 500; color: #666; }
+    .char-quip-box { width: 280px; flex-shrink: 0; border: 1px solid #222; border-radius: 4px; padding: 16px; font-size: 13px; font-style: italic; color: #555; background: #0e0e0e; min-height: 80px; cursor: pointer; display: flex; align-items: center; justify-content: center; text-align: center; }
+    .char-quip-box.has-quip { color: #aaa; }
+    .section-title { font-size: 18px; font-weight: 600; color: #aaa; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #1a1a1a; display: flex; align-items: center; gap: 10px; }
+    .edit-btn { font-size: 11px; color: #555; cursor: pointer; padding: 2px 8px; border: 1px solid #333; border-radius: 3px; font-weight: 400; }
+    .edit-btn:hover { color: #aaa; border-color: #555; }
+    .bio-prose { font-size: 13px; color: #888; line-height: 1.9; }
+    .bio-prose b { color: #ccc; font-weight: 600; }
+    .bio-prose i { color: #888; font-style: italic; }
+    .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+    .field label { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #555; }
+    .field input, .field textarea, .field select { background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 13px; padding: 7px 10px; border-radius: 4px; outline: none; width: 100%; }
+    .field input:focus, .field textarea:focus, .field select:focus { border-color: #444; }
+    .field textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
+    .field select option { background: #111; }
+    .btn-row { display: flex; gap: 8px; margin-top: 14px; align-items: center; }
+    .save-btn { background: #1a1a1a; border: 1px solid #333; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 16px; border-radius: 4px; cursor: pointer; }
+    .save-btn:hover { background: #222; border-color: #555; }
+    .save-msg { font-size: 11px; color: #66ff99; }
+    .char-etc-col { width: 220px; flex-shrink: 0; padding: 20px 16px; background: #0e0e0e; }
+    .etc-title { font-size: 14px; font-weight: 700; color: #666; margin-bottom: 12px; }
+    .etc-content { font-size: 12px; color: #555; line-height: 1.7; min-height: 200px; cursor: pointer; white-space: pre-wrap; }
+    .etc-content:hover { color: #777; }
+    .mental-card { display: flex; align-items: stretch; border: 1px solid #222; border-radius: 6px; min-height: 200px; margin-top: 16px; }
+    .mental-col { flex: 1; padding: 16px; border-right: 1px solid #222; display: flex; flex-direction: column; }
+    .mental-col:last-child { border-right: none; }
+    .mental-col-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #1a1a1a; }
+    .mental-col-title { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #555; flex: 1; }
+    .add-entry-btn { background: transparent; border: 1px solid #222; color: #555; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 12px; border-radius: 3px; cursor: pointer; margin-top: 10px; display: none; }
+    .add-entry-btn:hover { color: #aaa; border-color: #444; }
+    .severity-select { background: #1a1a1a; border: 1px solid #333; color: #888; font-family: 'Open Sans', sans-serif; font-size: 10px; padding: 2px 4px; border-radius: 3px; outline: none; cursor: pointer; }
+    .severity-select option { background: #111; }
+    .obligation-entry, .disorder-entry { background: #111; border: 1px solid #1a1a1a; border-radius: 4px; padding: 10px; margin-bottom: 8px; font-size: 12px; color: #888; line-height: 1.9; position: relative; }
+    .entry-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 11px; font-weight: 600; color: #777; }
+    .entry-header-type { color: #666; }
+    .entry-delete { position: absolute; top: 6px; right: 8px; font-size: 14px; color: #333; cursor: pointer; }
+    .entry-delete:hover { color: #c84b4b; }
+    .entry-input { background: transparent; border: none; border-bottom: 1px solid #333; color: #ccc; font-family: 'Open Sans', sans-serif; font-size: 12px; outline: none; width: 100%; padding: 2px 0; }
+    .entry-input:focus { border-bottom-color: #666; }
+    .entry-text { color: #ccc; font-weight: 500; }
+    .moral-cards { display: flex; flex-direction: column; gap: 6px; }
+    .moral-card-item { background: #111; border: 1px solid #222; border-radius: 4px; padding: 10px 12px; width: 100%; }
+    .moral-card-top { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+    .moral-card-name { font-size: 14px; font-weight: 600; color: #ccc; }
+    .moral-empty { color: #333; font-size: 12px; }
+    .moral-group { margin-bottom: 14px; }
+    .moral-group-title { font-size: 10px; color: #444; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 6px; }
+    .moral-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .moral-chip { font-size: 11px; padding: 3px 10px; border-radius: 3px; border: 1px solid #222; background: #111; color: #555; cursor: pointer; user-select: none; }
+    .moral-chip.selected { background: #1a1a1a; border-color: #444; color: #ccc; }
+    .moral-chip:hover { border-color: #444; color: #aaa; }
+    .stats-card { display: flex; align-items: stretch; border: 1px solid #222; border-radius: 6px; margin-top: 16px; min-height: 300px; }
+    .stats-col { width: 300px; flex-shrink: 0; border-right: 1px solid #222; background: #0a0a0a; padding: 16px; }
+    .stats-col-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #1a1a1a; }
+    .stats-col-title { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #555; flex: 1; }
+    .stat-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; position: relative; }
+    .stat-icon-wrap { position: relative; width: 36px; flex-shrink: 0; }
+    .stat-icon { width: 36px; height: 36px; border-radius: 4px; overflow: hidden; background: #000; cursor: default; }
+    .stat-icon svg { width: 36px; height: 36px; }
+    .stat-tooltip { display: none; position: absolute; left: 44px; top: 0; background: #1e1e1e; border: 1px solid #444; border-radius: 4px; padding: 7px 10px; font-size: 12px; color: #ccc; width: 200px; z-index: 200; pointer-events: none; white-space: normal; line-height: 1.5; }
+    .stat-icon-wrap:hover .stat-tooltip { display: block; }
+    .stat-info { flex: 1; min-width: 0; }
+    .stat-label { font-size: 12px; font-weight: 500; color: #666; }
+    .stat-label .abbr { color: #aaa; font-weight: 700; }
+    .stat-level-label { font-size: 11px; font-style: italic; color: #666; margin-top: 2px; }
+    .stat-value-area { display: flex; flex-direction: column; align-items: center; gap: 2px; flex-shrink: 0; }
+    .stat-value-wrap { position: relative; display: inline-flex; align-items: flex-start; }
+    .stat-total-display { font-size: 20px; font-weight: 700; color: #e0e0e0; }
+    .stat-mod-exponent { font-size: 10px; font-weight: 600; color: #555; margin-left: 2px; line-height: 1; align-self: flex-start; margin-top: 1px; }
+    .stat-mod-badge { background: #1a1a1a; border: 1px solid #333; color: #888; font-size: 9px; padding: 1px 5px; border-radius: 3px; white-space: nowrap; text-align: center; }
+    .stat-input-row { display: flex; align-items: center; gap: 3px; }
+    .stat-mod-row { display: flex; align-items: center; gap: 4px; margin-top: 3px; }
+    .stat-adj-btn { background: transparent; border: 1px solid #333; color: #666; font-size: 13px; width: 20px; height: 20px; border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; font-family: 'Open Sans', sans-serif; line-height: 1; }
+    .stat-adj-btn:hover { color: #ccc; border-color: #666; }
+    .stat-base-input { width: 44px; background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 14px; font-weight: 700; text-align: center; padding: 3px; border-radius: 4px; outline: none; }
+    .stat-base-input:focus { border-color: #444; }
+    .stat-size-select { width: 90px; background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 3px 4px; border-radius: 4px; outline: none; }
+    .stat-pm-btn { font-size: 11px; color: #444; background: transparent; border: 1px solid #222; border-radius: 3px; padding: 2px 6px; cursor: pointer; flex-shrink: 0; font-family: 'Open Sans', sans-serif; margin-top: 2px; }
+    .stat-pm-btn:hover { color: #aaa; border-color: #444; }
+    .stat-mod-panel { background: #111; border: 1px solid #1a1a1a; border-radius: 4px; padding: 8px; margin-bottom: 8px; }
+    .mod-item { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 11px; color: #888; }
+    .mod-item-name { flex: 1; }
+    .mod-item-val { color: #aaa; font-weight: 600; min-width: 30px; text-align: right; }
+    .mod-delete { color: #333; cursor: pointer; font-size: 13px; }
+    .mod-delete:hover { color: #c84b4b; }
+    .mod-add-row { display: flex; gap: 4px; margin-top: 6px; }
+    .mod-add-row input[type=text] { flex: 1; background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 3px 6px; border-radius: 3px; outline: none; }
+    .mod-add-row input[type=number] { width: 44px; background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 3px 4px; border-radius: 3px; outline: none; text-align: center; }
+    .mod-add-btn { background: #1a1a1a; border: 1px solid #333; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 3px 8px; border-radius: 3px; cursor: pointer; }
+    .mod-add-btn:hover { border-color: #555; }
+    .skills-col { flex: 1; padding: 16px; overflow: visible; }
+    .skills-section { margin-bottom: 16px; }
+    .skills-section-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .skills-section-title { font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: #555; flex: 1; padding-bottom: 4px; border-bottom: 1px solid #1a1a1a; }
+    .skills-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+    .skill-item { position: relative; display: flex; align-items: center; gap: 4px; background: #111; border: 1px solid #1a1a1a; border-radius: 3px; padding: 4px 6px; }
+    .skill-name { font-size: 10px; color: #666; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
+    .skill-val-display { font-size: 11px; color: #888; font-weight: 600; min-width: 16px; text-align: right; }
+    .skill-input { width: 36px; background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; text-align: center; padding: 1px 2px; border-radius: 2px; outline: none; }
+    .skill-tooltip { display: none; position: absolute; bottom: 100%; left: 0; background: #1e1e1e; border: 1px solid #444; border-radius: 4px; padding: 7px 10px; font-size: 12px; color: #ccc; width: 200px; z-index: 1000; pointer-events: none; white-space: normal; line-height: 1.5; margin-bottom: 4px; }
+    .skill-item:hover .skill-tooltip { display: block; }
+    .skill-add-row { display: flex; gap: 6px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
+    .skill-add-input { background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 8px; border-radius: 3px; outline: none; }
+    .skill-add-input:focus { border-color: #444; }
+    .skill-add-select { background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 6px; border-radius: 3px; outline: none; }
+    .skill-add-btn { background: #1a1a1a; border: 1px solid #333; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 10px; border-radius: 3px; cursor: pointer; }
+    .skill-add-btn:hover { border-color: #555; }
+    .sec-skill-item { display: flex; align-items: center; gap: 4px; background: #111; border: 1px solid #1a1a1a; border-radius: 3px; padding: 4px 6px; margin-bottom: 3px; }
+    .sec-skill-under { font-size: 9px; color: #444; }
+    .char-power-bar { display: flex; align-items: center; gap: 16px; margin-top: 6px; margin-bottom: 4px; flex-wrap: wrap; }
+    .power-pill { display: flex; align-items: center; gap: 6px; }
+    .power-pill .pill-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #444; }
+    .power-pill .pill-val { font-size: 13px; font-weight: 600; color: #aaa; }
+    .power-pill .pill-sub { font-size: 11px; color: #555; }
+    .power-select { background: #111; border: 1px solid #222; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 12px; font-weight: 600; padding: 2px 6px; border-radius: 4px; outline: none; cursor: pointer; }
+    .power-select option { background: #111; }
+    .power-num-input { width: 52px; background: #111; border: 1px solid #222; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 13px; font-weight: 600; text-align: center; padding: 2px 4px; border-radius: 4px; outline: none; }
+    .power-num-input:focus { border-color: #444; }
+    .power-sep { color: #333; font-size: 13px; }
   </style>
 </head>
 <body>
 <script>injectNav();</script>
 
 <div class="page">
-  <div class="left-panel">
-    <div class="panel-section">
-      <div class="panel-title">My Playgroups</div>
-      <div id="pg-links"><div class="panel-empty">Loading...</div></div>
+  <div id="loading" class="empty">Loading...</div>
+  <div id="char-content" style="display:none">
+
+    <div class="char-card">
+      <div class="char-picture" id="picture-slot" onclick="triggerPicUpload()">
+        <div class="char-picture-placeholder" id="pic-placeholder">Click to add picture</div>
+        <img id="char-img" style="display:none">
+        <input type="file" id="pic-input" accept="image/*" onchange="handlePicChange(event)">
+      </div>
+      <div class="char-bio-col">
+        <div class="char-header">
+          <div class="char-header-left">
+            <div class="char-name" id="char-name"></div>
+            <div class="char-archetype" id="char-archetype"></div>
+            <div class="char-power-bar" id="char-power-bar"></div>
+          </div>
+          <div class="char-quip-box" id="char-quip" onclick="editQuip()"></div>
+        </div>
+        <div class="section-title">Profile <span id="bio-edit-btn" class="edit-btn" style="display:none" onclick="editBio()">Edit</span></div>
+        <div id="bio-view"><div class="bio-prose" id="bio-prose"></div></div>
+        <div id="bio-edit" style="display:none">
+          <div class="field"><label>Name</label><input type="text" id="e-name" oninput="updatePreview()"></div>
+          <div class="field"><label>Sex</label><input type="text" id="e-sex" oninput="updatePreview()"></div>
+          <div class="field"><label>Age</label><input type="text" id="e-age" oninput="updatePreview()"></div>
+          <div class="field"><label>Ethnicity</label><input type="text" id="e-ethnicity" oninput="updatePreview()"></div>
+          <div class="field"><label>Paradigm</label><input type="text" id="e-paradigm" oninput="updatePreview()"></div>
+          <div class="field"><label>Archetype</label><input type="text" id="e-archetype" oninput="updatePreview()"></div>
+          <div class="field"><label>Residence</label><input type="text" id="e-residence" oninput="updatePreview()"></div>
+          <div class="field"><label>World (Playgroup)</label><select id="e-playgroup" onchange="updatePreview()"><option value="">None — not in active play</option></select></div>
+          <div class="field"><label>Appearance</label><textarea id="e-appearance" oninput="updatePreview()"></textarea></div>
+          <div class="btn-row">
+            <button class="save-btn" onclick="saveBio()">Save</button>
+            <button class="save-btn" onclick="cancelBio()" style="border-color:#333;color:#888">Cancel</button>
+            <span class="save-msg" id="bio-msg"></span>
+          </div>
+        </div>
+      </div>
+      <div class="char-etc-col">
+        <div class="etc-title">Notes</div>
+        <div class="etc-content" id="etc-content" onclick="editEtc()">—</div>
+        <textarea id="etc-edit" style="display:none;width:100%;background:#111;border:1px solid #222;color:#e0e0e0;font-family:'Open Sans',sans-serif;font-size:12px;padding:8px;border-radius:4px;outline:none;resize:vertical;min-height:200px;line-height:1.6"></textarea>
+        <div id="etc-btn-row" style="display:none;margin-top:8px">
+          <button class="save-btn" onclick="saveEtc()" style="font-size:11px;padding:4px 12px">Save</button>
+          <button class="save-btn" onclick="cancelEtc()" style="font-size:11px;padding:4px 12px;margin-left:6px;border-color:#333;color:#888">Cancel</button>
+        </div>
+      </div>
     </div>
+
+    <div class="mental-card">
+      <div class="mental-col">
+        <div class="mental-col-header">
+          <div class="mental-col-title" style="position:relative;cursor:default" onmouseenter="document.getElementById('mo-tip').style.display='block'" onmouseleave="document.getElementById('mo-tip').style.display='none'">Moral Obligations
+            <div id="mo-tip" style="display:none;position:absolute;left:0;top:100%;margin-top:6px;background:#1a1a1a;border:1px solid #333;border-radius:4px;padding:10px 12px;font-size:11px;color:#aaa;width:320px;z-index:1000;line-height:1.6;font-weight:400;letter-spacing:0;text-transform:none">
+              <p style="margin-bottom:8px">When you roll poorly on a Mental Health Check you must allocate a number of Break Points equal to 6 − Result. You may choose to allocate some of these to taking on a Moral Obligation, rather than the alternatives.</p>
+              <p style="margin-bottom:8px">A Moral Obligation's requirements depend on its scale; a Minor Obligation is 1 Break Point, while a Mythical Obligation is 7. Your GM must approve of your chosen Obligation; your Obligation must be intuitive to its originating Mental Health Check.</p>
+              <p style="margin-bottom:8px">Each Obligation you have results in +1 Difficulty to any and all Mental Health Checks you make, until the Obligation is resolved or abandoned.</p>
+              <p>If you choose to abandon an Obligation, you must reroll the original Mental Health Check at +1 Difficulty, and allocate a number of Break Points as normal, with an additional amount equal to what was spent on the abandoned Obligation.</p>
+            </div>
+          </div>
+          <span class="edit-btn" id="obligations-edit-btn" style="display:none" onclick="editObligations()">Edit</span>
+        </div>
+        <div id="obligations-view"></div>
+        <div id="obligations-edit-mode" style="display:none">
+          <div id="obligations-list"></div>
+          <button class="add-entry-btn" id="add-obligation-btn" onclick="addObligation()">+ Add</button>
+          <div style="margin-top:10px"><button class="save-btn" onclick="doneObligations()" style="font-size:11px;padding:4px 14px">Done</button></div>
+        </div>
+      </div>
+      <div class="mental-col">
+        <div class="mental-col-header">
+          <div class="mental-col-title" style="position:relative;cursor:default" onmouseenter="document.getElementById('morals-tip').style.display='block'" onmouseleave="document.getElementById('morals-tip').style.display='none'">Morals
+            <div id="morals-tip" style="display:none;position:absolute;left:0;top:100%;margin-top:6px;background:#1a1a1a;border:1px solid #333;border-radius:4px;padding:10px 12px;font-size:11px;color:#aaa;width:340px;z-index:1000;line-height:1.6;font-weight:400;letter-spacing:0;text-transform:none">
+              <p style="margin-bottom:8px">Morals are one-word concepts which encompass broad ethical value-and-belief systems; they intentionally lack descriptions as their one-words should be enough. If there is reasonable debate over what is, or isn't pertinent to a Moral, then it likely is pertinent.</p>
+              <p style="margin-bottom:8px">When you violate, compromise, or otherwise are met with situations that go against your Morals, you must make a Mental Health Check with +/− Difficulty dependent on the scale of the infraction. Minor infractions are at −2, Moderate −1, Major +0 and so on so-forth.</p>
+              <p style="margin-bottom:8px">After your Mental Health Check you must allocate a number of "Break Points" equal to 6 − Result to your choice/combination of Moral Obligations, Short-term Trauma, Long-term Trauma, or through an immediate Breakdown.</p>
+              <p style="margin-bottom:8px">Alternatively if you affirm/fulfill your Morals, you may make a Mental Health Check to recover SAN instead; the amount of SAN recovered is equal to Result.</p>
+              <p style="margin-bottom:8px">Morals are scaled based on how important / integral they are to you; Minor Morals are rolled at −2, Moderate at −1, Major at +0, Massive at +1, so-on so-forth. The inverse is true for Moral Affirmations.</p>
+              <p>When you create your Character, you must allocate "10 Moral points" in Morals, with a Minor Moral being worth 1, a Moderate Moral 2, and so-on so-forth, based on how important each Moral is to your Character; there is no limit to the amount of Morals you may take, so long as you meet your spending limit for Moral Points.</p>
+            </div>
+          </div>
+          <span class="edit-btn" id="morals-edit-btn" style="display:none" onclick="editMorals()">Edit</span>
+        </div>
+        <div id="morals-view"><div class="moral-cards" id="moral-cards-display"></div></div>
+        <div id="morals-edit-mode" style="display:none">
+          <div id="morals-by-ruleset"></div>
+          <div style="margin-top:10px"><button class="save-btn" onclick="doneMorals()" style="font-size:11px;padding:4px 14px">Done</button></div>
+        </div>
+      </div>
+      <div class="mental-col">
+        <div class="mental-col-header">
+          <div class="mental-col-title" style="position:relative;cursor:default" onmouseenter="document.getElementById('mc-tip').style.display='block'" onmouseleave="document.getElementById('mc-tip').style.display='none'">Mental Conditions
+            <div id="mc-tip" style="display:none;position:absolute;left:0;top:100%;margin-top:6px;background:#1a1a1a;border:1px solid #333;border-radius:4px;padding:10px 12px;font-size:11px;color:#aaa;width:340px;z-index:1000;line-height:1.6;font-weight:400;letter-spacing:0;text-transform:none">
+              <p style="margin-bottom:8px">Mental Conditions are conditions, disorders, and traumas pertinent to one's mental state; these can be anything from phobias, to compulsions, to full-blown personality disorders, and so-on so-forth.</p>
+              <p style="margin-bottom:8px">Mental Conditions are defined by "what I have", "which means", "and if triggered I might"; a Mental Condition's trigger is intuitive to what the Mental Condition is, and what it means for you.</p>
+              <p style="margin-bottom:8px">When you fail a Mental Health Check you may choose to allocate Break Points to developing a Mental Condition; Minor is 1, Moderate is 2, so-on so-forth.</p>
+              <p style="margin-bottom:8px">When a trigger has been met for a Mental Condition, you roll a Mental Health Check with +Difficulty based on the scale of the trigger; −1 for Minor triggers, +0 for Moderate, etc. The Difficulty is also affected by the scale of your Mental Condition; −1 for Minor, +0 for Moderate, etc.</p>
+              <p>Based on your roll, you must allocate 6 − Result points to your selection of SAN loss, and/or a breakdown based on your "if triggered" with severity based on allocated points; 1 point is a minor breakdown, 2 points is moderate, 3 is major, etc.</p>
+            </div>
+          </div>
+          <span class="edit-btn" id="disorders-edit-btn" style="display:none" onclick="editDisorders()">Edit</span>
+        </div>
+        <div id="disorders-view"></div>
+        <div id="disorders-edit-mode" style="display:none">
+          <div id="disorders-list"></div>
+          <button class="add-entry-btn" id="add-disorder-btn" onclick="addDisorder()">+ Add</button>
+          <div style="margin-top:10px"><button class="save-btn" onclick="doneDisorders()" style="font-size:11px;padding:4px 14px">Done</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stats-card">
+      <div class="stats-col">
+        <div class="stats-col-header">
+          <div class="stats-col-title">Stats</div>
+          <span class="edit-btn" id="stats-edit-btn" style="display:none" onclick="toggleStatsEdit()">Edit</span>
+        </div>
+        <div id="stats-list"></div>
+      </div>
+      <div class="skills-col">
+        <div class="skills-section">
+          <div class="skills-section-header">
+            <div class="skills-section-title">Primary Skills</div>
+            <span class="edit-btn" id="skills-edit-btn" style="display:none" onclick="toggleSkillsEdit()">Edit</span>
+          </div>
+          <div class="skills-grid" id="primary-skills-grid"></div>
+        </div>
+        <div class="skills-section">
+          <div class="skills-section-header"><div class="skills-section-title">Secondary Skills</div></div>
+          <div id="secondary-skills-list"></div>
+          <div class="skill-add-row" id="sec-skill-add-row" style="display:none">
+            <input type="text" class="skill-add-input" id="sec-skill-name" placeholder="Skill name">
+            <select class="skill-add-select" id="sec-skill-under"></select>
+            <button class="skill-add-btn" onclick="addSecondarySkill()">Add</button>
+          </div>
+        </div>
+        <div class="skills-section">
+          <div class="skills-section-header"><div class="skills-section-title">Specialty Skills</div></div>
+          <div id="specialty-skills-list"></div>
+          <div class="skill-add-row" id="spec-skill-add-row" style="display:none">
+            <input type="text" class="skill-add-input" id="spec-skill-name" placeholder="Skill name">
+            <select class="skill-add-select" id="spec-skill-under"></select>
+            <button class="skill-add-btn" onclick="addSpecialtySkill()">Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
-  <div class="center-panel">
-    <div class="section-title">Playgroup News</div>
-    <div class="news-empty">No news yet!</div>
-  </div>
-  <div class="right-panel"></div>
 </div>
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
-  import { getFirestore, doc, getDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+  import { getFirestore, doc, getDoc, updateDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+  import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-storage.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCf94yLvAtJ9pLgJ3FsV7ir4Qh9XXm3nHg",
@@ -95,36 +314,209 @@
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
   const db = getFirestore(app);
+  const storage = getStorage(app);
 
-  onAuthStateChanged(auth, async function(user) {
-    if (!user || !user.emailVerified) {
-      window.location.href = 'index.html';
-      return;
+  const params = new URLSearchParams(window.location.search);
+  const charId = params.get('id');
+  if (!charId) window.location.href = 'home.html';
+
+  let charData = {}, canEdit = false, userPlaygroups = [], loaded = false;
+  let availableRulesets = [], primarySkillDefs = [];
+  let statsEditMode = false, skillsEditMode = false;
+
+  const SEVERITY_OPTIONS = ['Minor','Moderate','Major','Massive','Monumental','Mega','Mythical'];
+  const MORAL_SEVERITY = [
+    {value:'Minor',label:'Minor (−2 Difficulty / 1pt)'},{value:'Moderate',label:'Moderate (−1 Difficulty / 2pt)'},
+    {value:'Major',label:'Major (+0 Difficulty / 3pt)'},{value:'Massive',label:'Massive (+1 Difficulty / 4pt)'},
+    {value:'Monumental',label:'Monumental (+2 Difficulty / 5pt)'},{value:'Mega',label:'Mega (+3 Difficulty / 6pt)'},
+    {value:'Mythical',label:'Mythical (+4 Difficulty / 7pt)'}
+  ];
+  const CONDITION_SEVERITY = [
+    {value:'Minor',label:'Minor Condition (−1 Difficulty / 1 Break Point)'},{value:'Moderate',label:'Moderate Condition (+0 Difficulty / 2 Break Points)'},
+    {value:'Major',label:'Major Condition (+1 Difficulty / 3 Break Points)'},{value:'Massive',label:'Massive Condition (+2 Difficulty / 4 Break Points)'},
+    {value:'Monumental',label:'Monumental Condition (+3 Difficulty / 5 Break Points)'},{value:'Mega',label:'Mega Condition (+4 Difficulty / 6 Break Points)'},
+    {value:'Mythical',label:'Mythical Condition (+5 Difficulty / 7 Break Points)'}
+  ];
+  const OBLIGATION_SEVERITY = [
+    {value:'Minor',label:'Minor Obligation (1 Break Point)'},{value:'Moderate',label:'Moderate Obligation (2 Break Points)'},
+    {value:'Major',label:'Major Obligation (3 Break Points)'},{value:'Massive',label:'Massive Obligation (4 Break Points)'},
+    {value:'Monumental',label:'Monumental Obligation (5 Break Points)'},{value:'Mega',label:'Mega Obligation (6 Break Points)'},
+    {value:'Mythical',label:'Mythical Obligation (7 Break Points)'}
+  ];
+  const POWER_LEVELS = [
+    {value:'powerless',label:'Powerless',xpPerAp:10},{value:'low',label:'Low Power',xpPerAp:8},
+    {value:'mid',label:'Mid Power',xpPerAp:6},{value:'high',label:'High Power',xpPerAp:4},
+    {value:'very_high',label:'Very High Power',xpPerAp:2},{value:'highest',label:'Highest Power',xpPerAp:1}
+  ];
+
+  function severityLabel(value,opts){if(!opts)return value||'Minor';const o=opts.find(x=>x.value===(value||'Minor'));return o?o.label:(value||'Minor');}
+  function severitySelectHtml(current,onchangeStr,opts){const options=opts||SEVERITY_OPTIONS.map(s=>({value:s,label:s}));const html=options.map(o=>`<option value="${o.value}" ${(current||'Minor')===o.value?'selected':''}>${o.label}</option>`).join('');return `<select class="severity-select" onchange="${onchangeStr}">${html}</select>`;}
+  function normalizeSelectedMorals(){return(charData.selectedMorals||[]).map(m=>typeof m==='string'?{name:m,severity:'Minor'}:m);}
+  function getPowerLevel(){return charData.powerLevel||'powerless';}
+  function getPowerDef(){return POWER_LEVELS.find(p=>p.value===getPowerLevel())||POWER_LEVELS[0];}
+
+  const STAT_ICONS = {
+    str:`M257.375 20.313c-13.418 0-26.07 7.685-35.938 21.75-9.868 14.064-16.343 34.268-16.343 56.75 0 22.48 6.475 42.654 16.344 56.718 9.868 14.066 22.52 21.75 35.937 21.75 13.418 0 26.038-7.684 35.906-21.75 9.87-14.063 16.376-34.236 16.376-56.718 0-22.48-6.506-42.685-16.375-56.75-9.867-14.064-22.487-21.75-35.905-21.75zm-150.25 43.062c-20.305.574-23.996 13.892-31.78 29.03-23.298 45.304-55.564 164.75-55.564 164.75l160.47-5.436 29.125 137.593-22.78 106.03h149.093l-22.282-106 24.25-137.5 157.53 5.313c.002 0-32.264-119.447-55.56-164.75-7.787-15.14-11.477-28.457-31.782-29.03-17.898 0-32.406 15.552-32.406 34.718 0 19.166 14.508 34.72 32.406 34.72 3.728 0 7.258-.884 10.594-2.126l7.937 74.406L309.437 165c-.285.42-.552.867-.843 1.28-12.436 17.724-30.604 29.69-51.22 29.69-20.614 0-38.782-11.966-51.218-29.69-.277-.395-.54-.816-.812-1.218l-116.75 40.032 7.937-74.406c3.337 1.242 6.867 2.125 10.595 2.125 17.898 0 32.406-15.553 32.406-34.72 0-19.165-14.507-34.718-32.405-34.718z`,
+    dex:`M372.97 24.938c-8.67.168-17.816 3.644-26.69 10.28-12.618 9.44-24.074 25.203-30.5 44.844-6.424 19.642-6.48 39.12-1.874 54.157 4.608 15.036 13.375 25.225 24.97 29 11.593 3.772 24.724.72 37.343-8.72 12.618-9.44 24.074-25.234 30.5-44.875 6.424-19.642 6.512-39.12 1.905-54.156-4.607-15.038-13.404-25.196-25-28.97a32.051 32.051 0 0 0-8.938-1.563c-.573-.018-1.14-.01-1.718 0zm-155.69 69.78c-21.696.024-43.394 2.203-65.093 7.094-24.91 29.824-43.848 60.255-52.875 98.47l37.376 17.812c8.273-30.735 21.485-53.817 43.375-77 22.706-7.844 45.418-6.237 68.125 1.5-74.24 65.137-51.17 120.676-80.344 226.47-42.653 17.867-85.098 20.53-123.25-.002L23 415.625c59.418 27.09 125.736 29.818 190.844 0 20.368-43.443 27.214-88.603 25-132.906C295.31 354.663 323.11 398.2 338.78 498.56h57.94c-3.12-14.706-6.21-28.394-9.345-41.218-22.522-92.133-47.263-139.63-100.22-198.406 9.695-36.13 22.143-59.665 52.44-74.282 11.167 19.767 29.982 36.682 51.092 48.906l97.375 1.563.47-41.03L402 191.968c-8.05-5.556-14.925-11.73-20.75-18.314-14.886 9.08-32.024 12.563-48.156 7.313-18.422-5.997-31.143-21.962-37.063-41.282-3.482-11.37-4.742-24.05-3.686-37.25-25.017-4.884-50.047-7.746-75.063-7.72z`,
+    per:`M121.406 18.313c-57.98 16.562-98.06 51.613-98.062 92.28-.003 40.518 39.805 75.616 97.437 92.25-33.653-22.005-55.22-55.224-55.218-92.25 0-37.237 21.85-70.277 55.844-92.28zm276.531 0c33.995 22.003 55.844 55.043 55.844 92.28.004 37.026-21.563 70.245-55.217 92.25 57.632-16.634 97.44-51.732 97.437-92.25-.003-40.667-40.082-75.718-98.063-92.28zM163.28 41.656c-43.303 12.368-73.215 38.565-73.218 68.938-.002 30.26 29.707 56.482 72.75 68.906-25.135-16.434-41.25-41.255-41.25-68.906 0-27.813 16.328-52.503 41.72-68.938zm192.782 0c25.39 16.435 41.72 41.125 41.72 68.938 0 27.65-16.115 52.472-41.25 68.906 43.043-12.424 72.752-38.645 72.75-68.906-.004-30.373-29.915-56.57-73.22-68.938zm-101.03 6.813c-23.457 3.027-44.22 30.026-44.22 64.655 0 19.094 6.635 36.007 16.438 47.75l10.22 12.25-15.69 2.938c-12.834 2.4-22.282 9.19-30.25 20.062-7.965 10.872-14 25.903-18.218 43.156-7.727 31.62-9.362 70.17-9.593 103.94h41.655l.625 8.655 10.625 141.375h90.344l9.374-141.313.594-8.718h39.625c-.017-34.152-.373-73.232-7.375-105.095-3.818-17.37-9.612-32.392-17.688-43.156-8.076-10.765-17.99-17.51-32.344-19.72l-16-2.47 10.125-12.624c9.38-11.682 15.69-28.4 15.69-47.03 0-36.92-23.274-64.564-49.095-64.564-2.8 0-4.505-.137-4.844-.093zm-51.438 12.155c-31.38 8.964-53.063 27.96-53.063 49.97 0 21.927 21.53 40.935 52.72 49.936-18.212-11.908-29.875-29.898-29.875-49.936.003-20.153 11.82-38.06 30.22-49.97zm112.156 0c18.398 11.91 30.216 29.816 30.22 49.97 0 20.037-11.664 38.027-29.876 49.936 31.19-9 52.72-28.008 52.72-49.936-.002-22.01-21.686-41.005-53.064-49.97z`,
+    cha:`M165.262 25.154c-38.376 0-73.092 6.462-97.408 16.405-12.159 4.97-21.669 10.834-27.706 16.67-6.036 5.835-8.459 11.144-8.459 16.218 0 5.075 2.423 10.384 8.46 16.219 6.036 5.835 15.546 11.699 27.705 16.67 24.316 9.942 59.032 16.404 97.408 16.404.162 0 .32-.006.482-.006l-38.95 108.504 88.065-112.265c18.283-2.87 34.592-7.232 47.81-12.637 12.16-4.971 21.671-10.835 27.708-16.67 6.037-5.836 8.459-11.144 8.459-16.219 0-5.074-2.422-10.383-8.46-16.219-6.036-5.835-15.548-11.698-27.706-16.67-24.316-9.942-59.032-16.404-97.408-16.404zm183.797 94.815c-38.377 0-73.092 6.462-97.409 16.404-12.158 4.971-21.668 10.835-27.705 16.67-6.036 5.835-8.459 11.144-8.459 16.219 0 5.074 2.423 10.385 8.46 16.22 6.036 5.836 15.546 11.697 27.704 16.668a161.904 161.904 0 0 0 9.819 3.631l82.965 105.764-34.2-95.274c12.3 1.47 25.327 2.284 38.825 2.284 38.376 0 73.091-6.462 97.408-16.405 12.158-4.97 21.67-10.832 27.707-16.668 6.036-5.835 8.459-11.146 8.459-16.22 0-5.075-2.423-10.384-8.46-16.219-6.036-5.835-15.548-11.699-27.706-16.67-24.317-9.942-59.032-16.404-97.408-16.404zM96 249c-25.37 0-47 23.91-47 55s21.63 55 47 55 47-23.91 47-55-21.63-55-47-55zm320 0c-25.37 0-47 23.91-47 55s21.63 55 47 55 47-23.91 47-55-21.63-55-47-55zM58.166 363.348c-7.084 8.321-13.03 19.258-17.738 31.812-10.33 27.544-14.433 62.236-15.131 91.84h141.406c-.698-29.604-4.802-64.296-15.13-91.84-4.709-12.554-10.655-23.49-17.739-31.812C123.246 371.9 110.235 377 96 377c-14.235 0-27.246-5.1-37.834-13.652zm320 0c-7.084 8.321-13.03 19.258-17.738 31.812-10.33 27.544-14.433 62.236-15.131 91.84h141.406c-.698-29.604-4.802-64.296-15.13-91.84-4.709-12.554-10.655-23.49-17.739-31.812C443.246 371.9 430.235 377 416 377c-14.235 0-27.246-5.1-37.834-13.652z`,
+    int:`M241.063 54.406a293.615 293.615 0 0 0-12.313.282c-8.814 1.567-12.884 5.426-15.094 9.843-2.435 4.87-2.34 11.423.375 17.25 2.717 5.83 7.7 10.596 14.657 12.376 6.958 1.78 16.536.86 29.125-7.187l10.063 15.75c-15.818 10.11-31.124 12.777-43.813 9.53-12.688-3.247-22.103-12.123-26.968-22.563-4.584-9.836-5.426-21.376-1.03-31.624-42.917 6.94-81.777 23.398-111.626 46.562-9.81 10.688-10.77 23.11-6.47 31.594 4.83 9.526 16.21 16.48 38.97 9.28l5.656 17.813c-28.58 9.04-52.137-.588-61.28-18.625-2.23-4.397-3.592-9.156-4.127-14.063-4.814 5.712-9.16 11.658-13 17.844l.126.06c-8.614 19.616-8.81 33.203-5.376 42.032 3.436 8.83 10.635 14.44 21.72 17.532 22.168 6.18 58.065-1.277 83.343-20.156 10.82-8.08 21.077-27.677 21.97-42.875.445-7.6-1.165-13.604-4.345-17.438-3.18-3.834-8.272-6.703-18.813-6.594l-.187-18.686c14.487-.15 26.25 4.754 33.375 13.344 7.124 8.59 9.26 19.652 8.625 30.468-1.27 21.633-12.595 44.172-29.438 56.75-29.876 22.314-69.336 31.606-99.53 23.188-13.988-3.9-26.37-12.386-32.75-25.53-9.546 45.446 4.323 87.66 30.718 116.874 3.45 3.82 7.122 7.43 10.97 10.78-2.754-7.887-4.016-16.1-3.72-24.093.53-14.325 6.082-28.346 17.22-38.03 9.134-7.946 21.752-12.53 36.843-12.5 1.006 0 2.034.018 3.062.06 2.35.1 4.763.304 7.22.626l-2.44 18.532c-15.588-2.048-25.705 1.522-32.436 7.375-6.73 5.854-10.443 14.614-10.813 24.625-.74 20.024 12.07 43.406 39.69 50.188l-.032.188c27.192 5.19 57.536.372 88-18.22.018-.012.043-.017.062-.03 6.34-4.45 9.755-8.808 11.438-12.563 1.985-4.432 1.943-8.292.53-12.438-2.824-8.29-12.94-16.812-22.218-19.187-15.002-3.84-24.532 1.436-29 7.72-4.468 6.28-4.74 12.45 2.156 17.81l-11.47 14.75c-14.187-11.033-15.092-30.487-5.905-43.405 6.892-9.688 18.985-16.326 33.564-16.75a46.963 46.963 0 0 1 1.844-.03c4.306.03 8.79.622 13.437 1.81 15.505 3.97 29.84 15.277 35.28 31.25a36.189 36.189 0 0 1 1.876 13.314c16.71-8.538 34.332-16.12 52.282-21.814 30.156-13.78 43.23-37.938 42.72-58.28-.515-20.493-13.187-37.74-42.376-40.626l1.844-18.594c36.666 3.626 58.462 29.848 59.188 58.75.422 16.84-5.754 34.363-18.188 49.28 16.072-1.8 32.044-1.495 47.53 1.627-3.152-6.472-4.68-13.478-4.467-20.438.677-22.036 19.42-42.593 48.875-42.906a66.155 66.155 0 0 1 6.03.218l-1.5 18.625c-24.927-1.998-34.3 11.086-34.718 24.656-.412 13.42 8.545 28.442 34.22 30.436 28.3.25 48.588-15.098 58.53-37.906 13.31-30.536 6.997-76.317-34.844-118.188-.792-.793-1.578-1.593-2.375-2.375a40.42 40.42 0 0 1-2.842 10.844c-7.25 17.39-24.233 29.128-41.875 32.407-24.335 4.522-44.29-5.347-53.5-20.406-9.21-15.057-6.792-36.35 9.78-47.56l10.47 15.5c-8.913 6.028-9.28 14.19-4.313 22.31 4.967 8.122 16.17 15.156 34.156 11.814 11.306-2.102 23.896-11.33 28.03-21.25 2.07-4.96 2.47-9.862.408-15.47-1.675-4.555-5.187-9.764-11.72-15.25l-.187-.155c-27.316-20.587-56.338-35.393-85.75-45.157.018.032.045.06.063.093 6.684 12.22 7.18 26.082 3.063 38.344-8.233 24.525-34.07 43.848-66.032 42.78-6.948-.23-13.56 3.12-19.186 9.657-5.627 6.537-9.735 16.113-10.688 26.313-1.905 20.4 6.923 42.886 41.344 54L277 258.28c-41.083-13.264-56.83-45.546-54.22-73.5 1.307-13.975 6.706-26.962 15.157-36.78 8.452-9.818 20.475-16.603 33.97-16.156 24.04.802 42.323-14.084 47.687-30.063 2.682-7.988 2.335-15.937-1.75-23.405-3.968-7.252-11.83-14.423-25.906-19.656a292.57 292.57 0 0 0-50.875-4.314zM342.28 306.344c-41.915 3.41-87.366 23.4-125.28 46.562-55.98 34.198-114.89 26.733-156.688-4.28 16.444 58.844 74.712 70.788 135.5 55.905 6.083-2.285 12.06-6.538 17.157-12.03 7.057-7.607 12.17-17.47 13.78-25.625l18.344 3.625c-2.445 12.383-9.078 24.666-18.406 34.72-8.95 9.645-20.61 17.35-34.094 19.374-6.766 15.07-12.334 29.68-14.594 39.906-3.55 16.06 14.206 22.225 22.156 6.03 19.022-38.743 45.87-73.23 79.406-102.967 26.064-17.153 48.406-38.303 62.72-61.22z`,
+    pow:`M256 38.013c-22.458 0-66.472 110.3-84.64 123.502-18.17 13.2-136.674 20.975-143.614 42.334-6.94 21.358 84.362 97.303 91.302 118.662 6.94 21.36-22.286 136.465-4.116 149.665 18.17 13.2 118.61-50.164 141.068-50.164 22.458 0 122.9 63.365 141.068 50.164 18.17-13.2-11.056-128.306-4.116-149.665 6.94-21.36 98.242-97.304 91.302-118.663-6.94-21.36-125.444-29.134-143.613-42.335-18.168-13.2-62.182-123.502-84.64-123.502z`,
+    size:`M384 22.545 307.271 99.27l25.458 25.458L366 91.457v329.086l-33.271-33.272-25.458 25.458L384 489.455l76.729-76.726-25.458-25.458L402 420.543V91.457l33.271 33.272L460.73 99.27 384 22.545zm-242.443.258c-23.366 3.035-44.553 30.444-44.553 65.935 0 19.558 6.771 36.856 16.695 48.815l11.84 14.263-18.217 3.424c-12.9 2.425-22.358 9.24-30.443 20.336-8.085 11.097-14.266 26.558-18.598 44.375-7.843 32.28-9.568 71.693-9.842 106.436h42.868l11.771 157.836c29.894 6.748 61.811 6.51 90.602.025l10.414-157.861h40.816c-.027-35.168-.477-75.125-7.584-107.65-3.918-17.933-9.858-33.371-18.04-44.342-8.185-10.97-18.08-17.745-32.563-19.989l-18.592-2.88 11.736-14.704c9.495-11.897 15.932-28.997 15.932-48.082 0-37.838-23.655-65.844-49.399-65.844l-4.843-.093z`
+  };
+  const STAT_DESCRIPTIONS = {str:'Your physical strength, endurance, and constitution.',dex:'Your physical speed, flexibility, and finesse.',per:'Your physical sharpness of your senses.',cha:'Your social aptitude and acuity.',int:'Your logical aptitude and acuity.',pow:'Your supernatural aptitude in your paradigm and its powers.',size:'Your size.'};
+  const STAT_LABELS = ['Far Below Average','Below Average','Average','Above Average','Impressive','Exceptional','Peak Human','Lesser Superhuman','Superhuman','Greater Superhuman','Peak Superhuman','Beyond Superhuman','Lesser Legendary','Legendary','Greater Legendary','Semi-Divine','Lesser Divine','Divine','Greater Divine','Beyond Divine','Cosmic'];
+  const SIZE_OPTIONS = [{value:1,label:'1 — Nano'},{value:2,label:'2 — Micro'},{value:3,label:'3 — Tiny'},{value:4,label:'4 — Small'},{value:6,label:'6 — Medium'},{value:8,label:'8 — Large'},{value:10,label:'10 — Huge'},{value:12,label:'12 — Massive'},{value:16,label:'16 — Giant'},{value:20,label:'20 — Colossal'},{value:24,label:'24 — Behemoth'},{value:30,label:'30 — Cataclysmic'}];
+  const STAT_DEFS = [{key:'str',abbr:'STR',rest:'ength',default:2},{key:'dex',abbr:'DEX',rest:'terity',default:2},{key:'per',abbr:'PER',rest:'ception',default:2},{key:'cha',abbr:'CHA',rest:'risma',default:2},{key:'int',abbr:'INT',rest:'ellect',default:2},{key:'pow',abbr:'POW',rest:'er',default:2},{key:'size',abbr:'SIZE',rest:'',default:6}];
+  const FALLBACK_SKILLS = [{name:'Academics',description:'Learned subjects such as History or Political Science.'},{name:'Athletics',description:'Physical activities like running, swimming, jumping, climbing, etc.'},{name:'Awareness',description:'To be aware of one\'s surroundings utilizing one\'s senses.'},{name:'Crafts',description:'A particular trade, tool, art, or practice.'},{name:'Drive',description:'Operating vehicles.'},{name:'Investigation',description:'Uncovering, understanding, reasoning, and making deductions with information.'},{name:'Medical',description:'Skill in medical treatment, and knowledge of the medical sciences.'},{name:'Melee',description:'Melee combat, and melee weaponry.'},{name:'Occult',description:'The esoteric; be it rituals, the supernatural, mythology, and so-on so-forth.'},{name:'Ranged',description:'Ranged combat, and ranged weaponry.'},{name:'Science',description:'Knowledge of the sciences.'},{name:'Social',description:'Sociability, communication skills, people skills, etc.'},{name:'Society',description:'Knowledge of society, institutions, laws, etiquette, etc.'},{name:'Stealth',description:'Being stealthy, hiding, sneaking.'},{name:'Survival',description:'Wilderness skills, foraging, identifying animal footprints, natural knowledge and skills.'},{name:'Technology',description:'Knowledge, and operation, of technology.'}];
+
+  function getStatMod(v){if(v<=1)return -1;if(v<=3)return 0;if(v<=5)return 1;if(v<=7)return 2;if(v<=9)return 3;if(v<=11)return 4;if(v<=13)return 5;if(v<=15)return 6;if(v<=17)return 7;if(v===18)return 8;if(v===19)return 9;return 10;}
+  const SKILL_LABELS = ['No Exposure','Minor Exposure','Exposure','Basic Training','Training','Major Training','Expertise','Major Expertise','Near-Mastery','Mastery','True Mastery'];
+  window.SKILL_LABELS_GLOBAL = SKILL_LABELS;
+
+  function getStatLabel(v){return STAT_LABELS[Math.min(Math.max(0,Math.floor(v)),20)]||'';}
+  function getSizeLabel(v){const o=SIZE_OPTIONS.slice().reverse().find(o=>v>=o.value);return o?o.label:'Nano';}
+  function getStatLevelText(key,total){if(key==='size')return getSizeLabel(total);return `You are of ${getStatLabel(total)} ${key.toUpperCase()}`;}
+  function getSkillLevelText(val){return `You have ${SKILL_LABELS[Math.min(10,Math.max(0,val))]||'No Exposure'} in this Skill`;}
+  function getStatTotal(k){const d=STAT_DEFS.find(s=>s.key===k);const b=(charData.stats&&charData.stats[k]!==undefined)?charData.stats[k]:d.default;const m=(charData.statModifiers&&charData.statModifiers[k])?charData.statModifiers[k]:[];return b+m.reduce((s,x)=>s+(parseInt(x.value)||0),0);}
+  function statIcon(k){return `<svg viewBox="0 0 512 512" width="36" height="36" xmlns="http://www.w3.org/2000/svg"><rect width="512" height="512" fill="#000"/><path d="${STAT_ICONS[k]}" fill="#fff"/></svg>`;}
+
+  function buildStatsSection(){
+    const container=document.getElementById('stats-list');container.innerHTML='';
+    STAT_DEFS.forEach(s=>{
+      const total=getStatTotal(s.key),base=(charData.stats&&charData.stats[s.key]!==undefined)?charData.stats[s.key]:s.default;
+      const mod=s.key!=='size'?getStatMod(total):null,modStr=mod!==null?(mod>=0?'+'+mod:''+mod):'';
+      const levelLabel=s.key!=='size'?getStatLabel(total):getSizeLabel(total);
+      const wrapper=document.createElement('div');
+      const viewRow=document.createElement('div');viewRow.className='stat-row';viewRow.id='stat-view-'+s.key;
+      viewRow.innerHTML=`<div class="stat-icon-wrap"><div class="stat-icon">${statIcon(s.key)}</div><div class="stat-tooltip">${STAT_DESCRIPTIONS[s.key]}</div></div><div class="stat-info"><div class="stat-label"><span class="abbr">${s.abbr}</span>${s.rest}</div><div class="stat-level-label" id="stat-level-${s.key}">${getStatLevelText(s.key,total)}</div></div><div class="stat-value-area"><div class="stat-value-wrap"><span class="stat-total-display" id="stat-total-${s.key}">${s.key==='size'?getSizeLabel(total):total}</span>${mod!==null?`<span class="stat-mod-exponent" id="statmod-${s.key}">${modStr}</span>`:''}</div></div>`;
+      const editRow=document.createElement('div');editRow.className='stat-row';editRow.id='stat-edit-'+s.key;editRow.style.display='none';
+      if(s.key==='size'){const sizeOpts=SIZE_OPTIONS.map(o=>`<option value="${o.value}" ${base===o.value?'selected':''}>${o.label}</option>`).join('');editRow.innerHTML=`<div class="stat-icon-wrap"><div class="stat-icon">${statIcon(s.key)}</div><div class="stat-tooltip">${STAT_DESCRIPTIONS[s.key]}</div></div><div class="stat-info"><div class="stat-label"><span class="abbr">${s.abbr}</span>${s.rest}</div></div><div class="stat-value-area"><select class="stat-size-select" id="stat-input-${s.key}" onchange="saveStatBase('${s.key}',this.value)">${sizeOpts}</select></div>`;}
+      else{const xpCost=STAT_XP[Math.min(Math.max(1,base),6)]||0;const xpStr=xpCost>0?'+'+xpCost+'xp':xpCost+'xp';editRow.innerHTML=`<div class="stat-icon-wrap"><div class="stat-icon">${statIcon(s.key)}</div><div class="stat-tooltip">${STAT_DESCRIPTIONS[s.key]}</div></div><div class="stat-info"><div class="stat-label"><span class="abbr">${s.abbr}</span>${s.rest}</div><div class="stat-level-label" id="stat-level-edit-${s.key}">${getStatLevelText(s.key,total)}</div></div><div class="stat-value-area"><div class="stat-input-row"><button class="stat-adj-btn" onclick="adjustStat('${s.key}',-1)">−</button><input type="number" class="stat-base-input" id="stat-input-${s.key}" min="1" max="20" value="${base}" oninput="onStatInput('${s.key}',this.value)" onchange="saveStatBase('${s.key}',this.value)"><button class="stat-adj-btn" onclick="adjustStat('${s.key}',1)">+</button></div><div class="stat-mod-row"><div class="stat-mod-badge" id="statmod-edit-${s.key}">${modStr}</div><span style="font-size:9px;color:#555" id="stat-xp-${s.key}">${xpStr}</span><button class="stat-pm-btn" onclick="toggleModPanel('${s.key}')">+/−</button></div></div>`;}
+      const modPanel=document.createElement('div');modPanel.className='stat-mod-panel';modPanel.id='modpanel-'+s.key;modPanel.style.display='none';
+      modPanel.innerHTML=`<div id="modlist-${s.key}"></div><div class="mod-add-row"><input type="text" id="modname-${s.key}" placeholder="Modifier name"><input type="number" id="modval-${s.key}" value="1"><button class="mod-add-btn" onclick="addModifier('${s.key}')">Add</button></div>`;
+      wrapper.appendChild(viewRow);wrapper.appendChild(editRow);wrapper.appendChild(modPanel);container.appendChild(wrapper);renderModList(s.key);
+    });
+  }
+
+  window.toggleStatsEdit=function(){statsEditMode=!statsEditMode;document.getElementById('stats-edit-btn').textContent=statsEditMode?'Done':'Edit';STAT_DEFS.forEach(s=>{document.getElementById('stat-view-'+s.key).style.display=statsEditMode?'none':'flex';document.getElementById('stat-edit-'+s.key).style.display=statsEditMode?'flex':'none';if(!statsEditMode){const p=document.getElementById('modpanel-'+s.key);if(p)p.style.display='none';}});}
+  window.onStatInput=function(key,val){const v=Math.max(1,Math.min(20,parseInt(val)||1));if(!charData.stats)charData.stats={};charData.stats[key]=v;const total=getStatTotal(key),mod=getStatMod(total),modStr=mod>=0?'+'+mod:''+mod;const badge=document.getElementById('statmod-edit-'+key);if(badge)badge.textContent=modStr;const levelEl=document.getElementById('stat-level-edit-'+key);if(levelEl)levelEl.textContent=getStatLevelText(key,total);const xpEl=document.getElementById('stat-xp-'+key);if(xpEl){const c=STAT_XP[Math.min(Math.max(1,v),6)]||0;xpEl.textContent=(c>0?'+'+c:c)+'xp';}}
+  window.adjustStat=async function(key,delta){if(!canEdit)return;if(!charData.stats)charData.stats={};const cur=charData.stats[key]!==undefined?charData.stats[key]:STAT_DEFS.find(s=>s.key===key).default;const nv=Math.max(1,Math.min(20,cur+delta));charData.stats[key]=nv;const inp=document.getElementById('stat-input-'+key);if(inp)inp.value=nv;await updateDoc(doc(db,'characters',charId),{[`stats.${key}`]:nv});onStatInput(key,nv);updateStatViewDisplay(key);if(key!=='size')await saveXpSpent();}
+  function renderModList(key){const mods=(charData.statModifiers&&charData.statModifiers[key])?charData.statModifiers[key]:[];const el=document.getElementById('modlist-'+key);if(!el)return;el.innerHTML=mods.length===0?'<div style="color:#333;font-size:11px;margin-bottom:4px">No modifiers.</div>':mods.map((m,i)=>`<div class="mod-item"><span class="mod-item-name">${m.name}</span><span class="mod-item-val">${m.value>=0?'+':''}${m.value}</span><span class="mod-delete" onclick="deleteModifier('${key}',${i})">×</span></div>`).join('');updateStatViewDisplay(key);}
+  function updateStatViewDisplay(key){const total=getStatTotal(key),mod=getStatMod(total),modStr=mod>=0?'+'+mod:''+mod;const t=document.getElementById('stat-total-'+key);if(t)t.textContent=key==='size'?getSizeLabel(total):total;const exp=document.getElementById('statmod-'+key);if(exp)exp.textContent=modStr;const l=document.getElementById('stat-level-'+key);if(l)l.textContent=getStatLevelText(key,total);const eb=document.getElementById('statmod-edit-'+key);if(eb)eb.textContent=modStr;const el=document.getElementById('stat-level-edit-'+key);if(el)el.textContent=getStatLevelText(key,total);}
+  window.toggleModPanel=function(key){const p=document.getElementById('modpanel-'+key);p.style.display=p.style.display==='none'?'block':'none';}
+  window.saveStatBase=async function(key,val){if(!canEdit)return;const v=key==='size'?parseInt(val):Math.max(1,Math.min(20,parseInt(val)||1));if(!charData.stats)charData.stats={};charData.stats[key]=v;await updateDoc(doc(db,'characters',charId),{[`stats.${key}`]:v});updateStatViewDisplay(key);if(key!=='size')await saveXpSpent();}
+  window.addModifier=async function(key){const name=document.getElementById('modname-'+key).value.trim(),val=parseInt(document.getElementById('modval-'+key).value)||0;if(!name)return;if(!charData.statModifiers)charData.statModifiers={};if(!charData.statModifiers[key])charData.statModifiers[key]=[];charData.statModifiers[key].push({name,value:val});await updateDoc(doc(db,'characters',charId),{statModifiers:charData.statModifiers});document.getElementById('modname-'+key).value='';document.getElementById('modval-'+key).value='1';renderModList(key);}
+  window.deleteModifier=async function(key,i){charData.statModifiers[key].splice(i,1);await updateDoc(doc(db,'characters',charId),{statModifiers:charData.statModifiers});renderModList(key);}
+
+  // ── XP COSTS ──
+  const STAT_XP  = {1:-10,2:0,3:10,4:30,5:60,6:100};
+  const PRIM_XP  = [0,2,4,8,14,22,30,40,52,66,80];
+  const SEC_XP   = [0,1,2,4,7,11,15,20,26,33,40];
+  const SPEC_XP  = [0,1,1,2,3,5,7,10,13,16,20];
+
+  function statXp(v){return STAT_XP[Math.min(Math.max(1,v),6)]||0;}
+  window.skillXpLabel=function(val,type){const v=Math.min(10,Math.max(0,parseInt(val)||0));if(type==='p')return(PRIM_XP[v]||0)+'xp';if(type==='s')return(SEC_XP[v]||0)+'xp';return(SPEC_XP[v]||0)+'xp';}
+  window.skillLevelText=function(val){return SKILL_LABELS[Math.min(10,Math.max(0,parseInt(val)||0))];}
+  function calcTotalXp(){
+    let xp=0;
+    STAT_DEFS.forEach(s=>{if(s.key==='size')return;const v=charData.stats&&charData.stats[s.key]!==undefined?charData.stats[s.key]:s.default;xp+=statXp(v);});
+    const pr=(charData.skills&&charData.skills.primary)||{};
+    primarySkillDefs.forEach(s=>xp+=(PRIM_XP[pr[s.name]||0]||0));
+    ((charData.skills&&charData.skills.secondary)||[]).forEach(s=>xp+=(SEC_XP[s.value||0]||0));
+    ((charData.skills&&charData.skills.specialty)||[]).forEach(s=>xp+=(SPEC_XP[s.value||0]||0));
+    return xp;
+  }
+  async function saveXpSpent(){const v=calcTotalXp();charData.xpSpent=v;await updateDoc(doc(db,'characters',charId),{xpSpent:v});renderPowerBar();}
+
+  function getPrimaryVal(name){return((charData.skills&&charData.skills.primary)||{})[name]||0;}
+  function getSecondaryVal(name){return(((charData.skills&&charData.skills.secondary)||[]).find(s=>s.name===name)||{value:0}).value;}
+
+  function buildSkillsSection(){renderPrimarySkills();renderSecondarySkills();renderSpecialtySkills();if(canEdit)document.getElementById('skills-edit-btn').style.display='inline';}
+  function renderPrimarySkills(){const grid=document.getElementById('primary-skills-grid'),primary=(charData.skills&&charData.skills.primary)?charData.skills.primary:{};grid.innerHTML=primarySkillDefs.map(s=>{const val=primary[s.name]||0;const cost=PRIM_XP[val]||0;const levelText=SKILL_LABELS[val];return`<div class="skill-item"><span class="skill-name">${s.name}</span><div class="skill-tooltip">${s.description}</div><span style="font-size:9px;color:#555;flex:1;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${levelText}</span>${skillsEditMode?`<input type="number" class="skill-input" min="0" max="10" value="${val}" oninput="this.previousElementSibling.textContent=window.SKILL_LABELS_GLOBAL[Math.min(10,Math.max(0,parseInt(this.value)||0))];this.nextElementSibling.textContent=skillXpLabel(this.value,'p')" onchange="saveSkill('${s.name}',this.value)"><span style="font-size:9px;color:#555;min-width:28px;text-align:right">${cost}xp</span>`:`<span class="skill-val-display">${val}</span>`}</div>`;}).join('');}
+  function renderSecondarySkills(){const list=document.getElementById('secondary-skills-list'),secondary=(charData.skills&&charData.skills.secondary)?charData.skills.secondary:[];list.innerHTML=secondary.length===0?'<div style="color:#333;font-size:11px;margin-bottom:6px">None defined.</div>':secondary.map((s,i)=>{const cap=2*getPrimaryVal(s.under);const cost=SEC_XP[s.value||0]||0;return`<div class="sec-skill-item"><span class="skill-name">${s.name}</span><span class="sec-skill-under">${s.under}</span>${skillsEditMode?`<input type="number" class="skill-input" min="0" max="${cap}" value="${s.value||0}" oninput="this.nextElementSibling.textContent=skillXpLabel(this.value,'s')" onchange="saveSecSkill(${i},this.value)" title="Max: 2× ${s.under} (${cap})"><span style="font-size:9px;color:#555;min-width:28px;text-align:right">${cost}xp</span><span class="mod-delete" onclick="deleteSecSkill(${i})">×</span>`:`<span class="skill-val-display">${s.value||0}</span>`}</div>`;}).join('');if(canEdit&&skillsEditMode){document.getElementById('sec-skill-add-row').style.display='flex';document.getElementById('sec-skill-under').innerHTML=primarySkillDefs.map(s=>`<option value="${s.name}">${s.name}</option>`).join('');}else document.getElementById('sec-skill-add-row').style.display='none';updateSpecUnder();}
+  function updateSpecUnder(){const secondary=(charData.skills&&charData.skills.secondary)?charData.skills.secondary:[];if(canEdit&&skillsEditMode){document.getElementById('spec-skill-add-row').style.display='flex';document.getElementById('spec-skill-under').innerHTML=secondary.length>0?secondary.map(s=>`<option value="${s.name}">${s.name}</option>`).join(''):'<option value="">No secondary skills yet</option>';}else document.getElementById('spec-skill-add-row').style.display='none';}
+  function renderSpecialtySkills(){const list=document.getElementById('specialty-skills-list'),specialty=(charData.skills&&charData.skills.specialty)?charData.skills.specialty:[];list.innerHTML=specialty.length===0?'<div style="color:#333;font-size:11px;margin-bottom:6px">None defined.</div>':specialty.map((s,i)=>{const sec=(charData.skills&&charData.skills.secondary)||[];const secEntry=sec.find(x=>x.name===s.under)||{value:0,under:''};const cap=getSecondaryVal(s.under)+getPrimaryVal(secEntry.under);const cost=SPEC_XP[s.value||0]||0;return`<div class="sec-skill-item"><span class="skill-name">${s.name}</span><span class="sec-skill-under">${s.under}</span>${skillsEditMode?`<input type="number" class="skill-input" min="0" max="${cap}" value="${s.value||0}" oninput="this.nextElementSibling.textContent=skillXpLabel(this.value,'sp')" onchange="saveSpecSkill(${i},this.value)" title="Max: ${s.under}+primary (${cap})"><span style="font-size:9px;color:#555;min-width:28px;text-align:right">${cost}xp</span><span class="mod-delete" onclick="deleteSpecSkill(${i})">×</span>`:`<span class="skill-val-display">${s.value||0}</span>`}</div>`;}).join('');updateSpecUnder();}
+  window.toggleSkillsEdit=function(){skillsEditMode=!skillsEditMode;document.getElementById('skills-edit-btn').textContent=skillsEditMode?'Done':'Edit';renderPrimarySkills();renderSecondarySkills();renderSpecialtySkills();}
+  window.saveSkill=async function(name,val){if(!charData.skills)charData.skills={};if(!charData.skills.primary)charData.skills.primary={};charData.skills.primary[name]=Math.max(0,Math.min(10,parseInt(val)||0));await updateDoc(doc(db,'characters',charId),{'skills.primary':charData.skills.primary});await saveXpSpent();renderSecondarySkills();renderSpecialtySkills();}
+  window.addSecondarySkill=async function(){const name=document.getElementById('sec-skill-name').value.trim(),under=document.getElementById('sec-skill-under').value;if(!name||!under)return;if(!charData.skills)charData.skills={};if(!charData.skills.secondary)charData.skills.secondary=[];charData.skills.secondary.push({name,under,value:0});await updateDoc(doc(db,'characters',charId),{'skills.secondary':charData.skills.secondary});document.getElementById('sec-skill-name').value='';renderSecondarySkills();}
+  window.saveSecSkill=async function(i,val){const sec=charData.skills.secondary[i];const cap=2*getPrimaryVal(sec.under);const v=Math.max(0,Math.min(cap,parseInt(val)||0));if(v<(parseInt(val)||0))alert(`Secondary skill cannot exceed 2× its Primary (${sec.under} = ${getPrimaryVal(sec.under)}, max = ${cap}).`);sec.value=v;await updateDoc(doc(db,'characters',charId),{'skills.secondary':charData.skills.secondary});await saveXpSpent();renderSpecialtySkills();}
+  window.deleteSecSkill=async function(i){charData.skills.secondary.splice(i,1);await updateDoc(doc(db,'characters',charId),{'skills.secondary':charData.skills.secondary});await saveXpSpent();renderSecondarySkills();}
+  window.addSpecialtySkill=async function(){const name=document.getElementById('spec-skill-name').value.trim(),under=document.getElementById('spec-skill-under').value;if(!name||!under)return;if(!charData.skills)charData.skills={};if(!charData.skills.specialty)charData.skills.specialty=[];charData.skills.specialty.push({name,under,value:0});await updateDoc(doc(db,'characters',charId),{'skills.specialty':charData.skills.specialty});document.getElementById('spec-skill-name').value='';renderSpecialtySkills();}
+  window.saveSpecSkill=async function(i,val){const spec=charData.skills.specialty[i];const sec=(charData.skills.secondary||[]).find(x=>x.name===spec.under)||{value:0,under:''};const cap=getSecondaryVal(spec.under)+getPrimaryVal(sec.under);const v=Math.max(0,Math.min(cap,parseInt(val)||0));if(v<(parseInt(val)||0))alert(`Specialty cannot exceed its Secondary + Primary (max = ${cap}).`);spec.value=v;await updateDoc(doc(db,'characters',charId),{'skills.specialty':charData.skills.specialty});await saveXpSpent();}
+  window.deleteSpecSkill=async function(i){charData.skills.specialty.splice(i,1);await updateDoc(doc(db,'characters',charId),{'skills.specialty':charData.skills.specialty});await saveXpSpent();renderSpecialtySkills();}
+
+  function buildProse(d,pgName){const name=d.name?`<b>${d.name}</b>`:'___';let line1=`${name} is a`;if(d.sex)line1+=` <b>${d.sex}</b>`;if(d.age)line1+=` <b>${d.age}</b> year old`;if(d.ethnicity)line1+=` <b>${d.ethnicity}</b>`;if(d.paradigm)line1+=` <b>${d.paradigm}</b>`;if(d.archetype)line1+=` <b>${d.archetype}</b>`;if(d.residence)line1+=` living in <b>${d.residence}</b>`;if(pgName)line1+=`, from the World of <b>${pgName}</b>.`;else line1+='. Currently, they are not an active Character in play.';const name2=d.name?`<b>${d.name}</b>`:'___';let line2=`${name2} <b>typically appears as</b>`;if(d.appearance)line2+=` <i>${d.appearance}</i>`;return line1+'<br><br>'+line2;}
+
+  function renderPowerBar(){
+    const bar=document.getElementById('char-power-bar'),pl=getPowerDef();
+    const xpSpent=charData.xpSpent||0,maxXp=charData.maxXp||0,apSpent=charData.apSpent||0,maxAp=charData.maxAp||0;
+    if(canEdit){
+      const plOpts=POWER_LEVELS.map(p=>`<option value="${p.value}" ${p.value===getPowerLevel()?'selected':''}>${p.label} (${p.xpPerAp} XP/AP)</option>`).join('');
+      bar.innerHTML=`<div class="power-pill"><select class="power-select" onchange="savePowerField('powerLevel',this.value)">${plOpts}</select></div><div class="power-pill"><span class="pill-label">XP</span><span class="pill-val">${xpSpent}</span><span class="power-sep">/</span><input type="number" class="power-num-input" value="${maxXp}" min="0" onchange="savePowerField('maxXp',this.value)" title="Max XP"></div><div class="power-pill"><span class="pill-label">AP</span><span class="pill-val">${apSpent}</span><span class="power-sep">/</span><input type="number" class="power-num-input" value="${maxAp}" min="0" onchange="savePowerField('maxAp',this.value)" title="Max AP"></div>`;
+    } else {
+      bar.innerHTML=`<div class="power-pill"><span class="pill-val">${pl.label}</span><span class="pill-sub">(${pl.xpPerAp} XP/AP)</span></div><div class="power-pill"><span class="pill-label">XP</span><span class="pill-val">${xpSpent} / ${maxXp}</span></div><div class="power-pill"><span class="pill-label">AP</span><span class="pill-val">${apSpent} / ${maxAp}</span></div>`;
     }
-    const userDoc = await getDoc(doc(db, 'users', user.uid));
-    if (userDoc.exists()) setNavUsername(userDoc.data().username);
+  }
+  window.savePowerField=async function(field,val){const v=field==='powerLevel'?val:Math.max(0,parseInt(val)||0);charData[field]=v;await updateDoc(doc(db,'characters',charId),{[field]:v});renderPowerBar();}
 
-    const pgLinks = document.getElementById('pg-links');
-    const q = query(collection(db, 'memberships'), where('uid', '==', user.uid));
-    const snap = await getDocs(q);
+  async function getActivePgName(){if(!charData.playgroupId||!auth.currentUser)return null;const pgDoc=await getDoc(doc(db,'playgroups',charData.playgroupId));return pgDoc.exists()?pgDoc.data().name:null;}
+  async function renderBio(){const pgName=await getActivePgName();document.getElementById('bio-prose').innerHTML=buildProse(charData,pgName);document.getElementById('char-name').textContent=charData.name||'Unnamed';document.getElementById('char-archetype').textContent=[charData.paradigm,charData.archetype].filter(Boolean).join(' · ')||'';renderPowerBar();const quipEl=document.getElementById('char-quip');if(charData.quip){quipEl.textContent=`"${charData.quip}"`;quipEl.classList.add('has-quip');}else{quipEl.textContent='Tagline / Quip';quipEl.classList.remove('has-quip');}document.getElementById('etc-content').textContent=charData.etc||'—';if(charData.pictureUrl){document.getElementById('pic-placeholder').style.display='none';const img=document.getElementById('char-img');img.src=charData.pictureUrl;img.style.display='block';}}
 
-    if (snap.empty) {
-      pgLinks.innerHTML = '<div class="panel-empty">None yet.</div>';
-      return;
-    }
+  async function loadMentalSection(){const basicQ=query(collection(db,'rulesets'),where('isBasicSet','==',true));const basicSnap=await getDocs(basicQ);availableRulesets=[];if(!basicSnap.empty)availableRulesets.push({name:'Basic Set',morals:basicSnap.docs[0].data().morals||[]});if(charData.playgroupId){const pgRsQ=query(collection(db,'rulesets'),where('playgroupId','==',charData.playgroupId));const pgRsSnap=await getDocs(pgRsQ);pgRsSnap.docs.forEach(d=>availableRulesets.push({name:d.data().name,morals:d.data().morals||[]}));}renderMoralsView();renderObligationsView();renderDisordersView();if(canEdit){document.getElementById('morals-edit-btn').style.display='inline';document.getElementById('obligations-edit-btn').style.display='inline';document.getElementById('disorders-edit-btn').style.display='inline';}}
 
-    pgLinks.innerHTML = '';
-    for (const mDoc of snap.docs) {
-      const pgDoc = await getDoc(doc(db, 'playgroups', mDoc.data().playgroupId));
-      if (!pgDoc.exists()) continue;
-      pgLinks.innerHTML += `<a class="panel-link" href="playgroup.html?id=${pgDoc.id}">${pgDoc.data().name}</a>`;
-    }
+  function renderMoralsView(){const selected=normalizeSelectedMorals(),display=document.getElementById('moral-cards-display');if(selected.length===0){display.innerHTML='<div class="moral-empty">No morals selected.</div>';return;}display.innerHTML=selected.map(m=>`<div class="moral-card-item"><div class="moral-card-top"><span style="font-size:11px;color:#888;font-weight:500">${severityLabel(m.severity,MORAL_SEVERITY)}</span></div><div class="moral-card-name">${m.name}</div></div>`).join('');}
+  window.updateMoralSeverity=async function(i,severity){const selected=normalizeSelectedMorals();if(i>=0&&i<selected.length)selected[i].severity=severity;charData.selectedMorals=selected;await updateDoc(doc(db,'characters',charId),{selectedMorals:selected});}
+  window.editMorals=function(){document.getElementById('morals-view').style.display='none';document.getElementById('morals-edit-btn').style.display='none';document.getElementById('morals-edit-mode').style.display='block';const selected=normalizeSelectedMorals(),selectedNames=selected.map(m=>m.name);const chipsHtml=availableRulesets.map(rs=>{let hasWildcard=false;const regularChips=rs.morals.map(m=>{if(!m||!m.trim()){hasWildcard=true;return '';}return `<div class="moral-chip ${selectedNames.includes(m)?'selected':''}" onclick="toggleMoral('${m.replace(/'/g,"\\'")}',this)">${m}</div>`;}).filter(x=>x).join('');const wildcardChip=hasWildcard?`<div class="moral-chip" style="border-style:dashed;color:#888" onclick="addCustomMoral()">+ Custom…</div>`:'';return `<div class="moral-group"><div class="moral-group-title">${rs.name}</div><div class="moral-chips">${regularChips}${wildcardChip}</div></div>`;}).join('');const severityHtml=selected.length===0?'':`<div style="margin-top:12px;border-top:1px solid #1a1a1a;padding-top:10px"><div style="font-size:10px;color:#444;font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">Severity</div>${selected.map((m,i)=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:12px;color:#888">${severitySelectHtml(m.severity,`updateMoralSeverity(${i},this.value)`,MORAL_SEVERITY)}<span>${m.name}</span><span class="mod-delete" onclick="removeMoralByIndex(${i})" style="margin-left:auto">×</span></div>`).join('')}</div>`;document.getElementById('morals-by-ruleset').innerHTML=chipsHtml+severityHtml;}
+
+  window.addCustomMoral=async function(){const name=prompt('Enter custom moral (one word or short phrase):');if(!name||!name.trim())return;const trimmed=name.trim();let selected=normalizeSelectedMorals();if(selected.some(m=>m.name.toLowerCase()===trimmed.toLowerCase())){alert('You already have that moral.');return;}selected.push({name:trimmed,severity:'Minor'});charData.selectedMorals=selected;await updateDoc(doc(db,'characters',charId),{selectedMorals:selected});editMorals();}
+
+  window.removeMoralByIndex=async function(i){let selected=normalizeSelectedMorals();selected.splice(i,1);charData.selectedMorals=selected;await updateDoc(doc(db,'characters',charId),{selectedMorals:selected});editMorals();}
+  window.doneMorals=function(){document.getElementById('morals-view').style.display='block';document.getElementById('morals-edit-btn').style.display='inline';document.getElementById('morals-edit-mode').style.display='none';renderMoralsView();}
+  window.toggleMoral=async function(moral,el){if(!canEdit)return;let selected=normalizeSelectedMorals();if(selected.some(m=>m.name===moral)){selected=selected.filter(m=>m.name!==moral);el.classList.remove('selected');}else{selected.push({name:moral,severity:'Minor'});el.classList.add('selected');}charData.selectedMorals=selected;await updateDoc(doc(db,'characters',charId),{selectedMorals:selected});}
+
+  function renderObligationsView(){const o=charData.moralObligations||[];document.getElementById('obligations-view').innerHTML=o.length===0?'<div style="color:#333;font-size:12px">None.</div>':o.map((x,i)=>`<div class="obligation-entry"><div class="entry-header"><span style="font-size:12px;font-weight:600;color:#aaa">${severityLabel(x.severity,OBLIGATION_SEVERITY)}</span>${canEdit?`<span class="entry-delete" onclick="deleteObligation(${i})">×</span>`:''}</div>I have to <span class="entry-text">${x.obligation||'___'}</span> because I <span class="entry-text">${x.violation||'___'}</span></div>`).join('');}
+  function renderObligationsList(){const o=charData.moralObligations||[];document.getElementById('obligations-list').innerHTML=o.length===0?'<div style="color:#333;font-size:12px;margin-bottom:8px">No entries yet.</div>':o.map((x,i)=>`<div class="obligation-entry"><div class="entry-header">${severitySelectHtml(x.severity,`saveObligation(${i},'severity',this.value)`,OBLIGATION_SEVERITY)}<span class="entry-delete" onclick="deleteObligation(${i})">×</span></div>I have to <input class="entry-input" value="${x.obligation||''}" placeholder="..." onchange="saveObligation(${i},'obligation',this.value)"> because I <input class="entry-input" value="${x.violation||''}" placeholder="..." onchange="saveObligation(${i},'violation',this.value)"></div>`).join('');}
+  window.editObligations=function(){document.getElementById('obligations-view').style.display='none';document.getElementById('obligations-edit-btn').style.display='none';document.getElementById('obligations-edit-mode').style.display='block';document.getElementById('add-obligation-btn').style.display='inline-block';renderObligationsList();}
+  window.doneObligations=function(){document.getElementById('obligations-view').style.display='block';document.getElementById('obligations-edit-btn').style.display='inline';document.getElementById('obligations-edit-mode').style.display='none';renderObligationsView();}
+  window.addObligation=async function(){const o=charData.moralObligations||[];o.push({obligation:'',violation:'',severity:'Minor'});charData.moralObligations=o;await updateDoc(doc(db,'characters',charId),{moralObligations:o});renderObligationsList();}
+  window.saveObligation=async function(i,f,v){const o=charData.moralObligations||[];if(o[i])o[i][f]=v;charData.moralObligations=o;await updateDoc(doc(db,'characters',charId),{moralObligations:o});}
+  window.deleteObligation=async function(i){charData.moralObligations.splice(i,1);await updateDoc(doc(db,'characters',charId),{moralObligations:charData.moralObligations});renderObligationsList();}
+
+  function renderDisordersView(){const d=charData.mentalDisorders||[];document.getElementById('disorders-view').innerHTML=d.length===0?'<div style="color:#333;font-size:12px">None.</div>':d.map((x,i)=>`<div class="disorder-entry"><div class="entry-header"><span style="font-size:12px;font-weight:600;color:#aaa">${severityLabel(x.severity,CONDITION_SEVERITY).replace('Condition',x.disorder||'Condition')}</span>${canEdit?`<span class="entry-delete" onclick="deleteDisorder(${i})">×</span>`:''}</div>I have <span class="entry-text">${x.disorder||'___'}</span> which means <span class="entry-text">${x.description||'___'}</span> and if triggered I might <span class="entry-text">${x.symptoms||'___'}</span></div>`).join('');}
+  function renderDisordersList(){const d=charData.mentalDisorders||[];document.getElementById('disorders-list').innerHTML=d.length===0?'<div style="color:#333;font-size:12px;margin-bottom:8px">No entries yet.</div>':d.map((x,i)=>`<div class="disorder-entry"><div class="entry-header">${severitySelectHtml(x.severity,`saveDisorder(${i},'severity',this.value)`,CONDITION_SEVERITY)}<span class="entry-header-type">${x.disorder||'Condition'}</span><span class="entry-delete" onclick="deleteDisorder(${i})">×</span></div>I have <input class="entry-input" value="${x.disorder||''}" placeholder="condition name..." onchange="saveDisorder(${i},'disorder',this.value);rerenderDisorderHeader(${i},this.value)"> which means <input class="entry-input" value="${x.description||''}" placeholder="..." onchange="saveDisorder(${i},'description',this.value)"> and if triggered I might <input class="entry-input" value="${x.symptoms||''}" placeholder="..." onchange="saveDisorder(${i},'symptoms',this.value)"></div>`).join('');}
+  window.rerenderDisorderHeader=function(i,val){const headers=document.querySelectorAll('#disorders-list .entry-header-type');if(headers[i])headers[i].textContent=val||'Condition';}
+  window.editDisorders=function(){document.getElementById('disorders-view').style.display='none';document.getElementById('disorders-edit-btn').style.display='none';document.getElementById('disorders-edit-mode').style.display='block';document.getElementById('add-disorder-btn').style.display='inline-block';renderDisordersList();}
+  window.doneDisorders=function(){document.getElementById('disorders-view').style.display='block';document.getElementById('disorders-edit-btn').style.display='inline';document.getElementById('disorders-edit-mode').style.display='none';renderDisordersView();}
+  window.addDisorder=async function(){const d=charData.mentalDisorders||[];d.push({disorder:'',description:'',symptoms:'',severity:'Minor'});charData.mentalDisorders=d;await updateDoc(doc(db,'characters',charId),{mentalDisorders:d});renderDisordersList();}
+  window.saveDisorder=async function(i,f,v){const d=charData.mentalDisorders||[];if(d[i])d[i][f]=v;charData.mentalDisorders=d;await updateDoc(doc(db,'characters',charId),{mentalDisorders:d});}
+  window.deleteDisorder=async function(i){charData.mentalDisorders.splice(i,1);await updateDoc(doc(db,'characters',charId),{mentalDisorders:charData.mentalDisorders});renderDisordersList();}
+
+  onAuthStateChanged(auth,async function(user){
+    if(!user||!user.emailVerified)return;if(loaded)return;loaded=true;
+    const userDoc=await getDoc(doc(db,'users',user.uid));if(userDoc.exists())setNavUsername(userDoc.data().username);
+    const charDoc=await getDoc(doc(db,'characters',charId));if(!charDoc.exists()){window.location.href='home.html';return;}
+    charData=charDoc.data();canEdit=charData.uid===user.uid;
+    const membQ=query(collection(db,'memberships'),where('uid','==',user.uid));const membSnap=await getDocs(membQ);
+    for(const mDoc of membSnap.docs){const pgDoc=await getDoc(doc(db,'playgroups',mDoc.data().playgroupId));if(pgDoc.exists())userPlaygroups.push({id:pgDoc.id,name:pgDoc.data().name});}
+    const basicQ=query(collection(db,'rulesets'),where('isBasicSet','==',true));const basicSnap=await getDocs(basicQ);
+    primarySkillDefs=(!basicSnap.empty&&basicSnap.docs[0].data().primarySkills)?basicSnap.docs[0].data().primarySkills:FALLBACK_SKILLS;
+    document.getElementById('loading').style.display='none';document.getElementById('char-content').style.display='block';
+    await renderBio();await loadMentalSection();buildStatsSection();buildSkillsSection();
+    if(canEdit){document.getElementById('bio-edit-btn').style.display='inline';document.getElementById('stats-edit-btn').style.display='inline';}
   });
 
-  window.logout = async function() {
-    await signOut(auth);
-    window.location.href = 'index.html';
-  }
+  window.triggerPicUpload=function(){if(canEdit)document.getElementById('pic-input').click();}
+  window.handlePicChange=async function(e){const file=e.target.files[0];if(!file)return;const slot=document.getElementById('picture-slot');const overlay=document.createElement('div');overlay.className='pic-uploading';overlay.textContent='Uploading...';slot.appendChild(overlay);try{const storageRef=ref(storage,`characters/${charId}/portrait`);await uploadBytes(storageRef,file);const url=await getDownloadURL(storageRef);await updateDoc(doc(db,'characters',charId),{pictureUrl:url});charData.pictureUrl=url;document.getElementById('pic-placeholder').style.display='none';const img=document.getElementById('char-img');img.src=url;img.style.display='block';}catch(err){alert('Upload failed.');}finally{slot.removeChild(overlay);}}
+  window.editQuip=function(){if(!canEdit)return;const val=prompt('Enter tagline / quip:',charData.quip||'');if(val===null)return;updateDoc(doc(db,'characters',charId),{quip:val}).then(()=>{charData.quip=val;renderBio();});}
+  window.editBio=function(){document.getElementById('bio-view').style.display='none';document.getElementById('bio-edit-btn').style.display='none';document.getElementById('bio-edit').style.display='block';['name','sex','age','ethnicity','paradigm','archetype','residence','appearance'].forEach(f=>document.getElementById('e-'+f).value=charData[f]||'');const sel=document.getElementById('e-playgroup');sel.innerHTML='<option value="">None — not in active play</option>';userPlaygroups.forEach(pg=>{const opt=document.createElement('option');opt.value=pg.id;opt.textContent=pg.name;if(charData.playgroupId===pg.id)opt.selected=true;sel.appendChild(opt);});}
+  window.cancelBio=function(){document.getElementById('bio-view').style.display='block';document.getElementById('bio-edit-btn').style.display='inline';document.getElementById('bio-edit').style.display='none';}
+  window.updatePreview=function(){const d={};['name','sex','age','ethnicity','paradigm','archetype','residence','appearance'].forEach(f=>d[f]=document.getElementById('e-'+f).value.trim());const pg=userPlaygroups.find(p=>p.id===document.getElementById('e-playgroup').value);document.getElementById('bio-prose').innerHTML=buildProse(d,pg?pg.name:null);}
+  window.saveBio=async function(){const msg=document.getElementById('bio-msg'),updated={};['name','sex','age','ethnicity','paradigm','archetype','residence','appearance'].forEach(f=>updated[f]=document.getElementById('e-'+f).value.trim());updated.playgroupId=document.getElementById('e-playgroup').value||null;try{await updateDoc(doc(db,'characters',charId),updated);Object.assign(charData,updated);await renderBio();msg.textContent='Saved!';setTimeout(()=>{msg.textContent='';cancelBio();},1000);}catch(e){msg.textContent='Error saving.';msg.style.color='#ff6666';}}
+  window.editEtc=function(){if(!canEdit)return;document.getElementById('etc-content').style.display='none';document.getElementById('etc-edit').value=charData.etc||'';document.getElementById('etc-edit').style.display='block';document.getElementById('etc-btn-row').style.display='block';}
+  window.cancelEtc=function(){document.getElementById('etc-content').style.display='block';document.getElementById('etc-edit').style.display='none';document.getElementById('etc-btn-row').style.display='none';}
+  window.saveEtc=async function(){const val=document.getElementById('etc-edit').value.trim();try{await updateDoc(doc(db,'characters',charId),{etc:val});charData.etc=val;document.getElementById('etc-content').textContent=val||'—';cancelEtc();}catch(e){alert('Error saving.');}}
+  window.logout=async function(){await signOut(auth);window.location.href='index.html';}
 </script>
 </body>
 </html>
