@@ -13,7 +13,7 @@ const NAV_HTML = `
   <div class="topbar-item">
     Navigation
     <div class="dropdown">
-      <a href="#">My Characters</a>
+      <a href="my-characters.html">My Characters</a>
       <a href="my-playgroups.html">My Playgroups</a>
       <a href="#">My Scenarios</a>
     </div>
@@ -74,7 +74,7 @@ const NAV_HTML = `
   <div class="banner-item">
     Characters
     <div class="banner-dropdown">
-      <a href="#">My Characters</a>
+      <a href="my-characters.html">My Characters</a>
       <a href="create-character.html">Create Character</a>
     </div>
   </div>
