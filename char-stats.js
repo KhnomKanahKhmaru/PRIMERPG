@@ -107,13 +107,32 @@ export function createStatsSection(ctx) {
     return s.isSize ? getSizeDefault() : 2;
   }
 
-  // SVG icon for a stat. Falls back to POW's icon for homebrew codes
-  // that don't have a bundled icon — good-enough placeholder.
-  function renderStatIcon(key) {
-    const pathData = STAT_ICONS[key] || STAT_ICONS['pow'] || '';
+  // SVG icon for a stat. Looks up the bundled path in STAT_ICONS by key;
+  // for homebrew stats without a bundled icon, renders a letter placeholder
+  // using the first character of the stat's code ("L" for a custom LUCK stat,
+  // etc.). Background is provided by the containing .stat-icon CSS — no
+  // inline `<rect>` fill here, otherwise the icon becomes a hard black
+  // square that conflicts with any CSS styling of the container.
+  function renderStatIcon(s) {
+    const key = s.key;
+    const code = s.code || key.toUpperCase();
+    const pathData = STAT_ICONS[key];
+
+    if (pathData) {
+      return `<svg viewBox="0 0 512 512" width="36" height="36" xmlns="http://www.w3.org/2000/svg">` +
+               `<path d="${pathData}" fill="#fff"/>` +
+             `</svg>`;
+    }
+
+    // Letter placeholder for unknown stat codes. Show up to 3 chars for
+    // readability ("LUC" rather than just "L"); scale font so it fits.
+    const label = (code || '?').slice(0, 3).toUpperCase();
+    const fontSize = label.length === 1 ? 360 : label.length === 2 ? 300 : 220;
     return `<svg viewBox="0 0 512 512" width="36" height="36" xmlns="http://www.w3.org/2000/svg">` +
-             `<rect width="512" height="512" fill="#000"/>` +
-             `<path d="${pathData}" fill="#fff"/>` +
+             `<text x="256" y="256" text-anchor="middle" ` +
+             `dy=".35em" ` +
+             `fill="#ccc" font-family="'Open Sans', sans-serif" ` +
+             `font-size="${fontSize}" font-weight="700" letter-spacing="-8">${label}</text>` +
            `</svg>`;
   }
 
@@ -212,7 +231,7 @@ export function createStatsSection(ctx) {
       viewRow.id = 'stat-view-' + s.key;
       viewRow.innerHTML =
         `<div class="stat-icon-wrap">` +
-          `<div class="stat-icon">${renderStatIcon(s.key)}</div>` +
+          `<div class="stat-icon">${renderStatIcon(s)}</div>` +
           `<div class="stat-tooltip">${s.description}</div>` +
         `</div>` +
         `<div class="stat-info">` +
@@ -240,7 +259,7 @@ export function createStatsSection(ctx) {
         ).join('');
         editRow.innerHTML =
           `<div class="stat-icon-wrap">` +
-            `<div class="stat-icon">${renderStatIcon(s.key)}</div>` +
+            `<div class="stat-icon">${renderStatIcon(s)}</div>` +
             `<div class="stat-tooltip">${s.description}</div>` +
           `</div>` +
           `<div class="stat-info">` +
@@ -255,7 +274,7 @@ export function createStatsSection(ctx) {
         const xpStr = xpCost > 0 ? '+' + xpCost + 'xp' : xpCost + 'xp';
         editRow.innerHTML =
           `<div class="stat-icon-wrap">` +
-            `<div class="stat-icon">${renderStatIcon(s.key)}</div>` +
+            `<div class="stat-icon">${renderStatIcon(s)}</div>` +
             `<div class="stat-tooltip">${s.description}</div>` +
           `</div>` +
           `<div class="stat-info">` +
