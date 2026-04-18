@@ -306,30 +306,27 @@
 </div>
 
 <script type="module">
-  // All Firebase I/O lives in char-firestore.js. We pull in the handles
-  // we still need (auth, db for ad-hoc queries, onAuthStateChanged to boot)
-  // along with named data helpers. No more direct Firestore calls in
-  // this file — use the helpers.
+  // All Firebase I/O lives in char-firestore.js. We pull in just what's
+  // still needed here — the main load flow uses onAuthStateChanged and
+  // a few query helpers; bio/mental/etc. modules import their own.
   import {
-    auth, db, storage, onAuthStateChanged, signOut,
+    auth, db, onAuthStateChanged, signOut,
     loadCharacter, saveCharacter, deleteCharacter as deleteCharacterDoc,
-    loadUser, loadPlaygroup, loadUserPlaygroups,
-    loadBasicSet, loadPlaygroupRulesets,
-    uploadCharacterPortrait
+    loadUser, loadUserPlaygroups,
+    loadBasicSet, loadPlaygroupRulesets
   } from './char-firestore.js';
 
-  // Game data and XP cost tables. Will be replaced by ruleset lookups
-  // once ruleset wiring lands — for now these are the hardcoded defaults.
+  // Only the pieces character.html itself still uses — most game data now
+  // lives in the section modules that import from char-constants directly.
   import {
-    SEVERITY_OPTIONS, MORAL_SEVERITY, CONDITION_SEVERITY, OBLIGATION_SEVERITY,
-    POWER_LEVELS, STAT_DEFS, STAT_DESCRIPTIONS, STAT_LABELS, SIZE_OPTIONS,
-    SKILL_LABELS, FALLBACK_SKILLS, STAT_XP, PRIM_XP, SEC_XP, SPEC_XP, STAT_ICONS
+    STAT_DEFS, SKILL_LABELS, FALLBACK_SKILLS,
+    PRIM_XP, SEC_XP, SPEC_XP
   } from './char-constants.js';
 
-  // Pure helper functions.
+  // Pure helper functions — char-util.js has many more, but only these
+  // three are still referenced from this file.
   import {
-    severityLabel, severitySelectHtml, getStatMod, getStatLabel, getSizeLabel,
-    getStatLevelText, getSkillLevelText, statIcon, statXp, skillXpLabel, skillLevelText
+    statXp, skillXpLabel, skillLevelText
   } from './char-util.js';
 
   // Section render modules. These are factories — we pass a context with
@@ -337,6 +334,8 @@
   import { createMentalSection } from './char-mental.js';
   import { createXpBar } from './char-xp.js';
   import { createSkillsSection } from './char-skills.js';
+  import { createStatsSection } from './char-stats.js';
+  import { createBioSection } from './char-bio.js';
 
   // Inline event handlers in our HTML still call these by name, so expose
   // them on window until the event-delegation pass replaces those handlers.
@@ -360,16 +359,24 @@
     getCharId: () => charId,
     getAvailableRulesets: () => availableRulesets,
     getPrimarySkillDefs: () => primarySkillDefs,
+    getUserPlaygroups: () => userPlaygroups,
     getSkillsEditMode: () => skillsEditMode,
     setSkillsEditMode: (v) => { skillsEditMode = v; },
+    getStatsEditMode: () => statsEditMode,
+    setStatsEditMode: (v) => { statsEditMode = v; },
     // saveXpSpent is defined later in this file but modules only call it
     // at runtime (never module-load time), so the forward reference is safe.
     saveXpSpent: () => saveXpSpent(),
+    // Bio section needs access to xpBar to refresh the power bar alongside
+    // its own renders. Returned via getter so the reference is always fresh.
+    getXpBar: () => xpBar,
   };
 
   const mental = createMentalSection(sectionCtx);
   const xpBar = createXpBar(sectionCtx);
   const skills = createSkillsSection(sectionCtx);
+  const stats = createStatsSection(sectionCtx);
+  const bio = createBioSection(sectionCtx);
 
   // Expose section handlers on window so inline onclick handlers in the
   // HTML (and in dynamically-generated markup) can reach them. These go
@@ -408,84 +415,34 @@
     saveSpecSkill: skills.saveSpecSkill,
     renameSpecSkill: skills.renameSpecSkill,
     deleteSpecSkill: skills.deleteSpecSkill,
+    // Stats
+    toggleStatsEdit: stats.toggleStatsEdit,
+    toggleModPanel: stats.toggleModPanel,
+    onStatInput: stats.onStatInput,
+    adjustStat: stats.adjustStat,
+    saveStatBase: stats.saveStatBase,
+    addModifier: stats.addModifier,
+    deleteModifier: stats.deleteModifier,
+    // Bio
+    editBio: bio.editBio,
+    cancelBio: bio.cancelBio,
+    updatePreview: bio.updatePreview,
+    saveBio: bio.saveBio,
+    editQuip: bio.editQuip,
+    editEtc: bio.editEtc,
+    cancelEtc: bio.cancelEtc,
+    saveEtc: bio.saveEtc,
+    triggerPicUpload: bio.triggerPicUpload,
+    handlePicChange: bio.handlePicChange,
   });
 
   // Keep SKILL_LABELS on window so inline oninput handlers can reach it.
   // (Those inline handlers will go away during the event-delegation pass.)
   window.SKILL_LABELS_GLOBAL = SKILL_LABELS;
 
-  // Stat total = base + sum of modifiers.
-  // Stays here because it reads charData; moves to a render module later.
-  function getStatTotal(k) {
-    const d = STAT_DEFS.find(s => s.key === k);
-    const b = (charData.stats && charData.stats[k] !== undefined) ? charData.stats[k] : d.default;
-    const m = (charData.statModifiers && charData.statModifiers[k]) ? charData.statModifiers[k] : [];
-    return b + m.reduce((s, x) => s + (parseInt(x.value) || 0), 0);
-  }
-
-  function buildStatsSection(){
-    const container=document.getElementById('stats-list');container.innerHTML='';
-    STAT_DEFS.forEach(s=>{
-      const total=getStatTotal(s.key),base=(charData.stats&&charData.stats[s.key]!==undefined)?charData.stats[s.key]:s.default;
-      const mod=s.key!=='size'?getStatMod(total):null,modStr=mod!==null?(mod>=0?'+'+mod:''+mod):'';
-      const levelLabel=s.key!=='size'?getStatLabel(total):getSizeLabel(total);
-      const wrapper=document.createElement('div');
-      const viewRow=document.createElement('div');viewRow.className='stat-row';viewRow.id='stat-view-'+s.key;
-      viewRow.innerHTML=`<div class="stat-icon-wrap"><div class="stat-icon">${statIcon(s.key)}</div><div class="stat-tooltip">${STAT_DESCRIPTIONS[s.key]}</div></div><div class="stat-info"><div class="stat-label"><span class="abbr">${s.abbr}</span>${s.rest}</div><div class="stat-level-label" id="stat-level-${s.key}">${getStatLevelText(s.key,total)}</div></div><div class="stat-value-area"><div class="stat-value-wrap"><span class="stat-total-display" id="stat-total-${s.key}">${s.key==='size'?getSizeLabel(total):total}</span>${mod!==null?`<span class="stat-mod-exponent" id="statmod-${s.key}">${modStr}</span>`:''}</div></div>`;
-      const editRow=document.createElement('div');editRow.className='stat-row';editRow.id='stat-edit-'+s.key;editRow.style.display='none';
-      if(s.key==='size'){const sizeOpts=SIZE_OPTIONS.map(o=>`<option value="${o.value}" ${base===o.value?'selected':''}>${o.label}</option>`).join('');editRow.innerHTML=`<div class="stat-icon-wrap"><div class="stat-icon">${statIcon(s.key)}</div><div class="stat-tooltip">${STAT_DESCRIPTIONS[s.key]}</div></div><div class="stat-info"><div class="stat-label"><span class="abbr">${s.abbr}</span>${s.rest}</div></div><div class="stat-value-area"><select class="stat-size-select" id="stat-input-${s.key}" onchange="saveStatBase('${s.key}',this.value)">${sizeOpts}</select></div>`;}
-      else{const xpCost=STAT_XP[Math.min(Math.max(1,base),6)]||0;const xpStr=xpCost>0?'+'+xpCost+'xp':xpCost+'xp';editRow.innerHTML=`<div class="stat-icon-wrap"><div class="stat-icon">${statIcon(s.key)}</div><div class="stat-tooltip">${STAT_DESCRIPTIONS[s.key]}</div></div><div class="stat-info"><div class="stat-label"><span class="abbr">${s.abbr}</span>${s.rest}</div><div class="stat-level-label" id="stat-level-edit-${s.key}">${getStatLevelText(s.key,total)}</div></div><div class="stat-value-area"><div class="stat-input-row"><button class="stat-adj-btn" onclick="adjustStat('${s.key}',-1)">−</button><input type="number" class="stat-base-input" id="stat-input-${s.key}" min="1" max="20" value="${base}" oninput="onStatInput('${s.key}',this.value)" onchange="saveStatBase('${s.key}',this.value)"><button class="stat-adj-btn" onclick="adjustStat('${s.key}',1)">+</button></div><div class="stat-mod-row"><div class="stat-mod-badge" id="statmod-edit-${s.key}">${modStr}</div><span style="font-size:9px;color:#555" id="stat-xp-${s.key}">${xpStr}</span><button class="stat-pm-btn" onclick="toggleModPanel('${s.key}')">+/−</button></div></div>`;}
-      const modPanel=document.createElement('div');modPanel.className='stat-mod-panel';modPanel.id='modpanel-'+s.key;modPanel.style.display='none';
-      modPanel.innerHTML=`<div id="modlist-${s.key}"></div><div class="mod-add-row"><input type="text" id="modname-${s.key}" placeholder="Modifier name"><input type="number" id="modval-${s.key}" value="1"><button class="mod-add-btn" onclick="addModifier('${s.key}')">Add</button></div>`;
-      wrapper.appendChild(viewRow);wrapper.appendChild(editRow);wrapper.appendChild(modPanel);container.appendChild(wrapper);renderModList(s.key);
-    });
-  }
-
-  window.toggleStatsEdit=function(){statsEditMode=!statsEditMode;document.getElementById('stats-edit-btn').textContent=statsEditMode?'Done':'Edit';STAT_DEFS.forEach(s=>{document.getElementById('stat-view-'+s.key).style.display=statsEditMode?'none':'flex';document.getElementById('stat-edit-'+s.key).style.display=statsEditMode?'flex':'none';if(!statsEditMode){const p=document.getElementById('modpanel-'+s.key);if(p)p.style.display='none';}});}
-  window.onStatInput=function(key,val){const v=Math.max(1,Math.min(20,parseInt(val)||1));if(!charData.stats)charData.stats={};charData.stats[key]=v;const total=getStatTotal(key),mod=getStatMod(total),modStr=mod>=0?'+'+mod:''+mod;const badge=document.getElementById('statmod-edit-'+key);if(badge)badge.textContent=modStr;const levelEl=document.getElementById('stat-level-edit-'+key);if(levelEl)levelEl.textContent=getStatLevelText(key,total);const xpEl=document.getElementById('stat-xp-'+key);if(xpEl){const c=STAT_XP[Math.min(Math.max(1,v),6)]||0;xpEl.textContent=(c>0?'+'+c:c)+'xp';}}
-  window.adjustStat = async function(key, delta) {
-    if (!canEdit) return;
-    if (!charData.stats) charData.stats = {};
-    const cur = charData.stats[key] !== undefined ? charData.stats[key] : STAT_DEFS.find(s => s.key === key).default;
-    const nv = Math.max(1, Math.min(20, cur + delta));
-    charData.stats[key] = nv;
-    const inp = document.getElementById('stat-input-' + key);
-    if (inp) inp.value = nv;
-    await saveCharacter(charId, { [`stats.${key}`]: nv });
-    onStatInput(key, nv);
-    updateStatViewDisplay(key);
-    if (key !== 'size') await saveXpSpent();
-  }
-  function renderModList(key){const mods=(charData.statModifiers&&charData.statModifiers[key])?charData.statModifiers[key]:[];const el=document.getElementById('modlist-'+key);if(!el)return;el.innerHTML=mods.length===0?'<div style="color:#333;font-size:11px;margin-bottom:4px">No modifiers.</div>':mods.map((m,i)=>`<div class="mod-item"><span class="mod-item-name">${m.name}</span><span class="mod-item-val">${m.value>=0?'+':''}${m.value}</span><span class="mod-delete" onclick="deleteModifier('${key}',${i})">×</span></div>`).join('');updateStatViewDisplay(key);}
-  function updateStatViewDisplay(key){const total=getStatTotal(key),mod=getStatMod(total),modStr=mod>=0?'+'+mod:''+mod;const t=document.getElementById('stat-total-'+key);if(t)t.textContent=key==='size'?getSizeLabel(total):total;const exp=document.getElementById('statmod-'+key);if(exp)exp.textContent=modStr;const l=document.getElementById('stat-level-'+key);if(l)l.textContent=getStatLevelText(key,total);const eb=document.getElementById('statmod-edit-'+key);if(eb)eb.textContent=modStr;const el=document.getElementById('stat-level-edit-'+key);if(el)el.textContent=getStatLevelText(key,total);}
-  window.toggleModPanel=function(key){const p=document.getElementById('modpanel-'+key);p.style.display=p.style.display==='none'?'block':'none';}
-  window.saveStatBase = async function(key, val) {
-    if (!canEdit) return;
-    const v = key === 'size' ? parseInt(val) : Math.max(1, Math.min(20, parseInt(val) || 1));
-    if (!charData.stats) charData.stats = {};
-    charData.stats[key] = v;
-    await saveCharacter(charId, { [`stats.${key}`]: v });
-    updateStatViewDisplay(key);
-    if (key !== 'size') await saveXpSpent();
-  }
-  window.addModifier = async function(key) {
-    const name = document.getElementById('modname-' + key).value.trim();
-    const val = parseInt(document.getElementById('modval-' + key).value) || 0;
-    if (!name) return;
-    if (!charData.statModifiers) charData.statModifiers = {};
-    if (!charData.statModifiers[key]) charData.statModifiers[key] = [];
-    charData.statModifiers[key].push({ name, value: val });
-    await saveCharacter(charId, { statModifiers: charData.statModifiers });
-    document.getElementById('modname-' + key).value = '';
-    document.getElementById('modval-' + key).value = '1';
-    renderModList(key);
-  }
-  window.deleteModifier = async function(key, i) {
-    charData.statModifiers[key].splice(i, 1);
-    await saveCharacter(charId, { statModifiers: charData.statModifiers });
-    renderModList(key);
-  }
-
+  // calcTotalXp sums XP spent across stats and skills. Stays here because
+  // it needs to read both section's data; will move to char-xp.js in a
+  // later pass along with saveXpSpent.
   function calcTotalXp(){
     let xp=0;
     STAT_DEFS.forEach(s=>{if(s.key==='size')return;const v=charData.stats&&charData.stats[s.key]!==undefined?charData.stats[s.key]:s.default;xp+=statXp(v);});
@@ -501,15 +458,6 @@
     await saveCharacter(charId, { xpSpent: v });
     xpBar.renderPowerBar();
   }
-
-  function buildProse(d,pgName){const name=d.name?`<b>${d.name}</b>`:'___';let line1=`${name} is a`;if(d.sex)line1+=` <b>${d.sex}</b>`;if(d.age)line1+=` <b>${d.age}</b> year old`;if(d.ethnicity)line1+=` <b>${d.ethnicity}</b>`;if(d.paradigm)line1+=` <b>${d.paradigm}</b>`;if(d.archetype)line1+=` <b>${d.archetype}</b>`;if(d.residence)line1+=` living in <b>${d.residence}</b>`;if(pgName)line1+=`, from the World of <b>${pgName}</b>.`;else line1+='. Currently, they are not an active Character in play.';const name2=d.name?`<b>${d.name}</b>`:'___';let line2=`${name2} <b>typically appears as</b>`;if(d.appearance)line2+=` <i>${d.appearance}</i>`;return line1+'<br><br>'+line2;}
-
-  async function getActivePgName() {
-    if (!charData.playgroupId || !auth.currentUser) return null;
-    const pg = await loadPlaygroup(charData.playgroupId);
-    return pg ? pg.name : null;
-  }
-  async function renderBio(){const pgName=await getActivePgName();document.getElementById('bio-prose').innerHTML=buildProse(charData,pgName);document.getElementById('char-name').textContent=charData.name||'Unnamed';document.getElementById('char-archetype').textContent=[charData.paradigm,charData.archetype].filter(Boolean).join(' · ')||'';xpBar.renderPowerBar();const quipEl=document.getElementById('char-quip');if(charData.quip){quipEl.textContent=`"${charData.quip}"`;quipEl.classList.add('has-quip');}else{quipEl.textContent='Tagline / Quip';quipEl.classList.remove('has-quip');}document.getElementById('etc-content').textContent=charData.etc||'—';if(charData.pictureUrl){document.getElementById('pic-placeholder').style.display='none';const img=document.getElementById('char-img');img.src=charData.pictureUrl;img.style.display='block';}}
 
   async function loadMentalSection() {
     availableRulesets = [];
@@ -564,9 +512,9 @@
     document.getElementById('char-content').style.display = 'block';
 
     // Render every section.
-    await renderBio();
+    await bio.renderBio();
     await loadMentalSection();
-    buildStatsSection();
+    stats.buildStatsSection();
     skills.buildSkillsSection();
 
     // Owner-only UI elements.
@@ -577,71 +525,6 @@
     }
   });
 
-  window.triggerPicUpload=function(){if(canEdit)document.getElementById('pic-input').click();}
-  window.handlePicChange = async function(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    const slot = document.getElementById('picture-slot');
-    const overlay = document.createElement('div');
-    overlay.className = 'pic-uploading';
-    overlay.textContent = 'Uploading...';
-    slot.appendChild(overlay);
-    try {
-      const url = await uploadCharacterPortrait(charId, file);
-      await saveCharacter(charId, { pictureUrl: url });
-      charData.pictureUrl = url;
-      document.getElementById('pic-placeholder').style.display = 'none';
-      const img = document.getElementById('char-img');
-      img.src = url;
-      img.style.display = 'block';
-    } catch (err) {
-      alert('Upload failed.');
-    } finally {
-      slot.removeChild(overlay);
-    }
-  }
-  window.editQuip = function() {
-    if (!canEdit) return;
-    const val = prompt('Enter tagline / quip:', charData.quip || '');
-    if (val === null) return;
-    saveCharacter(charId, { quip: val }).then(() => {
-      charData.quip = val;
-      renderBio();
-    });
-  }
-  window.editBio=function(){document.getElementById('bio-view').style.display='none';document.getElementById('bio-edit-btn').style.display='none';document.getElementById('bio-edit').style.display='block';['name','sex','age','ethnicity','paradigm','archetype','residence','appearance'].forEach(f=>document.getElementById('e-'+f).value=charData[f]||'');const sel=document.getElementById('e-playgroup');sel.innerHTML='<option value="">None — not in active play</option>';userPlaygroups.forEach(pg=>{const opt=document.createElement('option');opt.value=pg.id;opt.textContent=pg.name;if(charData.playgroupId===pg.id)opt.selected=true;sel.appendChild(opt);});}
-  window.cancelBio=function(){document.getElementById('bio-view').style.display='block';document.getElementById('bio-edit-btn').style.display='inline';document.getElementById('bio-edit').style.display='none';}
-  window.updatePreview=function(){const d={};['name','sex','age','ethnicity','paradigm','archetype','residence','appearance'].forEach(f=>d[f]=document.getElementById('e-'+f).value.trim());const pg=userPlaygroups.find(p=>p.id===document.getElementById('e-playgroup').value);document.getElementById('bio-prose').innerHTML=buildProse(d,pg?pg.name:null);}
-  window.saveBio = async function() {
-    const msg = document.getElementById('bio-msg');
-    const updated = {};
-    ['name','sex','age','ethnicity','paradigm','archetype','residence','appearance']
-      .forEach(f => updated[f] = document.getElementById('e-' + f).value.trim());
-    updated.playgroupId = document.getElementById('e-playgroup').value || null;
-    try {
-      await saveCharacter(charId, updated);
-      Object.assign(charData, updated);
-      await renderBio();
-      msg.textContent = 'Saved!';
-      setTimeout(() => { msg.textContent = ''; cancelBio(); }, 1000);
-    } catch (e) {
-      msg.textContent = 'Error saving.';
-      msg.style.color = '#ff6666';
-    }
-  }
-  window.editEtc=function(){if(!canEdit)return;document.getElementById('etc-content').style.display='none';document.getElementById('etc-edit').value=charData.etc||'';document.getElementById('etc-edit').style.display='block';document.getElementById('etc-btn-row').style.display='block';}
-  window.cancelEtc=function(){document.getElementById('etc-content').style.display='block';document.getElementById('etc-edit').style.display='none';document.getElementById('etc-btn-row').style.display='none';}
-  window.saveEtc = async function() {
-    const val = document.getElementById('etc-edit').value.trim();
-    try {
-      await saveCharacter(charId, { etc: val });
-      charData.etc = val;
-      document.getElementById('etc-content').textContent = val || '—';
-      cancelEtc();
-    } catch (e) {
-      alert('Error saving.');
-    }
-  }
   window.deleteCharacter = async function() {
     if (!canEdit) return;
     const name = charData.name || 'this character';
