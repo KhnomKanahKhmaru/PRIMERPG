@@ -234,6 +234,14 @@
           for (const c of charsSnap.docs) await updateDoc(c.ref, { playgroupId: null });
           await deleteDoc(doc(db, 'memberships', user.uid + '_' + pgId));
           await createPlaygroupNews(db, pgId, pgData.name, `**${myUsername}** left the playgroup.`);
+          // alert staff
+          const staffSnap = await getDocs(query(collection(db, 'memberships'), where('playgroupId', '==', pgId)));
+          for (const mDoc of staffSnap.docs) {
+            const r = mDoc.data().role;
+            if (r === 'Leader' || r === 'Administrator') {
+              await createAlert(db, mDoc.data().uid, `**${myUsername}** left your playgroup **${pgData.name}**.`, `playgroup.html?id=${pgId}`);
+            }
+          }
           window.location.href = 'my-playgroups.html';
         };
         document.querySelector('.bottom-bar').appendChild(leaveBtn);
