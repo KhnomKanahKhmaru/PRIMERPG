@@ -1,32 +1,25 @@
 // char-stats.js
-// Handles the Stats section: STR/DEX/PER/CHA/INT/POW/SIZE.
+// Handles the Stats section. Every aspect is ruleset-driven now:
 //
-// UI structure per stat:
-//   - stat-view-{key}   : read-only row (icon + total + mod exponent)
-//   - stat-edit-{key}   : edit row (±buttons + number input + mod badge)
-//   - modpanel-{key}    : collapsible list of named modifiers, add/remove
+//   - The list of stats (STR, DEX, etc.) comes from ruleset.stats —
+//     homebrew rulesets can add, remove, or rename them.
+//   - XP cost per level comes from ruleset.statXp
+//   - STATMOD per level comes from ruleset.statMods
+//   - Flavor labels per level come from ruleset.statLabels
+//   - SIZE is rendered separately using ruleset.size.tiers
+//   - Stat cap is ruleset.statMax
 //
-// SIZE is special-cased — no STATMOD, uses a SIZE_OPTIONS dropdown
-// instead of a number input, and its total uses getSizeLabel().
+// SIZE is always rendered as the last stat row, whether or not it's in
+// ruleset.stats (it isn't — size lives in its own block in the schema).
 //
-// The stat's final value = base + sum of modifier values. Modifiers are
-// stored under charData.statModifiers[key] as { name, value } entries.
+// Stats are keyed in charData.stats by their lowercase code, e.g.
+// charData.stats.str = 4. The ruleset uses uppercase codes like "STR".
 //
-// Factory pattern. createStatsSection(ctx) returns bound handlers.
+// Icon fallback: STAT_ICONS covers the base six stats plus size. For
+// homebrew stats without a bundled icon we fall back to the POW icon —
+// good enough placeholder until per-ruleset icon support lands.
 
-import {
-  STAT_DEFS,
-  STAT_DESCRIPTIONS,
-  STAT_XP,
-  SIZE_OPTIONS
-} from './char-constants.js';
-import {
-  getStatMod,
-  getStatLabel,
-  getSizeLabel,
-  getStatLevelText,
-  statIcon
-} from './char-util.js';
+import { STAT_ICONS } from './char-constants.js';
 import { saveCharacter } from './char-firestore.js';
 
 export function createStatsSection(ctx) {
@@ -36,22 +29,114 @@ export function createStatsSection(ctx) {
   //   getCharId()          -> string
   //   getStatsEditMode()   -> boolean
   //   setStatsEditMode(v)  -> setter
-  //   saveXpSpent()        -> async: recompute and persist total XP
+  //   saveXpSpent()        -> async
+  //   getRuleset()         -> active ruleset
 
-  // ─── INTERNAL HELPERS ───
+  // ─── RULESET LOOKUPS ───
 
-  // Total stat value = base + sum of modifiers.
-  function getStatTotal(k) {
-    const charData = ctx.getCharData();
-    const d = STAT_DEFS.find(s => s.key === k);
-    const b = (charData.stats && charData.stats[k] !== undefined)
-      ? charData.stats[k] : d.default;
-    const m = (charData.statModifiers && charData.statModifiers[k])
-      ? charData.statModifiers[k] : [];
-    return b + m.reduce((s, x) => s + (parseInt(x.value) || 0), 0);
+  // The definitive list of stat rows to render. Combines ruleset.stats
+  // (regular stats like STR) with a synthetic SIZE row at the end.
+  function getStatList() {
+    const rs = ctx.getRuleset();
+    const stats = (rs && Array.isArray(rs.stats)) ? rs.stats : [];
+    const list = stats.map(s => ({
+      key: (s.code || '').toLowerCase(),
+      code: s.code || '',
+      name: s.name || s.code || '',
+      description: s.description || '',
+      isSize: false,
+    }));
+    list.push({
+      key: 'size',
+      code: 'SIZE',
+      name: 'Size',
+      description: 'Your size.',
+      isSize: true,
+    });
+    return list;
   }
 
-  // Render the list of named modifiers inside a stat's ModPanel.
+  function getStatMax() {
+    const rs = ctx.getRuleset();
+    return (rs && rs.statMax) || 20;
+  }
+
+  function getStatXpAt(v) {
+    const rs = ctx.getRuleset();
+    const table = (rs && rs.statXp) || [];
+    return table[v] || 0;
+  }
+
+  function getStatModAt(v) {
+    const rs = ctx.getRuleset();
+    const mods = (rs && rs.statMods) || [];
+    // If v is out of range, fall back to the last defined value or 0.
+    if (mods[v] !== undefined) return mods[v];
+    if (mods.length > 0) return mods[mods.length - 1];
+    return 0;
+  }
+
+  function getStatLabelAt(v) {
+    const rs = ctx.getRuleset();
+    const labels = (rs && rs.statLabels) || [];
+    return labels[v] || '';
+  }
+
+  function getSizeTiers() {
+    const rs = ctx.getRuleset();
+    return (rs && rs.size && Array.isArray(rs.size.tiers)) ? rs.size.tiers : [];
+  }
+
+  function getSizeDefault() {
+    const rs = ctx.getRuleset();
+    return (rs && rs.size && rs.size.default) || 6;
+  }
+
+  // Convert a size level (number like 6) to a display label like "6 — Medium".
+  function getSizeLabel(level) {
+    const tiers = getSizeTiers();
+    const tier = tiers.find(t => t.level === level);
+    if (tier) return `${tier.level} — ${tier.label}`;
+    return `${level}`;
+  }
+
+  // Default stat base value — most rulesets put free XP at level 2, so
+  // that's our default starting point. Used when charData.stats doesn't
+  // have an entry for a given stat yet.
+  function getStatDefault(s) {
+    return s.isSize ? getSizeDefault() : 2;
+  }
+
+  // SVG icon for a stat. Falls back to POW's icon for homebrew codes
+  // that don't have a bundled icon — good-enough placeholder.
+  function renderStatIcon(key) {
+    const pathData = STAT_ICONS[key] || STAT_ICONS['pow'] || '';
+    return `<svg viewBox="0 0 512 512" width="36" height="36" xmlns="http://www.w3.org/2000/svg">` +
+             `<rect width="512" height="512" fill="#000"/>` +
+             `<path d="${pathData}" fill="#fff"/>` +
+           `</svg>`;
+  }
+
+  // ─── STAT-VALUE HELPERS ───
+
+  function getStatTotal(k) {
+    const charData = ctx.getCharData();
+    const list = getStatList();
+    const s = list.find(x => x.key === k);
+    const d = s ? getStatDefault(s) : 0;
+    const b = (charData.stats && charData.stats[k] !== undefined) ? charData.stats[k] : d;
+    const m = (charData.statModifiers && charData.statModifiers[k]) ? charData.statModifiers[k] : [];
+    return b + m.reduce((acc, x) => acc + (parseInt(x.value) || 0), 0);
+  }
+
+  // The "level text" under each stat name, e.g. "You are of Exceptional STR".
+  // SIZE uses its tier label instead.
+  function getStatLevelText(s, total) {
+    if (s.isSize) return getSizeLabel(total);
+    const label = getStatLabelAt(total);
+    return label ? `You are of ${label} ${s.code}` : s.code;
+  }
+
   function renderModList(key) {
     const charData = ctx.getCharData();
     const mods = (charData.statModifiers && charData.statModifiers[key])
@@ -70,27 +155,27 @@ export function createStatsSection(ctx) {
     updateStatViewDisplay(key);
   }
 
-  // Refresh the on-screen total, STATMOD badge, and level label for a stat
-  // without rebuilding the whole section. Called after any change.
   function updateStatViewDisplay(key) {
+    const list = getStatList();
+    const s = list.find(x => x.key === key);
+    if (!s) return;
     const total = getStatTotal(key);
-    const mod = key !== 'size' ? getStatMod(total) : null;
+    const mod = s.isSize ? null : getStatModAt(total);
     const modStr = mod !== null ? (mod >= 0 ? '+' + mod : '' + mod) : '';
 
     const t = document.getElementById('stat-total-' + key);
-    if (t) t.textContent = key === 'size' ? getSizeLabel(total) : total;
+    if (t) t.textContent = s.isSize ? getSizeLabel(total) : total;
 
     const exp = document.getElementById('statmod-' + key);
     if (exp) exp.textContent = modStr;
 
     const l = document.getElementById('stat-level-' + key);
-    if (l) l.textContent = getStatLevelText(key, total);
+    if (l) l.textContent = getStatLevelText(s, total);
 
-    // Edit-row mirrors of the same elements.
     const eb = document.getElementById('statmod-edit-' + key);
     if (eb) eb.textContent = modStr;
     const el = document.getElementById('stat-level-edit-' + key);
-    if (el) el.textContent = getStatLevelText(key, total);
+    if (el) el.textContent = getStatLevelText(s, total);
   }
 
   // ─── BUILDING THE SECTION ───
@@ -98,76 +183,89 @@ export function createStatsSection(ctx) {
   function buildStatsSection() {
     const container = document.getElementById('stats-list');
     container.innerHTML = '';
+    const list = getStatList();
+    const statMax = getStatMax();
 
-    STAT_DEFS.forEach(s => {
-      const total = getStatTotal(s.key);
+    list.forEach(s => {
       const charData = ctx.getCharData();
+      const total = getStatTotal(s.key);
       const base = (charData.stats && charData.stats[s.key] !== undefined)
-        ? charData.stats[s.key] : s.default;
-      const mod = s.key !== 'size' ? getStatMod(total) : null;
+        ? charData.stats[s.key] : getStatDefault(s);
+      const mod = s.isSize ? null : getStatModAt(total);
       const modStr = mod !== null ? (mod >= 0 ? '+' + mod : '' + mod) : '';
+
+      // Abbreviation + rest-of-name: display "STR" + "ength" as
+      // <span class="abbr">STR</span>ength. Most stat names begin with the
+      // stat's code; if not, we just render the full name without split.
+      const codeUpper = s.code.toUpperCase();
+      const nameMatchesCode = s.name.toUpperCase().startsWith(codeUpper);
+      const rest = nameMatchesCode ? s.name.slice(codeUpper.length) : '';
+      const labelHtml = nameMatchesCode
+        ? `<span class="abbr">${codeUpper}</span>${rest}`
+        : s.name;
 
       const wrapper = document.createElement('div');
 
-      // ── VIEW ROW (read-only) ──
+      // ── VIEW ROW ──
       const viewRow = document.createElement('div');
       viewRow.className = 'stat-row';
       viewRow.id = 'stat-view-' + s.key;
       viewRow.innerHTML =
         `<div class="stat-icon-wrap">` +
-          `<div class="stat-icon">${statIcon(s.key)}</div>` +
-          `<div class="stat-tooltip">${STAT_DESCRIPTIONS[s.key]}</div>` +
+          `<div class="stat-icon">${renderStatIcon(s.key)}</div>` +
+          `<div class="stat-tooltip">${s.description}</div>` +
         `</div>` +
         `<div class="stat-info">` +
-          `<div class="stat-label"><span class="abbr">${s.abbr}</span>${s.rest}</div>` +
-          `<div class="stat-level-label" id="stat-level-${s.key}">${getStatLevelText(s.key, total)}</div>` +
+          `<div class="stat-label">${labelHtml}</div>` +
+          `<div class="stat-level-label" id="stat-level-${s.key}">${getStatLevelText(s, total)}</div>` +
         `</div>` +
         `<div class="stat-value-area">` +
           `<div class="stat-value-wrap">` +
-            `<span class="stat-total-display" id="stat-total-${s.key}">${s.key === 'size' ? getSizeLabel(total) : total}</span>` +
+            `<span class="stat-total-display" id="stat-total-${s.key}">${s.isSize ? getSizeLabel(total) : total}</span>` +
             (mod !== null ? `<span class="stat-mod-exponent" id="statmod-${s.key}">${modStr}</span>` : '') +
           `</div>` +
         `</div>`;
 
-      // ── EDIT ROW (hidden by default; revealed by toggleStatsEdit) ──
+      // ── EDIT ROW ──
       const editRow = document.createElement('div');
       editRow.className = 'stat-row';
       editRow.id = 'stat-edit-' + s.key;
       editRow.style.display = 'none';
 
-      if (s.key === 'size') {
-        // SIZE uses a dropdown of discrete tiers.
-        const sizeOpts = SIZE_OPTIONS.map(o =>
-          `<option value="${o.value}" ${base === o.value ? 'selected' : ''}>${o.label}</option>`
+      if (s.isSize) {
+        // SIZE uses a dropdown of tiers from the ruleset.
+        const tiers = getSizeTiers();
+        const sizeOpts = tiers.map(t =>
+          `<option value="${t.level}" ${base === t.level ? 'selected' : ''}>${t.level} — ${t.label}</option>`
         ).join('');
         editRow.innerHTML =
           `<div class="stat-icon-wrap">` +
-            `<div class="stat-icon">${statIcon(s.key)}</div>` +
-            `<div class="stat-tooltip">${STAT_DESCRIPTIONS[s.key]}</div>` +
+            `<div class="stat-icon">${renderStatIcon(s.key)}</div>` +
+            `<div class="stat-tooltip">${s.description}</div>` +
           `</div>` +
           `<div class="stat-info">` +
-            `<div class="stat-label"><span class="abbr">${s.abbr}</span>${s.rest}</div>` +
+            `<div class="stat-label">${labelHtml}</div>` +
           `</div>` +
           `<div class="stat-value-area">` +
             `<select class="stat-size-select" id="stat-input-${s.key}" onchange="saveStatBase('${s.key}',this.value)">${sizeOpts}</select>` +
           `</div>`;
       } else {
-        // Everything else uses a number input with ± buttons and a ModPanel toggle.
-        const xpCost = STAT_XP[Math.min(Math.max(1, base), 6)] || 0;
+        // Regular stats: number input with ± and ModPanel.
+        const xpCost = getStatXpAt(base);
         const xpStr = xpCost > 0 ? '+' + xpCost + 'xp' : xpCost + 'xp';
         editRow.innerHTML =
           `<div class="stat-icon-wrap">` +
-            `<div class="stat-icon">${statIcon(s.key)}</div>` +
-            `<div class="stat-tooltip">${STAT_DESCRIPTIONS[s.key]}</div>` +
+            `<div class="stat-icon">${renderStatIcon(s.key)}</div>` +
+            `<div class="stat-tooltip">${s.description}</div>` +
           `</div>` +
           `<div class="stat-info">` +
-            `<div class="stat-label"><span class="abbr">${s.abbr}</span>${s.rest}</div>` +
-            `<div class="stat-level-label" id="stat-level-edit-${s.key}">${getStatLevelText(s.key, total)}</div>` +
+            `<div class="stat-label">${labelHtml}</div>` +
+            `<div class="stat-level-label" id="stat-level-edit-${s.key}">${getStatLevelText(s, total)}</div>` +
           `</div>` +
           `<div class="stat-value-area">` +
             `<div class="stat-input-row">` +
               `<button class="stat-adj-btn" onclick="adjustStat('${s.key}',-1)">−</button>` +
-              `<input type="number" class="stat-base-input" id="stat-input-${s.key}" min="1" max="20" value="${base}" ` +
+              `<input type="number" class="stat-base-input" id="stat-input-${s.key}" min="1" max="${statMax}" value="${base}" ` +
                 `oninput="onStatInput('${s.key}',this.value)" ` +
                 `onchange="saveStatBase('${s.key}',this.value)">` +
               `<button class="stat-adj-btn" onclick="adjustStat('${s.key}',1)">+</button>` +
@@ -180,7 +278,7 @@ export function createStatsSection(ctx) {
           `</div>`;
       }
 
-      // ── MOD PANEL (collapsible named-modifier list) ──
+      // ── MOD PANEL ──
       const modPanel = document.createElement('div');
       modPanel.className = 'stat-mod-panel';
       modPanel.id = 'modpanel-' + s.key;
@@ -207,10 +305,10 @@ export function createStatsSection(ctx) {
     const nextMode = !ctx.getStatsEditMode();
     ctx.setStatsEditMode(nextMode);
     document.getElementById('stats-edit-btn').textContent = nextMode ? 'Done' : 'Edit';
-    STAT_DEFS.forEach(s => {
+    const list = getStatList();
+    list.forEach(s => {
       document.getElementById('stat-view-' + s.key).style.display = nextMode ? 'none' : 'flex';
       document.getElementById('stat-edit-' + s.key).style.display = nextMode ? 'flex' : 'none';
-      // When leaving edit mode, also collapse any open ModPanels.
       if (!nextMode) {
         const p = document.getElementById('modpanel-' + s.key);
         if (p) p.style.display = 'none';
@@ -225,26 +323,28 @@ export function createStatsSection(ctx) {
 
   // ─── VALUE HANDLERS ───
 
-  // Called from the input's oninput — updates on-screen feedback as the
-  // user types but doesn't save yet. Save happens on change (blur/enter)
-  // via saveStatBase.
   function onStatInput(key, val) {
     const charData = ctx.getCharData();
-    const v = Math.max(1, Math.min(20, parseInt(val) || 1));
+    const statMax = getStatMax();
+    const v = Math.max(1, Math.min(statMax, parseInt(val) || 1));
     if (!charData.stats) charData.stats = {};
     charData.stats[key] = v;
 
     const total = getStatTotal(key);
-    const mod = getStatMod(total);
+    const mod = getStatModAt(total);
     const modStr = mod >= 0 ? '+' + mod : '' + mod;
 
     const badge = document.getElementById('statmod-edit-' + key);
     if (badge) badge.textContent = modStr;
+
+    const list = getStatList();
+    const s = list.find(x => x.key === key);
     const levelEl = document.getElementById('stat-level-edit-' + key);
-    if (levelEl) levelEl.textContent = getStatLevelText(key, total);
+    if (levelEl && s) levelEl.textContent = getStatLevelText(s, total);
+
     const xpEl = document.getElementById('stat-xp-' + key);
     if (xpEl) {
-      const c = STAT_XP[Math.min(Math.max(1, v), 6)] || 0;
+      const c = getStatXpAt(v);
       xpEl.textContent = (c > 0 ? '+' + c : c) + 'xp';
     }
   }
@@ -252,11 +352,12 @@ export function createStatsSection(ctx) {
   async function adjustStat(key, delta) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
+    const list = getStatList();
+    const s = list.find(x => x.key === key);
+    const statMax = getStatMax();
     if (!charData.stats) charData.stats = {};
-    const cur = charData.stats[key] !== undefined
-      ? charData.stats[key]
-      : STAT_DEFS.find(s => s.key === key).default;
-    const nv = Math.max(1, Math.min(20, cur + delta));
+    const cur = charData.stats[key] !== undefined ? charData.stats[key] : (s ? getStatDefault(s) : 1);
+    const nv = Math.max(1, Math.min(statMax, cur + delta));
     charData.stats[key] = nv;
     const inp = document.getElementById('stat-input-' + key);
     if (inp) inp.value = nv;
@@ -269,8 +370,9 @@ export function createStatsSection(ctx) {
   async function saveStatBase(key, val) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
-    // SIZE is an integer from a discrete set; others are clamped 1–20.
-    const v = key === 'size' ? parseInt(val) : Math.max(1, Math.min(20, parseInt(val) || 1));
+    const statMax = getStatMax();
+    // SIZE is an integer tier level; everything else is clamped 1..statMax.
+    const v = key === 'size' ? parseInt(val) : Math.max(1, Math.min(statMax, parseInt(val) || 1));
     if (!charData.stats) charData.stats = {};
     charData.stats[key] = v;
     await saveCharacter(ctx.getCharId(), { [`stats.${key}`]: v });
@@ -302,20 +404,12 @@ export function createStatsSection(ctx) {
   }
 
   return {
-    // Orchestration
     buildStatsSection,
-
-    // Exposed helper — other modules (e.g. a future combat section) may
-    // want to query stat totals. Keeping it public for now.
     getStatTotal,
-
-    // Edit-mode toggles
+    // Expose the stat list so main can iterate it (e.g. for XP totaling).
+    getStatList,
     toggleStatsEdit, toggleModPanel,
-
-    // Value handlers
     onStatInput, adjustStat, saveStatBase,
-
-    // Modifier handlers
     addModifier, deleteModifier,
   };
 }
