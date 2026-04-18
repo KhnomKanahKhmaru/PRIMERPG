@@ -8,69 +8,20 @@
   <script src="nav.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background: #0a0a0a;
-      color: #e0e0e0;
-      font-family: 'Open Sans', sans-serif;
-      font-size: 14px;
-      min-height: 100vh;
-    }
-    .page {
-      padding-top: 104px;
-      max-width: 720px;
-      margin: 0 auto;
-      padding-left: 24px;
-      padding-right: 24px;
-    }
-    .page-title {
-      font-size: 18px;
-      font-weight: 600;
-      margin-bottom: 24px;
-      color: #e0e0e0;
-    }
-    .pg-card {
-      background: #111;
-      border: 1px solid #1e1e1e;
-      border-radius: 4px;
-      padding: 16px;
-      margin-bottom: 10px;
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
+    body { background: #0a0a0a; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 14px; min-height: 100vh; }
+    .page { padding-top: 104px; max-width: 720px; margin: 0 auto; padding-left: 24px; padding-right: 24px; }
+    .page-title { font-size: 18px; font-weight: 600; margin-bottom: 24px; color: #e0e0e0; }
+    .pg-card { background: #111; border: 1px solid #1e1e1e; border-radius: 4px; padding: 16px; margin-bottom: 10px; display: flex; align-items: center; gap: 16px; }
     .pg-card-info { flex: 1; cursor: pointer; }
-    .pg-card-name {
-      font-size: 15px;
-      font-weight: 600;
-      color: #e0e0e0;
-      margin-bottom: 4px;
-    }
+    .pg-card-name { font-size: 15px; font-weight: 600; color: #e0e0e0; margin-bottom: 4px; }
     .pg-card-primer { font-size: 12px; color: #555; }
     .pg-card-action { flex-shrink: 0; }
-    .join-btn {
-      background: #1a1a1a;
-      border: 1px solid #333;
-      color: #e0e0e0;
-      font-family: 'Open Sans', sans-serif;
-      font-size: 12px;
-      padding: 6px 16px;
-      border-radius: 4px;
-      cursor: pointer;
-    }
+    .join-btn { background: #1a1a1a; border: 1px solid #333; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 16px; border-radius: 4px; cursor: pointer; }
     .join-btn:hover { background: #222; border-color: #555; }
-    .member-badge {
-      font-size: 11px;
-      padding: 4px 10px;
-      border-radius: 3px;
-      background: #1a1a1a;
-      color: #666;
-    }
-    .empty {
-      color: #444;
-      font-size: 13px;
-      text-align: center;
-      padding: 60px 0;
-    }
+    .join-btn:disabled { opacity: 0.5; cursor: default; }
+    .member-badge { font-size: 11px; padding: 4px 10px; border-radius: 3px; background: #1a1a1a; color: #666; }
+    .banned-badge { font-size: 11px; padding: 4px 10px; border-radius: 3px; background: #2a1313; color: #c87777; border: 1px solid #4a1a1a; }
+    .empty { color: #444; font-size: 13px; text-align: center; padding: 60px 0; }
   </style>
 </head>
 <body>
@@ -83,8 +34,8 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
-  import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
-  import { getFirestore, collection, getDocs, doc, getDoc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+  import { getAuth, signOut } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
+  import { getFirestore, collection, getDocs, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCf94yLvAtJ9pLgJ3FsV7ir4Qh9XXm3nHg",
@@ -99,65 +50,99 @@
   const auth = getAuth(app);
   const db = getFirestore(app);
   let currentUser = null;
+  let currentUsername = '';
 
-  onAuthStateChanged(auth, async function(user) {
-    if (!user || !user.emailVerified) {
-      window.location.href = 'index.html';
-      return;
-    }
+  await auth.authStateReady();
+  const user = auth.currentUser;
+  if (!user || !user.emailVerified) {
+    window.location.href = 'index.html';
+  } else {
     currentUser = user;
-
     const userDoc = await getDoc(doc(db, 'users', user.uid));
-    if (userDoc.exists()) setNavUsername(userDoc.data().username);
+    if (userDoc.exists()) {
+      currentUsername = userDoc.data().username;
+      setNavUsername(currentUsername);
+    }
+    initAlerts(db, user.uid);
 
     const list = document.getElementById('pg-list');
     const snap = await getDocs(collection(db, 'playgroups'));
 
     if (snap.empty) {
       list.innerHTML = '<div class="empty">No playgroups yet.</div>';
-      return;
-    }
+    } else {
+      list.innerHTML = '';
+      for (const pgDoc of snap.docs) {
+        const pg = pgDoc.data();
+        const bannedUids = pg.bannedUids || [];
+        const isBanned = bannedUids.includes(user.uid);
+        const membershipDoc = await getDoc(doc(db, 'memberships', user.uid + '_' + pgDoc.id));
+        const isMember = membershipDoc.exists();
+        const role = isMember ? membershipDoc.data().role : null;
 
-    list.innerHTML = '';
-    for (const pgDoc of snap.docs) {
-      const pg = pgDoc.data();
-      const membershipDoc = await getDoc(doc(db, 'memberships', user.uid + '_' + pgDoc.id));
-      const isMember = membershipDoc.exists();
-      const role = isMember ? membershipDoc.data().role : null;
-      const isLeader = role === 'Leader';
+        let actionHtml = '';
+        if (isBanned) {
+          actionHtml = '<span class="banned-badge">Banned</span>';
+        } else if (role === 'Leader') {
+          actionHtml = '<span class="member-badge">Leader</span>';
+        } else if (role === 'Administrator') {
+          actionHtml = '<span class="member-badge">Administrator</span>';
+        } else if (isMember) {
+          actionHtml = '<span class="member-badge">Member</span>';
+        } else {
+          actionHtml = `<button class="join-btn" onclick="joinPlaygroup('${pgDoc.id}','${(pg.name || '').replace(/'/g,"\\'")}', this)">Join</button>`;
+        }
 
-      let actionHtml = '';
-      if (isLeader) {
-        actionHtml = '<span class="member-badge">Leader</span>';
-      } else if (isMember) {
-        actionHtml = '<span class="member-badge">Member</span>';
-      } else {
-        actionHtml = `<button class="join-btn" onclick="joinPlaygroup('${pgDoc.id}', this)">Join</button>`;
+        list.innerHTML += `
+          <div class="pg-card">
+            <div class="pg-card-info" onclick="window.location.href='playgroup.html?id=${pgDoc.id}'">
+              <div class="pg-card-name">${pg.name}</div>
+              <div class="pg-card-primer">${pg.primer || ''}</div>
+            </div>
+            <div class="pg-card-action">${actionHtml}</div>
+          </div>`;
       }
-
-      list.innerHTML += `
-        <div class="pg-card">
-          <div class="pg-card-info" onclick="window.location.href='playgroup.html?id=${pgDoc.id}'">
-            <div class="pg-card-name">${pg.name}</div>
-            <div class="pg-card-primer">${pg.primer || ''}</div>
-          </div>
-          <div class="pg-card-action">${actionHtml}</div>
-        </div>`;
     }
-  });
+  }
 
-  window.joinPlaygroup = async function(pgId, btn) {
+  window.joinPlaygroup = async function(pgId, pgName, btn) {
     btn.disabled = true;
     btn.textContent = 'Joining...';
     try {
+      // re-check ban status in case pgData changed since page load
+      const pgDoc = await getDoc(doc(db, 'playgroups', pgId));
+      if (pgDoc.exists()) {
+        const banned = pgDoc.data().bannedUids || [];
+        if (banned.includes(currentUser.uid)) {
+          btn.parentElement.innerHTML = '<span class="banned-badge">Banned</span>';
+          return;
+        }
+      }
+
       await setDoc(doc(db, 'memberships', currentUser.uid + '_' + pgId), {
         uid: currentUser.uid,
         playgroupId: pgId,
-        role: 'Player',
-        joinedAt: new Date()
+        role: 'Member',
+        joinedAt: new Date(),
+        joinNewsPosted: true
       });
+
+      // Post news to the playgroup feed
+      await createPlaygroupNews(db, pgId, pgName, `**${currentUsername}** joined the playgroup.`);
+
+      // Alert Leader and Admins that someone joined
+      const membQ = (await import('https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js'));
+      const staffSnap = await getDocs(membQ.query(membQ.collection(db, 'memberships'), membQ.where('playgroupId', '==', pgId)));
+      for (const mDoc of staffSnap.docs) {
+        const r = mDoc.data().role;
+        if ((r === 'Leader' || r === 'Administrator') && mDoc.data().uid !== currentUser.uid) {
+          await createAlert(db, mDoc.data().uid, `**${currentUsername}** joined your playgroup **${pgName}**.`, `playgroup.html?id=${pgId}`);
+        }
+      }
+
       btn.parentElement.innerHTML = '<span class="member-badge">Member</span>';
     } catch(e) {
+      console.error(e);
       btn.textContent = 'Error';
       btn.disabled = false;
     }
