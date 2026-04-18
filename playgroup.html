@@ -45,6 +45,18 @@
     .save-btn:hover { background: #222; border-color: #555; }
     .save-msg { font-size: 11px; margin-left: 6px; color: #66ff99; }
 
+    /* Ruleset picker (Rules tab) */
+    .ruleset-section { padding: 14px 16px; border: 1px solid #1a1a1a; border-radius: 6px; background: #0f0f0f; margin-bottom: 22px; max-width: 720px; }
+    .ruleset-section-title { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #888; margin-bottom: 8px; }
+    .ruleset-section-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .ruleset-select { flex: 1; min-width: 240px; background: #0a0a0a; border: 1px solid #333; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 13px; padding: 8px 10px; border-radius: 4px; outline: none; }
+    .ruleset-select:focus { border-color: #555; }
+    .ruleset-readonly { flex: 1; min-width: 240px; color: #e0e0e0; font-size: 13px; padding: 8px 10px; border: 1px solid #1a1a1a; border-radius: 4px; background: #0a0a0a; }
+    .ruleset-view-btn { background: #1a1a1a; border: 1px solid #333; color: #ccc; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 7px 14px; border-radius: 4px; cursor: pointer; text-decoration: none; display: inline-block; }
+    .ruleset-view-btn:hover { background: #222; border-color: #555; color: #fff; }
+    .ruleset-desc { font-size: 11px; color: #555; margin-top: 8px; line-height: 1.5; }
+    .ruleset-save-msg { font-size: 11px; margin-left: 8px; color: #66ff99; }
+
     /* News tab */
     .news-feed { display: flex; flex-direction: column; gap: 6px; max-width: 720px; }
     .news-item { padding: 12px 14px; border: 1px solid #1a1a1a; border-radius: 4px; background: #111; display: flex; gap: 12px; align-items: flex-start; }
@@ -159,6 +171,15 @@
     </div>
   </div>
   <div class="tab-panel" id="tab-rules">
+    <!-- Active Ruleset picker. Only the Leader can change it. -->
+    <div class="ruleset-section">
+      <div class="ruleset-section-title">Active Ruleset</div>
+      <div class="ruleset-section-row" id="ruleset-row">
+        <div class="ruleset-readonly">Loading…</div>
+      </div>
+      <div class="ruleset-desc">The game system this playgroup plays under. Governs stats, skills, XP costs, and power levels for every character in this playgroup.</div>
+    </div>
+
     <div id="rules-actions" class="doc-actions" style="display:none"><span class="edit-btn" onclick="editDoc('rules')">Edit</span></div>
     <div id="rules-display" class="doc-display"></div>
     <div class="quill-wrapper" id="rules-wrapper" style="display:none"><div id="rules-editor"></div></div>
@@ -354,6 +375,137 @@
 
       await loadNews();
       await loadPeople();
+      await loadRulesetPicker();
+    }
+  }
+
+  // ── RULESET PICKER ──
+
+  // Return all rulesets this user has access to, deduped by ID:
+  //   - Basic Set (always)
+  //   - Rulesets created by this user
+  //   - Rulesets attached (legacy `playgroupId` field) to any playgroup
+  //     the user is a member of
+  // Basic Set sorts first; the rest alphabetical by name.
+  async function loadAccessibleRulesets() {
+    const results = new Map();
+
+    // Basic Set (always).
+    const basicSnap = await getDocs(query(
+      collection(db, 'rulesets'),
+      where('isBasicSet', '==', true)
+    ));
+    basicSnap.forEach(d => results.set(d.id, { id: d.id, ...d.data() }));
+
+    // Rulesets this user created.
+    const mineSnap = await getDocs(query(
+      collection(db, 'rulesets'),
+      where('createdBy', '==', myUid)
+    ));
+    mineSnap.forEach(d => results.set(d.id, { id: d.id, ...d.data() }));
+
+    // Legacy: rulesets attached via playgroupId to any playgroup the user
+    // is in. This preserves visibility of rulesets that were tied to a
+    // playgroup under the old schema.
+    const myMembershipsSnap = await getDocs(query(
+      collection(db, 'memberships'),
+      where('uid', '==', myUid)
+    ));
+    const myPgIds = myMembershipsSnap.docs.map(d => d.data().playgroupId);
+    for (const id of myPgIds) {
+      const pgRulesetsSnap = await getDocs(query(
+        collection(db, 'rulesets'),
+        where('playgroupId', '==', id)
+      ));
+      pgRulesetsSnap.forEach(d => {
+        if (!results.has(d.id)) results.set(d.id, { id: d.id, ...d.data() });
+      });
+    }
+
+    return Array.from(results.values()).sort((a, b) => {
+      if (a.isBasicSet) return -1;
+      if (b.isBasicSet) return 1;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+  }
+
+  // Render the ruleset picker row. Leader gets an editable dropdown;
+  // everyone else sees the current ruleset's name as read-only text.
+  // Both views include a "View" link to the selected ruleset's page
+  // (when the selected ruleset is loadable).
+  async function loadRulesetPicker() {
+    const row = document.getElementById('ruleset-row');
+    const currentId = pgData.rulesetId || null;
+
+    // Figure out what to display as the "current" ruleset.
+    let currentRuleset = null;
+    let currentName = 'Basic Set';
+    if (currentId) {
+      const rsSnap = await getDoc(doc(db, 'rulesets', currentId));
+      if (rsSnap.exists()) {
+        currentRuleset = { id: rsSnap.id, ...rsSnap.data() };
+        currentName = currentRuleset.name || '(unnamed)';
+      } else {
+        currentName = '(unknown — ruleset was deleted)';
+      }
+    } else {
+      // Default path — Basic Set. Look it up so we can link to it.
+      const basicSnap = await getDocs(query(
+        collection(db, 'rulesets'),
+        where('isBasicSet', '==', true)
+      ));
+      if (!basicSnap.empty) {
+        currentRuleset = { id: basicSnap.docs[0].id, ...basicSnap.docs[0].data() };
+      }
+    }
+
+    const viewBtn = currentRuleset
+      ? `<a class="ruleset-view-btn" href="edit-ruleset.html?id=${currentRuleset.id}">View</a>`
+      : '';
+
+    if (myRole === 'Leader') {
+      const rulesets = await loadAccessibleRulesets();
+      // Value "" represents "no explicit selection" → Basic Set fallback.
+      // Leader picks Basic Set by choosing the "Basic Set (default)" option.
+      const options = [
+        `<option value="" ${!currentId ? 'selected' : ''}>Basic Set (default)</option>`,
+        ...rulesets
+          .filter(r => !r.isBasicSet)
+          .map(r => `<option value="${r.id}" ${r.id === currentId ? 'selected' : ''}>${r.name || '(unnamed)'}</option>`)
+      ].join('');
+      row.innerHTML =
+        `<select class="ruleset-select" id="ruleset-select" onchange="saveActiveRuleset(this.value)">${options}</select>` +
+        viewBtn +
+        `<span class="ruleset-save-msg" id="ruleset-save-msg"></span>`;
+    } else {
+      row.innerHTML =
+        `<div class="ruleset-readonly">${currentName}</div>` +
+        viewBtn;
+    }
+  }
+
+  // Persist the Leader's ruleset selection. Empty string → null, so that
+  // resolveActiveRuleset falls through to the Basic Set.
+  window.saveActiveRuleset = async function(rulesetId) {
+    const msg = document.getElementById('ruleset-save-msg');
+    try {
+      const valueToSave = rulesetId || null;
+      await updateDoc(doc(db, 'playgroups', pgId), { rulesetId: valueToSave });
+      pgData.rulesetId = valueToSave;
+      // Rebuild the picker so the "View" button points at the new target.
+      await loadRulesetPicker();
+      // Flash a saved message on the newly-rebuilt row.
+      const newMsg = document.getElementById('ruleset-save-msg');
+      if (newMsg) {
+        newMsg.textContent = 'Saved!';
+        newMsg.style.color = '#66ff99';
+        setTimeout(() => { if (newMsg) newMsg.textContent = ''; }, 1500);
+      }
+    } catch (e) {
+      if (msg) {
+        msg.textContent = 'Error: ' + e.message;
+        msg.style.color = '#ff6666';
+      }
     }
   }
 
