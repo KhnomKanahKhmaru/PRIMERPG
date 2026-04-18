@@ -1,3 +1,7 @@
+// Site admin UID — only this account can edit the Basic Set.
+// Update this to your account's Firebase UID.
+window.SITE_ADMIN_UID = 'REPLACE_WITH_YOUR_UID';
+
 const NAV_HTML = `
 <div class="topbar">
   <div class="topbar-item home" onclick="window.location.href='home.html'">PRIME RPG</div>
