@@ -1,6 +1,6 @@
 // Site admin UID — only this account can edit the Basic Set.
 // Update this to your account's Firebase UID.
-window.SITE_ADMIN_UID = 'M6mxWVjVbFOZRRuXiLeYzNUOBWm'
+window.SITE_ADMIN_UID = 'M6mxWVjVbFOZRRuXiLeYzNUOBWm1'
 
 const NAV_HTML = `
 <div class="topbar">
