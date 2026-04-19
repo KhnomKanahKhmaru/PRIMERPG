@@ -313,11 +313,15 @@ export function buildSymbolTable(character, ruleset) {
   const pp = (typeof character.powerPool === 'number') ? character.powerPool : 0;
   table.POWERPOOL = pp;
 
-  // POW_MULTIPLIER from ruleset table, looked up by POW value.
-  const powVal = table.POW ?? 2;
+  // POW_MULTIPLIER from ruleset table, looked up by POWMOD (the stat modifier
+  // from POW). Allows rulesets to express a "POW capability scaling" curve
+  // where low POW is penalized, mid-range is average, and high POW multiplies
+  // resources linearly. The PRIME Basic Set curve is:
+  //   POWMOD ≤ -1 → ×0.5, 0 → ×1, 1 → ×1.5, 2+ → equals POWMOD.
+  const powmod = table.POWMOD ?? 0;
   const multTable = (ruleset.powerPool && Array.isArray(ruleset.powerPool.powMultiplier))
     ? ruleset.powerPool.powMultiplier : [];
-  const entry = multTable.find(e => powVal >= e.powMin && powVal <= e.powMax);
+  const entry = multTable.find(e => powmod >= e.powmodMin && powmod <= e.powmodMax);
   table.POW_MULTIPLIER = entry ? entry.value : 1;
 
   return table;
@@ -590,5 +594,36 @@ export function computeDerivedStats(character, ruleset) {
     statusLabel
   };
 
-  return { stats, locations, errors, vars, body };
+  // ─── POWER RESOURCE ───
+  //
+  // POWER is a spendable resource whose MAX is derived from the POWER formula
+  // (usually POWERPOOL * POW_MULTIPLIER). The character stores `powerCurrent`,
+  // the amount currently available to spend on Activated Abilities etc.
+  //
+  // If the max isn't defined (no POWER derived stat configured) or the ruleset
+  // has Power Pool disabled, we report power as null and the combat UI hides
+  // the section.
+  //
+  // Current caps to max but only on the downside — if max drops below current
+  // (e.g. character loses POWMOD due to wound), current is clamped. If max
+  // rises (buying more Power Pool), current stays where it was — you don't
+  // magically get full refilled.
+  let power = null;
+  const powerStatEntry = stats.get('POWER');
+  const ppEnabled = ruleset.powerPool && ruleset.powerPool.enabled !== false;
+  if (ppEnabled && powerStatEntry && powerStatEntry.value !== null) {
+    const powerMax = Math.floor(powerStatEntry.value);
+    const storedCurrent = Number.isFinite(character.powerCurrent)
+      ? character.powerCurrent : powerMax;
+    const powerCurrent = Math.max(0, Math.min(powerMax, storedCurrent));
+    const color = (typeof character.powerColor === 'string' && character.powerColor.trim())
+      ? character.powerColor.trim() : '#e0e0e0';
+    power = {
+      max: powerMax,
+      current: powerCurrent,
+      color
+    };
+  }
+
+  return { stats, locations, errors, vars, body, power };
 }
