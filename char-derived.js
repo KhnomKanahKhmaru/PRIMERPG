@@ -314,15 +314,30 @@ export function buildSymbolTable(character, ruleset) {
   table.POWERPOOL = pp;
 
   // POW_MULTIPLIER from ruleset table, looked up by POWMOD (the stat modifier
-  // from POW). Allows rulesets to express a "POW capability scaling" curve
-  // where low POW is penalized, mid-range is average, and high POW multiplies
-  // resources linearly. The PRIME Basic Set curve is:
-  //   POWMOD ≤ -1 → ×0.5, 0 → ×1, 1 → ×1.5, 2+ → equals POWMOD.
+  // from POW). The table is a flat list with one entry per POWMOD value.
+  // If the character's POWMOD falls outside the table's declared range, we
+  // clamp to the nearest endpoint — i.e. a POWMOD of 15 uses the highest
+  // defined entry's value (probably 10 in the default table). This keeps the
+  // system working even for extreme edge cases without requiring the GM to
+  // declare infinite rows.
   const powmod = table.POWMOD ?? 0;
   const multTable = (ruleset.powerPool && Array.isArray(ruleset.powerPool.powMultiplier))
     ? ruleset.powerPool.powMultiplier : [];
-  const entry = multTable.find(e => powmod >= e.powmodMin && powmod <= e.powmodMax);
-  table.POW_MULTIPLIER = entry ? entry.value : 1;
+  let multiplier = 1;
+  if (multTable.length > 0) {
+    // Prefer an exact match.
+    const exact = multTable.find(e => e.powmod === powmod);
+    if (exact) {
+      multiplier = exact.value;
+    } else {
+      // Clamp to nearest endpoint. Sort by powmod and pick min or max.
+      const sorted = multTable.slice().sort((a, b) => a.powmod - b.powmod);
+      if (powmod < sorted[0].powmod) multiplier = sorted[0].value;
+      else if (powmod > sorted[sorted.length - 1].powmod) multiplier = sorted[sorted.length - 1].value;
+      // Otherwise the table has a gap; fall back to the default of 1.
+    }
+  }
+  table.POW_MULTIPLIER = multiplier;
 
   return table;
 }
