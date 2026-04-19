@@ -372,6 +372,7 @@
     .ds-card { background: #111; border: 1px solid #1f1f1f; border-radius: 4px; padding: 10px 12px; }
     .ds-card-name { font-size: 10px; font-weight: 700; letter-spacing: .06em; color: #888; text-transform: uppercase; margin-bottom: 6px; }
     .ds-card-code { font-family: 'Consolas', 'Courier New', monospace; font-size: 9px; color: #555; font-weight: 400; letter-spacing: 0; }
+    .ds-card-formula { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #666; font-weight: 500; letter-spacing: 0; margin-bottom: 4px; }
     .ds-card-value { font-size: 24px; font-weight: 700; color: #e8e8e8; font-variant-numeric: tabular-nums; line-height: 1.1; }
     .ds-card-error { color: #c87777; font-size: 14px; }
     .ds-card-unit { font-size: 11px; font-weight: 500; color: #666; margin-left: 3px; }
@@ -486,6 +487,7 @@
 
     /* ─── SANITY ─── */
     .san-section { }
+    .san-card-wrap { margin-bottom: 14px; }
     .san-top-row {
       display: flex; align-items: center; gap: 12px;
       margin-bottom: 6px;
@@ -506,9 +508,9 @@
       margin-left: auto;
       border: 1px solid;
     }
-    .san-status-healthy  { color: #a6c89a; background: #1a2218; border-color: #3a4a34; }
+    .san-status-healthy  { color: #a0c0e0; background: #101826; border-color: #304058; }
     .san-status-inShock  { color: #d6b860; background: #231f10; border-color: #5a4a22; }
-    .san-status-insane   { color: #e07878; background: #2a1312; border-color: #6a2a28; }
+    .san-status-insane   { color: #e0a460; background: #251810; border-color: #6a4a22; }
     .san-status-broken   { color: #ff4a4a; background: #2a0a0a; border-color: #7a1010; }
 
     .san-penalty {
@@ -1371,6 +1373,16 @@
     addSanMod:            () => combat.addSanMod(),
     updateSanMod:         (idx, field, val) => combat.updateSanMod(idx, field, val),
     deleteSanMod:         (idx) => combat.deleteSanMod(idx),
+    // SAN Damages handlers
+    toggleSanDamagesSection: () => combat.toggleSanDamagesSection(),
+    toggleSanDamageExpand:   (id) => combat.toggleSanDamageExpand(id),
+    quickAddSanDamage:       () => combat.quickAddSanDamage(),
+    removeSanDamage:         (id) => combat.removeSanDamage(id),
+    updateSanDamageField:    (id, field, val) => combat.updateSanDamageField(id, field, val),
+    tickSanDamageQuickmod:   (id, delta) => combat.tickSanDamageQuickmod(id, delta),
+    addSanDamageMod:         (id) => combat.addSanDamageMod(id),
+    updateSanDamageMod:      (id, idx, field, val) => combat.updateSanDamageMod(id, idx, field, val),
+    deleteSanDamageMod:      (id, idx) => combat.deleteSanDamageMod(id, idx),
     addHlMod:             (target)           => combat.addModifier(target),
     updateHlMod:          (target, i, field, val) => combat.updateModifier(target, i, field, val),
     deleteHlMod:          (target, i)        => combat.deleteModifier(target, i),
