@@ -124,12 +124,14 @@ export function createCombatSection(ctx) {
     }
     html += '</div>';
 
+    // Body block goes FIRST — it's the most important status read and sets
+    // context for what the per-location bars are scaled against.
+    html += renderBodyBlock(body);
+
     html += '<div class="hl-list">';
     result.locations.forEach(loc => { html += renderHlRow(loc, body); });
     html += '</div>';
 
-    // Body total — segmented green→black bar, status label, current/max.
-    html += renderBodyBlock(body);
     html += '</div>';
     return html;
   }
@@ -138,9 +140,10 @@ export function createCombatSection(ctx) {
     const { def, trackKey, maxHP, baseMaxHP, currentDamage, status, error, index, modifiers } = loc;
     const canEdit = ctx.getCanEdit();
 
-    const displayName = (def.count && def.count > 1)
-      ? `${def.name} (${index})`
-      : def.name;
+    // Display name. Paired limbs (count=2, like Arms/Legs) get Right/Left
+    // labels: instance 1 = Right, 2 = Left. Anything with higher count
+    // falls back to a numeric "(N)" suffix.
+    const displayName = getLocationDisplayName(def, index);
 
     if (error || maxHP === null) {
       return `<div class="hl-row hl-row-error" title="${escapeHtml(error || 'Formula error')}">
@@ -163,7 +166,7 @@ export function createCombatSection(ctx) {
       healthy: '',
       disabled: 'Disabled',
       destroyed: 'Destroyed',
-      definitelyDestroyed: 'Def. Destroyed'
+      definitelyDestroyed: 'Definitively Destroyed'
     };
     const statusText = statusLabels[status] || '';
 
@@ -193,6 +196,21 @@ export function createCombatSection(ctx) {
       html += renderModifierEditor(trackKey, modifiers || [], baseMaxHP);
     }
     return html;
+  }
+
+  // Display name for a location instance. Single-count locations (Head, Torso)
+  // use just the def name. Paired locations (count=2) like Arms and Legs get
+  // "Right" and "Left" labels — convention: instance 1 is Right, instance 2
+  // is Left (matches how most character sheets read). Anything with count>2
+  // falls back to a numeric suffix since there's no natural naming.
+  function getLocationDisplayName(def, index) {
+    const count = def.count || 1;
+    if (count === 1) return def.name;
+    if (count === 2) {
+      const side = index === 1 ? 'Right' : 'Left';
+      return `${side} ${def.name}`;
+    }
+    return `${def.name} (${index})`;
   }
 
   // Modifier editor rendered directly below a hit location row (or Body block).
@@ -262,11 +280,25 @@ export function createCombatSection(ctx) {
     // Phase 4 (location is Def.Destroyed): use Body pool to determine how much
     // of the bar is black vs deep red. Body damage is proportionally mapped
     // onto maxHP segments.
+    //
+    // Rounding guard: never fully black out until Body is *actually* at 0.
+    // Proportional rounding would round a 28/30 body up to all segments,
+    // misreading "almost dead" as "fully dead". Only go fully black when the
+    // Body pool is literally empty.
     if (status === 'definitelyDestroyed' && body && body.max > 0) {
-      // Number of "fully black" segments, rounded to the nearest segment boundary.
-      // Damage progresses right-to-left like the other phases.
-      const bodyDamagePct = body.damage / body.max;  // 0..1
-      const blackSegCount = Math.round(Math.max(0, Math.min(maxHP, bodyDamagePct * maxHP)));
+      const bodyAtZero = body.current <= 0;
+      let blackSegCount;
+      if (bodyAtZero) {
+        blackSegCount = maxHP;
+      } else {
+        // Use floor so partial fills don't promote. Clamp so there's always
+        // at least 1 non-black segment while any Body remains.
+        const raw = Math.floor((body.damage / body.max) * maxHP);
+        blackSegCount = Math.min(raw, maxHP - 1);
+        // And at least 1 black if ANY damage is present (so the visual isn't
+        // static until a big tick happens).
+        if (body.damage > 0 && blackSegCount === 0) blackSegCount = 1;
+      }
       let html = '';
       for (let i = 1; i <= maxHP; i++) {
         // Segment i (from left). The rightmost `blackSegCount` segments are black.
@@ -309,9 +341,18 @@ export function createCombatSection(ctx) {
     // Below 80, use 1 seg per point.
     const SEG_CAP = 80;
     const segCount = Math.min(body.max, SEG_CAP);
-    // How many segments should be black? Proportional to damage taken.
-    const dmgPct = body.damage / body.max;
-    const blackSegs = Math.round(Math.max(0, Math.min(segCount, dmgPct * segCount)));
+    // How many segments should be black? Proportional to damage taken — but
+    // guard against rounding flipping the whole bar black when body is close
+    // to but not actually at 0. Rule: only go fully black when body.current == 0.
+    const bodyAtZero = body.current <= 0;
+    let blackSegs;
+    if (bodyAtZero) {
+      blackSegs = segCount;
+    } else {
+      const raw = Math.floor((body.damage / body.max) * segCount);
+      blackSegs = Math.min(raw, segCount - 1);
+      if (body.damage > 0 && blackSegs === 0) blackSegs = 1;
+    }
 
     let segHtml = '';
     for (let i = 1; i <= segCount; i++) {
