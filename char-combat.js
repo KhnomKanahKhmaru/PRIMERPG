@@ -89,19 +89,24 @@ export function createCombatSection(ctx) {
       tiles.push(renderSanTile(san));
     }
 
-    // STRAIN tile — pain + stress combined, single linear bar with tier color.
-    const strain = result.strain;
-    if (strain) {
-      tiles.push(renderStrainTile(result.pain, result.stress, strain));
-    }
-
     // POWER tile — power pool current/max, simple fill bar. Always
     // rendered when the pool is present in the result (even if max is 0
     // from a freshly-created character), so the Overview grid stays
-    // balanced and players can see "no power yet" at a glance.
+    // balanced and players can see "no power yet" at a glance. Slotted
+    // next to Body + Sanity in the top row since it behaves like another
+    // resource pool (not a derived percentage).
     const power = result.power;
     if (power) {
       tiles.push(renderPowerTile(power));
+    }
+
+    // STRAIN tile — single number card with labeled Pain/Stress breakdown.
+    // Placed AFTER the three resource pools so it sits on its own row
+    // (or wraps naturally next to Movement), reflecting that Strain is a
+    // derived summary of Pain + Stress rather than a raw resource.
+    const strain = result.strain;
+    if (strain) {
+      tiles.push(renderStrainTile(result.pain, result.stress, strain));
     }
 
     // MOVEMENT tile — spans full width below the others. Shows each stat
