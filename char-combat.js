@@ -425,10 +425,31 @@ export function createCombatSection(ctx) {
 
     if (!injuriesOpen) { html += '</div>'; return html; }
 
-    // Add-injury row when the section is expanded.
+    // Add-injury row when the section is expanded. Inline three-field form
+    // (Name, Degree, Location) for the common-case quick-add workflow. The
+    // resulting injury opens expanded by default so you can still fill in
+    // description, modifiers, traumas, etc. — quick-add is a speed shortcut,
+    // not a constraint.
     if (canEdit) {
-      html += `<div class="injury-add-row">
-        <button class="injury-add-btn" onclick="addInjury()">+ Add Injury</button>
+      const locations = result.locations || [];
+      // Default location: 'torso' if the ruleset has one, otherwise the first
+      // available location (so characters without a torso still work).
+      const defaultLoc = locations.some(l => l.trackKey === 'torso')
+        ? 'torso'
+        : (locations[0] ? locations[0].trackKey : '');
+      const locOptions = locations.map(l => {
+        const label = getLocationDisplayName(l.def, l.index);
+        return `<option value="${escapeHtml(l.trackKey)}" ${l.trackKey === defaultLoc ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+      }).join('');
+
+      html += `<div class="injury-quickadd-row">
+        <input type="text" id="qadd-inj-name" class="qadd-inj-name" placeholder="Injury name"
+               onkeydown="if(event.key==='Enter')quickAddInjury()">
+        <input type="number" id="qadd-inj-level" class="qadd-inj-level" placeholder="Deg"
+               min="0" max="99" value="1"
+               onkeydown="if(event.key==='Enter')quickAddInjury()">
+        <select id="qadd-inj-location" class="qadd-inj-location">${locOptions}</select>
+        <button class="injury-add-btn" onclick="quickAddInjury()">Add</button>
       </div>`;
     }
 
@@ -1095,27 +1116,48 @@ export function createCombatSection(ctx) {
     return 'tr_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   }
 
-  async function addInjury() {
+  // Create a new injury from the inline quick-add form. Reads the three
+  // form fields (name, level, location) and creates an injury populated
+  // with those values. The new injury is auto-expanded so further editing
+  // (description, modifiers, traumas) happens in the same flow. The form
+  // resets to defaults after adding, ready for the next entry.
+  //
+  // Empty name is allowed (creates an injury named "(unnamed)" in the list
+  // header). Level defaults to 1 if the field is empty or invalid. Location
+  // always has a valid value since the select has no blank option.
+  async function quickAddInjury() {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     if (!Array.isArray(charData.injuries)) charData.injuries = [];
+
+    const nameEl  = document.getElementById('qadd-inj-name');
+    const levelEl = document.getElementById('qadd-inj-level');
+    const locEl   = document.getElementById('qadd-inj-location');
+
+    const name     = nameEl  ? (nameEl.value || '').trim() : '';
+    const baseLevel = levelEl ? Math.max(0, parseInt(levelEl.value) || 0) : 0;
+    const location = locEl   ? (locEl.value || 'torso')  : 'torso';
+
     const inj = {
       id: newInjuryId(),
-      name: '',
+      name,
       description: '',
-      baseLevel: 0,
-      location: 'torso',
+      baseLevel,
+      location,
       levelModifiers: [],
       degradationModifiers: [],
       traumas: []
     };
     charData.injuries.push(inj);
-    // Auto-expand the new card so the player can start filling it in.
+    // Auto-expand so the player can continue editing without an extra click.
     expandedInjuries.add(inj.id);
-    // Also make sure the section is open so they can see it.
     injuriesOpen = true;
     await saveCharacter(ctx.getCharId(), { injuries: charData.injuries });
     renderAll();
+    // Re-focus the name field so rapid sequential adds are smooth.
+    // renderAll rebuilds the DOM so the old element is gone; grab the fresh one.
+    const freshNameEl = document.getElementById('qadd-inj-name');
+    if (freshNameEl) freshNameEl.focus();
   }
 
   async function removeInjury(id) {
@@ -1254,7 +1296,7 @@ export function createCombatSection(ctx) {
     toggleEditMode, addModifier, updateModifier, deleteModifier,
     // Injuries / Traumas
     toggleInjurySection, toggleInjuryExpand,
-    addInjury, removeInjury, updateInjuryField,
+    quickAddInjury, removeInjury, updateInjuryField,
     addInjuryMod, updateInjuryMod, deleteInjuryMod,
     addTrauma, removeTrauma, updateTraumaField
   };
