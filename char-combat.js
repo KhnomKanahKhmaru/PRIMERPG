@@ -52,8 +52,12 @@ export function createCombatSection(ctx) {
     const result = computeDerivedStats(charData, ruleset);
 
     let html = '';
-    // Movement at the very top — speed, agility, reflex. Fast-lookup info
-    // you need during play, positioned ahead of the more detailed health UI.
+    // Roll Calculator at the very top — the quick "how many dice will I
+    // actually roll?" scratch pad you reach for mid-turn. Sits ahead of
+    // Movement so it's the first thing visible when you swap to Combat.
+    html += renderRollCalcTile(result, ruleset, charData);
+    // Movement below — speed, agility, reflex. Fast-lookup info you need
+    // during play, positioned ahead of the more detailed health UI.
     html += renderDerivedStatsSection(result, ruleset, { includeGroups: ['movement'] });
     // Health section — HP/FORT cards + hit locations + Body + injuries.
     html += renderHitLocationsSection(result);
@@ -100,13 +104,11 @@ export function createCombatSection(ctx) {
       tiles.push(renderPowerTile(power));
     }
 
-    // Bottom section — three full-width rows stacked vertically below
-    // the resource tiles. Order: Movement → Roll Calc → Strain. The Roll
-    // Calc sits between because it depends on both (movement stats are
-    // affected by Strain too, and the calc uses the Strain %).
+    // Bottom section — full-width rows below the resource tiles. The Roll
+    // Calculator lives on the Combat tab instead (it's a combat tool, not
+    // a state summary), so the Overview only shows Movement and Strain.
     const movementHtml = renderMovementTile(result, ruleset);
     if (movementHtml) tiles.push(movementHtml);
-    tiles.push(renderRollCalcTile(result, ruleset, ctx.getCharData()));
     tiles.push(renderStrainTile(result.pain, result.stress, result.strain));
 
     host.innerHTML = tiles.length
@@ -606,7 +608,7 @@ export function createCombatSection(ctx) {
           <span class="state-tile-label">Roll Calculator</span>
           <div class="rc-mode" role="group" aria-label="Roll mode">
             <button type="button" class="rc-mode-btn${!r.isPassive ? ' active' : ''}" onclick="rollCalcSetPassive(false)" title="Active roll — Strain reduces your dice pool">Active</button>
-            <button type="button" class="rc-mode-btn${r.isPassive ? ' active' : ''}"  onclick="rollCalcSetPassive(true)"  title="Passive roll — Strain does not apply (resistance checks, untimed tasks)">Passive</button>
+            <button type="button" class="rc-mode-btn${r.isPassive ? ' active' : ''}"  onclick="rollCalcSetPassive(true)"  title="Passive roll — Strain does not apply (resistance checks)">Passive</button>
           </div>
           <span class="rc-hint">(STAT + SKILL) @ Difficulty + Mod</span>
         </div>
