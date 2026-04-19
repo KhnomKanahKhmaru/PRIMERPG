@@ -547,6 +547,27 @@
     .injury-add-row { padding: 8px 0 10px; }
     .injury-add-btn { background: #1a1a1a; border: 1px solid #333; color: #ccc; font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 600; padding: 6px 14px; border-radius: 3px; cursor: pointer; }
     .injury-add-btn:hover { background: #222; border-color: #555; }
+
+    /* Inline Quick Add form — three fields + button in one tidy row */
+    .injury-quickadd-row {
+      display: grid;
+      grid-template-columns: 1fr 60px 140px auto;
+      gap: 8px;
+      align-items: center;
+      padding: 10px 0;
+    }
+    .qadd-inj-name, .qadd-inj-level, .qadd-inj-location {
+      background: #111; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 12px;
+      padding: 6px 10px; border-radius: 3px; outline: none;
+      box-sizing: border-box; width: 100%;
+    }
+    .qadd-inj-level { text-align: center; }
+    .qadd-inj-name:focus, .qadd-inj-level:focus, .qadd-inj-location:focus { border-color: #444; }
+    /* When the whole row is narrow (mobile / narrow sheet), stack it. */
+    @media (max-width: 600px) {
+      .injury-quickadd-row { grid-template-columns: 1fr; }
+    }
     .injury-empty { font-size: 11px; color: #555; font-style: italic; padding: 8px 14px; }
     .injury-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
 
@@ -1067,7 +1088,7 @@
     // Injuries / Traumas
     toggleInjurySection:  () => combat.toggleInjurySection(),
     toggleInjuryExpand:   (id) => combat.toggleInjuryExpand(id),
-    addInjury:            () => combat.addInjury(),
+    quickAddInjury:       () => combat.quickAddInjury(),
     removeInjury:         (id) => combat.removeInjury(id),
     updateInjuryField:    (id, field, val) => combat.updateInjuryField(id, field, val),
     addInjuryMod:         (injId, kind) => combat.addInjuryMod(injId, kind),
