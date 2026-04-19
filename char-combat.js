@@ -414,6 +414,13 @@ export function createCombatSection(ctx) {
   let injuryLocationsInitialized = false;
   // Whether the whole Injuries section is shown.
   let injuriesOpen = false;
+  // Which locations are currently selected in the quick-add form. A Set of
+  // trackKeys. One or more can be selected (one = normal add; multi = AoE).
+  // Persists across renders within a session so rapid sequential adds to the
+  // same spots don't require reselecting. Auto-initialized to just 'torso'
+  // the first time the section renders with locations available.
+  const quickAddLocations = new Set();
+  let quickAddLocationsInitialized = false;
 
   // Convert a non-negative integer to its English ordinal string.
   //   ordinal(1) → "1st", ordinal(2) → "2nd", ordinal(3) → "3rd"
@@ -456,22 +463,48 @@ export function createCombatSection(ctx) {
     // Quick-add inline form when the section is expanded.
     if (canEdit) {
       const locations = result.locations || [];
-      const defaultLoc = locations.some(l => l.trackKey === 'torso')
-        ? 'torso'
-        : (locations[0] ? locations[0].trackKey : '');
-      const locOptions = locations.map(l => {
-        const label = getLocationDisplayName(l.def, l.index);
-        return `<option value="${escapeHtml(l.trackKey)}" ${l.trackKey === defaultLoc ? 'selected' : ''}>${escapeHtml(label)}</option>`;
-      }).join('');
 
+      // Initialize the quick-add location selection to 'torso' (or first
+      // available) the first time we render. After that, respect whatever
+      // the user has toggled — they're likely still setting up the next AoE
+      // or single-target add.
+      if (!quickAddLocationsInitialized && locations.length > 0) {
+        const defaultLoc = locations.some(l => l.trackKey === 'torso')
+          ? 'torso'
+          : locations[0].trackKey;
+        quickAddLocations.add(defaultLoc);
+        quickAddLocationsInitialized = true;
+      }
+
+      // Top row: name + degree + Add button. Kept on one tidy line.
       html += `<div class="injury-quickadd-row">
         <input type="text" id="qadd-inj-name" class="qadd-inj-name" placeholder="Injury name"
                onkeydown="if(event.key==='Enter')quickAddInjury()">
         <input type="number" id="qadd-inj-level" class="qadd-inj-level" placeholder="Deg"
                min="0" max="99" value="1"
                onkeydown="if(event.key==='Enter')quickAddInjury()">
-        <select id="qadd-inj-location" class="qadd-inj-location">${locOptions}</select>
         <button class="injury-add-btn" onclick="quickAddInjury()">Add</button>
+      </div>`;
+
+      // Second row: location chips. Multi-select. Torso default. "All" chip
+      // at the start toggles select-all. When multiple chips are selected,
+      // Add will create one injury per selected location (e.g. AoE attacks).
+      const allSelected = locations.length > 0
+        && locations.every(l => quickAddLocations.has(l.trackKey));
+      const chipHtml = locations.map(l => {
+        const label = getLocationDisplayName(l.def, l.index);
+        const on = quickAddLocations.has(l.trackKey);
+        return `<button class="injury-loc-chip${on ? ' on' : ''}"
+                        onclick="toggleQuickAddLocation('${escapeHtml(l.trackKey)}')"
+                        type="button">${escapeHtml(label)}</button>`;
+      }).join('');
+
+      html += `<div class="injury-quickadd-locs">
+        <span class="injury-quickadd-locs-label">Locations:</span>
+        <button class="injury-loc-chip injury-loc-chip-all${allSelected ? ' on' : ''}"
+                onclick="toggleQuickAddAllLocations()"
+                type="button">All</button>
+        ${chipHtml}
       </div>`;
     }
 
@@ -574,6 +607,7 @@ export function createCombatSection(ctx) {
       <span class="injury-loc-pill">${escapeHtml(locLabel)}</span>
       <span class="injury-rate">${rateText}</span>
       ${traumaBadges ? `<span class="injury-trauma-badges">${traumaBadges}</span>` : ''}
+      ${canEdit ? `<button class="injury-quickdelete" onclick="event.stopPropagation();removeInjury('${inj.id}')" title="Delete injury">×</button>` : ''}
     </div>`;
 
     if (open) {
@@ -1204,15 +1238,45 @@ export function createCombatSection(ctx) {
     return 'tr_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   }
 
-  // Create a new injury from the inline quick-add form. Reads the three
-  // form fields (name, level, location) and creates an injury populated
-  // with those values. The new injury is auto-expanded so further editing
-  // (description, modifiers, traumas) happens in the same flow. The form
-  // resets to defaults after adding, ready for the next entry.
+  // Toggle a single location chip in the quick-add form.
+  function toggleQuickAddLocation(trackKey) {
+    if (quickAddLocations.has(trackKey)) quickAddLocations.delete(trackKey);
+    else quickAddLocations.add(trackKey);
+    // If we just cleared every selection, re-seed with the toggled key so
+    // there's always at least one selected. (Alternative: allow empty and
+    // disable the Add button; this is simpler.)
+    if (quickAddLocations.size === 0) quickAddLocations.add(trackKey);
+    renderAll();
+  }
+
+  // Toggle select-all. If every location is already selected, deselect all
+  // except the first (always keep at least one selected for Add to do anything).
+  function toggleQuickAddAllLocations() {
+    const charData = ctx.getCharData();
+    const ruleset = ctx.getRuleset();
+    const result = computeDerivedStats(charData, ruleset);
+    const locations = result.locations || [];
+    if (locations.length === 0) return;
+    const allOn = locations.every(l => quickAddLocations.has(l.trackKey));
+    if (allOn) {
+      quickAddLocations.clear();
+      quickAddLocations.add(locations[0].trackKey);
+    } else {
+      quickAddLocations.clear();
+      locations.forEach(l => quickAddLocations.add(l.trackKey));
+    }
+    renderAll();
+  }
+
+  // Create an injury for each selected location. One injury per location,
+  // all sharing the name/level/description. They get independent IDs,
+  // modifiers, and traumas — so healing, modifying, or deleting one doesn't
+  // touch the others. Useful for AoE damage (grenades, sweeping attacks,
+  // environmental hazards).
   //
-  // Empty name is allowed (creates an injury named "(unnamed)" in the list
-  // header). Level defaults to 1 if the field is empty or invalid. Location
-  // always has a valid value since the select has no blank option.
+  // After adding: fields reset (name clears, degree back to 1). Location
+  // selection is KEPT so rapid sequential adds to the same AoE pattern are
+  // fast. Focus returns to the name field.
   async function quickAddInjury() {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
@@ -1220,35 +1284,42 @@ export function createCombatSection(ctx) {
 
     const nameEl  = document.getElementById('qadd-inj-name');
     const levelEl = document.getElementById('qadd-inj-level');
-    const locEl   = document.getElementById('qadd-inj-location');
 
     const name     = nameEl  ? (nameEl.value || '').trim() : '';
     const baseLevel = levelEl ? Math.max(0, parseInt(levelEl.value) || 0) : 0;
-    const location = locEl   ? (locEl.value || 'torso')  : 'torso';
 
-    const inj = {
-      id: newInjuryId(),
-      name,
-      description: '',
-      baseLevel,
-      location,
-      levelModifiers: [],
-      degradationModifiers: [],
-      traumas: []
-    };
-    charData.injuries.push(inj);
-    // Auto-expand so the player can continue editing without an extra click.
-    expandedInjuries.add(inj.id);
-    // And make sure the section AND the target location group are both open,
-    // so the new injury is actually visible without extra clicks.
+    // Snapshot the selected locations at the moment of add. If no locations
+    // are selected for some reason, default to torso so we never silently
+    // do nothing.
+    const targets = quickAddLocations.size > 0
+      ? Array.from(quickAddLocations)
+      : ['torso'];
+
+    targets.forEach(location => {
+      const inj = {
+        id: newInjuryId(),
+        name,
+        description: '',
+        baseLevel,
+        location,
+        levelModifiers: [],
+        degradationModifiers: [],
+        traumas: []
+      };
+      charData.injuries.push(inj);
+      // Auto-expand each new injury card so all created injuries are visible.
+      expandedInjuries.add(inj.id);
+      openInjuryLocations.add(location);
+    });
+
     injuriesOpen = true;
-    openInjuryLocations.add(location);
     await saveCharacter(ctx.getCharId(), { injuries: charData.injuries });
     renderAll();
-    // Re-focus the name field so rapid sequential adds are smooth.
-    // renderAll rebuilds the DOM so the old element is gone; grab the fresh one.
+    // Re-focus the name field so rapid sequential adds are smooth. Fields
+    // reset: name clears; level stays at whatever you typed (often you're
+    // applying the same level several times in a row).
     const freshNameEl = document.getElementById('qadd-inj-name');
-    if (freshNameEl) freshNameEl.focus();
+    if (freshNameEl) { freshNameEl.value = ''; freshNameEl.focus(); }
   }
 
   async function removeInjury(id) {
@@ -1419,7 +1490,8 @@ export function createCombatSection(ctx) {
     toggleEditMode, addModifier, updateModifier, deleteModifier,
     // Injuries / Traumas
     toggleInjurySection, toggleInjuryExpand, toggleInjuryLocation,
-    quickAddInjury, removeInjury, updateInjuryField,
+    quickAddInjury, toggleQuickAddLocation, toggleQuickAddAllLocations,
+    removeInjury, updateInjuryField,
     tickInjuryQuickmod,
     addInjuryMod, updateInjuryMod, deleteInjuryMod,
     addTrauma, removeTrauma, updateTraumaField
