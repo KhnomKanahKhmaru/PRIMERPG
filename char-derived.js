@@ -719,6 +719,73 @@ export function computeDerivedStats(character, ruleset) {
     };
   }
 
+  // ─── SAN (SANITY) ───
+  //
+  // Linear mental health pool. Damage stacks directly — no FORT reduction.
+  //
+  // Max comes from the SAN derived stat (CHA + INT by default). Modifiers
+  // (sanModifiers) add to that max, same pattern as Body. Current = max -
+  // damage, and can go negative past 0 as the character slides through:
+  //   current > 0              → Healthy
+  //   0  ≥ current > -SAN      → In Shock       (+1 Diff all rolls)
+  //   -SAN ≥ current > -2*SAN  → Insane         (+2 Diff SAN, +1 Diff others)
+  //   current ≤ -2*SAN         → Broken         (+3 Diff SAN, +1 Diff others,
+  //                                               Breaking Point roll required)
+  //
+  // Damage can push beyond -2*SAN; the bar visualizes this with deeper black
+  // Phase 4 segments, and every additional Mental Damage past Broken forces
+  // another Breaking Point roll (enforced narratively; code just displays
+  // the state).
+  let san = null;
+  const sanStatEntry = stats.get('SAN');
+  if (sanStatEntry && sanStatEntry.value !== null) {
+    const baseMax = Math.floor(sanStatEntry.value);
+    const sanMods = Array.isArray(character.sanModifiers) ? character.sanModifiers : [];
+    const sanModTotal = sanMods.reduce((acc, m) => acc + (parseInt(m.value) || 0), 0);
+    const sanMax = Math.max(0, baseMax + sanModTotal);
+    const sanDamage = Math.max(0, Number.isFinite(character.sanDamage) ? character.sanDamage : 0);
+    const sanCurrent = sanMax - sanDamage;  // can be negative; that's the point
+
+    let sanStatus = 'healthy';
+    if (sanMax > 0) {
+      if (sanCurrent <= -2 * sanMax) sanStatus = 'broken';
+      else if (sanCurrent <= -sanMax) sanStatus = 'insane';
+      else if (sanCurrent <= 0) sanStatus = 'inShock';
+    }
+
+    // Status label + penalty text for the UI. Penalties are narrative cues
+    // for the GM — they're printed but not auto-applied to any dice rolls.
+    let sanStatusLabel, sanPenaltyText;
+    switch (sanStatus) {
+      case 'broken':
+        sanStatusLabel = 'Broken';
+        sanPenaltyText = '+3 Difficulty to SAN rolls, +1 Difficulty to other rolls. Roll on Breaking Point table. Any further Mental Damage forces a reroll.';
+        break;
+      case 'insane':
+        sanStatusLabel = 'Insane';
+        sanPenaltyText = '+2 Difficulty to SAN rolls, +1 Difficulty to other rolls.';
+        break;
+      case 'inShock':
+        sanStatusLabel = 'In Shock';
+        sanPenaltyText = '+1 Difficulty to all rolls.';
+        break;
+      default:
+        sanStatusLabel = 'Healthy';
+        sanPenaltyText = '';
+    }
+
+    san = {
+      baseMax,
+      max: sanMax,
+      current: sanCurrent,
+      damage: sanDamage,
+      modifiers: sanMods,
+      status: sanStatus,
+      statusLabel: sanStatusLabel,
+      penaltyText: sanPenaltyText
+    };
+  }
+
   // ─── INJURIES ───
   //
   // Injuries are free-floating wounds with their own base severity, location,
@@ -781,7 +848,7 @@ export function computeDerivedStats(character, ruleset) {
     };
   });
 
-  return { stats, locations, errors, vars, body, power, injuries };
+  return { stats, locations, errors, vars, body, power, san, injuries };
 }
 
 // ─── DEGRADATION TABLE ───
