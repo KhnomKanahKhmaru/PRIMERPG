@@ -369,8 +369,29 @@
 
     /* Derived stat cards */
     .ds-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
-    .ds-card { background: #111; border: 1px solid #1f1f1f; border-radius: 4px; padding: 10px 12px; }
-    .ds-card-name { font-size: 10px; font-weight: 700; letter-spacing: .06em; color: #888; text-transform: uppercase; margin-bottom: 6px; }
+    .ds-card { background: #111; border: 1px solid #1f1f1f; border-radius: 4px; padding: 10px 12px; position: relative; }
+    .ds-card-name { font-size: 10px; font-weight: 700; letter-spacing: .06em; color: #888; text-transform: uppercase; margin-bottom: 6px; padding-right: 36px; }
+    /* Roll-modifier badge — shown top-right, tells player what stat modifier
+       they add to dice when rolling resistance for this derived stat. Signed
+       number (+N / −N / ±0). Uses tabular numbers so the sign column aligns
+       visually regardless of magnitude. */
+    .ds-card-rollmod {
+      position: absolute;
+      top: 8px;
+      right: 10px;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 13px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: #d0c080;
+      background: #1a1810;
+      border: 1px solid #3a3420;
+      border-radius: 4px;
+      padding: 2px 8px;
+      line-height: 1.1;
+      letter-spacing: 0;
+      cursor: help;
+    }
     .ds-card-code { font-family: 'Consolas', 'Courier New', monospace; font-size: 9px; color: #555; font-weight: 400; letter-spacing: 0; }
     .ds-card-formula { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #666; font-weight: 500; letter-spacing: 0; margin-bottom: 4px; }
     .ds-card-value { font-size: 24px; font-weight: 700; color: #e8e8e8; font-variant-numeric: tabular-nums; line-height: 1.1; }
