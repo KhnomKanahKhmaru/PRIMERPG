@@ -620,6 +620,18 @@
     }
     .injury-base-note { color: #666; font-weight: 400; font-size: 10px; }
 
+    /* Inline +/- quickmod controls on the injury header. Small, unobtrusive.
+       Clicks stop propagating so they don't toggle the card's expand. */
+    .injury-quickmod { display: inline-flex; gap: 2px; }
+    .injury-qm-btn {
+      background: #141414; border: 1px solid #2a2a2a; color: #aaa;
+      font-family: 'Open Sans', sans-serif; font-size: 12px; font-weight: 700;
+      width: 22px; height: 22px; padding: 0;
+      border-radius: 3px; cursor: pointer; line-height: 1;
+    }
+    .injury-qm-btn:hover { background: #1f1f1f; border-color: #444; color: #fff; }
+    .injury-qm-btn:active { background: #2a2a2a; }
+
     /* Location shown as a visible pill on the injury card header */
     .injury-loc-pill {
       font-size: 10px; font-weight: 600; letter-spacing: .06em;
@@ -1154,6 +1166,7 @@
     quickAddInjury:       () => combat.quickAddInjury(),
     removeInjury:         (id) => combat.removeInjury(id),
     updateInjuryField:    (id, field, val) => combat.updateInjuryField(id, field, val),
+    tickInjuryQuickmod:   (id, delta) => combat.tickInjuryQuickmod(id, delta),
     addInjuryMod:         (injId, kind) => combat.addInjuryMod(injId, kind),
     updateInjuryMod:      (injId, kind, i, field, val) => combat.updateInjuryMod(injId, kind, i, field, val),
     deleteInjuryMod:      (injId, kind, i) => combat.deleteInjuryMod(injId, kind, i),
