@@ -380,6 +380,28 @@
     /* Hit locations */
     .combat-section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #1a1a1a; }
     .combat-section-head .combat-section-title { margin-bottom: 0; padding-bottom: 0; border-bottom: none; flex: 1; }
+
+    /* Sub-section header inside a combat section (e.g. "Hit Locations" inside "Health").
+       Smaller than the main title; acts as a divider between the cards grid and
+       the locations list below it. */
+    .combat-subsection-head {
+      display: flex; align-items: center; gap: 10px;
+      margin: 16px 0 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .combat-subsection-title {
+      font-size: 10px; font-weight: 700;
+      letter-spacing: .14em; text-transform: uppercase;
+      color: #666;
+      flex: 1;
+    }
+
+    /* Health cards at the top of the Health section. Slightly tighter grid
+       than the default derived-stats grid so HP/FORT/etc. read as a compact
+       overview strip above the detailed hit location rows. */
+    .health-cards { margin-bottom: 4px; }
+
     .hl-edit-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #888; font-family: 'Open Sans', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 4px 12px; border-radius: 3px; cursor: pointer; }
     .hl-edit-btn:hover { background: #222; border-color: #3f3f3f; color: #ccc; }
     .hl-edit-btn.active { background: #2a2a2a; border-color: #555; color: #e0e0e0; }
