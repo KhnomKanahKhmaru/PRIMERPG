@@ -860,6 +860,10 @@ export function createCombatSection(ctx) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     if (!charData.hitLocationDamage) charData.hitLocationDamage = {};
+    // +/- only affects the manual damage pool. Injury damage is separate
+    // and controlled via the Injuries section. Trying to "heal below zero
+    // manual" would be weird UX; we clamp at 0 and let injuries still
+    // contribute whatever they contribute.
     const cur = charData.hitLocationDamage[trackKey] || 0;
     charData.hitLocationDamage[trackKey] = Math.max(0, cur + delta);
     await saveCharacter(ctx.getCharId(), { hitLocationDamage: charData.hitLocationDamage });
@@ -870,8 +874,24 @@ export function createCombatSection(ctx) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     if (!charData.hitLocationDamage) charData.hitLocationDamage = {};
-    const parsed = Math.max(0, parseInt(val) || 0);
-    charData.hitLocationDamage[trackKey] = parsed;
+    const typed = Math.max(0, parseInt(val) || 0);
+
+    // The input displays TOTAL damage (manual + injury). Compute injury
+    // contribution for this location so we can back out the manual piece.
+    // If typed < injury damage, the manual pool clamps to 0 (you'd need to
+    // heal an injury via level-mods to go below the injury-contributed floor).
+    const injuries = Array.isArray(charData.injuries) ? charData.injuries : [];
+    let injuryDamageHere = 0;
+    injuries.forEach(inj => {
+      if ((inj.location || 'torso') !== trackKey) return;
+      const base = Number.isFinite(inj.baseLevel) ? inj.baseLevel : 0;
+      const mods = Array.isArray(inj.levelModifiers) ? inj.levelModifiers : [];
+      const modTotal = mods.reduce((a, m) => a + (parseInt(m.value) || 0), 0);
+      injuryDamageHere += Math.max(0, base + modTotal);
+    });
+
+    const manual = Math.max(0, typed - injuryDamageHere);
+    charData.hitLocationDamage[trackKey] = manual;
     await saveCharacter(ctx.getCharId(), { hitLocationDamage: charData.hitLocationDamage });
     renderAll();
   }
