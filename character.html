@@ -531,6 +531,114 @@
     .power-btn:disabled { opacity: 0.3; cursor: not-allowed; }
     .power-input { width: 60px; text-align: center; background: #0a0a0a; border: 1px solid #2a2a2a; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 14px; font-weight: 700; padding: 6px; border-radius: 3px; outline: none; }
     .power-input:focus { border-color: #444; }
+    /* ─── INJURIES ─── */
+    .injury-section { margin-top: 14px; }
+    .injury-head {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px;
+      background: #0e0e0e; border: 1px solid #222; border-radius: 4px;
+      cursor: pointer; user-select: none;
+      transition: background 0.15s;
+    }
+    .injury-head:hover { background: #141414; }
+    .injury-head-caret { color: #666; font-size: 10px; width: 10px; }
+    .injury-head-title { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #aaa; flex: 1; }
+    .injury-head-count { font-size: 11px; color: #666; font-variant-numeric: tabular-nums; }
+    .injury-add-row { padding: 8px 0 10px; }
+    .injury-add-btn { background: #1a1a1a; border: 1px solid #333; color: #ccc; font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 600; padding: 6px 14px; border-radius: 3px; cursor: pointer; }
+    .injury-add-btn:hover { background: #222; border-color: #555; }
+    .injury-empty { font-size: 11px; color: #555; font-style: italic; padding: 8px 14px; }
+    .injury-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+
+    .injury-card {
+      background: #0d0d0d; border: 1px solid #1f1f1f; border-radius: 4px;
+      overflow: hidden;
+    }
+    .injury-card-head {
+      display: grid; grid-template-columns: 16px 1fr auto auto auto;
+      gap: 12px; padding: 10px 14px;
+      align-items: center;
+      cursor: pointer; user-select: none;
+      transition: background 0.15s;
+    }
+    .injury-card-head:hover { background: #141414; }
+    .injury-caret { color: #666; font-size: 10px; }
+    .injury-name { font-size: 13px; font-weight: 600; color: #e0e0e0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .injury-level { font-size: 11px; font-weight: 600; color: #c8c8c8; font-variant-numeric: tabular-nums; }
+    .injury-base-note { color: #666; font-weight: 400; }
+    .injury-loc { font-size: 10px; color: #888; letter-spacing: .04em; }
+    .injury-rate { font-size: 10px; color: #888; font-variant-numeric: tabular-nums; min-width: 90px; text-align: right; }
+    .injury-norate { color: #444; font-style: italic; }
+
+    /* Severity color accents on the left edge */
+    .injury-card.severity-none       { border-left: 3px solid #2a2a2a; }
+    .injury-card.severity-minor      { border-left: 3px solid #6a8a4a; }
+    .injury-card.severity-moderate   { border-left: 3px solid #b8a040; }
+    .injury-card.severity-major      { border-left: 3px solid #c88a3a; }
+    .injury-card.severity-massive    { border-left: 3px solid #c85a3a; }
+    .injury-card.severity-monumental { border-left: 3px solid #a82a2a; }
+    .injury-card.severity-mega       { border-left: 3px solid #7a1a1a; }
+    .injury-card.severity-mythical   { border-left: 3px solid #441010; }
+
+    .injury-card-body {
+      padding: 12px 14px;
+      background: #0a0a0a;
+      border-top: 1px solid #1a1a1a;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .injury-fields { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; }
+    .injury-field { display: flex; flex-direction: column; gap: 4px; }
+    .injury-field span { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #666; }
+    .injury-field input, .injury-field select, .injury-field textarea,
+    .trauma-field input, .trauma-field textarea, .trauma-name-input, .trauma-tier-select {
+      background: #111; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 12px;
+      padding: 5px 8px; border-radius: 3px; outline: none;
+      width: 100%; box-sizing: border-box;
+    }
+    .injury-field input:focus, .injury-field select:focus, .injury-field textarea:focus,
+    .trauma-field input:focus, .trauma-field textarea:focus,
+    .trauma-name-input:focus, .trauma-tier-select:focus { border-color: #444; }
+    .injury-field textarea, .trauma-field textarea { resize: vertical; min-height: 36px; font-family: inherit; }
+    .injury-field-desc { margin-top: 4px; }
+    .injury-fields-ro { font-size: 12px; color: #aaa; display: flex; flex-direction: column; gap: 4px; }
+    .injury-fields-ro .ro-label { color: #666; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; margin-right: 6px; }
+    .injury-desc-ro { color: #888; font-style: italic; margin-top: 2px; }
+
+    .injury-rate-info { font-size: 11px; color: #888; font-style: italic; padding: 6px 10px; background: #111; border-radius: 3px; }
+
+    .injury-mod-block { background: #080808; border: 1px solid #1a1a1a; border-radius: 3px; padding: 10px 12px; }
+    .injury-mod-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+    .injury-mod-title { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #aaa; }
+    .injury-mod-hint { font-size: 10px; color: #555; font-style: italic; }
+
+    /* Traumas */
+    .trauma-block { background: #080808; border: 1px solid #1a1a1a; border-radius: 3px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+    .trauma-head { display: flex; align-items: baseline; gap: 10px; }
+    .trauma-title { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #aaa; flex: 1; }
+    .trauma-count { font-size: 10px; color: #666; }
+    .trauma-empty { font-size: 11px; color: #555; font-style: italic; }
+    .trauma-list { display: flex; flex-direction: column; gap: 8px; }
+    .trauma-card { background: #0e0e0e; border: 1px solid #222; border-radius: 3px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+    .trauma-card.editing { gap: 8px; }
+    .trauma-card-head { display: flex; align-items: center; gap: 8px; }
+    .trauma-tier { font-size: 10px; color: #888; font-weight: 600; letter-spacing: .04em; }
+    .trauma-name { font-size: 12px; font-weight: 600; color: #ccc; }
+    .trauma-tier-select { width: 110px; }
+    .trauma-name-input { flex: 1; }
+    .trauma-field { display: flex; flex-direction: column; gap: 3px; }
+    .trauma-field span { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #666; }
+    .trauma-desc { font-size: 11px; color: #888; font-style: italic; }
+    .trauma-system { font-size: 11px; color: #b8a068; }
+    .trauma-sys-label { color: #666; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; font-size: 9px; margin-right: 4px; }
+    .trauma-add-row { display: flex; }
+    .trauma-add-btn { background: #111; border: 1px solid #2a2a2a; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 10px; padding: 5px 12px; border-radius: 3px; cursor: pointer; }
+    .trauma-add-btn:hover { background: #1a1a1a; border-color: #444; color: #ccc; }
+
+    .injury-delete-row { display: flex; justify-content: flex-end; padding-top: 4px; border-top: 1px solid #1a1a1a; }
+    .injury-delete-btn { background: transparent; border: 1px solid #3a1a1a; color: #8a3a3a; font-family: 'Open Sans', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 4px 10px; border-radius: 3px; cursor: pointer; }
+    .injury-delete-btn:hover { background: #2a0a0a; border-color: #6a2a2a; color: #c85a5a; }
+
   </style>
 </head>
 <body>
@@ -956,6 +1064,18 @@
     addHlMod:             (target)           => combat.addModifier(target),
     updateHlMod:          (target, i, field, val) => combat.updateModifier(target, i, field, val),
     deleteHlMod:          (target, i)        => combat.deleteModifier(target, i),
+    // Injuries / Traumas
+    toggleInjurySection:  () => combat.toggleInjurySection(),
+    toggleInjuryExpand:   (id) => combat.toggleInjuryExpand(id),
+    addInjury:            () => combat.addInjury(),
+    removeInjury:         (id) => combat.removeInjury(id),
+    updateInjuryField:    (id, field, val) => combat.updateInjuryField(id, field, val),
+    addInjuryMod:         (injId, kind) => combat.addInjuryMod(injId, kind),
+    updateInjuryMod:      (injId, kind, i, field, val) => combat.updateInjuryMod(injId, kind, i, field, val),
+    deleteInjuryMod:      (injId, kind, i) => combat.deleteInjuryMod(injId, kind, i),
+    addTrauma:            (injId) => combat.addTrauma(injId),
+    removeTrauma:         (injId, i) => combat.removeTrauma(injId, i),
+    updateTraumaField:    (injId, i, field, val) => combat.updateTraumaField(injId, i, field, val),
     // Sheet tab switcher (Overview / Combat folder tabs)
     switchSheetTab:       (which) => {
       document.querySelectorAll('.sheet-tab').forEach(t => t.classList.remove('active'));
