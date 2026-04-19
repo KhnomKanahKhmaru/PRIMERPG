@@ -283,6 +283,163 @@
     .sit-edit-field input:focus, .sit-edit-field textarea:focus { border-color: #444; }
     .sit-edit-field textarea { resize: vertical; line-height: 1.5; font-family: 'Open Sans', sans-serif; min-height: 44px; }
     .sit-edit-actions { display: flex; gap: 8px; margin-top: 4px; }
+
+    /* ═══ FOLDER TABS (Overview / Combat) ═══ */
+    /*
+     * The sheet is split into tabs. The tabs themselves stick out on the
+     * LEFT side of the body like manila-folder tabs. Visually, the active
+     * tab's right edge overlaps the body border so the tab "merges" with
+     * the panel, creating the folder look.
+     *
+     * On narrow viewports (<760px wide) the tabs flip to top-horizontal
+     * so mobile users don't lose screen space to side tabs.
+     */
+    .sheet-wrap { position: relative; display: flex; align-items: flex-start; gap: 0; margin-top: 8px; }
+    .sheet-tabs { display: flex; flex-direction: column; gap: 4px; padding-top: 16px; flex-shrink: 0; }
+    .sheet-tab {
+      /* Tab body: slight negative right-margin to push into the panel border */
+      background: #0a0a0a;
+      border: 1px solid #222;
+      border-right: none;
+      border-radius: 6px 0 0 6px;
+      padding: 14px 14px 14px 18px;
+      min-width: 48px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: #666;
+      cursor: pointer;
+      user-select: none;
+      /* Vertical orientation: rotate text 180deg so it reads bottom-to-top
+         like a book spine. Flip the writing mode to avoid upside-down text. */
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      transition: background 0.12s, color 0.12s, border-color 0.12s;
+      margin-right: -1px;
+      position: relative;
+      z-index: 1;
+    }
+    .sheet-tab:hover { background: #111; color: #aaa; border-color: #333; }
+    .sheet-tab.active {
+      background: #0d0d0d;
+      border-color: #333;
+      color: #e0e0e0;
+      z-index: 3;  /* sit above the panel border so they visually merge */
+    }
+
+    .sheet-body {
+      flex: 1;
+      min-width: 0;
+      border: 1px solid #333;
+      border-radius: 0 6px 6px 6px;
+      background: #0a0a0a;
+      padding: 20px 24px;
+      position: relative;
+      z-index: 2;
+    }
+    .sheet-panel { display: none; }
+    .sheet-panel.active { display: block; }
+
+    @media (max-width: 760px) {
+      /* On narrow viewports, flip to horizontal top tabs — folder-edge effect
+         is cute but steals too much width on phones. */
+      .sheet-wrap { flex-direction: column; }
+      .sheet-tabs { flex-direction: row; padding-top: 0; padding-bottom: 0; margin-bottom: -1px; }
+      .sheet-tab {
+        writing-mode: horizontal-tb;
+        transform: none;
+        border-radius: 6px 6px 0 0;
+        border-right: 1px solid #222;
+        border-bottom: none;
+        margin-right: 0;
+        margin-bottom: -1px;
+        min-width: auto;
+        padding: 10px 18px;
+      }
+      .sheet-body { border-radius: 0 6px 6px 6px; }
+    }
+
+    /* ═══ COMBAT TAB ═══ */
+    .combat-empty { color: #444; font-size: 13px; font-style: italic; text-align: center; padding: 40px 0; }
+
+    .combat-section { border: 1px solid #1a1a1a; border-radius: 6px; padding: 16px 20px; margin-bottom: 14px; background: #0d0d0d; }
+    .combat-section:last-child { margin-bottom: 0; }
+    .combat-section-title { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #aaa; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #1a1a1a; }
+
+    /* Derived stat cards */
+    .ds-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+    .ds-card { background: #111; border: 1px solid #1f1f1f; border-radius: 4px; padding: 10px 12px; }
+    .ds-card-name { font-size: 10px; font-weight: 700; letter-spacing: .06em; color: #888; text-transform: uppercase; margin-bottom: 6px; }
+    .ds-card-code { font-family: 'Consolas', 'Courier New', monospace; font-size: 9px; color: #555; font-weight: 400; letter-spacing: 0; }
+    .ds-card-value { font-size: 24px; font-weight: 700; color: #e8e8e8; font-variant-numeric: tabular-nums; line-height: 1.1; }
+    .ds-card-error { color: #c87777; font-size: 14px; }
+    .ds-card-unit { font-size: 11px; font-weight: 500; color: #666; margin-left: 3px; }
+    .ds-card-desc { font-size: 11px; color: #666; line-height: 1.5; margin-top: 6px; font-style: italic; }
+
+    /* Hit locations */
+    .hl-list { display: flex; flex-direction: column; gap: 6px; }
+    .hl-row {
+      display: grid;
+      grid-template-columns: 120px 1fr 110px auto;
+      gap: 14px;
+      align-items: center;
+      background: #111;
+      border: 1px solid #1f1f1f;
+      border-radius: 4px;
+      padding: 10px 14px;
+    }
+    .hl-name { font-size: 13px; font-weight: 600; color: #ccc; }
+    .hl-bar-wrap { display: flex; align-items: center; gap: 10px; }
+    .hl-bar-bg { flex: 1; height: 10px; background: #0a0a0a; border: 1px solid #222; border-radius: 2px; overflow: hidden; }
+    .hl-bar-fill { height: 100%; background: #4a7a4a; transition: width 0.15s; }
+    .hl-bar-label { font-size: 11px; font-weight: 600; color: #aaa; font-variant-numeric: tabular-nums; min-width: 56px; text-align: right; }
+    .hl-status-label { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #888; text-align: center; }
+    .hl-controls { display: flex; align-items: center; gap: 4px; }
+    .hl-dmg-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 14px; font-weight: 700; width: 26px; height: 26px; padding: 0; border-radius: 3px; cursor: pointer; line-height: 1; }
+    .hl-dmg-btn:hover { background: #222; border-color: #3f3f3f; color: #fff; }
+    .hl-dmg-input { width: 52px; text-align: center; background: #0a0a0a; border: 1px solid #2a2a2a; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; font-weight: 600; padding: 4px; border-radius: 3px; outline: none; }
+    .hl-dmg-input:focus { border-color: #444; }
+
+    /* Damage-state coloring: bar, name, status label progressively dim/darken */
+    .hl-status-disabled .hl-bar-fill           { background: #8a6a3a; }
+    .hl-status-disabled .hl-status-label       { color: #c89a5a; }
+    .hl-status-disabled .hl-name               { color: #c89a5a; }
+    .hl-status-destroyed .hl-bar-fill          { background: #6a2a2a; }
+    .hl-status-destroyed .hl-status-label      { color: #c87777; }
+    .hl-status-destroyed .hl-name              { color: #c87777; }
+    .hl-status-destroyed                        { opacity: 0.88; }
+    .hl-status-definitelyDestroyed .hl-bar-fill    { background: #3a0a0a; }
+    .hl-status-definitelyDestroyed .hl-status-label { color: #8a3a3a; font-style: italic; }
+    .hl-status-definitelyDestroyed .hl-name        { color: #8a3a3a; text-decoration: line-through; }
+    .hl-status-definitelyDestroyed                  { opacity: 0.55; }
+    .hl-row-error { background: #1a0d0d; border-color: #4a1a1a; }
+    .hl-error { color: #c87777; font-size: 11px; font-style: italic; grid-column: 2 / 5; }
+
+    /* Body total summary */
+    .body-total { display: flex; align-items: center; gap: 14px; margin-top: 12px; padding: 10px 14px; background: #0e0e0e; border: 1px solid #222; border-radius: 4px; }
+    .body-label { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #888; }
+    .body-value { font-size: 16px; font-weight: 700; color: #e0e0e0; font-variant-numeric: tabular-nums; flex: 1; }
+    .body-status { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #7a9a7a; }
+    .body-total-dead .body-value { color: #c87777; }
+    .body-total-dead .body-status { color: #c87777; }
+    .body-total-dead { border-color: #4a1a1a; background: #140808; }
+
+    /* Power Pool */
+    .pp-desc { font-size: 12px; color: #888; line-height: 1.6; margin-bottom: 12px; font-style: italic; }
+    .pp-row { display: flex; align-items: center; gap: 16px; padding: 12px 14px; background: #111; border: 1px solid #1f1f1f; border-radius: 4px; flex-wrap: wrap; }
+    .pp-label { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #888; }
+    .pp-value { font-size: 22px; font-weight: 700; color: #e8e8e8; font-variant-numeric: tabular-nums; }
+    .pp-controls { display: flex; align-items: center; gap: 4px; }
+    .pp-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 16px; font-weight: 700; width: 30px; height: 30px; padding: 0; border-radius: 3px; cursor: pointer; line-height: 1; }
+    .pp-btn:hover:not(:disabled) { background: #222; border-color: #3f3f3f; color: #fff; }
+    .pp-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .pp-input { width: 60px; text-align: center; background: #0a0a0a; border: 1px solid #2a2a2a; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 16px; font-weight: 700; padding: 4px; border-radius: 3px; outline: none; }
+    .pp-input:focus { border-color: #444; }
+    .pp-cost { display: flex; flex-direction: column; gap: 2px; margin-left: auto; text-align: right; }
+    .pp-cost-total { font-size: 12px; font-weight: 600; color: #aaa; font-variant-numeric: tabular-nums; }
+    .pp-cost-next { font-size: 11px; color: #666; font-variant-numeric: tabular-nums; }
+    .pp-rate-note { font-size: 11px; color: #555; margin-top: 8px; font-style: italic; }
   </style>
 </head>
 <body>
@@ -291,6 +448,17 @@
 <div class="page">
   <div id="loading" class="empty">Loading...</div>
   <div id="char-content" style="display:none">
+
+    <div class="sheet-wrap">
+      <div class="sheet-tabs">
+        <div class="sheet-tab active" id="sheet-tab-overview" onclick="switchSheetTab('overview')">Overview</div>
+        <div class="sheet-tab"        id="sheet-tab-combat"   onclick="switchSheetTab('combat')">Combat</div>
+      </div>
+
+      <div class="sheet-body">
+
+        <!-- ═══════════════ OVERVIEW PANEL ═══════════════ -->
+        <div class="sheet-panel active" id="panel-overview">
 
     <div class="char-card">
       <div class="char-picture" id="picture-slot" onclick="triggerPicUpload()">
@@ -467,6 +635,16 @@
       <div id="situations-add-form"></div>
     </div>
 
+        </div><!-- /panel-overview -->
+
+        <!-- ═══════════════ COMBAT PANEL ═══════════════ -->
+        <div class="sheet-panel" id="panel-combat">
+          <div id="combat-content"></div>
+        </div><!-- /panel-combat -->
+
+      </div><!-- /sheet-body -->
+    </div><!-- /sheet-wrap -->
+
     <div id="danger-zone" style="display:none;margin-top:32px;padding:16px 20px;border:1px solid #3a1a1a;border-radius:6px;background:#140808">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
         <div>
@@ -508,6 +686,7 @@
   import { createBioSection } from './char-bio.js';
   import { createAdvantagesSection } from './char-advantages.js';
   import { createSituationsSection } from './char-situations.js';
+  import { createCombatSection } from './char-combat.js';
 
   // Inline event handlers in dynamically-generated markup call these by
   // name. They're ruleset-aware wrappers that read tables from the
@@ -592,6 +771,7 @@
   const bio = createBioSection(sectionCtx);
   const advantages = createAdvantagesSection(sectionCtx);
   const situations = createSituationsSection(sectionCtx);
+  const combat = createCombatSection(sectionCtx);
 
   // Expose section handlers on window so inline onclick handlers in the
   // HTML (and in dynamically-generated markup) can reach them. These go
@@ -672,6 +852,22 @@
     startEditSituation:   (id) => situations.startEdit(id),
     cancelEditSituation:  (id) => situations.cancelEdit(id),
     saveEditSituation:    (id) => situations.saveEdit(id),
+    // Combat tab
+    tickHitLocationDmg:   (trackKey, delta) => combat.tickHitLocationDmg(trackKey, delta),
+    setHitLocationDmg:    (trackKey, val)   => combat.setHitLocationDmg(trackKey, val),
+    tickPowerPool:        (delta) => combat.tickPowerPool(delta),
+    setPowerPool:         (val)   => combat.setPowerPool(val),
+    // Sheet tab switcher (Overview / Combat folder tabs)
+    switchSheetTab:       (which) => {
+      document.querySelectorAll('.sheet-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.sheet-panel').forEach(p => p.classList.remove('active'));
+      const tab = document.getElementById('sheet-tab-' + which);
+      const panel = document.getElementById('panel-' + which);
+      if (tab) tab.classList.add('active');
+      if (panel) panel.classList.add('active');
+      // Re-render Combat on open so stat changes made on Overview are live.
+      if (which === 'combat') combat.renderAll();
+    },
   });
 
   // calcTotalXp sums XP spent across stats and skills. Reads all cost
@@ -712,6 +908,9 @@
     // Advantages add to spent XP; Disadvantages subtract (grant XP).
     xp += advantages.totalXpDelta();
 
+    // Power Pool is purchased with XP.
+    xp += combat.powerPoolXpDelta();
+
     return xp;
   }
   async function saveXpSpent() {
@@ -719,6 +918,9 @@
     charData.xpSpent = v;
     await saveCharacter(charId, { xpSpent: v });
     xpBar.renderPowerBar();
+    // Derived stats depend on base stats; re-render so hit points, speed,
+    // reflex, etc. update when the user edits their STR/DEX/etc.
+    combat.renderAll();
   }
 
   // Silent auto-clamp: enforce the active ruleset's caps on the character's
@@ -891,6 +1093,7 @@
     skills.buildSkillsSection();
     advantages.renderAll();
     situations.renderAll();
+    combat.renderAll();
 
     // Owner-only UI elements.
     if (canEdit) {
