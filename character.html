@@ -1869,6 +1869,11 @@
     if (loaded) return;
     loaded = true;
 
+    // Wrap the whole load flow so silent promise rejections don't leave the
+    // loading spinner stuck forever. Any throw → visible error on the page
+    // + full stack in the console, which is far better than infinite hang.
+    try {
+
     // Stash logged-in user's identity for Situations "assigned by" tracking
     // and any future feature that needs to know who's viewing.
     myUid = user.uid;
@@ -1922,20 +1927,46 @@
     document.getElementById('loading').style.display = 'none';
     document.getElementById('char-content').style.display = 'block';
 
-    // Render every section.
-    await bio.renderBio();
-    await loadMentalSection();
-    stats.buildStatsSection();
-    skills.buildSkillsSection();
-    advantages.renderAll();
-    situations.renderAll();
-    combat.renderAll();
+    // Render every section. Each wrapped individually so a single broken
+    // section doesn't prevent the rest from showing.
+    const safeRender = async (label, fn) => {
+      try { await fn(); }
+      catch (e) {
+        console.error('[' + label + '] render failed:', e);
+        const marker = document.createElement('div');
+        marker.style.cssText = 'padding:12px;margin:8px 0;background:#2a0d0d;border:1px solid #6a2a2a;color:#e08080;font-size:12px;border-radius:4px';
+        marker.textContent = label + ' section failed to render: ' + (e.message || e) + ' (see console for full stack)';
+        document.getElementById('char-content').appendChild(marker);
+      }
+    };
+    await safeRender('Bio',        () => bio.renderBio());
+    await safeRender('Mental',     () => loadMentalSection());
+    await safeRender('Stats',      () => stats.buildStatsSection());
+    await safeRender('Skills',     () => skills.buildSkillsSection());
+    await safeRender('Advantages', () => advantages.renderAll());
+    await safeRender('Situations', () => situations.renderAll());
+    await safeRender('Combat',     () => combat.renderAll());
 
     // Owner-only UI elements.
     if (canEdit) {
       document.getElementById('bio-edit-btn').style.display = 'inline';
       document.getElementById('stats-edit-btn').style.display = 'inline';
       document.getElementById('danger-zone').style.display = 'block';
+    }
+
+    } catch (err) {
+      // Final catch: anything in the pre-render flow blew up. Surface to the
+      // user + console so they can tell us what broke instead of staring at
+      // a loading spinner that never resolves.
+      console.error('[character load] Fatal error:', err);
+      const loadingEl = document.getElementById('loading');
+      if (loadingEl) {
+        loadingEl.style.color = '#e08080';
+        loadingEl.innerHTML = '<div style="padding:20px"><strong>Failed to load character.</strong><br><br>' +
+          '<pre style="white-space:pre-wrap;font-size:11px;text-align:left;background:#1a0a0a;padding:12px;border:1px solid #4a1a1a;border-radius:4px;margin-top:12px">' +
+          (err && err.stack ? err.stack : String(err)) +
+          '</pre><br><button onclick="location.reload()" style="padding:6px 14px;background:#1a1a1a;border:1px solid #333;color:#ccc;border-radius:3px;cursor:pointer">Retry</button></div>';
+      }
     }
   });
 
