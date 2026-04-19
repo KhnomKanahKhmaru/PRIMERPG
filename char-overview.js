@@ -100,7 +100,7 @@ export function createOverviewSection(ctx) {
       statusClass = 's-healthy';
     }
 
-    const segHtml = renderBodySegments(body.max, body.damage, Math.min(body.max, 40));
+    const segHtml = renderBodySegments(body.max, body.damage, Math.min(body.max, 40), body.destroyed);
     return `
       <div class="state-tile">
         <div class="state-tile-head">
@@ -112,7 +112,7 @@ export function createOverviewSection(ctx) {
       </div>`;
   }
 
-  function renderBodySegments(maxHP, damage, segCount) {
+  function renderBodySegments(maxHP, damage, segCount, destroyed) {
     // Color progression as damage accumulates, mapped to the full HP range
     // (+max → 0 → -max). Rightmost segments transition first.
     //
@@ -120,8 +120,14 @@ export function createOverviewSection(ctx) {
     //   current = 0     (damage = maxHP)    → fully yellow     (Incapacitated:
     //                                           Unconscious and Paralyzed)
     //   current = -max  (damage = 2·maxHP)  → fully red        (Dead)
-    //   past -max                           → near-black       (Destroyed;
-    //                                           overkilled past death)
+    //   past -max + all limbs Def.Destroyed → near-black       (Destroyed;
+    //                                           character fully annihilated)
+    //
+    // The black "destroyed" state is gated on the `destroyed` flag (maps
+    // to body.destroyed) — a Body past 2·max alone isn't enough, because
+    // single-limb degradation (bleeding, exsanguination) can drive Body
+    // down without the whole character being gone. destroyed additionally
+    // requires all limbs to be Def.Destroyed.
     //
     // Per segment, `base` is how much damage has already chewed through
     // segments to the right of it. Color is driven by how far past `base`
@@ -137,10 +143,10 @@ export function createOverviewSection(ctx) {
       const rightDistance = segCount - i + 1;
       const base = (rightDistance - 1) * hpPerSeg;
       let color;
-      if      (damage > 2 * maxHP + base) color = COLORS.destroyed;
-      else if (damage >     maxHP + base) color = COLORS.red;
-      else if (damage >              base) color = COLORS.yellow;
-      else                                  color = COLORS.green;
+      if      (destroyed && damage > 2 * maxHP + base) color = COLORS.destroyed;
+      else if (damage >     maxHP + base)              color = COLORS.red;
+      else if (damage >              base)             color = COLORS.yellow;
+      else                                              color = COLORS.green;
       html += `<span class="state-bar-seg" style="background:${color}"></span>`;
     }
     return html;
