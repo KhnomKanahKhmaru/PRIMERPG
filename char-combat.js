@@ -48,8 +48,9 @@ export function createCombatSection(ctx) {
     html += renderDerivedStatsSection(result, ruleset, { includeGroups: ['movement'] });
     // Health section — HP/FORT cards + hit locations + Body + injuries.
     html += renderHitLocationsSection(result);
-    // All other derived stat groups (mental, etc.) render below — 'movement'
-    // and 'health' were already handled above.
+    // Sanity section — mental health pool, placed between physical and power.
+    html += renderSanSection(result);
+    // All other derived stat groups (mental, etc.) render below.
     html += renderDerivedStatsSection(result, ruleset, { excludeGroups: ['movement'] });
     // Power last (its own complex section with resource bar).
     html += renderPowerSection(result, ruleset, charData);
@@ -77,6 +78,7 @@ export function createCombatSection(ctx) {
     const orphans = [];
     result.stats.forEach((entry) => {
       if (entry.def.code === 'POWER') return;
+      if (entry.def.code === 'SAN') return;        // rendered in its own section
       if (entry.def.group === 'health') return;
       const g = entry.def.group;
       if (includeGroups && !includeGroups.has(g)) return;
@@ -851,6 +853,233 @@ export function createCombatSection(ctx) {
     return 'severity-mythical';
   }
 
+  // ─── SAN (SANITY) SECTION ───
+  //
+  // Dedicated section for mental health. Placed between physical health and
+  // power. Damage is LINEAR (no FORT reduction) — this mirrors the spec that
+  // mental wounds stack directly.
+  //
+  // Visual bar: 4 phases, same palette as HP location bars.
+  //   Phase 1 (green→yellow): 0 damage → max damage      (Healthy → In Shock)
+  //   Phase 2 (yellow→red):   max → 2*max                (In Shock → Insane)
+  //   Phase 3 (red→deepRed):  2*max → 3*max              (Insane → Broken)
+  //   Phase 4 (deepRed→black): 3*max → 4*max+            (Broken, deepening)
+  //
+  // Breaking Point reference panel renders when status === 'broken' so the
+  // player has the roll outcomes right in front of them. Not auto-rolled —
+  // system narratively triggers the roll; the UI just tells you what the
+  // results mean.
+
+  let editSanModifiersMode = false;
+
+  function renderSanSection(result) {
+    const san = result.san;
+    if (!san) return '';  // ruleset doesn't define SAN — skip entirely
+    const canEdit = ctx.getCanEdit();
+
+    // Cap segment count so very high-SAN characters don't render a runaway
+    // row of micro-segments. Each segment represents max/segCount damage.
+    const SEG_CAP = 80;
+    const segCount = Math.min(Math.max(san.max, 1), SEG_CAP);
+
+    let html = '<div class="combat-section san-section">';
+
+    // Header with title + Edit Modifiers button (parallel to Hit Locations).
+    html += '<div class="combat-section-head">';
+    html += '<div class="combat-section-title">Sanity</div>';
+    if (canEdit) {
+      html += `<button class="hl-edit-btn${editSanModifiersMode ? ' active' : ''}" onclick="toggleSanModifierEdit()">` +
+              `${editSanModifiersMode ? 'Done' : 'Edit Modifiers'}</button>`;
+    }
+    html += '</div>';
+
+    // Status line: SAN label, current/max, colored status pill.
+    const statusClass = 'san-status-' + san.status;
+    html += '<div class="san-top-row">';
+    html += '<span class="san-label">SAN</span>';
+    html += `<span class="san-nums"><span class="san-current">${san.current}</span><span class="san-slash"> / </span><span class="san-max">${san.max}</span></span>`;
+    html += `<span class="san-status-pill ${statusClass}">${escapeHtml(san.statusLabel)}</span>`;
+    html += '</div>';
+
+    // Penalty text — empty when Healthy, printed in italic otherwise.
+    if (san.penaltyText) {
+      html += `<div class="san-penalty">${escapeHtml(san.penaltyText)}</div>`;
+    }
+
+    // Segmented bar.
+    html += '<div class="san-bar">';
+    html += renderSanSegments(san.max, san.damage, segCount);
+    html += '</div>';
+
+    // Damage controls (input shows effective current; +/- tick damage).
+    if (canEdit) {
+      // Max theoretical damage we might want to represent — 4x max covers
+      // past-Broken state. Input clamp prevents absurd inputs.
+      const damageCap = Math.max(san.max * 5, 10);
+      html += `<div class="san-controls">
+        <button class="hl-dmg-btn" onclick="tickSanDmg(-1)" title="Heal 1 SAN">−</button>
+        <input type="number" class="san-dmg-input" value="${san.current}" min="${-damageCap}" max="${san.max}"
+               onchange="setSanCurrent(this.value)"
+               title="Current SAN (type to set directly)">
+        <button class="hl-dmg-btn" onclick="tickSanDmg(1)" title="Take 1 Mental Damage">+</button>
+      </div>`;
+    } else {
+      html += `<div class="san-controls san-controls-ro"><span class="san-current-ro">${san.current} / ${san.max}</span></div>`;
+    }
+
+    // Edit modifiers panel — same shape as Body modifier panel.
+    if (editSanModifiersMode && canEdit) {
+      html += renderSanModifierPanel(san);
+    }
+
+    // Breaking Point reference — shown whenever Broken. This is guidance,
+    // not automation. GM rolls d10 per PRIME rules and applies the result.
+    if (san.status === 'broken') {
+      html += renderBreakingPointPanel();
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  // Segment colors match HP location bars. Phase 4 adds BLACK (same as Body
+  // depletion phase on locations, but here triggered purely by SAN damage
+  // past 3×max since there's no separate pool).
+  function renderSanSegments(sanMax, damage, segCount) {
+    if (sanMax <= 0 || segCount <= 0) return '';
+    const COLORS = {
+      green:   '#4a7a4a',
+      yellow:  '#bdb247',
+      red:     '#a63a3a',
+      deepRed: '#5a1818',
+      black:   '#0f0a0a'
+    };
+    const dmgPerSeg = sanMax / segCount;
+
+    let html = '';
+    for (let i = 1; i <= segCount; i++) {
+      // rightDistance = how far from the right edge (1 = rightmost). Damage
+      // eats the bar right-to-left.
+      const rightDistance = segCount - i + 1;
+      const base = (rightDistance - 1) * dmgPerSeg;
+
+      let color;
+      if (damage > 3 * sanMax + base) color = COLORS.black;
+      else if (damage > 2 * sanMax + base) color = COLORS.deepRed;
+      else if (damage > sanMax + base) color = COLORS.red;
+      else if (damage > base) color = COLORS.yellow;
+      else color = COLORS.green;
+
+      html += `<span class="san-seg" style="background:${color}"></span>`;
+    }
+    return html;
+  }
+
+  function renderSanModifierPanel(san) {
+    const mods = Array.isArray(san.modifiers) ? san.modifiers : [];
+    let html = '<div class="hl-mod-panel">';
+    html += '<div class="hl-mod-panel-head">SAN Modifiers</div>';
+    if (mods.length === 0) {
+      html += '<div class="hl-mod-empty">No modifiers. Add to raise or lower max SAN.</div>';
+    } else {
+      mods.forEach((mod, idx) => {
+        html += `<div class="hl-mod-row">
+          <input type="text" class="hl-mod-name" value="${escapeHtml(mod.name || '')}" placeholder="Modifier name"
+                 onchange="updateSanMod(${idx}, 'name', this.value)">
+          <input type="number" class="hl-mod-value" value="${mod.value || 0}" step="1"
+                 onchange="updateSanMod(${idx}, 'value', this.value)">
+          <button class="hl-mod-del" onclick="deleteSanMod(${idx})" title="Delete modifier">×</button>
+        </div>`;
+      });
+    }
+    html += `<button class="hl-mod-add" onclick="addSanMod()">+ Add modifier</button>`;
+    html += '</div>';
+    return html;
+  }
+
+  function renderBreakingPointPanel() {
+    // Roll table is d10 (per PRIME convention). Results ordered high→low
+    // because you'd rather score 7 than -1.
+    return `<div class="san-breakpoint">
+      <div class="san-breakpoint-title">⚠ Breaking Point</div>
+      <div class="san-breakpoint-intro">Roll once when first Broken; reroll with each additional Mental Damage. You may take any lower-roll option if you roll higher.</div>
+      <div class="san-breakpoint-table">
+        <div class="san-bp-row san-bp-tier-best"><span class="san-bp-roll">7</span><span class="san-bp-name">Renewal</span><span class="san-bp-desc">Mental awakening — restore full SAN.</span></div>
+        <div class="san-bp-row san-bp-tier-good"><span class="san-bp-roll">5–6</span><span class="san-bp-name">Partial Recovery</span><span class="san-bp-desc">Recover ½ SAN.</span></div>
+        <div class="san-bp-row san-bp-tier-neutral"><span class="san-bp-roll">3–4</span><span class="san-bp-name">Steadied</span><span class="san-bp-desc">No negative effect (still reroll on further Mental Damage).</span></div>
+        <div class="san-bp-row san-bp-tier-bad"><span class="san-bp-roll">1–2</span><span class="san-bp-name">Psychotic Break</span><span class="san-bp-desc">In control but antagonistic — act against allies/mission.</span></div>
+        <div class="san-bp-row san-bp-tier-worst"><span class="san-bp-roll">0</span><span class="san-bp-name">Indefinitely Insane</span><span class="san-bp-desc">Uncontrollable, irrational, effectively a vegetable.</span></div>
+        <div class="san-bp-row san-bp-tier-fatal"><span class="san-bp-roll">−1</span><span class="san-bp-name">Immediately Suicidal</span><span class="san-bp-desc">Must end own life by most effective means; Indefinitely Insane for all other purposes.</span></div>
+      </div>
+    </div>`;
+  }
+
+  // ─── SAN HANDLERS ───
+
+  async function tickSanDmg(delta) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const cur = Math.max(0, Number.isFinite(charData.sanDamage) ? charData.sanDamage : 0);
+    const next = Math.max(0, cur + delta);
+    charData.sanDamage = next;
+    await saveCharacter(ctx.getCharId(), { sanDamage: next });
+    renderAll();
+  }
+
+  // Input shows CURRENT (max - damage), possibly negative. Typing sets current.
+  async function setSanCurrent(val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const ruleset = ctx.getRuleset();
+    const result = computeDerivedStats(charData, ruleset);
+    if (!result.san) return;
+    const sanMax = result.san.max;
+    const typed = parseInt(val);
+    if (!Number.isFinite(typed)) return;
+    // Damage = max - desiredCurrent. Allow negative currents up to a bound so
+    // players can push past Broken for narrative depth.
+    const floorCurrent = -(sanMax * 5);
+    const clampedCurrent = Math.min(sanMax, Math.max(floorCurrent, typed));
+    const damage = Math.max(0, sanMax - clampedCurrent);
+    charData.sanDamage = damage;
+    await saveCharacter(ctx.getCharId(), { sanDamage: damage });
+    renderAll();
+  }
+
+  function toggleSanModifierEdit() {
+    if (!ctx.getCanEdit()) return;
+    editSanModifiersMode = !editSanModifiersMode;
+    renderAll();
+  }
+
+  async function addSanMod() {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.sanModifiers)) charData.sanModifiers = [];
+    charData.sanModifiers.push({ name: '', value: 0 });
+    await saveCharacter(ctx.getCharId(), { sanModifiers: charData.sanModifiers });
+    renderAll();
+  }
+
+  async function updateSanMod(idx, field, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.sanModifiers) || !charData.sanModifiers[idx]) return;
+    if (field === 'name') charData.sanModifiers[idx].name = typeof val === 'string' ? val : '';
+    else if (field === 'value') charData.sanModifiers[idx].value = parseInt(val) || 0;
+    await saveCharacter(ctx.getCharId(), { sanModifiers: charData.sanModifiers });
+    renderAll();
+  }
+
+  async function deleteSanMod(idx) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.sanModifiers) || !charData.sanModifiers[idx]) return;
+    charData.sanModifiers.splice(idx, 1);
+    await saveCharacter(ctx.getCharId(), { sanModifiers: charData.sanModifiers });
+    renderAll();
+  }
+
   // ─── POWER (RESOURCE BAR) + POWER POOL (PURCHASE) ───
   //
   // Combined section. Two parts:
@@ -1584,6 +1813,9 @@ export function createCombatSection(ctx) {
     removeInjury, updateInjuryField,
     tickInjuryQuickmod,
     addInjuryMod, updateInjuryMod, deleteInjuryMod,
-    addTrauma, removeTrauma, updateTraumaField
+    addTrauma, removeTrauma, updateTraumaField,
+    // Sanity
+    tickSanDmg, setSanCurrent, toggleSanModifierEdit,
+    addSanMod, updateSanMod, deleteSanMod
   };
 }
