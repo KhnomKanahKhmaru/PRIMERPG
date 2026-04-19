@@ -339,6 +339,26 @@ export function buildSymbolTable(character, ruleset) {
   }
   table.POW_MULTIPLIER = multiplier;
 
+  // FORT (Fortitude) — same curve-with-clamp pattern as POW_MULTIPLIER but
+  // keyed off STRMOD. Used in per-location damage stacking:
+  //   effective damage = highest instance + (sum of others) / FORT
+  // Falls back to 1 if no table is present, which gives linear stacking
+  // (no fortitude benefit) — safe default for old rulesets.
+  const strmod = table.STRMOD ?? 0;
+  const fortTable = Array.isArray(ruleset.fortitudeTable) ? ruleset.fortitudeTable : [];
+  let fortValue = 1;
+  if (fortTable.length > 0) {
+    const exact = fortTable.find(e => e.strmod === strmod);
+    if (exact) {
+      fortValue = exact.value;
+    } else {
+      const sorted = fortTable.slice().sort((a, b) => a.strmod - b.strmod);
+      if (strmod < sorted[0].strmod) fortValue = sorted[0].value;
+      else if (strmod > sorted[sorted.length - 1].strmod) fortValue = sorted[sorted.length - 1].value;
+    }
+  }
+  table.FORT = fortValue;
+
   return table;
 }
 
@@ -477,19 +497,24 @@ export function computeDerivedStats(character, ruleset) {
   const hlModsMap = (character.hitLocationModifiers && typeof character.hitLocationModifiers === 'object')
     ? character.hitLocationModifiers : {};
 
-  // Pre-compute how much damage each location takes from injuries. An injury's
-  // currentLevel (base + levelModifiers) IS damage applied to its location, on
-  // top of any manual damage ticked in via the +/- controls. We need this BEFORE
-  // the location loop runs so currentDamage includes both sources.
+  // Pre-compute damage instances per location. Each injury contributes one
+  // instance (= its currentLevel, after levelModifiers); we group these by
+  // trackKey so the per-location loop can grab them cheaply.
+  //
+  // This replaces the old "sum injury levels" approach. Damage now stacks
+  // through FORT (highest instance + others/FORT), so we need the individual
+  // values, not just the total.
   const injuriesIn = Array.isArray(character.injuries) ? character.injuries : [];
-  const injuryDamageByLocation = new Map();
+  const injuryInstancesByLocation = new Map();
   injuriesIn.forEach(inj => {
     const base = Number.isFinite(inj.baseLevel) ? inj.baseLevel : 0;
     const mods = Array.isArray(inj.levelModifiers) ? inj.levelModifiers : [];
     const modTotal = mods.reduce((a, m) => a + (parseInt(m.value) || 0), 0);
     const current = Math.max(0, base + modTotal);
+    if (current <= 0) return;  // zero-level injuries don't contribute damage
     const loc = typeof inj.location === 'string' ? inj.location : 'torso';
-    injuryDamageByLocation.set(loc, (injuryDamageByLocation.get(loc) || 0) + current);
+    if (!injuryInstancesByLocation.has(loc)) injuryInstancesByLocation.set(loc, []);
+    injuryInstancesByLocation.get(loc).push(current);
   });
 
   locDefs.forEach(def => {
@@ -505,11 +530,34 @@ export function computeDerivedStats(character, ruleset) {
       const trackKey = (def.count && def.count > 1) ? `${def.code}-${i}` : def.code;
       // Manual damage — tracked via +/- controls, stored in hitLocationDamage.
       const manualDamage = (typeof damageMap[trackKey] === 'number') ? damageMap[trackKey] : 0;
-      // Injury-driven damage — sum of currentLevels of all injuries tagged to
-      // this trackKey. This is computed fresh every render because injury
-      // levels can change without the manual damage map ever being touched.
-      const injuryDamage = injuryDamageByLocation.get(trackKey) || 0;
-      const currentDamage = manualDamage + injuryDamage;
+      // Injury damage instances — one per injury at this location.
+      const injuryInstances = injuryInstancesByLocation.get(trackKey) || [];
+
+      // Build the full instance list: injuries + (manual lumped as 1 instance
+      // if > 0). Sort descending so instances[0] is the biggest single hit.
+      const instances = injuryInstances.slice();
+      if (manualDamage > 0) instances.push(manualDamage);
+      instances.sort((a, b) => b - a);
+
+      // FORT-reduced effective damage:
+      //   biggest hit lands in full; every secondary hit divides by FORT.
+      // No instances → no damage. One instance → it stands alone (FORT does
+      // not matter with a single wound, which is the simple-case default).
+      const fortValue = Math.max(0.01, vars.FORT || 1);
+      let currentDamage;
+      if (instances.length === 0) {
+        currentDamage = 0;
+      } else {
+        const highest = instances[0];
+        const othersSum = instances.slice(1).reduce((s, v) => s + v, 0);
+        // Floor so damage stays integer — matches the rest of the HP system
+        // and simplifies bar rendering / status threshold comparisons.
+        currentDamage = Math.floor(highest + (othersSum / fortValue));
+      }
+      // Raw (pre-FORT) total — useful for UI breakdowns and for backwards
+      // compatibility with any code that wants the un-reduced sum.
+      const injuryDamage = injuryInstances.reduce((s, v) => s + v, 0);
+      const rawDamage = manualDamage + injuryDamage;
 
       // Apply modifiers. Each modifier adds its value (positive or negative)
       // to the base maxHP computed from the formula. Clamp min to 0 so a
@@ -552,9 +600,11 @@ export function computeDerivedStats(character, ruleset) {
         trackKey,
         maxHP,
         baseMaxHP,        // pre-modifier max, useful for UI displaying "base +mod=total"
-        currentDamage,    // manual + injury damage (what UI and Body total use)
+        currentDamage,    // FORT-reduced effective damage (used by bar + Body total)
+        rawDamage,        // pre-FORT linear sum (manualDamage + all injury levels)
+        instances,        // array of individual damage instances (sorted desc)
         manualDamage,     // just the +/- ticked damage
-        injuryDamage,     // just the sum of injury currentLevels at this location
+        injuryDamage,     // linear sum of injury currentLevels at this location
         modifiers: mods,
         thresholds,
         status,
