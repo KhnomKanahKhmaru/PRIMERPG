@@ -166,7 +166,7 @@ window.RULESET_DEFAULTS = {
       name: 'HP',
       description: 'Hit Points — overall durability of the body.',
       group: 'health',
-      formula: 'STR + SIZEMOD',
+      formula: 'STR + SIZE',
       trackDamage: false,   // The per-location tracker covers damage; HP is the base value
       keepDecimals: false,
       unit: ''
@@ -235,10 +235,10 @@ window.RULESET_DEFAULTS = {
   // Damage thresholds below are applied to each location's max HP to determine
   // Disabled / Destroyed / Definitively Destroyed states.
   hitLocations: [
-    { code: 'head',  name: 'Head',  count: 1, hpFormula: '(HP / 2) + (SIZEMOD / 2) - 1' },
+    { code: 'head',  name: 'Head',  count: 1, hpFormula: '(HP / 2) + (SIZE / 2) - 1' },
     { code: 'torso', name: 'Torso', count: 1, hpFormula: 'HP' },
-    { code: 'arm',   name: 'Arm',   count: 2, hpFormula: '(HP / 2) + (SIZEMOD / 2)' },
-    { code: 'leg',   name: 'Leg',   count: 2, hpFormula: '(HP / 2) + (SIZEMOD / 2)' }
+    { code: 'arm',   name: 'Arm',   count: 2, hpFormula: '(HP / 2) + (SIZE / 2)' },
+    { code: 'leg',   name: 'Leg',   count: 2, hpFormula: '(HP / 2) + (SIZE / 2)' }
   ],
 
   // Damage thresholds — formulas evaluated with a `maxHP` variable bound to the
