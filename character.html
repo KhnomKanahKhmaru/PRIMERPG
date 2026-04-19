@@ -969,6 +969,45 @@
     },
   });
 
+  // ─── DEBUG HOOKS ───
+  // Expose live references so issues can be diagnosed from the browser console.
+  // Safe to keep — these are read-only windows into the current state, they
+  // don't grant any capabilities the user doesn't already have via the UI.
+  // Usage examples:
+  //   window.__prime.charData                // full character data
+  //   window.__prime.ruleset                 // active ruleset
+  //   window.__prime.dumpPower()             // diagnose POWER computation
+  window.__prime = {
+    get charData() { return charData; },
+    get ruleset()  { return activeRuleset; },
+    get canEdit()  { return canEdit; },
+    dumpPower() {
+      if (!activeRuleset) { console.log('No ruleset loaded'); return; }
+      const statMods = activeRuleset.statMods || [];
+      const pow = (charData.stats && typeof charData.stats.pow === 'number') ? charData.stats.pow : null;
+      const powmod = pow !== null ? statMods[pow] : null;
+      const pp = charData.powerPool || 0;
+      const mult = activeRuleset.powerPool && activeRuleset.powerPool.powMultiplier;
+      const entry = Array.isArray(mult)
+        ? mult.find(e => powmod !== null && powmod >= e.powmodMin && powmod <= e.powmodMax)
+        : null;
+      const multiplier = entry ? entry.value : 1;
+      const expected = pp * multiplier;
+      console.log('─── POWER diagnostic ───');
+      console.log('  charData.stats.pow    :', pow);
+      console.log('  statMods[pow] (POWMOD):', powmod);
+      console.log('  charData.powerPool    :', pp);
+      console.log('  multiplier table rows :', mult);
+      console.log('  matched entry         :', entry);
+      console.log('  POW_MULTIPLIER        :', multiplier);
+      console.log('  Expected POWER (max)  :', expected);
+      console.log('  Stored powerCurrent   :', charData.powerCurrent);
+      // Find the POWER derived stat and show its formula
+      const powerDef = (activeRuleset.derivedStats || []).find(s => s.code === 'POWER');
+      console.log('  POWER formula         :', powerDef ? powerDef.formula : '(no POWER stat defined)');
+    }
+  };
+
   // calcTotalXp sums XP spent across stats and skills. Reads all cost
   // tables from the active ruleset. Called by saveXpSpent after any
   // stat or skill edit.
