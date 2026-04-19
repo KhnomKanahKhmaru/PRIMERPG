@@ -108,28 +108,21 @@ export function createCombatSection(ctx) {
 
   function renderHitLocationsSection(result) {
     if (!result.locations || result.locations.length === 0) return '';
+    const body = result.body || { max: 0, current: 0, dead: false, statusLabel: 'Alive' };
 
     let html = '<div class="combat-section">';
     html += '<div class="combat-section-title">Hit Locations</div>';
     html += '<div class="hl-list">';
-    result.locations.forEach(loc => { html += renderHlRow(loc); });
+    result.locations.forEach(loc => { html += renderHlRow(loc, body); });
     html += '</div>';
 
-    // Body total = sum of remaining HP across all locations.
-    const totalMax = result.locations.reduce((s, l) => s + (l.maxHP || 0), 0);
-    const totalDmg = result.locations.reduce((s, l) => s + (l.currentDamage || 0), 0);
-    const remaining = totalMax - totalDmg;
-    const dead = remaining <= 0;
-    html += `<div class="body-total${dead ? ' body-total-dead' : ''}">`;
-    html += `<span class="body-label">Body</span>`;
-    html += `<span class="body-value">${remaining} / ${totalMax}</span>`;
-    html += `<span class="body-status">${dead ? 'DEAD' : 'Alive'}</span>`;
-    html += `</div>`;
+    // Body total — segmented green→black bar, status label, current/max.
+    html += renderBodyBlock(body);
     html += '</div>';
     return html;
   }
 
-  function renderHlRow(loc) {
+  function renderHlRow(loc, body) {
     const { def, trackKey, maxHP, currentDamage, status, error, index } = loc;
     const canEdit = ctx.getCanEdit();
 
@@ -145,17 +138,12 @@ export function createCombatSection(ctx) {
     }
 
     const remaining = maxHP - currentDamage;
+    // Damage cap: Def.Destroyed threshold is reached at damage=3*maxHP. Allow
+    // damage up to 4*maxHP as the "entire bar black from Body depletion" state,
+    // but realistically Body will hit 0 long before that in most fights.
     const damageCap = Math.max(maxHP * 4, 10);
 
-    const statusLabels = {
-      healthy: '',
-      disabled: 'Disabled',
-      destroyed: 'Destroyed',
-      definitelyDestroyed: 'Def. Destroyed'
-    };
-    const statusLabel = statusLabels[status] || '';
-
-    const segmentsHtml = renderHpSegments(maxHP, currentDamage);
+    const segmentsHtml = renderHpSegments(maxHP, currentDamage, status, body);
 
     const controls = canEdit
       ? `<div class="hl-controls">
@@ -166,6 +154,8 @@ export function createCombatSection(ctx) {
         </div>`
       : '';
 
+    // Per-location status label removed per spec — Body section tells the whole
+    // story. Grid collapses to 3 columns now (name + bar + controls).
     return `
       <div class="hl-row hl-status-${status}">
         <div class="hl-name">${escapeHtml(displayName)}</div>
@@ -173,28 +163,27 @@ export function createCombatSection(ctx) {
           <div class="hl-bar-bg">${segmentsHtml}</div>
           <div class="hl-bar-label">${remaining} / ${maxHP}</div>
         </div>
-        <div class="hl-status-label">${escapeHtml(statusLabel)}</div>
         ${controls}
       </div>`;
   }
 
   // Build the segmented HP bar. One <span> per HP point. Segments deteriorate
-  // right-to-left: undamaged segments on the LEFT stay green, damage accumulates
-  // on the RIGHT in phase colors.
+  // right-to-left.
   //
-  // Phases (each phase = one maxHP worth of damage):
+  // Phases 1–3 work purely off location damage:
   //   1. Healthy → Disabled (damage 0..maxHP): green → yellow from the right
-  //   2. Disabled → Destroyed (damage maxHP..2*maxHP): yellow → red from the right
+  //   2. Disabled → Destroyed (damage maxHP..2*maxHP): yellow → red from right
   //   3. Destroyed → Def. Destroyed (damage 2*maxHP..3*maxHP): red → deep red
-  //   4. Beyond Def. Destroyed (damage 3*maxHP..4*maxHP): deep red → black
   //
-  // Colors applied per-segment by mapping the segment's index (from the left)
-  // to its current state given the total damage taken.
-  function renderHpSegments(maxHP, damage) {
+  // Phase 4 (past Def. Destroyed, location is deep-red+) instead displays the
+  // shared Body pool's state. Each segment in Phase 4 represents
+  // `bodyMax / maxHP` points of Body damage. When Body hits 0, every
+  // Def.Destroyed location shows a fully black bar. This means all Def.Destroyed
+  // limbs visually track the Body pool in sync — that's intentional, since Body
+  // is global.
+  function renderHpSegments(maxHP, damage, status, body) {
     if (maxHP <= 0) return '';
 
-    // Segment colors by phase. Each segment in the bar gets colored based on
-    // which phase of damage has reached it, counting from the right.
     const COLORS = {
       green:    '#4a7a4a',
       yellow:   '#bdb247',
@@ -203,41 +192,85 @@ export function createCombatSection(ctx) {
       black:    '#0f0a0a'
     };
 
-    // For each segment (indexed 1..maxHP from the LEFT), determine its color.
-    //
-    // Distance from the RIGHT edge of the bar is: maxHP - i + 1 (1-indexed from right).
-    // A segment "sees" the first `distanceFromRight` HP of damage. If total
-    // damage >= the segment's "damage threshold", it transitions to the next
-    // phase color. Each maxHP worth of damage shifts the right-side segments
-    // one phase deeper.
-    //
-    // Logic for each segment i (1..maxHP):
-    //   - Let rightDistance = maxHP - i + 1 (how far from the right; 1 = rightmost)
-    //   - If damage >= 3*maxHP + rightDistance → black (phase 4 reached this seg)
-    //   - Else if damage >= 2*maxHP + rightDistance → deep red (phase 3)
-    //   - Else if damage >= 1*maxHP + rightDistance → red (phase 2)
-    //   - Else if damage >= rightDistance          → yellow (phase 1)
-    //   - Else                                     → green (still healthy)
-    //
-    // Why this works:
-    //   At damage=0, no segment is touched → all green. ✓
-    //   At damage=1, rightmost segment (rightDistance=1) yellows. ✓
-    //   At damage=maxHP, all segments yellow (every rightDistance <= maxHP). ✓
-    //   At damage=maxHP+1, rightmost hits phase 2 (red), rest still yellow. ✓
-    //   At damage=2*maxHP, all red. ✓ And so on.
+    // Phase 4 (location is Def.Destroyed): use Body pool to determine how much
+    // of the bar is black vs deep red. Body damage is proportionally mapped
+    // onto maxHP segments.
+    if (status === 'definitelyDestroyed' && body && body.max > 0) {
+      // Number of "fully black" segments, rounded to the nearest segment boundary.
+      // Damage progresses right-to-left like the other phases.
+      const bodyDamagePct = body.damage / body.max;  // 0..1
+      const blackSegCount = Math.round(Math.max(0, Math.min(maxHP, bodyDamagePct * maxHP)));
+      let html = '';
+      for (let i = 1; i <= maxHP; i++) {
+        // Segment i (from left). The rightmost `blackSegCount` segments are black.
+        const rightIdx = maxHP - i + 1;  // 1 = rightmost
+        const color = rightIdx <= blackSegCount ? COLORS.black : COLORS.deepRed;
+        html += `<span class="hl-seg" style="background:${color}"></span>`;
+      }
+      return html;
+    }
 
+    // Phases 1–3: determined purely by location damage.
+    //
+    // For each segment i (1..maxHP), compute how far from the RIGHT it is
+    // (rightDistance). A segment "sees" the first rightDistance HP of damage.
+    // If total damage >= a threshold tied to rightDistance, the segment has
+    // transitioned to the corresponding phase color.
     let html = '';
     for (let i = 1; i <= maxHP; i++) {
       const rightDistance = maxHP - i + 1;
       let color;
-      if      (damage >= 3 * maxHP + rightDistance) color = COLORS.black;
-      else if (damage >= 2 * maxHP + rightDistance) color = COLORS.deepRed;
+      if      (damage >= 2 * maxHP + rightDistance) color = COLORS.deepRed;
       else if (damage >= 1 * maxHP + rightDistance) color = COLORS.red;
       else if (damage >=              rightDistance) color = COLORS.yellow;
       else                                           color = COLORS.green;
       html += `<span class="hl-seg" style="background:${color}"></span>`;
     }
     return html;
+  }
+
+  // Body section — segmented green→black bar + status label.
+  // Segments represent Body pool in 1-HP increments (one seg per max Body point).
+  // On enormous Body totals this gets many segments; that's fine — they scale
+  // down via flex and stay visually coherent.
+  function renderBodyBlock(body) {
+    if (!body || body.max <= 0) return '';
+
+    // Cap segment count for visual sanity on very high Body totals.
+    // Characters with Body > 80 get scaled to 80 segments (each = Body/80 points).
+    // Below 80, use 1 seg per point.
+    const SEG_CAP = 80;
+    const segCount = Math.min(body.max, SEG_CAP);
+    // How many segments should be black? Proportional to damage taken.
+    const dmgPct = body.damage / body.max;
+    const blackSegs = Math.round(Math.max(0, Math.min(segCount, dmgPct * segCount)));
+
+    let segHtml = '';
+    for (let i = 1; i <= segCount; i++) {
+      // Damage fills right-to-left (rightmost segments go black first).
+      const rightIdx = segCount - i + 1;
+      const color = rightIdx <= blackSegs ? '#0f0a0a' : '#4a7a4a';
+      segHtml += `<span class="hl-seg" style="background:${color}"></span>`;
+    }
+
+    // Status label classes. "dead" dominates styling; unconscious/paralyzed share
+    // a muted amber look.
+    let statusClass = 'body-status';
+    if (body.dead) statusClass += ' body-status-dead';
+    else if (body.unconscious || body.paralyzed) statusClass += ' body-status-impaired';
+    else statusClass += ' body-status-alive';
+
+    const rowClass = 'body-total' + (body.dead ? ' body-total-dead' : '');
+
+    return `
+      <div class="${rowClass}">
+        <div class="body-top-row">
+          <span class="body-label">Body</span>
+          <span class="body-value">${body.current} / ${body.max}</span>
+          <span class="${statusClass}">${escapeHtml(body.statusLabel)}</span>
+        </div>
+        <div class="body-bar-bg">${segHtml}</div>
+      </div>`;
   }
 
   // ─── POWER POOL ───
