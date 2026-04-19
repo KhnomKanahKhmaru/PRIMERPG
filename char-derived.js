@@ -1,1025 +1,715 @@
-// char-derived.js
-// Formula evaluator and derived-stat pipeline for the Combat tab.
-//
-// Exports:
-//   parseFormula(src)           -> compiled formula (or { error, message })
-//   evalFormula(compiled, vars) -> number (or null if vars missing)
-//   buildSymbolTable(character, ruleset) -> { STR, DEX, ..., HP, AGL, ... }
-//   computeDerivedStats(character, ruleset) -> { stats: Map, locations: Array, errors: Array }
-//
-// The formula grammar (safe — no JS eval, no arbitrary code):
-//
-//   expr    := term (('+' | '-') term)*
-//   term    := power (('*' | '/') power)*
-//   power   := unary ('^' unary)?
-//   unary   := ('-' | '+')? atom
-//   atom    := NUMBER | IDENT | IDENT '(' args ')' | '(' expr ')'
-//   args    := expr (',' expr)*
-//
-// Supported functions: floor, ceil, round, min, max, abs.
-// Variables: passed in at eval time.
-//
-// Unknown variables → result is null (NOT zero) so callers can distinguish
-// "missing data" from "formula says zero". Unknown functions → parse error.
+// ruleset-defaults.js
+// Default values for the Basic Set, and the schema any ruleset should conform to.
+// Included as a non-module script so edit-ruleset.html can use it directly.
 
-// ─── TOKENIZER ───
+window.RULESET_DEFAULTS = {
+  tagline: '',
+  startingXp: 100,
 
-const TOKEN_RE = /\s*(?:([0-9]+(?:\.[0-9]+)?)|([A-Za-z_][A-Za-z0-9_]*)|([+\-*/^(),]))/y;
+  // Stat caps / costs.
+  statXp: [null, -10, 0, 10, 30, 60, 100],  // index 0 = not takable
+  statMaxPurchasable: 6,                     // max level a player can START at
+  statMax: 20,                               // absolute ceiling a stat can reach
 
-function tokenize(src) {
-  const tokens = [];
-  TOKEN_RE.lastIndex = 0;
-  let lastIdx = 0;
-  while (TOKEN_RE.lastIndex < src.length) {
-    // Skip trailing whitespace cleanly
-    const nonWs = src.slice(TOKEN_RE.lastIndex).search(/\S/);
-    if (nonWs === -1) break;
-    const m = TOKEN_RE.exec(src);
-    if (!m) {
-      throw new Error(`Unexpected character at position ${TOKEN_RE.lastIndex}: "${src[TOKEN_RE.lastIndex]}"`);
+  // Regular stats (SIZE is handled separately below).
+  stats: [
+    { code:'STR', name:'Strength',   description:'Physical power, raw force.' },
+    { code:'DEX', name:'Dexterity',  description:'Fine motor control, reflexes, agility.' },
+    { code:'PER', name:'Perception', description:'Awareness of surroundings, sensory acuity.' },
+    { code:'INT', name:'Intellect',  description:'Reasoning, memory, learning capacity.' },
+    { code:'CHA', name:'Charisma',   description:'Social presence, force of personality.' },
+    { code:'POW', name:'Power',      description:'Willpower, mental fortitude, resolve.' }
+  ],
+
+  // STATMOD per level (index = level, 0..statMax).
+  statMods: [-1,-1,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,9,10],
+
+  // Stat flavor labels (index = level, 0..statMax).
+  statLabels: [
+    'Far Below Average','Below Average','Average','Above Average','Gifted','Exceptional','Peak Human',
+    'Superhuman','Extraordinary','Legendary','Heroic','Titanic','Mythic','Godly','Divine',
+    'Transcendent','Ascendant','Empyrean','Omnipotent','Absolute','Cosmic'
+  ],
+
+  // SIZE: its own scale, XP costs, and tier labels. Has no STATMOD.
+  // size.tiers is an array of { level, label, xpCost } objects.
+  // Tier levels are NOT dense — they jump (e.g. Small=3, Medium=4, Large=6,
+  // skipping 5). The `level` field is the actual SIZE value; the array
+  // index is NOT the SIZE value. Character data stores the SIZE level, not
+  // the index. The `default` field below is the SIZE level for new
+  // characters (Medium = 4).
+  size: {
+    default: 4,  // Medium — default starting size for new characters
+    tiers: [
+      { level: 0,  label: 'Nano',        xpCost: 0 },  // Ants, fleas, grains of rice
+      { level: 1,  label: 'Micro',       xpCost: 0 },  // Scorpions, rat pups, small bats
+      { level: 2,  label: 'Tiny',        xpCost: 0 },  // Rats, cats, human infants
+      { level: 3,  label: 'Small',       xpCost: 0 },  // Wolves, children, kobolds
+      { level: 4,  label: 'Medium',      xpCost: 0 },  // Adult humans, chimps, leopards
+      { level: 6,  label: 'Large',       xpCost: 0 },  // Tigers, bears, werewolves
+      { level: 8,  label: 'Huge',        xpCost: 0 },  // Moose, polar bears, horses, sedans
+      { level: 10, label: 'Massive',     xpCost: 0 },  // Rhinos, hippos, ogres, dinosaurs
+      { level: 12, label: 'Giant',       xpCost: 0 },  // Elephants, T-Rex, young dragons
+      { level: 16, label: 'Colossal',    xpCost: 0 },  // Krakens, adult dragons, sauropods
+      { level: 20, label: 'Titanic',     xpCost: 0 },  // Kaiju, mecha, elder dragons
+      { level: 24, label: 'Behemoth',    xpCost: 0 },  // Large kaiju, worldserpents
+      { level: 30, label: 'Cataclysmic', xpCost: 0 }   // World-tree ents, megakaiju, cthulhu
+    ]
+  },
+
+  // Skills: arrays of XP costs, index = level (0..10)
+  primarySkillXp:   [0, 2, 4, 8, 14, 22, 30, 40, 52, 66, 80],
+  secondarySkillXp: [0, 1, 2, 4,  7, 11, 15, 20, 26, 33, 40],
+  specialtySkillXp: [0, 1, 1, 2,  3,  5,  7, 10, 13, 16, 20],
+  skillMax: 10,
+
+  // Power Levels — ordered list
+  powerLevels: [
+    { value: 'powerless', label: 'Powerless',        xpPerAp: 10 },
+    { value: 'low',       label: 'Low Power',        xpPerAp: 8  },
+    { value: 'mid',       label: 'Mid Power',        xpPerAp: 6  },
+    { value: 'high',      label: 'High Power',       xpPerAp: 4  },
+    { value: 'very_high', label: 'Very High Power',  xpPerAp: 2  },
+    { value: 'highest',   label: 'Highest Power',    xpPerAp: 1  }
+  ],
+  defaultPowerLevel: 'powerless',
+
+  // Primary skills (name + description)
+  primarySkills: [
+    { name:'Academics',    description:'Learned subjects such as History or Political Science.' },
+    { name:'Athletics',    description:'Physical activities like running, swimming, jumping, climbing, etc.' },
+    { name:'Awareness',    description:'To be aware of one\'s surroundings utilizing one\'s senses.' },
+    { name:'Crafts',       description:'A particular trade, tool, art, or practice.' },
+    { name:'Drive',        description:'Operating vehicles.' },
+    { name:'Investigation',description:'Uncovering, understanding, reasoning, and making deductions with information.' },
+    { name:'Medical',      description:'Skill in medical treatment, and knowledge of the medical sciences.' },
+    { name:'Melee',        description:'Melee combat, and melee weaponry.' },
+    { name:'Occult',       description:'The esoteric; be it rituals, the supernatural, mythology, and so-on so-forth.' },
+    { name:'Ranged',       description:'Ranged combat, and ranged weaponry.' },
+    { name:'Science',      description:'Knowledge of the sciences.' },
+    { name:'Social',       description:'Sociability, communication skills, people skills, etc.' },
+    { name:'Society',      description:'Knowledge of society, institutions, laws, etiquette, etc.' },
+    { name:'Stealth',      description:'Being stealthy, hiding, sneaking.' },
+    { name:'Survival',     description:'Wilderness skills, foraging, identifying animal footprints, natural knowledge and skills.' },
+    { name:'Technology',   description:'Knowledge, and operation, of technology.' }
+  ],
+
+  // Morals — plain string list. "" (blank) = Custom wildcard entry.
+  morals: [],
+
+  // ── ADVANTAGES & DISADVANTAGES ──
+  // Both sides share the same shape: a tier scale + a catalog of entries.
+  //
+  // Tiers: 7 named rungs. Each has a label, a free-text description
+  // (what "Minor" means at the table), and an XP cost/grant. Tier labels
+  // and XP values are editable per ruleset so homebrew can re-balance.
+  //
+  // Entries reference a tier by *index* (0..6) rather than by label, so
+  // renaming a tier in the ruleset doesn't orphan existing entries.
+  //
+  // Categories are a fixed list — Physical, Mental, Social, Background,
+  // Special. Stored as a lowercase code so the display label can evolve
+  // without touching saved data.
+
+  advantageTiers: [
+    { label: 'Minor',      description: '', xp: 0 },
+    { label: 'Moderate',   description: '', xp: 0 },
+    { label: 'Major',      description: '', xp: 0 },
+    { label: 'Massive',    description: '', xp: 0 },
+    { label: 'Monumental', description: '', xp: 0 },
+    { label: 'Mega',       description: '', xp: 0 },
+    { label: 'Mythical',   description: '', xp: 0 }
+  ],
+  disadvantageTiers: [
+    { label: 'Minor',      description: '', xp: 0 },
+    { label: 'Moderate',   description: '', xp: 0 },
+    { label: 'Major',      description: '', xp: 0 },
+    { label: 'Massive',    description: '', xp: 0 },
+    { label: 'Monumental', description: '', xp: 0 },
+    { label: 'Mega',       description: '', xp: 0 },
+    { label: 'Mythical',   description: '', xp: 0 }
+  ],
+
+  // Catalog entries. tier = index into advantageTiers / disadvantageTiers.
+  // category is one of: physical, mental, social, background, special.
+  advantages: [],
+  disadvantages: [],
+
+  // ── DERIVED STATS SYSTEM ──
+  //
+  // Derived stats are values computed from base stats via formulas. The ruleset
+  // defines them and their formulas; the character sheet evaluates them on the
+  // fly. Formulas are strings like "(STR + SIZEMOD) / 2 + 1" — see char-derived.js
+  // for the evaluator.
+  //
+  // Formula variables available:
+  //   - Base stats by code: STR, DEX, PER, INT, CHA, POW, SIZE
+  //   - STATMODs by code:   STRMOD, DEXMOD, PERMOD, INTMOD, CHAMOD, POWMOD, SIZEMOD
+  //   - Derived stats by code: HP, AGL, etc. (evaluated in dependency order)
+  //   - Purchased resources: POWERPOOL (value of power pool purchase)
+  //   - Per-location context inside hit location formulas: maxHP, currentDamage
+  //
+  // Results are floored by default (Math.floor), unless the stat is flagged
+  // `keepDecimals: true` (used by things like Reflex which are genuinely fractional).
+
+  // Groups for organizing derived stats on the Combat tab. GM-customizable.
+  // Every group has a code (stable ID) and a label (display name).
+  derivedStatGroups: [
+    { code: 'health',   label: 'Health'   },
+    { code: 'movement', label: 'Movement' },
+    { code: 'mental',   label: 'Mental'   },
+    { code: 'power',    label: 'Power'    }
+  ],
+
+  derivedStats: [
+    // HEALTH
+    {
+      code: 'HP',
+      name: 'Health',
+      description: 'Physical durability. Roll for physical resistances.',
+      group: 'health',
+      formula: 'STR + SIZE',
+      // Stat modifier you roll with when the GM calls for a Health check —
+      // e.g. resisting poison, disease, or other bodily trauma. Shown in the
+      // card's top-right corner as a signed badge (+2, −1).
+      rollModifier: 'STRMOD',
+      // Passive rolls are immune to Strain (Pain + Stress). Characters don't
+      // suffer dice penalties when resisting bodily trauma just because they're
+      // in pain — the whole point of the roll is to see if they can endure.
+      passiveRoll: true,
+      trackDamage: false,
+      keepDecimals: false,
+      unit: ''
+    },
+    {
+      code: 'FORT',
+      name: 'Fortitude',
+      description: 'Damage-stacking resilience. Biggest wound hits you in full; additional wounds stack through Fortitude at reduced efficiency. Higher FORT → multiple small hits bite you less.',
+      group: 'health',
+      // FORT is pre-computed in the symbol table from STRMOD via the
+      // fortitudeTable lookup; the formula here just reads that value.
+      formula: 'FORT',
+      trackDamage: false,
+      keepDecimals: true,
+      unit: ''
+    },
+    // MOVEMENT
+    {
+      code: 'SPD',
+      name: 'Speed',
+      description: 'Movement speed, in feet per second.',
+      group: 'movement',
+      formula: 'DEX * 2.5',
+      trackDamage: false,
+      keepDecimals: true,     // 2.5 * DEX naturally fractional
+      unit: 'ft/sec',
+      // Strain reduces movement values linearly — a character at 25% Strain
+      // moves at 75% of their base speed. Shown inline as "10 − 2.5 ft/sec".
+      strainReducesValue: true
+    },
+    {
+      code: 'SPDUP',
+      name: 'Speed Boost',
+      description: 'Bonus feet of movement from raw strength.',
+      group: 'movement',
+      formula: 'STR * 1',
+      trackDamage: false,
+      keepDecimals: false,
+      unit: 'ft',
+      strainReducesValue: true
+    },
+    {
+      code: 'AGL',
+      name: 'Agility',
+      description: 'General agility: dodging, tumbling, quick footwork.',
+      group: 'movement',
+      formula: '(DEX + PER) / 2 - 1',
+      trackDamage: false,
+      keepDecimals: false,
+      unit: ''
+    },
+    {
+      code: 'RFX',
+      name: 'Reflex',
+      description: 'Reaction time in seconds. Lower is faster.',
+      group: 'movement',
+      // Tuned curve: each 4 points of combined DEXMOD+PERMOD halves the
+      // reaction time. At 0/0 this is 0.20s (average human); at 2/2 it's
+      // 0.10s (gifted); at 4/4 it's 0.05s (exceptional). Negative stats
+      // push it above 0.20s (slow reactions).
+      formula: '0.2 / (2 ^ ((DEXMOD + PERMOD) / 4))',
+      trackDamage: false,
+      keepDecimals: true,
+      unit: 's'
+    },
+    // MENTAL
+    {
+      code: 'SAN',
+      name: 'Sanity',
+      description: 'Mental durability. Roll for mental resistances.',
+      group: 'mental',
+      formula: 'CHA + INT',
+      // For mental resistance rolls, character uses whichever of INT or CHA
+      // gives the better modifier — reflects that sharp minds AND strong
+      // willpower both help resist mental pressure, and the stronger trait
+      // carries you through.
+      rollModifier: 'max(INTMOD, CHAMOD)',
+      // Passive roll — Sanity resistance rolls are not reduced by Strain.
+      passiveRoll: true,
+      trackDamage: false,
+      keepDecimals: false,
+      unit: ''
+    },
+    // POWER
+    {
+      code: 'POWER',
+      name: 'Power Reserve',
+      description: 'Total power energy available. Scales with your Power Pool and POW.',
+      group: 'power',
+      formula: 'POWERPOOL * POW_MULTIPLIER',
+      trackDamage: false,
+      keepDecimals: true,
+      unit: ''
     }
-    if (m[1] !== undefined)      tokens.push({ type: 'num',   value: parseFloat(m[1]) });
-    else if (m[2] !== undefined) tokens.push({ type: 'ident', value: m[2] });
-    else if (m[3] !== undefined) tokens.push({ type: 'op',    value: m[3] });
-    lastIdx = TOKEN_RE.lastIndex;
+  ],
+
+  // ── HIT LOCATIONS ──
+  //
+  // Structural body parts. Each has its own HP formula (with maxHP being the
+  // base HP derived stat) and a count (e.g. 2 arms). The character sheet creates
+  // a damage tracker per location × count; a character with count=2 arms gets
+  // "arm-1" and "arm-2" tracked separately.
+  //
+  // Damage thresholds below are applied to each location's max HP to determine
+  // Disabled / Destroyed / Definitively Destroyed states.
+  hitLocations: [
+    { code: 'head',  name: 'Head',  count: 1, hpFormula: '(HP / 2) + (SIZE / 2) - 1' },
+    { code: 'torso', name: 'Torso', count: 1, hpFormula: 'HP' },
+    { code: 'arm',   name: 'Arm',   count: 2, hpFormula: '(HP / 2) + (SIZE / 2)' },
+    { code: 'leg',   name: 'Leg',   count: 2, hpFormula: '(HP / 2) + (SIZE / 2)' }
+  ],
+
+  // Damage thresholds — formulas evaluated with a `maxHP` variable bound to the
+  // location's max. `currentDamage` is also available if you need fancier rules.
+  // Default is: 0 = Disabled, -maxHP = Destroyed, -2*maxHP = Definitively Destroyed.
+  damageThresholds: {
+    disabled:            { label: 'Disabled',              formula: '0' },
+    destroyed:           { label: 'Destroyed',             formula: '-maxHP' },
+    definitelyDestroyed: { label: 'Definitively Destroyed', formula: '-2 * maxHP' }
+  },
+
+  // ── FORTITUDE TABLE ──
+  //
+  // Looks up FORT (Fortitude) by STRMOD. Flat per-STRMOD entries, one row per
+  // value — characters with STRMOD outside the declared range clamp to the
+  // nearest endpoint.
+  //
+  // FORT is used in the per-location damage calculation:
+  //   effective damage = highest instance + (sum of other instances) / FORT
+  // So FORT=1 means damage stacks linearly; FORT=2 halves the impact of every
+  // secondary wound; FORT=10 means the biggest hit matters, everything else
+  // barely registers.
+  //
+  // Default curve: STRMOD −1 → 1, 0 → 1, 1 → 1.5, 2 → 2, linear past that.
+  // Same shape as POW_MULTIPLIER — feel free to retune per ruleset.
+  fortitudeTable: [
+    { strmod: -1, value: 1   },
+    { strmod: 0,  value: 1   },
+    { strmod: 1,  value: 1.5 },
+    { strmod: 2,  value: 2   },
+    { strmod: 3,  value: 3   },
+    { strmod: 4,  value: 4   },
+    { strmod: 5,  value: 5   },
+    { strmod: 6,  value: 6   },
+    { strmod: 7,  value: 7   },
+    { strmod: 8,  value: 8   },
+    { strmod: 9,  value: 9   },
+    { strmod: 10, value: 10  }
+  ],
+
+  // ── POWER POOL ──
+  //
+  // A resource purchased with XP. Separate from the POW stat. Used by power
+  // reserve / energy systems. Ruleset can disable entirely. powMultiplier table
+  // maps POWMOD (the stat modifier from POW) ranges to multiplier values used
+  // by the POWER formula (e.g. POWER = POWERPOOL * POW_MULTIPLIER).
+  //
+  // Cost mode:
+  //   'perPoint' — flat rate: cost = costPerPoint * level
+  //   'perLevel' — per-level table: cost = sum of xpPerPoint[0..level]
+  //
+  // Basic Set defaults to perPoint at 2 XP/point — simple and flat.
+  // Rulesets with curved progression (expensive higher tiers) should switch to
+  // perLevel and fill out xpPerPoint.
+  powerPool: {
+    enabled: true,
+    name: 'Power Pool',
+    description: 'A reserve of power energy you pay XP to cultivate. Scales the POWER formula.',
+    costMode: 'perPoint',
+    costPerPoint: 2,
+    xpPerPoint: [0, 5, 10, 15, 25, 40, 60, 90, 130, 180, 240],
+    maxPurchasable: 20,
+
+    // Flat lookup: one entry per POWMOD value. The POW_MULTIPLIER variable
+    // is set from the entry whose `powmod` matches. If the character's POWMOD
+    // falls outside the table's range, char-derived.js clamps to the nearest
+    // endpoint (so impossibly high POWMOD still gets the highest multiplier).
+    //
+    // Default curve: POWMOD -1 → ×0.5, 0 → ×1, 1 → ×1.5, then linear from 2.
+    powMultiplier: [
+      { powmod: -1, value: 0.5 },
+      { powmod:  0, value: 1   },
+      { powmod:  1, value: 1.5 },
+      { powmod:  2, value: 2   },
+      { powmod:  3, value: 3   },
+      { powmod:  4, value: 4   },
+      { powmod:  5, value: 5   },
+      { powmod:  6, value: 6   },
+      { powmod:  7, value: 7   },
+      { powmod:  8, value: 8   },
+      { powmod:  9, value: 9   },
+      { powmod: 10, value: 10  }
+    ]
   }
-  return tokens;
-}
-
-// ─── PARSER (recursive descent) ───
-//
-// Produces an AST of plain JS objects. Each node has a `kind`:
-//   num    { kind:'num',   value:Number }
-//   var    { kind:'var',   name:String }
-//   unary  { kind:'unary', op:String, arg:Node }
-//   binop  { kind:'binop', op:String, left:Node, right:Node }
-//   call   { kind:'call',  name:String, args:[Node] }
-
-function parse(src) {
-  const tokens = tokenize(src);
-  let pos = 0;
-
-  const peek = () => tokens[pos];
-  const eat = (type, value) => {
-    const t = tokens[pos];
-    if (!t) throw new Error('Unexpected end of formula');
-    if (t.type !== type || (value !== undefined && t.value !== value)) {
-      throw new Error(`Expected ${value || type} but got "${t.value}"`);
-    }
-    pos++;
-    return t;
-  };
-
-  // expr := term (('+' | '-') term)*
-  const parseExpr = () => {
-    let left = parseTerm();
-    while (peek() && peek().type === 'op' && (peek().value === '+' || peek().value === '-')) {
-      const op = tokens[pos++].value;
-      const right = parseTerm();
-      left = { kind: 'binop', op, left, right };
-    }
-    return left;
-  };
-
-  // term := power (('*' | '/') power)*
-  const parseTerm = () => {
-    let left = parsePower();
-    while (peek() && peek().type === 'op' && (peek().value === '*' || peek().value === '/')) {
-      const op = tokens[pos++].value;
-      const right = parsePower();
-      left = { kind: 'binop', op, left, right };
-    }
-    return left;
-  };
-
-  // power := unary ('^' unary)?  — right-associative
-  const parsePower = () => {
-    const base = parseUnary();
-    if (peek() && peek().type === 'op' && peek().value === '^') {
-      pos++;
-      const exp = parsePower();   // right-associative recursion
-      return { kind: 'binop', op: '^', left: base, right: exp };
-    }
-    return base;
-  };
-
-  // unary := ('-' | '+')? atom
-  const parseUnary = () => {
-    if (peek() && peek().type === 'op' && (peek().value === '-' || peek().value === '+')) {
-      const op = tokens[pos++].value;
-      const arg = parseUnary();
-      return { kind: 'unary', op, arg };
-    }
-    return parseAtom();
-  };
-
-  // atom := NUMBER | IDENT | IDENT '(' args ')' | '(' expr ')'
-  const parseAtom = () => {
-    const t = peek();
-    if (!t) throw new Error('Unexpected end of formula');
-    if (t.type === 'num') {
-      pos++;
-      return { kind: 'num', value: t.value };
-    }
-    if (t.type === 'ident') {
-      pos++;
-      // Check for function call
-      if (peek() && peek().type === 'op' && peek().value === '(') {
-        pos++;
-        const args = [];
-        if (!peek() || peek().value !== ')') {
-          args.push(parseExpr());
-          while (peek() && peek().type === 'op' && peek().value === ',') {
-            pos++;
-            args.push(parseExpr());
-          }
-        }
-        eat('op', ')');
-        return { kind: 'call', name: t.value, args };
-      }
-      return { kind: 'var', name: t.value };
-    }
-    if (t.type === 'op' && t.value === '(') {
-      pos++;
-      const inner = parseExpr();
-      eat('op', ')');
-      return inner;
-    }
-    throw new Error(`Unexpected token: "${t.value}"`);
-  };
-
-  const result = parseExpr();
-  if (pos < tokens.length) {
-    throw new Error(`Unexpected trailing token: "${tokens[pos].value}"`);
-  }
-  return result;
-}
-
-// ─── FUNCTIONS ───
-// Whitelist of allowed functions. Anything else is a parse/eval error.
-
-const FUNCTIONS = {
-  floor: (args) => Math.floor(args[0]),
-  ceil:  (args) => Math.ceil(args[0]),
-  round: (args) => Math.round(args[0]),
-  min:   (args) => Math.min(...args),
-  max:   (args) => Math.max(...args),
-  abs:   (args) => Math.abs(args[0])
 };
 
-// ─── EVALUATOR ───
-//
-// Returns a Number, or null if any referenced variable is missing.
-// Throws on function call errors or division by zero.
+// Normalize any ruleset doc by filling in missing fields from defaults.
+// Useful for rulesets created before the schema existed.
+window.normalizeRuleset = function(rs) {
+  const d = window.RULESET_DEFAULTS;
+  const out = Object.assign({}, rs);
+  if (typeof out.tagline !== 'string') out.tagline = '';
+  if (out.startingXp == null) out.startingXp = d.startingXp;
+  if (!Array.isArray(out.statXp)) out.statXp = d.statXp.slice();
+  if (out.statMaxPurchasable == null) out.statMaxPurchasable = d.statMaxPurchasable;
+  if (out.statMax == null) out.statMax = d.statMax;
+  if (out.statMax < out.statMaxPurchasable) out.statMax = out.statMaxPurchasable;
+  if (!Array.isArray(out.stats) || out.stats.length === 0) out.stats = JSON.parse(JSON.stringify(d.stats));
+  if (!Array.isArray(out.statMods) || out.statMods.length === 0) out.statMods = d.statMods.slice();
+  if (!Array.isArray(out.statLabels) || out.statLabels.length === 0) out.statLabels = d.statLabels.slice();
+  while (out.statMods.length < out.statMax + 1) out.statMods.push(out.statMods[out.statMods.length-1] ?? 0);
+  while (out.statLabels.length < out.statMax + 1) out.statLabels.push('Level ' + out.statLabels.length);
+  // SIZE block
+  if (!out.size || typeof out.size !== 'object') out.size = JSON.parse(JSON.stringify(d.size));
+  if (!Array.isArray(out.size.tiers) || out.size.tiers.length === 0) out.size.tiers = JSON.parse(JSON.stringify(d.size.tiers));
+  if (out.size.default == null) out.size.default = d.size.default;
+  if (!Array.isArray(out.primarySkillXp)) out.primarySkillXp = d.primarySkillXp.slice();
+  if (!Array.isArray(out.secondarySkillXp)) out.secondarySkillXp = d.secondarySkillXp.slice();
+  if (!Array.isArray(out.specialtySkillXp)) out.specialtySkillXp = d.specialtySkillXp.slice();
+  if (out.skillMax == null) out.skillMax = d.skillMax;
+  if (!Array.isArray(out.powerLevels) || out.powerLevels.length === 0) out.powerLevels = JSON.parse(JSON.stringify(d.powerLevels));
+  if (!out.defaultPowerLevel) out.defaultPowerLevel = d.defaultPowerLevel;
+  if (!Array.isArray(out.primarySkills) || out.primarySkills.length === 0) out.primarySkills = JSON.parse(JSON.stringify(d.primarySkills));
+  if (!Array.isArray(out.morals)) out.morals = [];
 
-function evalNode(node, vars) {
-  switch (node.kind) {
-    case 'num': return node.value;
-    case 'var': {
-      if (!(node.name in vars)) return null;
-      return vars[node.name];
+  // ── A/D TIERS ──
+  // Keep 7 entries; fill any missing slots with defaults. Any existing
+  // label/description/xp values are preserved.
+  const normalizeTierArray = (arr, defaults) => {
+    const result = [];
+    for (let i = 0; i < 7; i++) {
+      const src = (Array.isArray(arr) && arr[i]) ? arr[i] : {};
+      result.push({
+        label: typeof src.label === 'string' && src.label ? src.label : defaults[i].label,
+        description: typeof src.description === 'string' ? src.description : '',
+        xp: Number.isFinite(src.xp) ? src.xp : 0
+      });
     }
-    case 'unary': {
-      const v = evalNode(node.arg, vars);
-      if (v === null) return null;
-      return node.op === '-' ? -v : v;
-    }
-    case 'binop': {
-      const l = evalNode(node.left, vars);
-      const r = evalNode(node.right, vars);
-      if (l === null || r === null) return null;
-      switch (node.op) {
-        case '+': return l + r;
-        case '-': return l - r;
-        case '*': return l * r;
-        case '/':
-          if (r === 0) throw new Error('Division by zero');
-          return l / r;
-        case '^': return Math.pow(l, r);
-      }
-      throw new Error(`Unknown operator: ${node.op}`);
-    }
-    case 'call': {
-      const fn = FUNCTIONS[node.name.toLowerCase()];
-      if (!fn) throw new Error(`Unknown function: ${node.name}`);
-      const args = node.args.map(a => evalNode(a, vars));
-      if (args.some(v => v === null)) return null;
-      return fn(args);
-    }
-  }
-  throw new Error(`Unknown node kind: ${node.kind}`);
-}
-
-// ─── PUBLIC API ───
-
-// Compute total XP cost of a given Power Pool level for this ruleset.
-// Respects costMode ('perPoint' flat vs 'perLevel' table).
-// Returns 0 for level 0 or if Power Pool is disabled.
-export function powerPoolXpCost(level, ruleset) {
-  const pp = ruleset && ruleset.powerPool;
-  if (!pp || !pp.enabled) return 0;
-  const lv = Math.max(0, Math.floor(level || 0));
-  if (lv === 0) return 0;
-  if (pp.costMode === 'perPoint') {
-    const rate = Number.isFinite(pp.costPerPoint) ? pp.costPerPoint : 0;
-    return lv * rate;
-  }
-  // perLevel — sum costs for levels 1..lv (index 0 is typically 0 = "no pool bought")
-  const table = Array.isArray(pp.xpPerPoint) ? pp.xpPerPoint : [];
-  let total = 0;
-  for (let i = 1; i <= lv; i++) {
-    total += Number.isFinite(table[i]) ? table[i] : 0;
-  }
-  return total;
-}
-
-// parseFormula(src) -> { ast } or { error, message }
-// Valid formulas return { ast }. Invalid ones return { error: true, message }.
-export function parseFormula(src) {
-  if (typeof src !== 'string' || !src.trim()) {
-    return { error: true, message: 'Empty formula' };
-  }
-  try {
-    const ast = parse(src);
-    return { ast };
-  } catch (e) {
-    return { error: true, message: e.message };
-  }
-}
-
-// evalFormula(compiled, vars) -> number or null
-// If compiled is an error object, returns null.
-// If any variable is missing, returns null (caller should display "—").
-// If eval throws (div by zero, unknown fn), returns null.
-export function evalFormula(compiled, vars) {
-  if (!compiled || compiled.error || !compiled.ast) return null;
-  try {
-    const result = evalNode(compiled.ast, vars);
-    if (result === null) return null;
-    if (!Number.isFinite(result)) return null;
     return result;
-  } catch (e) {
-    return null;
-  }
-}
-
-// ─── SYMBOL TABLE BUILDER ───
-//
-// Assembles the variable dictionary passed to evalFormula based on the
-// character's current stats and the ruleset's STATMOD table.
-//
-// Includes:
-//   - Raw stat values by code (STR, DEX, SIZE, ...)
-//   - STATMODs by code (STRMOD, DEXMOD, SIZEMOD, ...)
-//   - Purchased resources: POWERPOOL
-//   - POW_MULTIPLIER derived from the ruleset's powMultiplier table
-//
-// Derived stats themselves are added incrementally by computeDerivedStats
-// after each one evaluates, so later stats can reference earlier ones.
-
-export function buildSymbolTable(character, ruleset) {
-  const table = {};
-  const stats = character.stats || {};
-  const statMods = ruleset.statMods || [];
-
-  // Base stats by code.
-  (ruleset.stats || []).forEach(s => {
-    const code = (s.code || '').toUpperCase();
-    if (!code) return;
-    const lowerKey = code.toLowerCase();
-    const value = (typeof stats[lowerKey] === 'number') ? stats[lowerKey] : 2;
-    table[code] = value;
-    // STATMOD for this stat, looked up by level index.
-    const modKey = code + 'MOD';
-    const modVal = statMods[value];
-    table[modKey] = (typeof modVal === 'number') ? modVal : 0;
-  });
-
-  // SIZE is stored outside the main stats list but lives in stats.size.
-  if (typeof stats.size === 'number') {
-    table.SIZE = stats.size;
-    // SIZEMOD derives from SIZE relative to Medium (the reference tier).
-    // Medium is SIZE 4 in the PRIME Basic Set, so SIZEMOD = SIZE - 4.
-    // This makes Medium=0, Large=+2, Tiny=-2, etc. Homebrew rulesets with
-    // different SIZE scales should compute SIZEMOD in their formulas using
-    // raw SIZE if this convention doesn't fit.
-    table.SIZEMOD = stats.size - 4;
-  } else {
-    table.SIZE = 4;
-    table.SIZEMOD = 0;
-  }
-
-  // Power Pool purchased value.
-  const pp = (typeof character.powerPool === 'number') ? character.powerPool : 0;
-  table.POWERPOOL = pp;
-
-  // POW_MULTIPLIER from ruleset table, looked up by POWMOD (the stat modifier
-  // from POW). The table is a flat list with one entry per POWMOD value.
-  // If the character's POWMOD falls outside the table's declared range, we
-  // clamp to the nearest endpoint — i.e. a POWMOD of 15 uses the highest
-  // defined entry's value (probably 10 in the default table). This keeps the
-  // system working even for extreme edge cases without requiring the GM to
-  // declare infinite rows.
-  const powmod = table.POWMOD ?? 0;
-  const multTable = (ruleset.powerPool && Array.isArray(ruleset.powerPool.powMultiplier))
-    ? ruleset.powerPool.powMultiplier : [];
-  let multiplier = 1;
-  if (multTable.length > 0) {
-    // Prefer an exact match.
-    const exact = multTable.find(e => e.powmod === powmod);
-    if (exact) {
-      multiplier = exact.value;
-    } else {
-      // Clamp to nearest endpoint. Sort by powmod and pick min or max.
-      const sorted = multTable.slice().sort((a, b) => a.powmod - b.powmod);
-      if (powmod < sorted[0].powmod) multiplier = sorted[0].value;
-      else if (powmod > sorted[sorted.length - 1].powmod) multiplier = sorted[sorted.length - 1].value;
-      // Otherwise the table has a gap; fall back to the default of 1.
-    }
-  }
-  table.POW_MULTIPLIER = multiplier;
-
-  // FORT (Fortitude) — same curve-with-clamp pattern as POW_MULTIPLIER but
-  // keyed off STRMOD. Used in per-location damage stacking:
-  //   effective damage = highest instance + (sum of others) / FORT
-  // Falls back to 1 if no table is present, which gives linear stacking
-  // (no fortitude benefit) — safe default for old rulesets.
-  const strmod = table.STRMOD ?? 0;
-  const fortTable = Array.isArray(ruleset.fortitudeTable) ? ruleset.fortitudeTable : [];
-  let fortValue = 1;
-  if (fortTable.length > 0) {
-    const exact = fortTable.find(e => e.strmod === strmod);
-    if (exact) {
-      fortValue = exact.value;
-    } else {
-      const sorted = fortTable.slice().sort((a, b) => a.strmod - b.strmod);
-      if (strmod < sorted[0].strmod) fortValue = sorted[0].value;
-      else if (strmod > sorted[sorted.length - 1].strmod) fortValue = sorted[sorted.length - 1].value;
-    }
-  }
-  table.FORT = fortValue;
-
-  return table;
-}
-
-// ─── DEPENDENCY RESOLUTION ───
-//
-// Given a list of derived stat definitions, topologically sort them so that
-// stats only reference earlier-evaluated stats. Stats with missing/broken
-// dependencies still get included in the output (they'll eval to null) but
-// are reported in the errors list.
-//
-// Returns { ordered: [defs in eval order], errors: [{code, message}] }.
-
-function collectVarRefs(node, out) {
-  if (!node) return;
-  switch (node.kind) {
-    case 'var':   out.add(node.name); break;
-    case 'unary': collectVarRefs(node.arg, out); break;
-    case 'binop': collectVarRefs(node.left, out); collectVarRefs(node.right, out); break;
-    case 'call':  node.args.forEach(a => collectVarRefs(a, out)); break;
-  }
-}
-
-function topoSort(defs, baseVarNames) {
-  // Map code -> def.
-  const byCode = new Map();
-  defs.forEach(d => byCode.set(d.code, d));
-
-  // Compile each formula once.
-  const compiled = new Map();
-  defs.forEach(d => compiled.set(d.code, parseFormula(d.formula)));
-
-  // Figure dependencies on OTHER derived stats (not base vars).
-  const deps = new Map();
-  defs.forEach(d => {
-    const c = compiled.get(d.code);
-    if (c.error || !c.ast) { deps.set(d.code, []); return; }
-    const refs = new Set();
-    collectVarRefs(c.ast, refs);
-    // Keep only refs that point to other derived stats.
-    const thisDeps = [];
-    refs.forEach(r => {
-      if (byCode.has(r) && r !== d.code) thisDeps.push(r);
-    });
-    deps.set(d.code, thisDeps);
-  });
-
-  // Kahn's algorithm. Stats with circular deps remain unresolved → error.
-  const inDegree = new Map();
-  defs.forEach(d => inDegree.set(d.code, 0));
-  deps.forEach((list, code) => {
-    list.forEach(dep => {
-      inDegree.set(code, (inDegree.get(code) || 0) + 1);
-    });
-  });
-
-  const queue = [];
-  inDegree.forEach((deg, code) => { if (deg === 0) queue.push(code); });
-
-  const ordered = [];
-  const errors = [];
-
-  while (queue.length > 0) {
-    const code = queue.shift();
-    ordered.push(byCode.get(code));
-    // For each stat that depends on this one, decrement its indegree.
-    defs.forEach(d => {
-      if (deps.get(d.code).includes(code)) {
-        inDegree.set(d.code, inDegree.get(d.code) - 1);
-        if (inDegree.get(d.code) === 0) queue.push(d.code);
-      }
-    });
-  }
-
-  // Anything left unresolved is circular.
-  if (ordered.length < defs.length) {
-    const unresolved = defs.filter(d => !ordered.includes(d));
-    unresolved.forEach(d => {
-      errors.push({ code: d.code, message: 'Circular dependency' });
-      ordered.push(d);  // include so the UI can still show "ERR"
-    });
-  }
-
-  return { ordered, compiled, errors };
-}
-
-// ─── MAIN PIPELINE ───
-//
-// computeDerivedStats(character, ruleset) -> {
-//   stats: Map<code, { def, value, error? }>,
-//   locations: [{ def, index, maxHP, currentDamage, thresholds: {disabled, destroyed, definitelyDestroyed}, status }],
-//   errors: [{code, message}]
-// }
-//
-// `stats` is keyed by derived stat code. Value is null if the formula failed.
-// `locations` expands hitLocations × count into individual tracked locations
-// (e.g. 2 arms → arm-1 and arm-2 with their own currentDamage).
-// `status` for locations is one of: 'healthy', 'disabled', 'destroyed',
-// 'definitelyDestroyed'.
-
-export function computeDerivedStats(character, ruleset) {
-  const errors = [];
-
-  // 1. Build initial symbol table from base stats.
-  const vars = buildSymbolTable(character, ruleset);
-
-  // 2. Evaluate derived stats in dependency order.
-  const defs = Array.isArray(ruleset.derivedStats) ? ruleset.derivedStats : [];
-  const { ordered, compiled, errors: sortErrors } = topoSort(defs, Object.keys(vars));
-  sortErrors.forEach(e => errors.push(e));
-
-  const stats = new Map();
-  ordered.forEach(def => {
-    const c = compiled.get(def.code);
-    if (c.error) {
-      stats.set(def.code, {
-        def, value: null, error: c.message,
-        rollModifier: null, diceMods: [], diceModTotal: 0
-      });
-      errors.push({ code: def.code, message: c.message });
-      return;
-    }
-    let value = evalFormula(c, vars);
-    if (value !== null && !def.keepDecimals) value = Math.floor(value);
-    // Add to symbol table so downstream stats can reference this one.
-    if (value !== null) vars[def.code] = value;
-
-    // Evaluate rollModifier expression if present. This is the STATIC mod
-    // that gets added to the ROLL TOTAL (sum of dice) — e.g. STRMOD for
-    // Health, max(INTMOD, CHAMOD) for Sanity. Read-only, shown in the card's
-    // top-right corner as a signed badge.
-    let rollModifier = null;
-    if (def.rollModifier && typeof def.rollModifier === 'string' && def.rollModifier.trim()) {
-      const rmCompiled = parseFormula(def.rollModifier);
-      if (!rmCompiled.error) {
-        const rmValue = evalFormula(rmCompiled, vars);
-        if (rmValue !== null && Number.isFinite(rmValue)) {
-          rollModifier = Math.round(rmValue);
-        }
-      }
-    }
-
-    // Dice modifiers — player/GM-editable bonus DICE added to the roll POOL
-    // (not the total). E.g. "Brawny Trait: +2d" means you roll 2 extra D10s
-    // when making a Health check. Stored per stat code on charData.diceModifiers.
-    // Example: { HP: [{ name: 'Brawny Trait', value: 2 }], SAN: [...] }.
-    const diceMap = (character && character.diceModifiers && typeof character.diceModifiers === 'object')
-      ? character.diceModifiers : {};
-    const diceMods = Array.isArray(diceMap[def.code]) ? diceMap[def.code] : [];
-    const diceModTotal = diceMods.reduce((acc, m) => acc + (parseInt(m && m.value) || 0), 0);
-
-    stats.set(def.code, {
-      def, value,
-      rollModifier,     // static mod (STRMOD, etc.) — read-only, added to roll total
-      diceMods,         // list of {name, value} — editable bonus dice
-      diceModTotal      // sum of dice modifier values
-    });
-  });
-
-  // 3. Evaluate hit locations. Each has its own formula; maxHP is the result
-  //    of hpFormula, and each location × count gets its own damage tracker.
-  const locations = [];
-  const locDefs = Array.isArray(ruleset.hitLocations) ? ruleset.hitLocations : [];
-  const damageMap = (character.hitLocationDamage && typeof character.hitLocationDamage === 'object')
-    ? character.hitLocationDamage : {};
-
-  // Hit location modifiers: { trackKey: [{ name, value }, ...], ... }
-  // Each modifier is added to that instance's maxHP. Tracked per instance,
-  // not per location def, so "arm-1" and "arm-2" can have different mods.
-  const hlModsMap = (character.hitLocationModifiers && typeof character.hitLocationModifiers === 'object')
-    ? character.hitLocationModifiers : {};
-
-  // Pre-compute damage instances per location. Each injury contributes one
-  // instance (= its currentLevel, after levelModifiers); we group these by
-  // trackKey so the per-location loop can grab them cheaply.
-  //
-  // This replaces the old "sum injury levels" approach. Damage now stacks
-  // through FORT (highest instance + others/FORT), so we need the individual
-  // values, not just the total.
-  const injuriesIn = Array.isArray(character.injuries) ? character.injuries : [];
-  const injuryInstancesByLocation = new Map();
-  injuriesIn.forEach(inj => {
-    const base = Number.isFinite(inj.baseLevel) ? inj.baseLevel : 0;
-    const mods = Array.isArray(inj.levelModifiers) ? inj.levelModifiers : [];
-    const modTotal = mods.reduce((a, m) => a + (parseInt(m.value) || 0), 0);
-    const current = Math.max(0, base + modTotal);
-    if (current <= 0) return;  // zero-level injuries don't contribute damage
-    const loc = typeof inj.location === 'string' ? inj.location : 'torso';
-    if (!injuryInstancesByLocation.has(loc)) injuryInstancesByLocation.set(loc, []);
-    injuryInstancesByLocation.get(loc).push(current);
-  });
-
-  locDefs.forEach(def => {
-    const compiledHp = parseFormula(def.hpFormula);
-    let baseMaxHP = evalFormula(compiledHp, vars);
-    let err = null;
-    if (compiledHp.error) { err = compiledHp.message; baseMaxHP = null; }
-    else if (baseMaxHP !== null) baseMaxHP = Math.floor(baseMaxHP);
-
-    for (let i = 1; i <= (def.count || 1); i++) {
-      // Build the tracking key. Single-count locations use just the code
-      // (e.g. "head"), multi-count use code-N (e.g. "arm-1").
-      const trackKey = (def.count && def.count > 1) ? `${def.code}-${i}` : def.code;
-      // Manual damage — tracked via +/- controls, stored in hitLocationDamage.
-      const manualDamage = (typeof damageMap[trackKey] === 'number') ? damageMap[trackKey] : 0;
-      // Injury damage instances — one per injury at this location.
-      const injuryInstances = injuryInstancesByLocation.get(trackKey) || [];
-
-      // Build the full instance list: injuries + (manual lumped as 1 instance
-      // if > 0). Sort descending so instances[0] is the biggest single hit.
-      const instances = injuryInstances.slice();
-      if (manualDamage > 0) instances.push(manualDamage);
-      instances.sort((a, b) => b - a);
-
-      // FORT-reduced effective damage:
-      //   biggest hit lands in full; every secondary hit divides by FORT.
-      // No instances → no damage. One instance → it stands alone (FORT does
-      // not matter with a single wound, which is the simple-case default).
-      const fortValue = Math.max(0.01, vars.FORT || 1);
-      let currentDamage;
-      if (instances.length === 0) {
-        currentDamage = 0;
-      } else {
-        const highest = instances[0];
-        const othersSum = instances.slice(1).reduce((s, v) => s + v, 0);
-        // Floor so damage stays integer — matches the rest of the HP system
-        // and simplifies bar rendering / status threshold comparisons.
-        currentDamage = Math.floor(highest + (othersSum / fortValue));
-      }
-      // Raw (pre-FORT) total — useful for UI breakdowns and for backwards
-      // compatibility with any code that wants the un-reduced sum.
-      const injuryDamage = injuryInstances.reduce((s, v) => s + v, 0);
-      const rawDamage = manualDamage + injuryDamage;
-
-      // Apply modifiers. Each modifier adds its value (positive or negative)
-      // to the base maxHP computed from the formula. Clamp min to 0 so a
-      // pile of negative mods doesn't produce a negative maxHP (which would
-      // break threshold comparisons and bar rendering).
-      const mods = Array.isArray(hlModsMap[trackKey]) ? hlModsMap[trackKey] : [];
-      const modTotal = mods.reduce((acc, m) => acc + (parseInt(m.value) || 0), 0);
-      let maxHP = baseMaxHP;
-      if (maxHP !== null) maxHP = Math.max(0, maxHP + modTotal);
-
-      // Evaluate thresholds. maxHP and currentDamage are injected as vars.
-      const thresholds = {};
-      const thresholdStatuses = ['disabled', 'destroyed', 'definitelyDestroyed'];
-      const thresholdConfig = ruleset.damageThresholds || {};
-      thresholdStatuses.forEach(key => {
-        const tc = thresholdConfig[key];
-        if (!tc || !tc.formula) { thresholds[key] = null; return; }
-        const compiledT = parseFormula(tc.formula);
-        const extraVars = Object.assign({}, vars, { maxHP: maxHP || 0, currentDamage });
-        thresholds[key] = evalFormula(compiledT, extraVars);
-      });
-
-      // Compute status. Current remaining = maxHP - currentDamage. Compare
-      // to each threshold (which are negative numbers like -maxHP).
-      let status = 'healthy';
-      if (maxHP !== null) {
-        const remaining = maxHP - currentDamage;
-        if (thresholds.definitelyDestroyed !== null && remaining <= thresholds.definitelyDestroyed) {
-          status = 'definitelyDestroyed';
-        } else if (thresholds.destroyed !== null && remaining <= thresholds.destroyed) {
-          status = 'destroyed';
-        } else if (thresholds.disabled !== null && remaining <= thresholds.disabled) {
-          status = 'disabled';
-        }
-      }
-
-      locations.push({
-        def,
-        index: i,
-        trackKey,
-        maxHP,
-        baseMaxHP,        // pre-modifier max, useful for UI displaying "base +mod=total"
-        currentDamage,    // FORT-reduced effective damage (used by bar + Body total)
-        rawDamage,        // pre-FORT linear sum (manualDamage + all injury levels)
-        instances,        // array of individual damage instances (sorted desc)
-        manualDamage,     // just the +/- ticked damage
-        injuryDamage,     // linear sum of injury currentLevels at this location
-        modifiers: mods,
-        thresholds,
-        status,
-        error: err
-      });
-    }
-    if (err) errors.push({ code: def.code, message: err });
-  });
-
-  // ─── BODY POOL & CHARACTER STATUS ───
-  //
-  // Body is the total damage pool. Its max is the sum of all location maxHPs
-  // (which already include per-location modifiers) plus any Body-specific
-  // modifiers. Its current is bodyMax minus the sum of all damage everywhere.
-  // Every point of location damage is also a point of Body damage — they're
-  // the same pool.
-  //
-  // Damage past Def. Destroyed on a limb (phase 4) still ticks Body down. The
-  // Def. Destroyed location's own bar reflects Body's state rather than more
-  // location-specific damage.
-  //
-  // Character statuses derive from two sources:
-  //   - Head/Torso hit location status (Disabled/Destroyed/etc.)
-  //   - Body pool (0 = Dead)
-  //
-  // Priority: Dead > (Unconscious + Paralyzed) > Unconscious > Paralyzed > Alive
-  let bodyMax = 0;
-  let bodyDamage = 0;
-  locations.forEach(l => {
-    if (typeof l.maxHP === 'number') bodyMax += l.maxHP;
-    if (typeof l.currentDamage === 'number') bodyDamage += l.currentDamage;
-  });
-
-  // Body-level modifiers live on charData.bodyModifiers = [{ name, value }, ...]
-  // These stack onto bodyMax after location-modifier contributions are rolled in.
-  const bodyMods = Array.isArray(character.bodyModifiers) ? character.bodyModifiers : [];
-  const bodyModTotal = bodyMods.reduce((acc, m) => acc + (parseInt(m.value) || 0), 0);
-  bodyMax = Math.max(0, bodyMax + bodyModTotal);
-
-  const bodyCurrent = Math.max(0, bodyMax - bodyDamage);
-
-  // Find head/torso for status. Multiple heads/torsos (unusual): any in a
-  // death-triggering state kills the character. Disable status requires at
-  // least one to be disabled (not all).
-  const headLocs  = locations.filter(l => l.def.code === 'head');
-  const torsoLocs = locations.filter(l => l.def.code === 'torso');
-
-  const anyHeadDestroyed  = headLocs.some (l => l.status === 'destroyed' || l.status === 'definitelyDestroyed');
-  const anyTorsoDestroyed = torsoLocs.some(l => l.status === 'destroyed' || l.status === 'definitelyDestroyed');
-  const anyHeadDisabled   = headLocs.some (l => l.status === 'disabled');
-  const anyTorsoDisabled  = torsoLocs.some(l => l.status === 'disabled');
-
-  const isDead = (bodyMax > 0 && bodyCurrent <= 0)
-              || anyHeadDestroyed
-              || anyTorsoDestroyed;
-  const isUnconscious = !isDead && anyHeadDisabled;
-  const isParalyzed   = !isDead && anyTorsoDisabled;
-
-  // Build a compact status object the combat UI can read directly.
-  let statusLabel;
-  if (isDead) statusLabel = 'DEAD';
-  else if (isUnconscious && isParalyzed) statusLabel = 'Unconscious & Paralyzed';
-  else if (isUnconscious) statusLabel = 'Unconscious';
-  else if (isParalyzed) statusLabel = 'Paralyzed';
-  else statusLabel = 'Alive';
-
-  const body = {
-    max: bodyMax,
-    current: bodyCurrent,
-    damage: bodyDamage,
-    modifiers: bodyMods,
-    dead: isDead,
-    unconscious: isUnconscious,
-    paralyzed: isParalyzed,
-    statusLabel
   };
+  out.advantageTiers    = normalizeTierArray(out.advantageTiers,    d.advantageTiers);
+  out.disadvantageTiers = normalizeTierArray(out.disadvantageTiers, d.disadvantageTiers);
 
-  // ─── POWER RESOURCE ───
+  // ── A/D ENTRIES ──
+  // Each entry normalized to { name, category, tier, description, system, repeatable }.
+  // Drop entries with no name (treat as corrupt/empty).
   //
-  // POWER is a spendable resource whose MAX is derived from the POWER formula
-  // (usually POWERPOOL * POW_MULTIPLIER). The character stores `powerCurrent`,
-  // the amount currently available to spend on Activated Abilities etc.
-  //
-  // If the max isn't defined (no POWER derived stat configured) or the ruleset
-  // has Power Pool disabled, we report power as null and the combat UI hides
-  // the section.
-  //
-  // Current caps to max but only on the downside — if max drops below current
-  // (e.g. character loses POWMOD due to wound), current is clamped. If max
-  // rises (buying more Power Pool), current stays where it was — you don't
-  // magically get full refilled.
-  let power = null;
-  const powerStatEntry = stats.get('POWER');
-  const ppEnabled = ruleset.powerPool && ruleset.powerPool.enabled !== false;
-  if (ppEnabled && powerStatEntry && powerStatEntry.value !== null) {
-    const powerMax = Math.floor(powerStatEntry.value);
-    const storedCurrent = Number.isFinite(character.powerCurrent)
-      ? character.powerCurrent : powerMax;
-    const powerCurrent = Math.max(0, Math.min(powerMax, storedCurrent));
-    const color = (typeof character.powerColor === 'string' && character.powerColor.trim())
-      ? character.powerColor.trim() : '#e0e0e0';
-    // Player-chosen name (e.g. "Vitae", "Mana", "Chi"). Blank / missing falls
-    // back to the canonical "POWER" label. Trim so trailing whitespace doesn't
-    // change whether the default applies.
-    const rawName = (typeof character.powerName === 'string') ? character.powerName.trim() : '';
-    const name = rawName || 'POWER';
-    power = {
-      max: powerMax,
-      current: powerCurrent,
-      color,
-      name
-    };
-  }
+  //   description = flavor text ("You've always been great at throwing.")
+  //   system      = mechanical effect ("You benefit from 2 Difficulty Mitigation…")
+  //   repeatable  = whether a character can take this entry multiple times
+  const validCategories = ['physical','mental','social','background','special'];
+  const normalizeEntry = (e) => {
+    if (!e || typeof e !== 'object') return null;
+    const name = (typeof e.name === 'string') ? e.name.trim() : '';
+    if (!name) return null;
+    const cat = validCategories.includes(e.category) ? e.category : 'physical';
+    const tier = Number.isInteger(e.tier) ? Math.max(0, Math.min(6, e.tier)) : 0;
+    const desc = (typeof e.description === 'string') ? e.description : '';
+    const sys  = (typeof e.system === 'string') ? e.system : '';
+    const rep  = e.repeatable === true;  // defaults to false unless explicitly true
+    return { name, category: cat, tier, description: desc, system: sys, repeatable: rep };
+  };
+  out.advantages    = Array.isArray(out.advantages)    ? out.advantages.map(normalizeEntry).filter(Boolean)    : [];
+  out.disadvantages = Array.isArray(out.disadvantages) ? out.disadvantages.map(normalizeEntry).filter(Boolean) : [];
 
-  // ─── SAN (SANITY) ───
-  //
-  // Linear mental health pool. Damage stacks directly — no FORT reduction.
-  //
-  // Two damage sources both contribute to total:
-  //   - sanDamage (number): untracked manual damage from +/- controls
-  //   - sanDamages (array of {id, name, baseLevel, levelModifiers, description}):
-  //     structured "damages" the player/GM records, each with its own level and
-  //     optional modifiers. Parallels Injuries but without location/traumas/
-  //     degradation — mental wounds are pool-wide, not located.
-  //
-  // Effective SAN damage = sanDamage + sum(damage.currentLevel for each entry)
-  //
-  // Max comes from the SAN derived stat (CHA + INT by default). sanModifiers
-  // (array of {name, value}) adjust max same pattern as Body.
-  //
-  // Status bands (in terms of current = max - damage):
-  //   current > 0              → Healthy
-  //   0  ≥ current > -SAN      → In Shock       (+1 Diff all rolls)
-  //   -SAN ≥ current > -2*SAN  → Insane         (+2 Diff SAN, +1 Diff others)
-  //   current ≤ -2*SAN         → Broken         (+3 Diff SAN, +1 Diff others,
-  //                                               Breaking Point roll required)
-  let san = null;
-  const sanStatEntry = stats.get('SAN');
-  if (sanStatEntry && sanStatEntry.value !== null) {
-    const baseMax = Math.floor(sanStatEntry.value);
-    const sanMods = Array.isArray(character.sanModifiers) ? character.sanModifiers : [];
-    const sanModTotal = sanMods.reduce((acc, m) => acc + (parseInt(m.value) || 0), 0);
-    const sanMax = Math.max(0, baseMax + sanModTotal);
-
-    // Manual damage — untracked lump from +/- controls.
-    const manualDamage = Math.max(0, Number.isFinite(character.sanDamage) ? character.sanDamage : 0);
-
-    // Structured damages — compute currentLevel for each, carry them on the
-    // result so the UI can render cards without re-doing the math.
-    const damagesIn = Array.isArray(character.sanDamages) ? character.sanDamages : [];
-    const damages = damagesIn
-      .filter(d => d && typeof d === 'object')
-      .map(d => {
-        const base = Number.isFinite(d.baseLevel) ? d.baseLevel : 0;
-        const mods = Array.isArray(d.levelModifiers) ? d.levelModifiers : [];
-        const modTotal = mods.reduce((a, m) => a + (parseInt(m.value) || 0), 0);
-        const currentLevel = Math.max(0, base + modTotal);
+  // ── DERIVED STAT GROUPS ──
+  // Each group needs a code (stable ID) and label. Silently drop any that
+  // are missing a code. Duplicate codes are filtered to the first occurrence.
+  if (!Array.isArray(out.derivedStatGroups) || out.derivedStatGroups.length === 0) {
+    out.derivedStatGroups = JSON.parse(JSON.stringify(d.derivedStatGroups));
+  } else {
+    const seenGroups = new Set();
+    out.derivedStatGroups = out.derivedStatGroups
+      .map(g => {
+        if (!g || typeof g !== 'object') return null;
+        const code = (typeof g.code === 'string') ? g.code.trim().toLowerCase() : '';
+        if (!code || seenGroups.has(code)) return null;
+        seenGroups.add(code);
         return {
-          id: d.id || ('sandmg_' + Math.random().toString(36).slice(2, 9)),
-          name: typeof d.name === 'string' ? d.name : '',
-          description: typeof d.description === 'string' ? d.description : '',
-          baseLevel: base,
-          currentLevel,
-          levelModifiers: mods
+          code,
+          label: (typeof g.label === 'string' && g.label.trim()) ? g.label.trim() : code
         };
+      })
+      .filter(Boolean);
+    if (out.derivedStatGroups.length === 0) {
+      out.derivedStatGroups = JSON.parse(JSON.stringify(d.derivedStatGroups));
+    }
+  }
+
+  // ── DERIVED STATS ──
+  // Each entry: { code, name, description, group, formula, trackDamage, keepDecimals, unit }
+  // `code` is required and must be uppercase; formulas refer to other derived stats by code.
+  // `group` must match a group code (silently fallback to first group if orphaned).
+  const validGroupCodes = new Set(out.derivedStatGroups.map(g => g.code));
+  const fallbackGroup = out.derivedStatGroups[0].code;
+  if (!Array.isArray(out.derivedStats)) {
+    out.derivedStats = JSON.parse(JSON.stringify(d.derivedStats));
+  } else {
+    const seenCodes = new Set();
+    out.derivedStats = out.derivedStats
+      .map(s => {
+        if (!s || typeof s !== 'object') return null;
+        const code = (typeof s.code === 'string') ? s.code.trim().toUpperCase() : '';
+        if (!code || seenCodes.has(code)) return null;
+        seenCodes.add(code);
+        const rawGroup = (typeof s.group === 'string') ? s.group.trim().toLowerCase() : '';
+        return {
+          code,
+          name: (typeof s.name === 'string' && s.name.trim()) ? s.name.trim() : code,
+          description: (typeof s.description === 'string') ? s.description : '',
+          group: validGroupCodes.has(rawGroup) ? rawGroup : fallbackGroup,
+          formula: (typeof s.formula === 'string') ? s.formula : '0',
+          // Optional expression — displayed in the top-right of the card as
+          // a signed badge indicating which stat modifier the player rolls
+          // with when making resistance checks for this stat.
+          rollModifier: (typeof s.rollModifier === 'string') ? s.rollModifier : '',
+          // Passive rolls are exempt from Strain dice penalties. Defaults
+          // to false so new stats are treated as active (Strain applies) —
+          // only explicitly-marked passive stats skip it.
+          passiveRoll: s.passiveRoll === true,
+          // Strain reduces the displayed VALUE of this stat instead of the
+          // dice pool — used for movement-style stats where the value isn't
+          // rolled but still suffers when the character is hurt/stressed.
+          // Mutually coherent with passiveRoll: a stat with passiveRoll=true
+          // is strain-immune, so strainReducesValue has no effect on it.
+          strainReducesValue: s.strainReducesValue === true,
+          trackDamage: s.trackDamage === true,
+          keepDecimals: s.keepDecimals === true,
+          unit: (typeof s.unit === 'string') ? s.unit : ''
+        };
+      })
+      .filter(Boolean);
+
+    // Auto-inject any NEW default stats that aren't in the user's list yet.
+    // Rationale: when we add a core mechanic like FORT to the defaults, we
+    // want existing rulesets to inherit it automatically — otherwise every
+    // saved ruleset would need manual editing.
+    //
+    // Conservative: we only add stats that are TOTALLY ABSENT from the user's
+    // list. If a stat is present with any config (even modified), we leave it
+    // alone — the user's version wins. If a user explicitly DELETES a default
+    // stat, it'll re-appear on next normalize; that's acceptable given the
+    // low cost of re-deleting vs. the high cost of "I added FORT to defaults
+    // but my characters don't see it".
+    d.derivedStats.forEach(defaultStat => {
+      const code = (defaultStat.code || '').toUpperCase();
+      if (!code || seenCodes.has(code)) return;
+      out.derivedStats.push(JSON.parse(JSON.stringify(defaultStat)));
+      seenCodes.add(code);
+    });
+
+    // One-time sync for a small set of core stats where a prior default name
+    // or description didn't reflect current UX wording. We only overwrite
+    // when the stored value EXACTLY matches a known old default — that way,
+    // anyone who intentionally renamed HP to "Hitpoints" keeps their version.
+    const OLD_CORE_DEFAULTS = {
+      HP: {
+        oldNames: ['HP'],
+        oldDescs: ['Hit Points — overall durability of the body.'],
+        newName: 'Health',
+        newDesc: 'Physical durability. Roll for physical resistances.'
+      }
+    };
+    out.derivedStats.forEach(s => {
+      const match = OLD_CORE_DEFAULTS[s.code];
+      if (match) {
+        if (match.oldNames.includes(s.name)) s.name = match.newName;
+        if (match.oldDescs.includes(s.description)) s.description = match.newDesc;
+      }
+      // Backfill rollModifier from defaults for any core stat whose roll
+      // modifier wasn't set yet. Non-destructive: we only fill when empty.
+      if (!s.rollModifier) {
+        const defaultStat = d.derivedStats.find(ds => ds.code === s.code);
+        if (defaultStat && defaultStat.rollModifier) {
+          s.rollModifier = defaultStat.rollModifier;
+        }
+      }
+      // Backfill passiveRoll for HP/SAN (or any default stat) if the saved
+      // value still matches the pre-flag default of false. Safe: we only
+      // flip false → true for stats that are DEFAULT passive; stats the user
+      // actively set non-passive aren't touched.
+      if (s.passiveRoll !== true) {
+        const defaultStat = d.derivedStats.find(ds => ds.code === s.code);
+        if (defaultStat && defaultStat.passiveRoll === true) {
+          s.passiveRoll = true;
+        }
+      }
+      // Same one-way backfill for strainReducesValue — if the default says
+      // true but the saved stat is still unset/false, inherit the default.
+      if (s.strainReducesValue !== true) {
+        const defaultStat = d.derivedStats.find(ds => ds.code === s.code);
+        if (defaultStat && defaultStat.strainReducesValue === true) {
+          s.strainReducesValue = true;
+        }
+      }
+    });
+  }
+
+  // ── HIT LOCATIONS ──
+  // Each entry: { code, name, count, hpFormula }. `count` is how many copies
+  // of this location exist (e.g. 2 arms). Codes must be unique and non-empty.
+  if (!Array.isArray(out.hitLocations)) {
+    out.hitLocations = JSON.parse(JSON.stringify(d.hitLocations));
+  } else {
+    const seenLocs = new Set();
+    out.hitLocations = out.hitLocations
+      .map(l => {
+        if (!l || typeof l !== 'object') return null;
+        const code = (typeof l.code === 'string') ? l.code.trim().toLowerCase() : '';
+        if (!code || seenLocs.has(code)) return null;
+        seenLocs.add(code);
+        const count = Number.isInteger(l.count) && l.count > 0 ? l.count : 1;
+        return {
+          code,
+          name: (typeof l.name === 'string' && l.name.trim()) ? l.name.trim() : code,
+          count,
+          hpFormula: (typeof l.hpFormula === 'string' && l.hpFormula.trim()) ? l.hpFormula : 'HP'
+        };
+      })
+      .filter(Boolean);
+  }
+
+  // ── DAMAGE THRESHOLDS ──
+  // Three thresholds: disabled, destroyed, definitelyDestroyed. Always present
+  // in the output object even if missing from input.
+  if (!out.damageThresholds || typeof out.damageThresholds !== 'object') {
+    out.damageThresholds = JSON.parse(JSON.stringify(d.damageThresholds));
+  } else {
+    ['disabled', 'destroyed', 'definitelyDestroyed'].forEach(key => {
+      const defaultEntry = d.damageThresholds[key];
+      const src = out.damageThresholds[key];
+      if (!src || typeof src !== 'object') {
+        out.damageThresholds[key] = JSON.parse(JSON.stringify(defaultEntry));
+      } else {
+        out.damageThresholds[key] = {
+          label: (typeof src.label === 'string' && src.label.trim()) ? src.label.trim() : defaultEntry.label,
+          formula: (typeof src.formula === 'string' && src.formula.trim()) ? src.formula : defaultEntry.formula
+        };
+      }
+    });
+  }
+
+  // ── FORTITUDE TABLE ──
+  // Flat per-STRMOD lookup → FORT value. Defaults to the Basic Set curve if
+  // missing. When user-supplied, each entry is validated and missing STRMOD
+  // values fall back to defaults so partial tables don't break the lookup.
+  {
+    const defaultRows = JSON.parse(JSON.stringify(d.fortitudeTable));
+    const byStrmod = new Map();
+    defaultRows.forEach(r => byStrmod.set(r.strmod, r.value));
+
+    if (Array.isArray(out.fortitudeTable)) {
+      out.fortitudeTable.forEach(e => {
+        if (!e || typeof e !== 'object') return;
+        const value = Number.isFinite(e.value) ? e.value : null;
+        if (value === null) return;
+        if (Number.isFinite(e.strmod)) byStrmod.set(e.strmod, value);
       });
-    const damagesContribution = damages.reduce((s, d) => s + d.currentLevel, 0);
-
-    const sanDamage = manualDamage + damagesContribution;
-    const sanCurrent = sanMax - sanDamage;  // can be negative; that's the point
-
-    let sanStatus = 'healthy';
-    if (sanMax > 0) {
-      if (sanCurrent <= -2 * sanMax) sanStatus = 'broken';
-      else if (sanCurrent <= -sanMax) sanStatus = 'insane';
-      else if (sanCurrent <= 0) sanStatus = 'inShock';
     }
 
-    // Status label + penalty text for the UI. Penalties are narrative cues
-    // for the GM — they're printed but not auto-applied to any dice rolls.
-    let sanStatusLabel, sanPenaltyText;
-    switch (sanStatus) {
-      case 'broken':
-        sanStatusLabel = 'Broken';
-        sanPenaltyText = '+3 Difficulty to SAN rolls, +1 Difficulty to other rolls. Roll on Breaking Point table. Any further Mental Damage forces a reroll.';
-        break;
-      case 'insane':
-        sanStatusLabel = 'Insane';
-        sanPenaltyText = '+2 Difficulty to SAN rolls, +1 Difficulty to other rolls.';
-        break;
-      case 'inShock':
-        sanStatusLabel = 'In Shock';
-        sanPenaltyText = '+1 Difficulty to all rolls.';
-        break;
-      default:
-        sanStatusLabel = 'Healthy';
-        sanPenaltyText = '';
-    }
+    out.fortitudeTable = Array.from(byStrmod.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([strmod, value]) => ({ strmod, value }));
+  }
 
-    san = {
-      baseMax,
-      max: sanMax,
-      current: sanCurrent,
-      damage: sanDamage,
-      manualDamage,
-      damagesContribution,
-      damages,                 // structured damages with computed currentLevel
-      modifiers: sanMods,
-      status: sanStatus,
-      statusLabel: sanStatusLabel,
-      penaltyText: sanPenaltyText
+  // ── POWER POOL ──
+  // Ruleset-level on/off, XP cost table, and POW range → multiplier lookup.
+  if (!out.powerPool || typeof out.powerPool !== 'object') {
+    out.powerPool = JSON.parse(JSON.stringify(d.powerPool));
+  } else {
+    const src = out.powerPool;
+    out.powerPool = {
+      enabled: src.enabled !== false,  // default on unless explicitly false
+      name: (typeof src.name === 'string' && src.name.trim()) ? src.name.trim() : d.powerPool.name,
+      description: (typeof src.description === 'string') ? src.description : d.powerPool.description,
+      // costMode: 'perPoint' (flat) or 'perLevel' (table). Anything else falls back to default.
+      costMode: (src.costMode === 'perPoint' || src.costMode === 'perLevel')
+        ? src.costMode : d.powerPool.costMode,
+      // Flat cost-per-point. Used only when costMode === 'perPoint'. Must be non-negative.
+      costPerPoint: Number.isFinite(src.costPerPoint) && src.costPerPoint >= 0
+        ? src.costPerPoint : d.powerPool.costPerPoint,
+      xpPerPoint: (Array.isArray(src.xpPerPoint) && src.xpPerPoint.length > 0)
+        ? src.xpPerPoint.map(v => Number.isFinite(v) ? v : 0)
+        : d.powerPool.xpPerPoint.slice(),
+      maxPurchasable: Number.isInteger(src.maxPurchasable) && src.maxPurchasable >= 0
+        ? src.maxPurchasable : d.powerPool.maxPurchasable,
+      powMultiplier: (() => {
+        // Target shape: flat list, one entry per POWMOD value. Expand any
+        // legacy range-based entries into per-POWMOD rows.
+        //
+        // Accepts three input shapes:
+        //   1. Current: { powmod, value }
+        //   2. Previous range-based: { powmodMin, powmodMax, value }
+        //   3. Legacy (pre-POWMOD): { powMin, powMax, value } — treated as
+        //      POWMOD values (numbers may need reinterpretation by the GM)
+        //
+        // The default table (POWMOD -1..10) is always merged in to fill any
+        // gaps; user-supplied entries win on conflict.
+        const defaultRows = JSON.parse(JSON.stringify(d.powerPool.powMultiplier));
+        const byPowmod = new Map();
+        defaultRows.forEach(r => byPowmod.set(r.powmod, r.value));
+
+        if (Array.isArray(src.powMultiplier)) {
+          src.powMultiplier.forEach(e => {
+            if (!e || typeof e !== 'object') return;
+            const value = Number.isFinite(e.value) ? e.value : null;
+            if (value === null) return;
+
+            // Flat format takes precedence.
+            if (Number.isFinite(e.powmod)) {
+              byPowmod.set(e.powmod, value);
+              return;
+            }
+
+            // Range format — expand to one entry per integer in [min..max].
+            const minRaw = Number.isFinite(e.powmodMin) ? e.powmodMin
+                         : Number.isFinite(e.powMin)    ? e.powMin    : null;
+            const maxRaw = Number.isFinite(e.powmodMax) ? e.powmodMax
+                         : Number.isFinite(e.powMax)    ? e.powMax    : minRaw;
+            if (minRaw === null) return;
+            const lo = Math.floor(minRaw);
+            const hi = Math.floor(maxRaw === null ? minRaw : maxRaw);
+            for (let k = lo; k <= hi; k++) byPowmod.set(k, value);
+          });
+        }
+
+        // Emit sorted by POWMOD for a stable, predictable table order.
+        return Array.from(byPowmod.entries())
+          .sort((a, b) => a[0] - b[0])
+          .map(([powmod, value]) => ({ powmod, value }));
+      })()
     };
   }
 
-  // ─── INJURIES ───
-  //
-  // Injuries are free-floating wounds with their own base severity, location,
-  // and degradation rate. The degradation RATE is driven by the injury's
-  // baseLevel (the level it was recorded at) relative to half the character's
-  // HP — heal/worsen modifiers affect current severity but NOT the rate.
-  //
-  // Two distinct modifier lists per injury:
-  //   - levelModifiers:       adjust the current severity (what the player/GM
-  //                           cares about mechanically right now)
-  //   - degradationModifiers: shift the baseLevel as used for the RATE lookup
-  //                           (bandages slowing degradation, traumas speeding
-  //                           it up, etc.)
-  //
-  // Traumas are narrative tags with a System text field; GMs apply the
-  // described mechanical effect manually via degradation modifiers.
-  //
-  // HP for the "half your HP" comparison is the derived HP stat (e.g. STR+SIZE).
-  // Falls back to 0 if the ruleset has no HP derived stat.
-  // (injuriesIn was already declared earlier — it's the same array we use for
-  // pre-computing per-location damage before the hit-location loop.)
-  const hpEntry = stats.get('HP');
-  const hpTotal = (hpEntry && typeof hpEntry.value === 'number') ? hpEntry.value : 0;
-  const halfHp = Math.floor(hpTotal / 2);
-
-  const injuries = injuriesIn.map(inj => {
-    const baseLevel = Number.isFinite(inj.baseLevel) ? inj.baseLevel : 0;
-
-    const levelMods = Array.isArray(inj.levelModifiers) ? inj.levelModifiers : [];
-    const levelModTotal = levelMods.reduce((a, m) => a + (parseInt(m.value) || 0), 0);
-    const currentLevel = Math.max(0, baseLevel + levelModTotal);
-
-    const degMods = Array.isArray(inj.degradationModifiers) ? inj.degradationModifiers : [];
-    const degModTotal = degMods.reduce((a, m) => a + (parseInt(m.value) || 0), 0);
-
-    // Effective base for rate lookup. Can't go below 0.
-    const effectiveBase = Math.max(0, baseLevel + degModTotal);
-
-    // Degradation only kicks in once the injury is >= halfHP.
-    const diff = effectiveBase - halfHp;
-    const rate = (hpTotal > 0 && diff >= 0) ? lookupDegradationRate(diff) : null;
-
-    const traumas = Array.isArray(inj.traumas) ? inj.traumas : [];
-
-    return {
-      id: inj.id || ('inj_missing_' + Math.random().toString(36).slice(2, 8)),
-      name: typeof inj.name === 'string' ? inj.name : '',
-      description: typeof inj.description === 'string' ? inj.description : '',
-      baseLevel,
-      currentLevel,
-      levelModifiers: levelMods,
-      degradationModifiers: degMods,
-      effectiveBase,
-      location: typeof inj.location === 'string' ? inj.location : 'torso',
-      halfHp,
-      hpTotal,
-      diff,          // effective base minus half-HP (negative = no degradation)
-      rate,          // { seconds, label, tier } or null
-      traumas
-    };
-  });
-
-  // ─── PAIN / STRESS / STRAIN ───
-  //
-  // Pain: percent of Body you're missing (bodyDamage / bodyMax × 100).
-  // Stress: percent of SAN range you've lost (sanDamage / (sanMax × 3) × 100).
-  //   SAN denominator is 3× because SAN ranges from +max down to -2*max, so
-  //   the total damageable range is 3× the displayed max.
-  // Strain: Pain + Stress, capped at 100.
-  //
-  // All three support percentile MODIFIERS (charData.painModifiers /
-  // sanModifiers arrays of {name, value}) that stack additively onto the
-  // base percentage. Final values clamp to [0, 100].
-  //
-  // Strain reduces the dice count on any stat whose def.passiveRoll isn't
-  // true — applied in the stats loop's post-pass below.
-  let pain = null;
-  if (body && body.max > 0) {
-    const rawPct = (body.damage / body.max) * 100;
-    const basePct = Math.max(0, Math.min(100, Math.round(rawPct)));
-    const mods = Array.isArray(character.painModifiers) ? character.painModifiers : [];
-    const modTotal = mods.reduce((a, m) => a + (parseInt(m && m.value) || 0), 0);
-    const finalPct = Math.max(0, Math.min(100, Math.round(basePct + modTotal)));
-    pain = { basePercent: basePct, modifiers: mods, modTotal, finalPercent: finalPct };
-  }
-
-  let stress = null;
-  if (san && san.max > 0) {
-    const denom = san.max * 3;
-    const rawPct = (san.damage / denom) * 100;
-    const basePct = Math.max(0, Math.min(100, Math.round(rawPct)));
-    const mods = Array.isArray(character.stressModifiers) ? character.stressModifiers : [];
-    const modTotal = mods.reduce((a, m) => a + (parseInt(m && m.value) || 0), 0);
-    const finalPct = Math.max(0, Math.min(100, Math.round(basePct + modTotal)));
-    stress = { basePercent: basePct, modifiers: mods, modTotal, finalPercent: finalPct };
-  }
-
-  const painPct = pain ? pain.finalPercent : 0;
-  const stressPct = stress ? stress.finalPercent : 0;
-  const strainPct = Math.max(0, Math.min(100, painPct + stressPct));
-  const strain = { painPercent: painPct, stressPercent: stressPct, percent: strainPct };
-
-  // Post-pass: for each stat entry, compute strain-adjusted dice count.
-  // Passive rolls are exempt (HP/SAN resistance rolls don't suffer Strain).
-  stats.forEach(entry => {
-    const def = entry.def;
-    const baseDice = (entry.value != null && Number.isFinite(entry.value))
-      ? Math.floor(entry.value) : 0;
-    const diceModTotal = entry.diceModTotal || 0;
-    const poolBeforeStrain = Math.max(0, baseDice + diceModTotal);
-
-    const isPassive = def.passiveRoll === true;
-    const strainPenalty = isPassive
-      ? 0
-      : Math.floor(poolBeforeStrain * strainPct / 100);
-    const finalDice = Math.max(0, poolBeforeStrain - strainPenalty);
-
-    entry.isPassive = isPassive;
-    entry.strainPenalty = strainPenalty;
-    entry.finalDice = finalDice;
-    entry.poolBeforeStrain = poolBeforeStrain;
-    entry.strainPercent = strainPct;
-  });
-
-  return { stats, locations, errors, vars, body, power, san, injuries, pain, stress, strain };
-}
-
-// ─── DEGRADATION TABLE ───
-//
-// Maps "difference above half-HP" to a rate. Each row is an exact integer
-// difference. For differences beyond the table, clamp to the highest row
-// (Every Second); for differences below 0 no degradation occurs.
-//
-// Labels are kept in "Every X" phrasing so the UI can prepend "Degrades" and
-// read naturally: "Degrades Every 6 Hours", "Degrades Every Second".
-//
-// Tier names follow PRIME's severity scale (Minor → Mythical); they're
-// included so the UI can color/label injuries by severity band.
-const DEGRADATION_RATES = [
-  { diff: 0,  seconds: 86400, label: 'Every 24 Hours',   tier: 'Minor'      },
-  { diff: 1,  seconds: 57600, label: 'Every 16 Hours',   tier: 'Minor'      },
-  { diff: 2,  seconds: 28800, label: 'Every 8 Hours',    tier: 'Minor'      },
-  { diff: 3,  seconds: 21600, label: 'Every 6 Hours',    tier: 'Moderate'   },
-  { diff: 4,  seconds: 14400, label: 'Every 4 Hours',    tier: 'Moderate'   },
-  { diff: 5,  seconds: 7200,  label: 'Every 2 Hours',    tier: 'Moderate'   },
-  { diff: 6,  seconds: 3600,  label: 'Every Hour',       tier: 'Major'      },
-  { diff: 7,  seconds: 2400,  label: 'Every 40 Minutes', tier: 'Major'      },
-  { diff: 8,  seconds: 1200,  label: 'Every 20 Minutes', tier: 'Major'      },
-  { diff: 9,  seconds: 600,   label: 'Every 10 Minutes', tier: 'Massive'    },
-  { diff: 10, seconds: 360,   label: 'Every 6 Minutes',  tier: 'Massive'    },
-  { diff: 11, seconds: 120,   label: 'Every 2 Minutes',  tier: 'Massive'    },
-  { diff: 12, seconds: 60,    label: 'Every Minute',     tier: 'Monumental' },
-  { diff: 13, seconds: 45,    label: 'Every 45 Seconds', tier: 'Monumental' },
-  { diff: 14, seconds: 30,    label: 'Every 30 Seconds', tier: 'Monumental' },
-  { diff: 15, seconds: 18,    label: 'Every 18 Seconds', tier: 'Mega'       },
-  { diff: 16, seconds: 12,    label: 'Every 12 Seconds', tier: 'Mega'       },
-  { diff: 17, seconds: 6,     label: 'Every 6 Seconds',  tier: 'Mega'       },
-  { diff: 18, seconds: 4,     label: 'Every 4 Seconds',  tier: 'Mythical'   },
-  { diff: 19, seconds: 2,     label: 'Every 2 Seconds',  tier: 'Mythical'   },
-  { diff: 20, seconds: 1,     label: 'Every Second',     tier: 'Mythical'   }
-];
-
-export function lookupDegradationRate(diff) {
-  if (diff < 0) return null;
-  if (diff >= DEGRADATION_RATES.length) return DEGRADATION_RATES[DEGRADATION_RATES.length - 1];
-  return DEGRADATION_RATES[diff];
-}
-
-// Tiers in order, so UI code can map a level number to a severity tier for
-// trauma level dropdowns and color coding.
-export const TRAUMA_TIERS = ['Minor', 'Moderate', 'Major', 'Massive', 'Monumental', 'Mega', 'Mythical'];
+  return out;
+};
