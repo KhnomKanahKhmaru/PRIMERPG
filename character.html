@@ -374,7 +374,8 @@
     /* Roll-modifier badge — shown top-right, tells player what stat modifier
        they add to dice when rolling resistance for this derived stat. Signed
        number (+N / −N / ±0). Uses tabular numbers so the sign column aligns
-       visually regardless of magnitude. */
+       visually regardless of magnitude.
+       Clickable when editable — opens an inline modifier panel below. */
     .ds-card-rollmod {
       position: absolute;
       top: 8px;
@@ -391,6 +392,64 @@
       line-height: 1.1;
       letter-spacing: 0;
       cursor: help;
+      font-family: 'Consolas', 'Courier New', monospace;
+    }
+    .ds-card-rollmod.editable { cursor: pointer; }
+    .ds-card-rollmod.editable:hover { background: #2a2418; border-color: #5a4a28; color: #e0c888; }
+    .ds-card-rollmod.open {
+      background: #3a2a10;
+      border-color: #a08040;
+      color: #ffd080;
+    }
+    /* Empty-state button ("+") shown on cards without a base roll mod when
+       edit is allowed — lets player add the first modifier. */
+    .ds-card-rollmod-empty {
+      position: absolute;
+      top: 8px;
+      right: 10px;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      color: #444;
+      background: transparent;
+      border: 1px dashed #2a2a2a;
+      border-radius: 4px;
+      padding: 1px 8px;
+      line-height: 1.1;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .ds-card-rollmod-empty:hover { color: #aaa; border-color: #555; border-style: solid; background: #1a1a1a; }
+
+    /* Expanded roll-modifier panel inside the card */
+    .ds-card.rollmod-open { border-color: #3a3018; }
+    .ds-rollmod-panel {
+      margin-top: 10px;
+      padding: 10px 0 2px;
+      border-top: 1px solid #2a2418;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .ds-rollmod-base {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 10px;
+      color: #888;
+    }
+    .ds-rm-base-label {
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      font-weight: 700;
+      color: #666;
+    }
+    .ds-rm-base-value {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 12px;
+      font-weight: 700;
+      color: #aaa;
+      font-variant-numeric: tabular-nums;
     }
     .ds-card-code { font-family: 'Consolas', 'Courier New', monospace; font-size: 9px; color: #555; font-weight: 400; letter-spacing: 0; }
     .ds-card-formula { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #666; font-weight: 500; letter-spacing: 0; margin-bottom: 4px; }
@@ -1404,6 +1463,11 @@
     addSanDamageMod:         (id) => combat.addSanDamageMod(id),
     updateSanDamageMod:      (id, idx, field, val) => combat.updateSanDamageMod(id, idx, field, val),
     deleteSanDamageMod:      (id, idx) => combat.deleteSanDamageMod(id, idx),
+    // Card roll modifiers
+    toggleRollModPanel:   (code) => combat.toggleRollModPanel(code),
+    addRollMod:           (code) => combat.addRollMod(code),
+    updateRollMod:        (code, idx, field, val) => combat.updateRollMod(code, idx, field, val),
+    deleteRollMod:        (code, idx) => combat.deleteRollMod(code, idx),
     addHlMod:             (target)           => combat.addModifier(target),
     updateHlMod:          (target, i, field, val) => combat.updateModifier(target, i, field, val),
     deleteHlMod:          (target, i)        => combat.deleteModifier(target, i),
