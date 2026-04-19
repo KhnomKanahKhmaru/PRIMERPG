@@ -1,0 +1,313 @@
+// char-overview.js
+//
+// "State of Things" dashboard tiles that live on the Overview tab.
+// Read-only summary of Body / Sanity / Power / Movement / Strain, computed
+// from the same pipeline as the Combat tab so the two views never drift.
+//
+// Split out of char-combat.js because these tiles are:
+//   • visually self-contained (rendered into a separate #state-body host)
+//   • pure presentation — no handlers, no state, no Firestore writes
+//   • the last of the chunky render blocks sitting in combat.js
+//
+// Combat's renderAll() triggers an overview repaint on every damage tick
+// by calling overview.renderState(result, ruleset). The Strain tile is
+// ALSO reused inline on the Combat tab (top of the tab, right below Roll
+// Calc), so this module exports renderStrainTile for that caller too.
+//
+// ctx shape:
+//   getCollapsedStrainValues() → Set of stat codes whose strain-reduced
+//      value is currently collapsed (click-to-toggle in Movement tile).
+//      Shared with combat.js so the two views stay in sync without this
+//      module needing to own the state itself.
+//   escapeHtml, fmt → shared formatting helpers
+
+export function createOverviewSection(ctx) {
+  const {
+    getCollapsedStrainValues,
+    escapeHtml,
+    fmt
+  } = ctx;
+
+  // ─── ORCHESTRATOR ───
+  //
+  // Read-only summary showing Body, Sanity, Strain, Power, Movement. Lives
+  // on the Overview tab. No controls — players go to Combat tab to edit.
+  // We compute everything from the same pipeline as the Combat tab, so
+  // numbers always match between the two views.
+  function renderState(result, ruleset) {
+    const host = document.getElementById('state-body');
+    if (!host) return;
+
+    const tiles = [];
+
+    // BODY tile — HP current/max, segmented green→red bar, overall status.
+    const body = result.body;
+    if (body && body.max > 0) {
+      tiles.push(renderBodyTile(body));
+    }
+
+    // SANITY tile — SAN current/max, blue→red bar, status label.
+    const san = result.san;
+    if (san && san.max > 0) {
+      tiles.push(renderSanTile(san));
+    }
+
+    // POWER tile — power pool current/max, simple fill bar. Always
+    // rendered when the pool is present in the result (even if max is 0
+    // from a freshly-created character), so the Overview grid stays
+    // balanced and players can see "no power yet" at a glance. Slotted
+    // next to Body + Sanity in the top row since it behaves like another
+    // resource pool (not a derived percentage).
+    const power = result.power;
+    if (power) {
+      tiles.push(renderPowerTile(power));
+    }
+
+    // Bottom section — full-width rows below the resource tiles. The Roll
+    // Calculator lives on the Combat tab instead (it's a combat tool, not
+    // a state summary), so the Overview only shows Movement and Strain.
+    const movementHtml = renderMovementTile(result, ruleset);
+    if (movementHtml) tiles.push(movementHtml);
+    tiles.push(renderStrainTile(result.pain, result.stress, result.strain));
+
+    host.innerHTML = tiles.length
+      ? `<div class="state-grid">${tiles.join('')}</div>`
+      : '<div class="state-empty">No state data available.</div>';
+  }
+
+  // ─── BODY TILE ───
+
+  function renderBodyTile(body) {
+    // Pull the same statusLabel the Combat tab uses (e.g. "Dead",
+    // "Unconscious", "Paralyzed", "Unconscious & Paralyzed") — computed in
+    // char-derived.js from per-location disability, not a simple damage
+    // threshold. Falls back to damage-based tiers for the color pill only.
+    const label = (body.statusLabel && body.statusLabel.trim())
+      ? body.statusLabel
+      : (body.damage > 0 ? 'Wounded' : 'Healthy');
+
+    // Severity class for the pill — dead is most severe, impaired next,
+    // then a gradient for raw damage levels. Matches the Combat tab's
+    // three-tier color system so the same visual language carries over.
+    let statusClass;
+    if (body.dead) {
+      statusClass = 's-dead';
+    } else if (body.unconscious || body.paralyzed) {
+      statusClass = 's-disabled';
+    } else if (body.damage >= body.max / 2) {
+      statusClass = 's-injured';
+    } else if (body.damage > 0) {
+      statusClass = 's-injured';
+    } else {
+      statusClass = 's-healthy';
+    }
+
+    const segHtml = renderBodySegments(body.max, body.damage, Math.min(body.max, 40));
+    return `
+      <div class="state-tile">
+        <div class="state-tile-head">
+          <span class="state-tile-label">Body</span>
+          <span class="state-tile-nums">${body.current}<span class="sep">/</span><span class="max">${body.max}</span></span>
+        </div>
+        <div class="state-bar">${segHtml}</div>
+        <span class="state-tile-status ${statusClass}">${escapeHtml(label)}</span>
+      </div>`;
+  }
+
+  function renderBodySegments(maxHP, damage, segCount) {
+    // Green → amber → red gradient. Rightmost segments die first.
+    if (maxHP <= 0 || segCount <= 0) return '';
+    const COLORS = { green: '#4a7a3a', amber: '#9a7a2a', red: '#8a3030', dead: '#2a1010' };
+    const hpPerSeg = maxHP / segCount;
+    let html = '';
+    for (let i = 1; i <= segCount; i++) {
+      const rightDistance = segCount - i + 1;
+      const base = (rightDistance - 1) * hpPerSeg;
+      let color;
+      if (damage > maxHP + base)         color = COLORS.dead;
+      else if (damage > maxHP * 0.75 + base) color = COLORS.red;
+      else if (damage > maxHP * 0.5 + base)  color = COLORS.amber;
+      else if (damage > base)                color = COLORS.red;
+      else                                   color = COLORS.green;
+      html += `<span class="state-bar-seg" style="background:${color}"></span>`;
+    }
+    return html;
+  }
+
+  // ─── SANITY TILE ───
+
+  function renderSanTile(san) {
+    // Status label + class mirror the Combat tab's SAN tiers.
+    const tierMap = {
+      healthy:  { label: 'Healthy',  cls: 's-healthy' },
+      inShock:  { label: 'In Shock', cls: 's-shock' },
+      insane:   { label: 'Insane',   cls: 's-insane' },
+      broken:   { label: 'Broken',   cls: 's-broken' }
+    };
+    const tier = tierMap[san.status] || tierMap.healthy;
+    const segCount = Math.min(san.max, 40);
+    const segHtml = renderSanOverviewSegments(san.max, san.damage, segCount);
+    return `
+      <div class="state-tile">
+        <div class="state-tile-head">
+          <span class="state-tile-label">Sanity</span>
+          <span class="state-tile-nums">${san.current}<span class="sep">/</span><span class="max">${san.max}</span></span>
+        </div>
+        <div class="state-bar">${segHtml}</div>
+        <span class="state-tile-status ${tier.cls}">${escapeHtml(tier.label)}</span>
+      </div>`;
+  }
+
+  function renderSanOverviewSegments(sanMax, damage, segCount) {
+    // Same palette as Combat tab: blue (healthy) → yellow → orange → red.
+    // Fully-red state past 3*max, matching the "broken floor" behavior.
+    if (sanMax <= 0 || segCount <= 0) return '';
+    const COLORS = { blue: '#4a6a9a', yellow: '#bdb247', orange: '#c87a3a', red: '#a63a3a' };
+    const dmgPerSeg = sanMax / segCount;
+    let html = '';
+    for (let i = 1; i <= segCount; i++) {
+      const rightDistance = segCount - i + 1;
+      const base = (rightDistance - 1) * dmgPerSeg;
+      let color;
+      if (damage > 2 * sanMax + base)     color = COLORS.red;
+      else if (damage > sanMax + base)    color = COLORS.orange;
+      else if (damage > base)             color = COLORS.yellow;
+      else                                color = COLORS.blue;
+      html += `<span class="state-bar-seg" style="background:${color}"></span>`;
+    }
+    return html;
+  }
+
+  // ─── POWER TILE ───
+
+  function renderPowerTile(power) {
+    // Always renders — even if max is 0 (new character / power pool not
+    // yet purchased). Shows a full empty bar so the tile is always present
+    // on the overview grid, mirroring Body/Sanity which always show.
+    const max = power.max || 0;
+    const current = power.current || 0;
+    const pct = max > 0 ? Math.max(0, Math.min(100, (current / max) * 100)) : 0;
+    // Inherit the Power Pool's actual display color (set in the Combat
+    // tab via the color picker). Falls back to a sensible default if the
+    // pool hasn't been configured yet. Keeps the two views visually in
+    // sync so players can instantly recognize "this is my power bar".
+    const color = (power.color && typeof power.color === 'string' && power.color.trim())
+      ? power.color
+      : '#6a4a9a';
+    return `
+      <div class="state-tile">
+        <div class="state-tile-head">
+          <span class="state-tile-label">Power</span>
+          <span class="state-tile-nums">${fmt(current)}<span class="sep">/</span><span class="max">${fmt(max)}</span></span>
+        </div>
+        <div class="state-strain-bar">
+          <div class="state-strain-fill" style="width:${pct}%;background:${escapeHtml(color)}"></div>
+        </div>
+      </div>`;
+  }
+
+  // ─── MOVEMENT TILE ───
+
+  function renderMovementTile(result, ruleset) {
+    // Pull any derived stat in the 'movement' group. Order preserved from
+    // the ruleset so rule authors can shuffle display without code changes.
+    const movementStats = (ruleset.derivedStats || [])
+      .filter(def => def.group === 'movement')
+      .map(def => result.stats.get(def.code))
+      .filter(entry => entry && !entry.error && Number.isFinite(entry.value));
+    if (movementStats.length === 0) return '';
+
+    // Pull the current collapse-state Set from combat.js so Overview
+    // items render with the same expanded/collapsed state as the Combat
+    // tab cards. The toggleStrainValueDisplay handler (wired to window)
+    // flips the class on BOTH at the same time via data-code selector,
+    // so we only need to read the Set here — we never mutate it.
+    const collapsedSet = getCollapsedStrainValues();
+
+    const items = movementStats.map(entry => {
+      const { def, value } = entry;
+      const valStr = fmt(value);
+      const unit = def.unit ? `<span class="mi-unit">${escapeHtml(def.unit)}</span>` : '';
+      const reduction = entry.strainValueReduction || 0;
+      const hasStrain = reduction > 0;
+
+      // Strain-reduced stat — emit both display variants and wire the
+      // click handler so toggling the Overview item syncs with the same
+      // toggle on the Combat tab (they share data-code + .strain-collapsed).
+      if (hasStrain) {
+        const effective = Math.max(0, value - reduction);
+        const effStr = fmt(effective);
+        const redStr = fmt(reduction);
+        const collapsed = collapsedSet.has(def.code);
+        const collapsedCls = collapsed ? ' strain-collapsed' : '';
+        const expandedTip = `Strain reduces to ${effStr}${def.unit ? ' ' + def.unit : ''}. Click to show effective.`;
+        const effectiveTip = `Base ${valStr} reduced by ${redStr} Strain. Click to show breakdown.`;
+        return `
+          <div class="state-movement-item clickable${collapsedCls}" data-code="${escapeHtml(def.code)}" title="${escapeHtml(def.description || '')}" onclick="toggleStrainValueDisplay('${escapeHtml(def.code)}')">
+            <span class="mi-label">${escapeHtml(def.name)}</span>
+            <span class="mi-val">
+              <span class="mi-expanded" title="${escapeHtml(expandedTip)}">${valStr} <span class="mi-strain">− ${redStr}</span></span>
+              <span class="mi-effective" title="${escapeHtml(effectiveTip)}">${effStr}</span>
+              ${unit}
+            </span>
+          </div>`;
+      }
+
+      // Non-strain stat — plain read-only display, no click affordance.
+      return `
+        <div class="state-movement-item" title="${escapeHtml(def.description || '')}">
+          <span class="mi-label">${escapeHtml(def.name)}</span>
+          <span class="mi-val">${valStr} ${unit}</span>
+        </div>`;
+    }).join('');
+
+    return `
+      <div class="state-tile state-tile-wide">
+        <div class="state-tile-head">
+          <span class="state-tile-label">Movement</span>
+        </div>
+        <div class="state-movement-row">${items}</div>
+      </div>`;
+  }
+
+  // ─── STRAIN TILE ───
+  //
+  // Full-width Strain readout — also used inline on the Combat tab (top of
+  // the tab, under Roll Calc) so we export it from this module even though
+  // it's not just an Overview tile. Big severity-tinted percent with a
+  // labeled Pain/Stress breakdown. Pure readout; edits live on the Combat
+  // tab's Pain and Stress pills.
+  function renderStrainTile(pain, stress, strain) {
+    if (!strain) return '';
+    const pct = strain.percent;
+    let pctColor;
+    if (pct <= 0)      pctColor = '#666';
+    else if (pct < 50) pctColor = '#a0c080';
+    else if (pct < 75) pctColor = '#d8a860';
+    else               pctColor = '#e07878';
+    const painPct   = (pain && pain.finalPercent) || 0;
+    const stressPct = (stress && stress.finalPercent) || 0;
+    return `
+      <div class="state-tile state-tile-wide state-tile-strain">
+        <div class="state-tile-head">
+          <span class="state-tile-label">Strain</span>
+          <span class="state-strain-big" style="color:${pctColor}">${pct}%</span>
+        </div>
+        <div class="state-strain-rows-inline">
+          <div class="state-strain-row">
+            <span class="state-strain-k">Pain</span>
+            <span class="state-strain-v">${painPct}%</span>
+          </div>
+          <div class="state-strain-row">
+            <span class="state-strain-k">Stress</span>
+            <span class="state-strain-v">${stressPct}%</span>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  return {
+    renderState,
+    renderStrainTile
+  };
+}
