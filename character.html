@@ -141,6 +141,155 @@
     .power-num-input:focus { border-color: #444; }
     .power-sep { color: #333; font-size: 13px; }
 
+    /* ═══ THE STATE OF THINGS (overview dashboard) ═══ */
+    /* Outer container uses the same visual rhythm as the Advantages block
+       so the overview page reads as a consistent stack of cards. */
+    .state-of-things {
+      margin-top: 24px;
+      padding: 18px 20px;
+      border: 1px solid #1a1a1a;
+      border-radius: 6px;
+      background: #0d0d0d;
+    }
+    .state-title {
+      font-size: 12px; font-weight: 600; letter-spacing: .08em;
+      text-transform: uppercase; color: #aaa;
+      margin-bottom: 14px; padding-bottom: 8px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .state-empty { color: #444; font-size: 12px; font-style: italic; text-align: center; padding: 20px 0; }
+
+    /* Flex grid of tiles. Each tile is self-sizing; wraps cleanly on
+       narrow screens. Two tiles fit per row at normal desktop width,
+       four at wide, single column under ~500px. */
+    .state-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+    }
+    .state-tile {
+      padding: 12px 14px;
+      background: #0a0a0a;
+      border: 1px solid #1a1a1a;
+      border-radius: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .state-tile-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 10px;
+    }
+    .state-tile-label {
+      font-size: 10px; font-weight: 700; letter-spacing: .14em;
+      text-transform: uppercase; color: #888;
+    }
+    .state-tile-nums {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 13px;
+      font-weight: 600;
+      color: #ccc;
+      font-variant-numeric: tabular-nums;
+    }
+    .state-tile-nums .sep { color: #444; margin: 0 2px; }
+    .state-tile-nums .max { color: #666; }
+
+    /* Status pill — colored by severity to match Combat tab tiers. */
+    .state-tile-status {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 10px;
+      align-self: flex-start;
+    }
+    .state-tile-status.s-healthy  { background: #1a2a1a; color: #8cc080; border: 1px solid #2a4a2a; }
+    .state-tile-status.s-injured  { background: #2a2410; color: #d8c060; border: 1px solid #4a3d20; }
+    .state-tile-status.s-disabled { background: #2a1a10; color: #d89060; border: 1px solid #4a2d20; }
+    .state-tile-status.s-dead     { background: #2a0d0d; color: #e06060; border: 1px solid #6a2a2a; }
+    .state-tile-status.s-shock    { background: #2a2410; color: #d8c060; border: 1px solid #4a3d20; }
+    .state-tile-status.s-insane   { background: #2a1a10; color: #d89060; border: 1px solid #4a2d20; }
+    .state-tile-status.s-broken   { background: #2a0d0d; color: #e06060; border: 1px solid #6a2a2a; }
+
+    /* Segmented bar — re-uses visual language from HP/SAN bars in combat tab
+       but with slightly smaller segments for the overview density. */
+    .state-bar {
+      display: flex;
+      gap: 1px;
+      height: 10px;
+      border-radius: 2px;
+      overflow: hidden;
+      background: #0f0f0f;
+    }
+    .state-bar-seg {
+      flex: 1;
+      min-width: 2px;
+      transition: background 0.2s;
+    }
+    /* Strain progress bar — single linear fill, no segments. */
+    .state-strain-bar {
+      position: relative;
+      height: 10px;
+      background: #111;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .state-strain-fill {
+      position: absolute;
+      top: 0; left: 0; bottom: 0;
+      transition: width 0.3s, background 0.2s;
+    }
+    .state-strain-breakdown {
+      font-size: 10px;
+      color: #666;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Movement tile spans the full width and lays stats in a row. */
+    .state-tile-movement { grid-column: 1 / -1; }
+    .state-movement-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px 28px;
+    }
+    .state-movement-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 80px;
+    }
+    .state-movement-item .mi-label {
+      font-size: 10px; font-weight: 700; letter-spacing: .12em;
+      text-transform: uppercase; color: #888;
+    }
+    .state-movement-item .mi-val {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 15px;
+      font-weight: 600;
+      color: #d0d0d0;
+      font-variant-numeric: tabular-nums;
+    }
+    .state-movement-item .mi-unit {
+      font-size: 11px;
+      color: #666;
+      font-weight: 400;
+      margin-left: 2px;
+    }
+    /* The red-italic annotation when movement is strain-reduced — same
+       visual language as the Combat tab cards for consistency. */
+    .state-movement-item .mi-strain {
+      color: #e07878;
+      font-style: italic;
+      font-size: 13px;
+      font-weight: 600;
+      margin-left: 4px;
+    }
+
     /* ═══ ADVANTAGES / DISADVANTAGES ═══ */
     /* Row wrapper: two blocks side-by-side on wide screens, stacked on narrow */
     .ad-row { display: flex; gap: 14px; margin-top: 24px; align-items: flex-start; }
@@ -1409,6 +1558,18 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- ═══ THE STATE OF THINGS ═══ -->
+    <!-- Simplified read-only dashboard sitting between the stats/skills area
+         and Advantages. Renders bars + status labels for Body, Sanity,
+         Strain, Power Pool, and Movement, pulling live data from the
+         same computeDerivedStats path the Combat tab uses. Purely a
+         display — no controls here. All editing still happens in the
+         Combat tab. -->
+    <div class="state-of-things" id="state-of-things">
+      <div class="state-title">The State of Things</div>
+      <div class="state-body" id="state-body"><div class="state-empty">Loading…</div></div>
     </div>
 
     <!-- ═══ ADVANTAGES & DISADVANTAGES ═══ -->
