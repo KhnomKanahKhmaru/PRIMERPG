@@ -1,729 +1,629 @@
-// char-combat.js
-// Renders the Combat tab on the character sheet:
-//   - Derived stats (HP, SPD, AGL, Reflex, etc.) grouped by category
-//   - Hit locations with damage trackers
-//   - Power Pool purchase UI
+// char-derived.js
+// Formula evaluator and derived-stat pipeline for the Combat tab.
 //
-// Values auto-recompute on every render via char-derived.js. Recomputing
-// is cheap (<1ms) so no caching; simpler and always current.
+// Exports:
+//   parseFormula(src)           -> compiled formula (or { error, message })
+//   evalFormula(compiled, vars) -> number (or null if vars missing)
+//   buildSymbolTable(character, ruleset) -> { STR, DEX, ..., HP, AGL, ... }
+//   computeDerivedStats(character, ruleset) -> { stats: Map, locations: Array, errors: Array }
+//
+// The formula grammar (safe — no JS eval, no arbitrary code):
+//
+//   expr    := term (('+' | '-') term)*
+//   term    := power (('*' | '/') power)*
+//   power   := unary ('^' unary)?
+//   unary   := ('-' | '+')? atom
+//   atom    := NUMBER | IDENT | IDENT '(' args ')' | '(' expr ')'
+//   args    := expr (',' expr)*
+//
+// Supported functions: floor, ceil, round, min, max, abs.
+// Variables: passed in at eval time.
+//
+// Unknown variables → result is null (NOT zero) so callers can distinguish
+// "missing data" from "formula says zero". Unknown functions → parse error.
 
-import { saveCharacter } from './char-firestore.js';
-import { computeDerivedStats, powerPoolXpCost } from './char-derived.js';
+// ─── TOKENIZER ───
 
-export function createCombatSection(ctx) {
-  // ctx shape:
-  //   getCharData()  -> live charData
-  //   getCanEdit()   -> boolean (character owner)
-  //   getCharId()    -> string
-  //   getRuleset()   -> active ruleset
-  //   saveXpSpent()  -> async; recomputes total XP after Power Pool change
+const TOKEN_RE = /\s*(?:([0-9]+(?:\.[0-9]+)?)|([A-Za-z_][A-Za-z0-9_]*)|([+\-*/^(),]))/y;
 
-  // ─── FORMATTING ───
-  // Tidy number display. Integers show as-is. Decimals round to 2dp and
-  // strip trailing zeros (0.141421 -> 0.14; 5.0 -> 5; 2.5 -> 2.5).
-  function fmt(n) {
-    if (n === null || n === undefined || Number.isNaN(n)) return '—';
-    if (!Number.isFinite(n)) return '—';
-    if (Number.isInteger(n)) return String(n);
-    return parseFloat(n.toFixed(2)).toString();
+function tokenize(src) {
+  const tokens = [];
+  TOKEN_RE.lastIndex = 0;
+  let lastIdx = 0;
+  while (TOKEN_RE.lastIndex < src.length) {
+    // Skip trailing whitespace cleanly
+    const nonWs = src.slice(TOKEN_RE.lastIndex).search(/\S/);
+    if (nonWs === -1) break;
+    const m = TOKEN_RE.exec(src);
+    if (!m) {
+      throw new Error(`Unexpected character at position ${TOKEN_RE.lastIndex}: "${src[TOKEN_RE.lastIndex]}"`);
+    }
+    if (m[1] !== undefined)      tokens.push({ type: 'num',   value: parseFloat(m[1]) });
+    else if (m[2] !== undefined) tokens.push({ type: 'ident', value: m[2] });
+    else if (m[3] !== undefined) tokens.push({ type: 'op',    value: m[3] });
+    lastIdx = TOKEN_RE.lastIndex;
+  }
+  return tokens;
+}
+
+// ─── PARSER (recursive descent) ───
+//
+// Produces an AST of plain JS objects. Each node has a `kind`:
+//   num    { kind:'num',   value:Number }
+//   var    { kind:'var',   name:String }
+//   unary  { kind:'unary', op:String, arg:Node }
+//   binop  { kind:'binop', op:String, left:Node, right:Node }
+//   call   { kind:'call',  name:String, args:[Node] }
+
+function parse(src) {
+  const tokens = tokenize(src);
+  let pos = 0;
+
+  const peek = () => tokens[pos];
+  const eat = (type, value) => {
+    const t = tokens[pos];
+    if (!t) throw new Error('Unexpected end of formula');
+    if (t.type !== type || (value !== undefined && t.value !== value)) {
+      throw new Error(`Expected ${value || type} but got "${t.value}"`);
+    }
+    pos++;
+    return t;
+  };
+
+  // expr := term (('+' | '-') term)*
+  const parseExpr = () => {
+    let left = parseTerm();
+    while (peek() && peek().type === 'op' && (peek().value === '+' || peek().value === '-')) {
+      const op = tokens[pos++].value;
+      const right = parseTerm();
+      left = { kind: 'binop', op, left, right };
+    }
+    return left;
+  };
+
+  // term := power (('*' | '/') power)*
+  const parseTerm = () => {
+    let left = parsePower();
+    while (peek() && peek().type === 'op' && (peek().value === '*' || peek().value === '/')) {
+      const op = tokens[pos++].value;
+      const right = parsePower();
+      left = { kind: 'binop', op, left, right };
+    }
+    return left;
+  };
+
+  // power := unary ('^' unary)?  — right-associative
+  const parsePower = () => {
+    const base = parseUnary();
+    if (peek() && peek().type === 'op' && peek().value === '^') {
+      pos++;
+      const exp = parsePower();   // right-associative recursion
+      return { kind: 'binop', op: '^', left: base, right: exp };
+    }
+    return base;
+  };
+
+  // unary := ('-' | '+')? atom
+  const parseUnary = () => {
+    if (peek() && peek().type === 'op' && (peek().value === '-' || peek().value === '+')) {
+      const op = tokens[pos++].value;
+      const arg = parseUnary();
+      return { kind: 'unary', op, arg };
+    }
+    return parseAtom();
+  };
+
+  // atom := NUMBER | IDENT | IDENT '(' args ')' | '(' expr ')'
+  const parseAtom = () => {
+    const t = peek();
+    if (!t) throw new Error('Unexpected end of formula');
+    if (t.type === 'num') {
+      pos++;
+      return { kind: 'num', value: t.value };
+    }
+    if (t.type === 'ident') {
+      pos++;
+      // Check for function call
+      if (peek() && peek().type === 'op' && peek().value === '(') {
+        pos++;
+        const args = [];
+        if (!peek() || peek().value !== ')') {
+          args.push(parseExpr());
+          while (peek() && peek().type === 'op' && peek().value === ',') {
+            pos++;
+            args.push(parseExpr());
+          }
+        }
+        eat('op', ')');
+        return { kind: 'call', name: t.value, args };
+      }
+      return { kind: 'var', name: t.value };
+    }
+    if (t.type === 'op' && t.value === '(') {
+      pos++;
+      const inner = parseExpr();
+      eat('op', ')');
+      return inner;
+    }
+    throw new Error(`Unexpected token: "${t.value}"`);
+  };
+
+  const result = parseExpr();
+  if (pos < tokens.length) {
+    throw new Error(`Unexpected trailing token: "${tokens[pos].value}"`);
+  }
+  return result;
+}
+
+// ─── FUNCTIONS ───
+// Whitelist of allowed functions. Anything else is a parse/eval error.
+
+const FUNCTIONS = {
+  floor: (args) => Math.floor(args[0]),
+  ceil:  (args) => Math.ceil(args[0]),
+  round: (args) => Math.round(args[0]),
+  min:   (args) => Math.min(...args),
+  max:   (args) => Math.max(...args),
+  abs:   (args) => Math.abs(args[0])
+};
+
+// ─── EVALUATOR ───
+//
+// Returns a Number, or null if any referenced variable is missing.
+// Throws on function call errors or division by zero.
+
+function evalNode(node, vars) {
+  switch (node.kind) {
+    case 'num': return node.value;
+    case 'var': {
+      if (!(node.name in vars)) return null;
+      return vars[node.name];
+    }
+    case 'unary': {
+      const v = evalNode(node.arg, vars);
+      if (v === null) return null;
+      return node.op === '-' ? -v : v;
+    }
+    case 'binop': {
+      const l = evalNode(node.left, vars);
+      const r = evalNode(node.right, vars);
+      if (l === null || r === null) return null;
+      switch (node.op) {
+        case '+': return l + r;
+        case '-': return l - r;
+        case '*': return l * r;
+        case '/':
+          if (r === 0) throw new Error('Division by zero');
+          return l / r;
+        case '^': return Math.pow(l, r);
+      }
+      throw new Error(`Unknown operator: ${node.op}`);
+    }
+    case 'call': {
+      const fn = FUNCTIONS[node.name.toLowerCase()];
+      if (!fn) throw new Error(`Unknown function: ${node.name}`);
+      const args = node.args.map(a => evalNode(a, vars));
+      if (args.some(v => v === null)) return null;
+      return fn(args);
+    }
+  }
+  throw new Error(`Unknown node kind: ${node.kind}`);
+}
+
+// ─── PUBLIC API ───
+
+// Compute total XP cost of a given Power Pool level for this ruleset.
+// Respects costMode ('perPoint' flat vs 'perLevel' table).
+// Returns 0 for level 0 or if Power Pool is disabled.
+export function powerPoolXpCost(level, ruleset) {
+  const pp = ruleset && ruleset.powerPool;
+  if (!pp || !pp.enabled) return 0;
+  const lv = Math.max(0, Math.floor(level || 0));
+  if (lv === 0) return 0;
+  if (pp.costMode === 'perPoint') {
+    const rate = Number.isFinite(pp.costPerPoint) ? pp.costPerPoint : 0;
+    return lv * rate;
+  }
+  // perLevel — sum costs for levels 1..lv (index 0 is typically 0 = "no pool bought")
+  const table = Array.isArray(pp.xpPerPoint) ? pp.xpPerPoint : [];
+  let total = 0;
+  for (let i = 1; i <= lv; i++) {
+    total += Number.isFinite(table[i]) ? table[i] : 0;
+  }
+  return total;
+}
+
+// parseFormula(src) -> { ast } or { error, message }
+// Valid formulas return { ast }. Invalid ones return { error: true, message }.
+export function parseFormula(src) {
+  if (typeof src !== 'string' || !src.trim()) {
+    return { error: true, message: 'Empty formula' };
+  }
+  try {
+    const ast = parse(src);
+    return { ast };
+  } catch (e) {
+    return { error: true, message: e.message };
+  }
+}
+
+// evalFormula(compiled, vars) -> number or null
+// If compiled is an error object, returns null.
+// If any variable is missing, returns null (caller should display "—").
+// If eval throws (div by zero, unknown fn), returns null.
+export function evalFormula(compiled, vars) {
+  if (!compiled || compiled.error || !compiled.ast) return null;
+  try {
+    const result = evalNode(compiled.ast, vars);
+    if (result === null) return null;
+    if (!Number.isFinite(result)) return null;
+    return result;
+  } catch (e) {
+    return null;
+  }
+}
+
+// ─── SYMBOL TABLE BUILDER ───
+//
+// Assembles the variable dictionary passed to evalFormula based on the
+// character's current stats and the ruleset's STATMOD table.
+//
+// Includes:
+//   - Raw stat values by code (STR, DEX, SIZE, ...)
+//   - STATMODs by code (STRMOD, DEXMOD, SIZEMOD, ...)
+//   - Purchased resources: POWERPOOL
+//   - POW_MULTIPLIER derived from the ruleset's powMultiplier table
+//
+// Derived stats themselves are added incrementally by computeDerivedStats
+// after each one evaluates, so later stats can reference earlier ones.
+
+export function buildSymbolTable(character, ruleset) {
+  const table = {};
+  const stats = character.stats || {};
+  const statMods = ruleset.statMods || [];
+
+  // Base stats by code.
+  (ruleset.stats || []).forEach(s => {
+    const code = (s.code || '').toUpperCase();
+    if (!code) return;
+    const lowerKey = code.toLowerCase();
+    const value = (typeof stats[lowerKey] === 'number') ? stats[lowerKey] : 2;
+    table[code] = value;
+    // STATMOD for this stat, looked up by level index.
+    const modKey = code + 'MOD';
+    const modVal = statMods[value];
+    table[modKey] = (typeof modVal === 'number') ? modVal : 0;
+  });
+
+  // SIZE is stored outside the main stats list but lives in stats.size.
+  if (typeof stats.size === 'number') {
+    table.SIZE = stats.size;
+    // SIZEMOD derives from SIZE relative to Medium (the reference tier).
+    // Medium is SIZE 4 in the PRIME Basic Set, so SIZEMOD = SIZE - 4.
+    // This makes Medium=0, Large=+2, Tiny=-2, etc. Homebrew rulesets with
+    // different SIZE scales should compute SIZEMOD in their formulas using
+    // raw SIZE if this convention doesn't fit.
+    table.SIZEMOD = stats.size - 4;
+  } else {
+    table.SIZE = 4;
+    table.SIZEMOD = 0;
   }
 
-  // ─── MAIN RENDER ───
+  // Power Pool purchased value.
+  const pp = (typeof character.powerPool === 'number') ? character.powerPool : 0;
+  table.POWERPOOL = pp;
 
-  function renderAll() {
-    const container = document.getElementById('combat-content');
-    if (!container) return;
-    const ruleset = ctx.getRuleset();
-    const charData = ctx.getCharData();
-    if (!ruleset) {
-      container.innerHTML = '<div class="combat-empty">No ruleset loaded.</div>';
+  // POW_MULTIPLIER from ruleset table, looked up by POWMOD (the stat modifier
+  // from POW). Allows rulesets to express a "POW capability scaling" curve
+  // where low POW is penalized, mid-range is average, and high POW multiplies
+  // resources linearly. The PRIME Basic Set curve is:
+  //   POWMOD ≤ -1 → ×0.5, 0 → ×1, 1 → ×1.5, 2+ → equals POWMOD.
+  const powmod = table.POWMOD ?? 0;
+  const multTable = (ruleset.powerPool && Array.isArray(ruleset.powerPool.powMultiplier))
+    ? ruleset.powerPool.powMultiplier : [];
+  const entry = multTable.find(e => powmod >= e.powmodMin && powmod <= e.powmodMax);
+  table.POW_MULTIPLIER = entry ? entry.value : 1;
+
+  return table;
+}
+
+// ─── DEPENDENCY RESOLUTION ───
+//
+// Given a list of derived stat definitions, topologically sort them so that
+// stats only reference earlier-evaluated stats. Stats with missing/broken
+// dependencies still get included in the output (they'll eval to null) but
+// are reported in the errors list.
+//
+// Returns { ordered: [defs in eval order], errors: [{code, message}] }.
+
+function collectVarRefs(node, out) {
+  if (!node) return;
+  switch (node.kind) {
+    case 'var':   out.add(node.name); break;
+    case 'unary': collectVarRefs(node.arg, out); break;
+    case 'binop': collectVarRefs(node.left, out); collectVarRefs(node.right, out); break;
+    case 'call':  node.args.forEach(a => collectVarRefs(a, out)); break;
+  }
+}
+
+function topoSort(defs, baseVarNames) {
+  // Map code -> def.
+  const byCode = new Map();
+  defs.forEach(d => byCode.set(d.code, d));
+
+  // Compile each formula once.
+  const compiled = new Map();
+  defs.forEach(d => compiled.set(d.code, parseFormula(d.formula)));
+
+  // Figure dependencies on OTHER derived stats (not base vars).
+  const deps = new Map();
+  defs.forEach(d => {
+    const c = compiled.get(d.code);
+    if (c.error || !c.ast) { deps.set(d.code, []); return; }
+    const refs = new Set();
+    collectVarRefs(c.ast, refs);
+    // Keep only refs that point to other derived stats.
+    const thisDeps = [];
+    refs.forEach(r => {
+      if (byCode.has(r) && r !== d.code) thisDeps.push(r);
+    });
+    deps.set(d.code, thisDeps);
+  });
+
+  // Kahn's algorithm. Stats with circular deps remain unresolved → error.
+  const inDegree = new Map();
+  defs.forEach(d => inDegree.set(d.code, 0));
+  deps.forEach((list, code) => {
+    list.forEach(dep => {
+      inDegree.set(code, (inDegree.get(code) || 0) + 1);
+    });
+  });
+
+  const queue = [];
+  inDegree.forEach((deg, code) => { if (deg === 0) queue.push(code); });
+
+  const ordered = [];
+  const errors = [];
+
+  while (queue.length > 0) {
+    const code = queue.shift();
+    ordered.push(byCode.get(code));
+    // For each stat that depends on this one, decrement its indegree.
+    defs.forEach(d => {
+      if (deps.get(d.code).includes(code)) {
+        inDegree.set(d.code, inDegree.get(d.code) - 1);
+        if (inDegree.get(d.code) === 0) queue.push(d.code);
+      }
+    });
+  }
+
+  // Anything left unresolved is circular.
+  if (ordered.length < defs.length) {
+    const unresolved = defs.filter(d => !ordered.includes(d));
+    unresolved.forEach(d => {
+      errors.push({ code: d.code, message: 'Circular dependency' });
+      ordered.push(d);  // include so the UI can still show "ERR"
+    });
+  }
+
+  return { ordered, compiled, errors };
+}
+
+// ─── MAIN PIPELINE ───
+//
+// computeDerivedStats(character, ruleset) -> {
+//   stats: Map<code, { def, value, error? }>,
+//   locations: [{ def, index, maxHP, currentDamage, thresholds: {disabled, destroyed, definitelyDestroyed}, status }],
+//   errors: [{code, message}]
+// }
+//
+// `stats` is keyed by derived stat code. Value is null if the formula failed.
+// `locations` expands hitLocations × count into individual tracked locations
+// (e.g. 2 arms → arm-1 and arm-2 with their own currentDamage).
+// `status` for locations is one of: 'healthy', 'disabled', 'destroyed',
+// 'definitelyDestroyed'.
+
+export function computeDerivedStats(character, ruleset) {
+  const errors = [];
+
+  // 1. Build initial symbol table from base stats.
+  const vars = buildSymbolTable(character, ruleset);
+
+  // 2. Evaluate derived stats in dependency order.
+  const defs = Array.isArray(ruleset.derivedStats) ? ruleset.derivedStats : [];
+  const { ordered, compiled, errors: sortErrors } = topoSort(defs, Object.keys(vars));
+  sortErrors.forEach(e => errors.push(e));
+
+  const stats = new Map();
+  ordered.forEach(def => {
+    const c = compiled.get(def.code);
+    if (c.error) {
+      stats.set(def.code, { def, value: null, error: c.message });
+      errors.push({ code: def.code, message: c.message });
       return;
     }
+    let value = evalFormula(c, vars);
+    if (value !== null && !def.keepDecimals) value = Math.floor(value);
+    // Add to symbol table so downstream stats can reference this one.
+    if (value !== null) vars[def.code] = value;
+    stats.set(def.code, { def, value });
+  });
 
-    const result = computeDerivedStats(charData, ruleset);
+  // 3. Evaluate hit locations. Each has its own formula; maxHP is the result
+  //    of hpFormula, and each location × count gets its own damage tracker.
+  const locations = [];
+  const locDefs = Array.isArray(ruleset.hitLocations) ? ruleset.hitLocations : [];
+  const damageMap = (character.hitLocationDamage && typeof character.hitLocationDamage === 'object')
+    ? character.hitLocationDamage : {};
 
-    let html = '';
-    html += renderDerivedStatsSection(result, ruleset);
-    html += renderHitLocationsSection(result);
-    html += renderPowerSection(result, ruleset, charData);
-    container.innerHTML = html || '<div class="combat-empty">No combat data configured in this ruleset.</div>';
-  }
+  // Hit location modifiers: { trackKey: [{ name, value }, ...], ... }
+  // Each modifier is added to that instance's maxHP. Tracked per instance,
+  // not per location def, so "arm-1" and "arm-2" can have different mods.
+  const hlModsMap = (character.hitLocationModifiers && typeof character.hitLocationModifiers === 'object')
+    ? character.hitLocationModifiers : {};
 
-  // ─── DERIVED STATS ───
+  locDefs.forEach(def => {
+    const compiledHp = parseFormula(def.hpFormula);
+    let baseMaxHP = evalFormula(compiledHp, vars);
+    let err = null;
+    if (compiledHp.error) { err = compiledHp.message; baseMaxHP = null; }
+    else if (baseMaxHP !== null) baseMaxHP = Math.floor(baseMaxHP);
 
-  function renderDerivedStatsSection(result, ruleset) {
-    const groups = ruleset.derivedStatGroups || [];
+    for (let i = 1; i <= (def.count || 1); i++) {
+      // Build the tracking key. Single-count locations use just the code
+      // (e.g. "head"), multi-count use code-N (e.g. "arm-1").
+      const trackKey = (def.count && def.count > 1) ? `${def.code}-${i}` : def.code;
+      const currentDamage = (typeof damageMap[trackKey] === 'number') ? damageMap[trackKey] : 0;
 
-    // Bucket stats by group code. Stats with an invalid group fall into an
-    // "orphan" bucket shown at the end.
-    // POWER is intentionally excluded from the grid — it has its own
-    // dedicated section with a resource bar + color picker + spend controls.
-    const buckets = new Map();
-    groups.forEach(g => buckets.set(g.code, []));
-    const orphans = [];
-    result.stats.forEach((entry) => {
-      if (entry.def.code === 'POWER') return;  // has its own section
-      const g = entry.def.group;
-      if (buckets.has(g)) buckets.get(g).push(entry);
-      else orphans.push(entry);
-    });
+      // Apply modifiers. Each modifier adds its value (positive or negative)
+      // to the base maxHP computed from the formula. Clamp min to 0 so a
+      // pile of negative mods doesn't produce a negative maxHP (which would
+      // break threshold comparisons and bar rendering).
+      const mods = Array.isArray(hlModsMap[trackKey]) ? hlModsMap[trackKey] : [];
+      const modTotal = mods.reduce((acc, m) => acc + (parseInt(m.value) || 0), 0);
+      let maxHP = baseMaxHP;
+      if (maxHP !== null) maxHP = Math.max(0, maxHP + modTotal);
 
-    const anyStats = Array.from(buckets.values()).some(arr => arr.length > 0) || orphans.length > 0;
-    if (!anyStats) return '';
+      // Evaluate thresholds. maxHP and currentDamage are injected as vars.
+      const thresholds = {};
+      const thresholdStatuses = ['disabled', 'destroyed', 'definitelyDestroyed'];
+      const thresholdConfig = ruleset.damageThresholds || {};
+      thresholdStatuses.forEach(key => {
+        const tc = thresholdConfig[key];
+        if (!tc || !tc.formula) { thresholds[key] = null; return; }
+        const compiledT = parseFormula(tc.formula);
+        const extraVars = Object.assign({}, vars, { maxHP: maxHP || 0, currentDamage });
+        thresholds[key] = evalFormula(compiledT, extraVars);
+      });
 
-    let html = '';
-    groups.forEach(g => {
-      const stats = buckets.get(g.code) || [];
-      if (stats.length === 0) return;
-      html += `<div class="combat-section">`;
-      html += `<div class="combat-section-title">${escapeHtml(g.label)}</div>`;
-      html += `<div class="ds-grid">`;
-      stats.forEach(entry => { html += renderDsCard(entry); });
-      html += `</div></div>`;
-    });
-    if (orphans.length > 0) {
-      html += `<div class="combat-section">`;
-      html += `<div class="combat-section-title">Other</div>`;
-      html += `<div class="ds-grid">`;
-      orphans.forEach(entry => { html += renderDsCard(entry); });
-      html += `</div></div>`;
-    }
-    return html;
-  }
-
-  function renderDsCard(entry) {
-    const { def, value, error } = entry;
-    const display = error ? 'ERR' : fmt(value);
-    const unit = def.unit ? ` <span class="ds-card-unit">${escapeHtml(def.unit)}</span>` : '';
-    const errTitle = error ? ` title="${escapeHtml(error)}"` : '';
-    const codeBadge = def.code && def.code !== def.name
-      ? ` <span class="ds-card-code">${escapeHtml(def.code)}</span>`
-      : '';
-    return `
-      <div class="ds-card"${errTitle}>
-        <div class="ds-card-name">${escapeHtml(def.name)}${codeBadge}</div>
-        <div class="ds-card-value${error ? ' ds-card-error' : ''}">${display}${unit}</div>
-        ${def.description ? `<div class="ds-card-desc">${escapeHtml(def.description)}</div>` : ''}
-      </div>`;
-  }
-
-  // ─── HIT LOCATIONS ───
-
-  // UI-only state: whether we're in "edit modifiers" mode for the Hit Locations
-  // section. Not persisted; resets on page reload.
-  let editModifiersMode = false;
-
-  function renderHitLocationsSection(result) {
-    if (!result.locations || result.locations.length === 0) return '';
-    const body = result.body || { max: 0, current: 0, dead: false, statusLabel: 'Alive', modifiers: [] };
-    const canEdit = ctx.getCanEdit();
-
-    let html = '<div class="combat-section">';
-    html += '<div class="combat-section-head">';
-    html += '<div class="combat-section-title">Hit Locations</div>';
-    if (canEdit) {
-      html += `<button class="hl-edit-btn${editModifiersMode ? ' active' : ''}" onclick="toggleHlModifierEdit()">` +
-              `${editModifiersMode ? 'Done' : 'Edit Modifiers'}</button>`;
-    }
-    html += '</div>';
-
-    html += '<div class="hl-list">';
-    result.locations.forEach(loc => { html += renderHlRow(loc, body); });
-    html += '</div>';
-
-    // Body total goes at the bottom, summarizing the overall state after
-    // you've read through the individual locations above.
-    html += renderBodyBlock(body);
-
-    html += '</div>';
-    return html;
-  }
-
-  function renderHlRow(loc, body) {
-    const { def, trackKey, maxHP, baseMaxHP, currentDamage, status, error, index, modifiers } = loc;
-    const canEdit = ctx.getCanEdit();
-
-    // Display name. Paired limbs (count=2, like Arms/Legs) get Right/Left
-    // labels: instance 1 = Right, 2 = Left. Anything with higher count
-    // falls back to a numeric "(N)" suffix.
-    const displayName = getLocationDisplayName(def, index);
-
-    if (error || maxHP === null) {
-      return `<div class="hl-row hl-row-error" title="${escapeHtml(error || 'Formula error')}">
-        <div class="hl-status-label"></div>
-        <div class="hl-name">${escapeHtml(displayName)}</div>
-        <div class="hl-error">Formula error</div>
-      </div>`;
-    }
-
-    const remaining = maxHP - currentDamage;
-    // Damage cap: Def.Destroyed threshold is reached at damage=3*maxHP. Allow
-    // damage up to 4*maxHP as the "entire bar black from Body depletion" state,
-    // but realistically Body will hit 0 long before that in most fights.
-    const damageCap = Math.max(maxHP * 4, 10);
-
-    const segmentsHtml = renderHpSegments(maxHP, currentDamage, status, body);
-
-    // Left-side status label. "Healthy" as a blank cell (kept for grid alignment).
-    const statusLabels = {
-      healthy: '',
-      disabled: 'Disabled',
-      destroyed: 'Destroyed',
-      definitelyDestroyed: 'Definitively Destroyed'
-    };
-    const statusText = statusLabels[status] || '';
-
-    const controls = canEdit
-      ? `<div class="hl-controls">
-          <button class="hl-dmg-btn" onclick="tickHitLocationDmg('${trackKey}',-1)" title="Heal 1 HP">−</button>
-          <input type="number" class="hl-dmg-input" value="${currentDamage}" min="0" max="${damageCap}"
-                 onchange="setHitLocationDmg('${trackKey}',this.value)">
-          <button class="hl-dmg-btn" onclick="tickHitLocationDmg('${trackKey}',1)" title="Take 1 HP damage">+</button>
-        </div>`
-      : '';
-
-    // Main row always rendered.
-    let html = `
-      <div class="hl-row hl-status-${status}">
-        <div class="hl-status-label">${escapeHtml(statusText)}</div>
-        <div class="hl-name">${escapeHtml(displayName)}</div>
-        <div class="hl-bar-wrap">
-          <div class="hl-bar-bg">${segmentsHtml}</div>
-          <div class="hl-bar-label">${remaining} / ${maxHP}</div>
-        </div>
-        ${controls}
-      </div>`;
-
-    // Inline modifier editor, only when in edit mode.
-    if (editModifiersMode && canEdit) {
-      html += renderModifierEditor(trackKey, modifiers || [], baseMaxHP);
-    }
-    return html;
-  }
-
-  // Display name for a location instance. Single-count locations (Head, Torso)
-  // use just the def name. Paired locations (count=2) like Arms and Legs get
-  // "Right" and "Left" labels — convention: instance 1 is Right, instance 2
-  // is Left (matches how most character sheets read). Anything with count>2
-  // falls back to a numeric suffix since there's no natural naming.
-  function getLocationDisplayName(def, index) {
-    const count = def.count || 1;
-    if (count === 1) return def.name;
-    if (count === 2) {
-      const side = index === 1 ? 'Right' : 'Left';
-      return `${side} ${def.name}`;
-    }
-    return `${def.name} (${index})`;
-  }
-
-  // Modifier editor rendered directly below a hit location row (or Body block).
-  // Shows the base value, a list of current modifiers (name + value + delete),
-  // and an add row.
-  //
-  // target: trackKey for hit locations (e.g. "head", "arm-1"), or "body" for Body.
-  // mods: array of { name, value }
-  // baseMaxHP: the formula-computed value BEFORE modifiers. For Body, this is
-  //   the sum of location base maxHPs; but we pass it from the caller.
-  function renderModifierEditor(target, mods, baseValue) {
-    const isBody = target === 'body';
-    const listRows = mods.length === 0
-      ? '<div class="mod-empty">No modifiers.</div>'
-      : mods.map((m, i) => {
-          const safeName = escapeHtml(m.name || '');
-          return `<div class="mod-item">
-            <input type="text" class="mod-name-input" value="${safeName}"
-                   placeholder="Modifier name"
-                   onchange="updateHlMod('${target}',${i},'name',this.value)">
-            <input type="number" class="mod-val-input" value="${parseInt(m.value) || 0}"
-                   onchange="updateHlMod('${target}',${i},'value',this.value)">
-            <span class="mod-delete" onclick="deleteHlMod('${target}',${i})">×</span>
-          </div>`;
-        }).join('');
-
-    return `
-      <div class="hl-mod-panel">
-        <div class="mod-panel-head">
-          <span class="mod-base">Base ${baseValue != null ? baseValue : '—'}</span>
-          <span class="mod-panel-hint">modifiers stack onto max</span>
-        </div>
-        <div class="mod-list">${listRows}</div>
-        <div class="mod-add-row">
-          <input type="text" class="mod-name-input" id="mod-add-name-${target}" placeholder="Modifier name">
-          <input type="number" class="mod-val-input" id="mod-add-val-${target}" placeholder="±" value="0">
-          <button class="mod-add-btn" onclick="addHlMod('${target}')">Add</button>
-        </div>
-      </div>`;
-  }
-
-  // Build the segmented HP bar. One <span> per HP point. Segments deteriorate
-  // right-to-left.
-  //
-  // Phases 1–3 work purely off location damage:
-  //   1. Healthy → Disabled (damage 0..maxHP): green → yellow from the right
-  //   2. Disabled → Destroyed (damage maxHP..2*maxHP): yellow → red from right
-  //   3. Destroyed → Def. Destroyed (damage 2*maxHP..3*maxHP): red → deep red
-  //
-  // Phase 4 (past Def. Destroyed, location is deep-red+) instead displays the
-  // shared Body pool's state. Each segment in Phase 4 represents
-  // `bodyMax / maxHP` points of Body damage. When Body hits 0, every
-  // Def.Destroyed location shows a fully black bar. This means all Def.Destroyed
-  // limbs visually track the Body pool in sync — that's intentional, since Body
-  // is global.
-  function renderHpSegments(maxHP, damage, status, body) {
-    if (maxHP <= 0) return '';
-
-    const COLORS = {
-      green:    '#4a7a4a',
-      yellow:   '#bdb247',
-      red:      '#a63a3a',
-      deepRed:  '#5a1818',
-      black:    '#0f0a0a'
-    };
-
-    // Phase 4 (location is Def.Destroyed): use Body pool to determine how much
-    // of the bar is black vs deep red. Body damage is proportionally mapped
-    // onto maxHP segments.
-    //
-    // Rounding guard: never fully black out until Body is *actually* at 0.
-    // Proportional rounding would round a 28/30 body up to all segments,
-    // misreading "almost dead" as "fully dead". Only go fully black when the
-    // Body pool is literally empty.
-    if (status === 'definitelyDestroyed' && body && body.max > 0) {
-      const bodyAtZero = body.current <= 0;
-      let blackSegCount;
-      if (bodyAtZero) {
-        blackSegCount = maxHP;
-      } else {
-        // Use floor so partial fills don't promote. Clamp so there's always
-        // at least 1 non-black segment while any Body remains.
-        const raw = Math.floor((body.damage / body.max) * maxHP);
-        blackSegCount = Math.min(raw, maxHP - 1);
-        // And at least 1 black if ANY damage is present (so the visual isn't
-        // static until a big tick happens).
-        if (body.damage > 0 && blackSegCount === 0) blackSegCount = 1;
+      // Compute status. Current remaining = maxHP - currentDamage. Compare
+      // to each threshold (which are negative numbers like -maxHP).
+      let status = 'healthy';
+      if (maxHP !== null) {
+        const remaining = maxHP - currentDamage;
+        if (thresholds.definitelyDestroyed !== null && remaining <= thresholds.definitelyDestroyed) {
+          status = 'definitelyDestroyed';
+        } else if (thresholds.destroyed !== null && remaining <= thresholds.destroyed) {
+          status = 'destroyed';
+        } else if (thresholds.disabled !== null && remaining <= thresholds.disabled) {
+          status = 'disabled';
+        }
       }
-      let html = '';
-      for (let i = 1; i <= maxHP; i++) {
-        // Segment i (from left). The rightmost `blackSegCount` segments are black.
-        const rightIdx = maxHP - i + 1;  // 1 = rightmost
-        const color = rightIdx <= blackSegCount ? COLORS.black : COLORS.deepRed;
-        html += `<span class="hl-seg" style="background:${color}"></span>`;
-      }
-      return html;
+
+      locations.push({
+        def,
+        index: i,
+        trackKey,
+        maxHP,
+        baseMaxHP,     // pre-modifier max, useful for UI displaying "base +mod=total"
+        currentDamage,
+        modifiers: mods,
+        thresholds,
+        status,
+        error: err
+      });
     }
+    if (err) errors.push({ code: def.code, message: err });
+  });
 
-    // Phases 1–3: determined purely by location damage.
-    //
-    // For each segment i (1..maxHP), compute how far from the RIGHT it is
-    // (rightDistance). A segment "sees" the first rightDistance HP of damage.
-    // If total damage >= a threshold tied to rightDistance, the segment has
-    // transitioned to the corresponding phase color.
-    let html = '';
-    for (let i = 1; i <= maxHP; i++) {
-      const rightDistance = maxHP - i + 1;
-      let color;
-      if      (damage >= 2 * maxHP + rightDistance) color = COLORS.deepRed;
-      else if (damage >= 1 * maxHP + rightDistance) color = COLORS.red;
-      else if (damage >=              rightDistance) color = COLORS.yellow;
-      else                                           color = COLORS.green;
-      html += `<span class="hl-seg" style="background:${color}"></span>`;
-    }
-    return html;
-  }
-
-  // Body section — segmented green→black bar + status label.
-  // Segments represent Body pool in 1-HP increments (one seg per max Body point).
-  // On enormous Body totals this gets many segments; that's fine — they scale
-  // down via flex and stay visually coherent.
-  function renderBodyBlock(body) {
-    if (!body || body.max <= 0) return '';
-    const canEdit = ctx.getCanEdit();
-
-    // Cap segment count for visual sanity on very high Body totals.
-    // Characters with Body > 80 get scaled to 80 segments (each = Body/80 points).
-    // Below 80, use 1 seg per point.
-    const SEG_CAP = 80;
-    const segCount = Math.min(body.max, SEG_CAP);
-    // How many segments should be black? Proportional to damage taken — but
-    // guard against rounding flipping the whole bar black when body is close
-    // to but not actually at 0. Rule: only go fully black when body.current == 0.
-    const bodyAtZero = body.current <= 0;
-    let blackSegs;
-    if (bodyAtZero) {
-      blackSegs = segCount;
-    } else {
-      const raw = Math.floor((body.damage / body.max) * segCount);
-      blackSegs = Math.min(raw, segCount - 1);
-      if (body.damage > 0 && blackSegs === 0) blackSegs = 1;
-    }
-
-    let segHtml = '';
-    for (let i = 1; i <= segCount; i++) {
-      // Damage fills right-to-left (rightmost segments go black first).
-      const rightIdx = segCount - i + 1;
-      const color = rightIdx <= blackSegs ? '#0f0a0a' : '#4a7a4a';
-      segHtml += `<span class="hl-seg" style="background:${color}"></span>`;
-    }
-
-    // Status label classes. "dead" dominates styling; unconscious/paralyzed share
-    // a muted amber look.
-    let statusClass = 'body-status';
-    if (body.dead) statusClass += ' body-status-dead';
-    else if (body.unconscious || body.paralyzed) statusClass += ' body-status-impaired';
-    else statusClass += ' body-status-alive';
-
-    const rowClass = 'body-total' + (body.dead ? ' body-total-dead' : '');
-
-    // Body base for modifier editor = total max MINUS any body-specific mods
-    // (those are added on top). So base = max - sum(body modifiers).
-    const bodyModTotal = (body.modifiers || []).reduce((acc, m) => acc + (parseInt(m.value) || 0), 0);
-    const bodyBase = body.max - bodyModTotal;
-
-    let html = `
-      <div class="${rowClass}">
-        <div class="body-top-row">
-          <span class="body-label">Body</span>
-          <span class="body-value">${body.current} / ${body.max}</span>
-          <span class="${statusClass}">${escapeHtml(body.statusLabel)}</span>
-        </div>
-        <div class="body-bar-bg">${segHtml}</div>
-      </div>`;
-
-    if (editModifiersMode && canEdit) {
-      html += renderModifierEditor('body', body.modifiers || [], bodyBase);
-    }
-    return html;
-  }
-
-  // ─── POWER (RESOURCE BAR) + POWER POOL (PURCHASE) ───
+  // ─── BODY POOL & CHARACTER STATUS ───
   //
-  // Combined section. Two parts:
-  //   1. POWER resource bar — spendable resource, segmented (cap 10), scales
-  //      with max. Player picks main color; depletion is always black.
-  //   2. Power Pool — the XP-purchased stat that scales POWER via the formula.
+  // Body is the total damage pool. Its max is the sum of all location maxHPs
+  // (which already include per-location modifiers) plus any Body-specific
+  // modifiers. Its current is bodyMax minus the sum of all damage everywhere.
+  // Every point of location damage is also a point of Body damage — they're
+  // the same pool.
+  //
+  // Damage past Def. Destroyed on a limb (phase 4) still ticks Body down. The
+  // Def. Destroyed location's own bar reflects Body's state rather than more
+  // location-specific damage.
+  //
+  // Character statuses derive from two sources:
+  //   - Head/Torso hit location status (Disabled/Destroyed/etc.)
+  //   - Body pool (0 = Dead)
+  //
+  // Priority: Dead > (Unconscious + Paralyzed) > Unconscious > Paralyzed > Alive
+  let bodyMax = 0;
+  let bodyDamage = 0;
+  locations.forEach(l => {
+    if (typeof l.maxHP === 'number') bodyMax += l.maxHP;
+    if (typeof l.currentDamage === 'number') bodyDamage += l.currentDamage;
+  });
 
-  function renderPowerSection(result, ruleset, charData) {
-    const pp = ruleset.powerPool;
-    if (!pp || !pp.enabled) return '';
+  // Body-level modifiers live on charData.bodyModifiers = [{ name, value }, ...]
+  // These stack onto bodyMax after location-modifier contributions are rolled in.
+  const bodyMods = Array.isArray(character.bodyModifiers) ? character.bodyModifiers : [];
+  const bodyModTotal = bodyMods.reduce((acc, m) => acc + (parseInt(m.value) || 0), 0);
+  bodyMax = Math.max(0, bodyMax + bodyModTotal);
 
-    const canEdit = ctx.getCanEdit();
+  const bodyCurrent = Math.max(0, bodyMax - bodyDamage);
 
-    let html = '<div class="combat-section">';
-    html += `<div class="combat-section-title">${escapeHtml(pp.name || 'Power Pool')}</div>`;
-    if (pp.description) {
-      html += `<div class="pp-desc">${escapeHtml(pp.description)}</div>`;
-    }
+  // Find head/torso for status. Multiple heads/torsos (unusual): any in a
+  // death-triggering state kills the character. Disable status requires at
+  // least one to be disabled (not all).
+  const headLocs  = locations.filter(l => l.def.code === 'head');
+  const torsoLocs = locations.filter(l => l.def.code === 'torso');
 
-    // POWER resource bar (if POWER derived stat is configured)
-    if (result.power) {
-      html += renderPowerBar(result.power, canEdit);
-    }
+  const anyHeadDestroyed  = headLocs.some (l => l.status === 'destroyed' || l.status === 'definitelyDestroyed');
+  const anyTorsoDestroyed = torsoLocs.some(l => l.status === 'destroyed' || l.status === 'definitelyDestroyed');
+  const anyHeadDisabled   = headLocs.some (l => l.status === 'disabled');
+  const anyTorsoDisabled  = torsoLocs.some(l => l.status === 'disabled');
 
-    // Power Pool purchase controls
-    html += renderPowerPoolPurchase(pp, charData, canEdit);
+  const isDead = (bodyMax > 0 && bodyCurrent <= 0)
+              || anyHeadDestroyed
+              || anyTorsoDestroyed;
+  const isUnconscious = !isDead && anyHeadDisabled;
+  const isParalyzed   = !isDead && anyTorsoDisabled;
 
-    html += '</div>';
-    return html;
-  }
+  // Build a compact status object the combat UI can read directly.
+  let statusLabel;
+  if (isDead) statusLabel = 'DEAD';
+  else if (isUnconscious && isParalyzed) statusLabel = 'Unconscious & Paralyzed';
+  else if (isUnconscious) statusLabel = 'Unconscious';
+  else if (isParalyzed) statusLabel = 'Paralyzed';
+  else statusLabel = 'Alive';
 
-  // The segmented POWER resource bar. Always at most 10 segments; if max > 10
-  // each segment represents multiple points. Depletion fills from the right.
-  function renderPowerBar(power, canEdit) {
-    const { max, current, color } = power;
-
-    // Cap to 10 segments. Each segment represents max/segCount points.
-    // For max=5 → 5 segs, max=30 → 10 segs of 3 each, max=100 → 10 segs of 10.
-    const MAX_SEGS = 10;
-    const segCount = Math.max(1, Math.min(MAX_SEGS, max));
-    const perSegment = max / segCount;
-
-    // How many segments are depleted? Depletion is right-to-left.
-    // Remaining = current. Filled segs = ceil(current / perSegment) so a
-    // partially-depleted segment still appears filled until it empties.
-    // Guard: if current === max, all filled; if current === 0, all depleted.
-    let filledSegs;
-    if (current >= max) filledSegs = segCount;
-    else if (current <= 0) filledSegs = 0;
-    else filledSegs = Math.ceil(current / perSegment);
-
-    // Render each segment. Filled = player color, depleted = black.
-    let segHtml = '';
-    for (let i = 1; i <= segCount; i++) {
-      // Fill from LEFT — leftmost segCount-filled+1 through leftmost are filled.
-      // i.e. the first `filledSegs` segments (from left) are filled.
-      const segColor = i <= filledSegs ? color : '#0f0a0a';
-      segHtml += `<span class="power-seg" style="background:${escapeHtml(segColor)}"></span>`;
-    }
-
-    // Per-segment hint (shows only when max > 10, to explain the compression).
-    const segHint = max > MAX_SEGS
-      ? `<span class="power-seghint">(1 segment = ${fmt(perSegment)})</span>`
-      : '';
-
-    // Spend/refill controls. Similar pattern to hit-location damage buttons.
-    const controls = canEdit
-      ? `<div class="power-controls">
-          <button class="power-btn" onclick="tickPower(-1)" ${current <= 0 ? 'disabled' : ''} title="Spend 1">−</button>
-          <input type="number" class="power-input" value="${current}" min="0" max="${max}"
-                 onchange="setPower(this.value)">
-          <button class="power-btn" onclick="tickPower(1)" ${current >= max ? 'disabled' : ''} title="Refill 1">+</button>
-        </div>`
-      : '';
-
-    // Color picker: native input, opens system picker. Tiny swatch inline.
-    const colorPicker = canEdit
-      ? `<label class="power-color-picker" title="Change bar color">
-          <input type="color" value="${escapeHtml(color)}" onchange="setPowerColor(this.value)">
-          <span class="power-color-swatch" style="background:${escapeHtml(color)}"></span>
-        </label>`
-      : '';
-
-    return `
-      <div class="power-block">
-        <div class="power-top-row">
-          <span class="power-label">POWER</span>
-          <span class="power-value">${fmt(current)} / ${fmt(max)}</span>
-          ${segHint}
-          ${colorPicker}
-        </div>
-        <div class="power-bar-bg">${segHtml}</div>
-        ${controls}
-      </div>`;
-  }
-
-  // The Power Pool XP-purchase UI (its own stat; separate from POWER resource).
-  function renderPowerPoolPurchase(pp, charData, canEdit) {
-    const level = (typeof charData.powerPool === 'number') ? charData.powerPool : 0;
-    const max = pp.maxPurchasable || 10;
-    const ruleset = ctx.getRuleset();
-    const currentCost = powerPoolXpCost(level, ruleset);
-    const nextLevelCost = level < max ? powerPoolXpCost(level + 1, ruleset) : null;
-    const incrementCost = nextLevelCost !== null ? (nextLevelCost - currentCost) : null;
-
-    const modeText = pp.costMode === 'perPoint'
-      ? `${pp.costPerPoint || 0} XP per point`
-      : 'Custom per-level table';
-
-    let html = '<div class="pp-row">';
-    html += `<div class="pp-label">Power Pool</div>`;
-    if (canEdit) {
-      html += `<div class="pp-controls">
-        <button class="pp-btn" onclick="tickPowerPool(-1)" ${level <= 0 ? 'disabled' : ''}>−</button>
-        <input type="number" class="pp-input" value="${level}" min="0" max="${max}"
-               onchange="setPowerPool(this.value)">
-        <button class="pp-btn" onclick="tickPowerPool(1)" ${level >= max ? 'disabled' : ''}>+</button>
-      </div>`;
-    } else {
-      html += `<div class="pp-value">${level}</div>`;
-    }
-    html += `<div class="pp-cost">`;
-    html += `<div class="pp-cost-total">${currentCost} XP total</div>`;
-    if (incrementCost !== null && canEdit) {
-      html += `<div class="pp-cost-next">Next point: +${incrementCost} XP</div>`;
-    }
-    html += `</div>`;
-    html += `</div>`;
-    html += `<div class="pp-rate-note">${escapeHtml(modeText)} · Max ${max}</div>`;
-    return html;
-  }
-
-  // ─── HANDLERS ───
-
-  async function tickHitLocationDmg(trackKey, delta) {
-    if (!ctx.getCanEdit()) return;
-    const charData = ctx.getCharData();
-    if (!charData.hitLocationDamage) charData.hitLocationDamage = {};
-    const cur = charData.hitLocationDamage[trackKey] || 0;
-    charData.hitLocationDamage[trackKey] = Math.max(0, cur + delta);
-    await saveCharacter(ctx.getCharId(), { hitLocationDamage: charData.hitLocationDamage });
-    renderAll();
-  }
-
-  async function setHitLocationDmg(trackKey, val) {
-    if (!ctx.getCanEdit()) return;
-    const charData = ctx.getCharData();
-    if (!charData.hitLocationDamage) charData.hitLocationDamage = {};
-    const parsed = Math.max(0, parseInt(val) || 0);
-    charData.hitLocationDamage[trackKey] = parsed;
-    await saveCharacter(ctx.getCharId(), { hitLocationDamage: charData.hitLocationDamage });
-    renderAll();
-  }
-
-  // Power Pool is the XP-purchased STAT. Changes here re-scale POWER (the
-  // resource) via the formula, which could increase or decrease max. Note:
-  // we do NOT refill powerCurrent when Power Pool goes up — the player keeps
-  // what they had. When max drops (rare), derived.js clamps current on read.
-  async function tickPowerPool(delta) {
-    if (!ctx.getCanEdit()) return;
-    const charData = ctx.getCharData();
-    const ruleset = ctx.getRuleset();
-    const max = (ruleset.powerPool && ruleset.powerPool.maxPurchasable) || 10;
-    const cur = (typeof charData.powerPool === 'number') ? charData.powerPool : 0;
-    const next = Math.max(0, Math.min(max, cur + delta));
-    if (next === cur) return;
-    charData.powerPool = next;
-    await saveCharacter(ctx.getCharId(), { powerPool: next });
-    await ctx.saveXpSpent();
-    renderAll();
-  }
-
-  async function setPowerPool(val) {
-    if (!ctx.getCanEdit()) return;
-    const charData = ctx.getCharData();
-    const ruleset = ctx.getRuleset();
-    const max = (ruleset.powerPool && ruleset.powerPool.maxPurchasable) || 10;
-    const parsed = Math.max(0, Math.min(max, parseInt(val) || 0));
-    if (parsed === charData.powerPool) return;
-    charData.powerPool = parsed;
-    await saveCharacter(ctx.getCharId(), { powerPool: parsed });
-    await ctx.saveXpSpent();
-    renderAll();
-  }
-
-  // ─── POWER RESOURCE HANDLERS ───
-  // POWER current is stored as charData.powerCurrent. It's clamped to [0, max]
-  // based on the derived max from the formula.
-
-  async function tickPower(delta) {
-    if (!ctx.getCanEdit()) return;
-    const charData = ctx.getCharData();
-    // Recompute to get current max. Not the cheapest — a future perf pass
-    // could pass the already-computed result into handlers.
-    const ruleset = ctx.getRuleset();
-    const result = computeDerivedStats(charData, ruleset);
-    if (!result.power) return;
-    const max = result.power.max;
-    const cur = result.power.current;
-    const next = Math.max(0, Math.min(max, cur + delta));
-    if (next === cur) return;
-    charData.powerCurrent = next;
-    await saveCharacter(ctx.getCharId(), { powerCurrent: next });
-    renderAll();
-  }
-
-  async function setPower(val) {
-    if (!ctx.getCanEdit()) return;
-    const charData = ctx.getCharData();
-    const ruleset = ctx.getRuleset();
-    const result = computeDerivedStats(charData, ruleset);
-    if (!result.power) return;
-    const max = result.power.max;
-    const parsed = Math.max(0, Math.min(max, parseInt(val) || 0));
-    charData.powerCurrent = parsed;
-    await saveCharacter(ctx.getCharId(), { powerCurrent: parsed });
-    renderAll();
-  }
-
-  async function setPowerColor(color) {
-    if (!ctx.getCanEdit()) return;
-    const charData = ctx.getCharData();
-    // Basic sanity: only accept hex-ish strings. Native color picker always
-    // gives us #rrggbb, so this is mostly paranoia.
-    if (typeof color !== 'string' || !/^#[0-9a-fA-F]{3,8}$/.test(color.trim())) return;
-    charData.powerColor = color.trim();
-    await saveCharacter(ctx.getCharId(), { powerColor: charData.powerColor });
-    renderAll();
-  }
-
-  // Total XP spent on Power Pool — consumed by calcTotalXp in character.html
-  // so the header XP bar reflects purchases.
-  function powerPoolXpDelta() {
-    const charData = ctx.getCharData();
-    const ruleset = ctx.getRuleset();
-    const level = (typeof charData.powerPool === 'number') ? charData.powerPool : 0;
-    return powerPoolXpCost(level, ruleset);
-  }
-
-  // ─── MODIFIER HANDLERS ───
-  // Modifiers apply to maxHP of a hit location, or to Body's max. Storage:
-  //   charData.hitLocationModifiers = { trackKey: [{name, value}, ...] }
-  //   charData.bodyModifiers        = [{name, value}, ...]
-  // Empty arrays are cleaned up on save to keep Firestore docs tidy.
-
-  function toggleEditMode() {
-    editModifiersMode = !editModifiersMode;
-    renderAll();
-  }
-
-  async function addModifier(target) {
-    if (!ctx.getCanEdit()) return;
-    const nameInput = document.getElementById('mod-add-name-' + target);
-    const valInput  = document.getElementById('mod-add-val-' + target);
-    if (!nameInput || !valInput) return;
-    const name = (nameInput.value || '').trim();
-    const value = parseInt(valInput.value) || 0;
-    if (!name) { nameInput.focus(); return; }
-
-    const charData = ctx.getCharData();
-    if (target === 'body') {
-      if (!Array.isArray(charData.bodyModifiers)) charData.bodyModifiers = [];
-      charData.bodyModifiers.push({ name, value });
-      await saveCharacter(ctx.getCharId(), { bodyModifiers: charData.bodyModifiers });
-    } else {
-      if (!charData.hitLocationModifiers) charData.hitLocationModifiers = {};
-      if (!Array.isArray(charData.hitLocationModifiers[target])) {
-        charData.hitLocationModifiers[target] = [];
-      }
-      charData.hitLocationModifiers[target].push({ name, value });
-      await saveCharacter(ctx.getCharId(), { hitLocationModifiers: charData.hitLocationModifiers });
-    }
-    renderAll();
-  }
-
-  async function updateModifier(target, i, field, val) {
-    if (!ctx.getCanEdit()) return;
-    const charData = ctx.getCharData();
-    const arr = target === 'body'
-      ? charData.bodyModifiers
-      : (charData.hitLocationModifiers && charData.hitLocationModifiers[target]);
-    if (!Array.isArray(arr) || !arr[i]) return;
-    if (field === 'value') {
-      arr[i].value = parseInt(val) || 0;
-    } else {
-      arr[i][field] = val;
-    }
-    const payload = target === 'body'
-      ? { bodyModifiers: charData.bodyModifiers }
-      : { hitLocationModifiers: charData.hitLocationModifiers };
-    await saveCharacter(ctx.getCharId(), payload);
-    // Re-render so numeric changes propagate through maxHP / body totals / bar
-    // segments. A name-only change doesn't strictly need a re-render but we do
-    // one anyway for simplicity.
-    renderAll();
-  }
-
-  async function deleteModifier(target, i) {
-    if (!ctx.getCanEdit()) return;
-    const charData = ctx.getCharData();
-    if (target === 'body') {
-      if (!Array.isArray(charData.bodyModifiers)) return;
-      charData.bodyModifiers.splice(i, 1);
-      await saveCharacter(ctx.getCharId(), { bodyModifiers: charData.bodyModifiers });
-    } else {
-      const arr = charData.hitLocationModifiers && charData.hitLocationModifiers[target];
-      if (!Array.isArray(arr)) return;
-      arr.splice(i, 1);
-      await saveCharacter(ctx.getCharId(), { hitLocationModifiers: charData.hitLocationModifiers });
-    }
-    renderAll();
-  }
-
-  // ─── UTIL ───
-
-  function escapeHtml(s) {
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
-
-  return {
-    renderAll,
-    tickHitLocationDmg, setHitLocationDmg,
-    tickPowerPool, setPowerPool,
-    tickPower, setPower, setPowerColor,
-    powerPoolXpDelta,
-    toggleEditMode, addModifier, updateModifier, deleteModifier
+  const body = {
+    max: bodyMax,
+    current: bodyCurrent,
+    damage: bodyDamage,
+    modifiers: bodyMods,
+    dead: isDead,
+    unconscious: isUnconscious,
+    paralyzed: isParalyzed,
+    statusLabel
   };
+
+  // ─── POWER RESOURCE ───
+  //
+  // POWER is a spendable resource whose MAX is derived from the POWER formula
+  // (usually POWERPOOL * POW_MULTIPLIER). The character stores `powerCurrent`,
+  // the amount currently available to spend on Activated Abilities etc.
+  //
+  // If the max isn't defined (no POWER derived stat configured) or the ruleset
+  // has Power Pool disabled, we report power as null and the combat UI hides
+  // the section.
+  //
+  // Current caps to max but only on the downside — if max drops below current
+  // (e.g. character loses POWMOD due to wound), current is clamped. If max
+  // rises (buying more Power Pool), current stays where it was — you don't
+  // magically get full refilled.
+  let power = null;
+  const powerStatEntry = stats.get('POWER');
+  const ppEnabled = ruleset.powerPool && ruleset.powerPool.enabled !== false;
+  if (ppEnabled && powerStatEntry && powerStatEntry.value !== null) {
+    const powerMax = Math.floor(powerStatEntry.value);
+    const storedCurrent = Number.isFinite(character.powerCurrent)
+      ? character.powerCurrent : powerMax;
+    const powerCurrent = Math.max(0, Math.min(powerMax, storedCurrent));
+    const color = (typeof character.powerColor === 'string' && character.powerColor.trim())
+      ? character.powerColor.trim() : '#e0e0e0';
+    power = {
+      max: powerMax,
+      current: powerCurrent,
+      color
+    };
+  }
+
+  return { stats, locations, errors, vars, body, power };
 }
