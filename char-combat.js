@@ -100,12 +100,14 @@ export function createCombatSection(ctx) {
       tiles.push(renderPowerTile(power));
     }
 
-    // MOVEMENT + STRAIN tile — full-width bottom row. Movement stats
-    // occupy the left; Strain summary (big %, Pain/Stress breakdown) is
-    // right-aligned in the same tile since both reflect "current physical
-    // readiness" and belong next to each other. See renderMovementTile.
+    // Bottom section — three full-width rows stacked vertically below
+    // the resource tiles. Order: Movement → Roll Calc → Strain. The Roll
+    // Calc sits between because it depends on both (movement stats are
+    // affected by Strain too, and the calc uses the Strain %).
     const movementHtml = renderMovementTile(result, ruleset);
     if (movementHtml) tiles.push(movementHtml);
+    tiles.push(renderRollCalcTile(result, ruleset, ctx.getCharData()));
+    tiles.push(renderStrainTile(result.pain, result.stress, result.strain));
 
     host.innerHTML = tiles.length
       ? `<div class="state-grid">${tiles.join('')}</div>`
@@ -218,7 +220,13 @@ export function createCombatSection(ctx) {
     const max = power.max || 0;
     const current = power.current || 0;
     const pct = max > 0 ? Math.max(0, Math.min(100, (current / max) * 100)) : 0;
-    // Purple fill to distinguish power pool visually from health bars.
+    // Inherit the Power Pool's actual display color (set in the Combat
+    // tab via the color picker). Falls back to a sensible default if the
+    // pool hasn't been configured yet. Keeps the two views visually in
+    // sync so players can instantly recognize "this is my power bar".
+    const color = (power.color && typeof power.color === 'string' && power.color.trim())
+      ? power.color
+      : '#6a4a9a';
     return `
       <div class="state-tile">
         <div class="state-tile-head">
@@ -226,7 +234,7 @@ export function createCombatSection(ctx) {
           <span class="state-tile-nums">${fmt(current)}<span class="sep">/</span><span class="max">${fmt(max)}</span></span>
         </div>
         <div class="state-strain-bar">
-          <div class="state-strain-fill" style="width:${pct}%;background:#6a4a9a"></div>
+          <div class="state-strain-fill" style="width:${pct}%;background:${escapeHtml(color)}"></div>
         </div>
       </div>`;
   }
@@ -278,23 +286,18 @@ export function createCombatSection(ctx) {
     }).join('');
 
     return `
-      <div class="state-tile state-tile-movement">
-        <div class="state-movement-layout">
-          <div class="state-movement-left">
-            <div class="state-tile-head">
-              <span class="state-tile-label">Movement</span>
-            </div>
-            <div class="state-movement-row">${items}</div>
-          </div>
-          ${renderStrainInline(result.pain, result.stress, result.strain)}
+      <div class="state-tile state-tile-wide">
+        <div class="state-tile-head">
+          <span class="state-tile-label">Movement</span>
         </div>
+        <div class="state-movement-row">${items}</div>
       </div>`;
   }
 
-  // Compact strain summary embedded in the right side of the Movement tile.
-  // Same palette + breakdown as the old standalone tile, just packed into
-  // a narrower column with a left divider instead of a top divider.
-  function renderStrainInline(pain, stress, strain) {
+  // Standalone Strain tile — full-width row below the Roll Calc. Big
+  // severity-tinted percent with labeled Pain/Stress breakdown. Purely a
+  // readout; edits live on the Combat tab.
+  function renderStrainTile(pain, stress, strain) {
     if (!strain) return '';
     const pct = strain.percent;
     let pctColor;
@@ -305,12 +308,12 @@ export function createCombatSection(ctx) {
     const painPct   = (pain && pain.finalPercent) || 0;
     const stressPct = (stress && stress.finalPercent) || 0;
     return `
-      <div class="state-movement-strain">
+      <div class="state-tile state-tile-wide state-tile-strain">
         <div class="state-tile-head">
           <span class="state-tile-label">Strain</span>
+          <span class="state-strain-big" style="color:${pctColor}">${pct}%</span>
         </div>
-        <div class="state-strain-big" style="color:${pctColor}">${pct}%</div>
-        <div class="state-strain-rows">
+        <div class="state-strain-rows-inline">
           <div class="state-strain-row">
             <span class="state-strain-k">Pain</span>
             <span class="state-strain-v">${painPct}%</span>
@@ -321,6 +324,389 @@ export function createCombatSection(ctx) {
           </div>
         </div>
       </div>`;
+  }
+
+  // ─── ROLL CALCULATOR (overview) ───
+  // Helps players figure out how many d10s they'll roll for a given
+  // (STAT + SKILL) @ DIFFICULTY + STATMOD check AFTER Strain has been
+  // applied, without actually rolling anything. Rolls happen in a Discord
+  // bot; this is just the bookkeeping.
+  //
+  // Formula (per PRIME rules):
+  //   basePool        = statValue + skillValue
+  //   strainPenalty   = floor(basePool × strain% / 100)
+  //   finalPool       = max(0, basePool − strainPenalty)
+  //   effDifficulty   = difficulty − mitigation − reduction
+  //   diffDelta       = effDifficulty − 6         (positive = harder)
+  //   effStatMod      = statmod − diffDelta       (harder roll = less bonus)
+  //
+  // State persists in-memory across re-renders so the panel survives
+  // combat-triggered refreshes. Not saved to Firestore — it's a scratch
+  // pad, not character data.
+  const rollCalcState = {
+    statKey:     'STR',      // dropdown code — base stat, derived stat, or 'custom'
+    statOverride: null,      // number; null = use picked stat's live value
+    statmodOverride: null,   // number; null = use picked stat's live mod
+    skillKey:    '__none__', // skill name, '__none__' (skip), or 'custom'
+    skillOverride: null,
+    difficulty: 6,
+    mitigation: 0,
+    reduction:  0,
+    showRaw:    false        // false = strain-reduced pool; true = pre-strain
+  };
+
+  // Build the list of options the STAT dropdown offers. Pulls every base
+  // stat and rollable derived stat (everything in result.stats) so you
+  // can roll with anything the ruleset defines — including SAN, HP, etc.
+  function buildRollCalcStatOptions(result, charData, ruleset) {
+    const opts = [];
+    const baseStats = (ruleset.stats || []).filter(s => s && s.code);
+    baseStats.forEach(s => {
+      const value = (charData.stats && charData.stats[s.code.toLowerCase()]) || 0;
+      const mod = (result.vars && result.vars[s.code + 'MOD'])
+        ? result.vars[s.code + 'MOD']
+        : 0;
+      opts.push({
+        key:   s.code,
+        label: s.code + (s.name ? ` — ${s.name}` : ''),
+        value: Math.max(0, parseInt(value) || 0),
+        mod:   parseInt(mod) || 0,
+        group: 'base'
+      });
+    });
+    // Derived stats — only ones with a finite computed value. Pull rollMod
+    // from the entry if it was evaluated; fall back to 0.
+    (ruleset.derivedStats || []).forEach(def => {
+      if (!def.code) return;
+      const entry = result.stats.get(def.code);
+      if (!entry || !Number.isFinite(entry.value)) return;
+      opts.push({
+        key:   def.code,
+        label: def.code + (def.name ? ` — ${def.name}` : ''),
+        value: Math.max(0, Math.floor(entry.value)),
+        mod:   Number.isFinite(entry.rollModifier) ? entry.rollModifier : 0,
+        group: 'derived'
+      });
+    });
+    return opts;
+  }
+
+  // Skill dropdown options — aggregates primary / secondary / specialty.
+  // Primary skills come from the ruleset (fixed catalog); secondary and
+  // specialty are free-form per-character.
+  function buildRollCalcSkillOptions(charData, ruleset) {
+    const opts = [];
+    // Primary: the ruleset defines which exist; charData stores values.
+    const primaries = (ruleset.primarySkills || []);
+    const primaryVals = (charData.skills && charData.skills.primary) || {};
+    primaries.forEach(p => {
+      const name = (typeof p === 'string') ? p : (p.name || '');
+      if (!name) return;
+      opts.push({
+        key:   'P:' + name,
+        label: name + ' (Primary)',
+        value: parseInt(primaryVals[name]) || 0,
+        group: 'primary'
+      });
+    });
+    // Secondary — free-form array of {name, value}.
+    const secondaries = (charData.skills && Array.isArray(charData.skills.secondary))
+      ? charData.skills.secondary : [];
+    secondaries.forEach(s => {
+      if (!s || !s.name) return;
+      opts.push({
+        key:   'S:' + s.name,
+        label: s.name + ' (Secondary)',
+        value: parseInt(s.value) || 0,
+        group: 'secondary'
+      });
+    });
+    // Specialty — same shape as secondary.
+    const specialties = (charData.skills && Array.isArray(charData.skills.specialty))
+      ? charData.skills.specialty : [];
+    specialties.forEach(s => {
+      if (!s || !s.name) return;
+      opts.push({
+        key:   'X:' + s.name,
+        label: s.name + ' (Specialty)',
+        value: parseInt(s.value) || 0,
+        group: 'specialty'
+      });
+    });
+    return opts;
+  }
+
+  // Resolve the current calculation inputs by combining state with the
+  // picked dropdown option's live values. Overrides win over live data.
+  function resolveRollCalc(result, charData, ruleset) {
+    const statOpts = buildRollCalcStatOptions(result, charData, ruleset);
+    const skillOpts = buildRollCalcSkillOptions(charData, ruleset);
+    const pickedStat = statOpts.find(o => o.key === rollCalcState.statKey);
+    const pickedSkill = skillOpts.find(o => o.key === rollCalcState.skillKey);
+
+    const statValue = rollCalcState.statOverride != null
+      ? rollCalcState.statOverride
+      : (pickedStat ? pickedStat.value : 0);
+    const skillValue = rollCalcState.skillOverride != null
+      ? rollCalcState.skillOverride
+      : (pickedSkill ? pickedSkill.value : 0);
+    const statmod = rollCalcState.statmodOverride != null
+      ? rollCalcState.statmodOverride
+      : (pickedStat ? pickedStat.mod : 0);
+
+    const diff   = parseInt(rollCalcState.difficulty) || 0;
+    const mit    = parseInt(rollCalcState.mitigation) || 0;
+    const red    = parseInt(rollCalcState.reduction)  || 0;
+    const effDifficulty = Math.max(0, diff - mit - red);
+    const diffDelta = effDifficulty - 6;
+    const effStatmod = statmod - diffDelta;
+
+    const basePool = Math.max(0, (parseInt(statValue) || 0) + (parseInt(skillValue) || 0));
+    const strainPct = (result.strain && result.strain.percent) || 0;
+    const strainPenalty = Math.floor(basePool * strainPct / 100);
+    const finalPool = Math.max(0, basePool - strainPenalty);
+
+    return {
+      statOpts, skillOpts, pickedStat, pickedSkill,
+      statValue, skillValue, statmod,
+      diff, mit, red, effDifficulty, diffDelta, effStatmod,
+      basePool, strainPct, strainPenalty, finalPool
+    };
+  }
+
+  function renderRollCalcTile(result, ruleset, charData) {
+    const r = resolveRollCalc(result, charData, ruleset);
+
+    // STAT dropdown — group base stats and derived stats separately so
+    // it's obvious which is which.
+    const statOptionsHtml = buildRollCalcStatSelectHtml(r.statOpts);
+    const skillOptionsHtml = buildRollCalcSkillSelectHtml(r.skillOpts);
+
+    // Display values — toggle between strain-reduced (default) and raw.
+    const displayedPool = rollCalcState.showRaw ? r.basePool : r.finalPool;
+    const displayedMod  = r.effStatmod;
+    const modSign = displayedMod >= 0 ? '+' : '−';
+    const modAbs  = Math.abs(displayedMod);
+    const toggleTip = rollCalcState.showRaw
+      ? `Showing raw pool. Click to see ${r.finalPool}d after Strain.`
+      : `Showing Strain-reduced pool. Click to see raw ${r.basePool}d.`;
+
+    // Breakdown lines for the detail panel below the big output.
+    const diffNote = r.diffDelta === 0
+      ? 'baseline'
+      : (r.diffDelta > 0 ? `+${r.diffDelta} above baseline` : `${r.diffDelta} below baseline`);
+    const statmodNote = r.diffDelta === 0
+      ? ''
+      : ` (${r.statmod >= 0 ? '+' : '−'}${Math.abs(r.statmod)} base ${r.diffDelta > 0 ? '−' : '+'} ${Math.abs(r.diffDelta)})`;
+
+    return `
+      <div class="state-tile state-tile-wide state-tile-rollcalc">
+        <div class="state-tile-head">
+          <span class="state-tile-label">Roll Calculator</span>
+          <span class="rc-hint">(STAT + SKILL) @ Difficulty + Mod</span>
+        </div>
+
+        <div class="rc-grid">
+          <div class="rc-field">
+            <label class="rc-label">Stat</label>
+            <div class="rc-field-row">
+              <select class="rc-select" onchange="rollCalcSetStat(this.value)">
+                ${statOptionsHtml}
+              </select>
+              <input type="number" class="rc-num" value="${r.statValue}"
+                     oninput="rollCalcSetStatValue(this.value)"
+                     title="Stat value — auto-fills from dropdown, editable for custom scenarios">
+            </div>
+          </div>
+
+          <div class="rc-field">
+            <label class="rc-label">Skill</label>
+            <div class="rc-field-row">
+              <select class="rc-select" onchange="rollCalcSetSkill(this.value)">
+                ${skillOptionsHtml}
+              </select>
+              <input type="number" class="rc-num" value="${r.skillValue}"
+                     oninput="rollCalcSetSkillValue(this.value)"
+                     title="Skill value — auto-fills from dropdown, editable for custom scenarios">
+            </div>
+          </div>
+
+          <div class="rc-field">
+            <label class="rc-label">Stat Mod</label>
+            <input type="number" class="rc-num" value="${r.statmod}"
+                   oninput="rollCalcSetStatmod(this.value)"
+                   title="Static roll bonus — auto-fills from picked stat, override for custom rolls">
+          </div>
+
+          <div class="rc-field">
+            <label class="rc-label">Difficulty</label>
+            <input type="number" class="rc-num" value="${r.diff}"
+                   oninput="rollCalcSetDifficulty(this.value)"
+                   title="Base difficulty (PRIME baseline is 6)">
+          </div>
+
+          <div class="rc-field">
+            <label class="rc-label">Mitigation</label>
+            <input type="number" class="rc-num" value="${r.mit}"
+                   oninput="rollCalcSetMitigation(this.value)"
+                   title="Difficulty Mitigation — subtracted from raw difficulty">
+          </div>
+
+          <div class="rc-field">
+            <label class="rc-label">Reduction</label>
+            <input type="number" class="rc-num" value="${r.red}"
+                   oninput="rollCalcSetReduction(this.value)"
+                   title="Difficulty Reduction — subtracted from raw difficulty">
+          </div>
+        </div>
+
+        <div class="rc-output">
+          <button type="button" class="rc-big" onclick="rollCalcToggle()" title="${escapeHtml(toggleTip)}">
+            <span class="rc-big-num ${rollCalcState.showRaw ? 'rc-raw' : ''}">${displayedPool}d</span>
+            <span class="rc-big-mod">${modSign}${modAbs}</span>
+            <span class="rc-big-diff">@ diff ${r.effDifficulty}</span>
+          </button>
+          <div class="rc-breakdown">
+            <div class="rc-line"><span class="rc-k">Pool</span><span class="rc-v">${r.statValue} + ${r.skillValue} = <b>${r.basePool}d</b></span></div>
+            <div class="rc-line"><span class="rc-k">Strain penalty</span><span class="rc-v">−${r.strainPenalty}d  <span class="rc-dim">(${r.strainPct}% of ${r.basePool})</span></span></div>
+            <div class="rc-line"><span class="rc-k">After Strain</span><span class="rc-v"><b>${r.finalPool}d</b></span></div>
+            <div class="rc-line"><span class="rc-k">Difficulty</span><span class="rc-v">${r.diff} − ${r.mit} mit − ${r.red} red = <b>${r.effDifficulty}</b>  <span class="rc-dim">(${diffNote})</span></span></div>
+            <div class="rc-line"><span class="rc-k">Stat mod</span><span class="rc-v"><b>${modSign}${modAbs}</b>${escapeHtml(statmodNote)}</span></div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function buildRollCalcStatSelectHtml(opts) {
+    const base = opts.filter(o => o.group === 'base');
+    const derived = opts.filter(o => o.group === 'derived');
+    let html = '';
+    if (base.length > 0) {
+      html += '<optgroup label="Stats">';
+      base.forEach(o => {
+        html += `<option value="${escapeHtml(o.key)}"${o.key === rollCalcState.statKey ? ' selected' : ''}>${escapeHtml(o.label)} (${o.value})</option>`;
+      });
+      html += '</optgroup>';
+    }
+    if (derived.length > 0) {
+      html += '<optgroup label="Derived">';
+      derived.forEach(o => {
+        html += `<option value="${escapeHtml(o.key)}"${o.key === rollCalcState.statKey ? ' selected' : ''}>${escapeHtml(o.label)} (${o.value})</option>`;
+      });
+      html += '</optgroup>';
+    }
+    html += `<option value="custom"${rollCalcState.statKey === 'custom' ? ' selected' : ''}>— Custom —</option>`;
+    return html;
+  }
+
+  function buildRollCalcSkillSelectHtml(opts) {
+    const by = { primary: [], secondary: [], specialty: [] };
+    opts.forEach(o => { if (by[o.group]) by[o.group].push(o); });
+    let html = `<option value="__none__"${rollCalcState.skillKey === '__none__' ? ' selected' : ''}>— None (0) —</option>`;
+    ['primary', 'secondary', 'specialty'].forEach(g => {
+      if (by[g].length === 0) return;
+      const label = g.charAt(0).toUpperCase() + g.slice(1);
+      html += `<optgroup label="${label}">`;
+      by[g].forEach(o => {
+        html += `<option value="${escapeHtml(o.key)}"${o.key === rollCalcState.skillKey ? ' selected' : ''}>${escapeHtml(o.label)} (${o.value})</option>`;
+      });
+      html += '</optgroup>';
+    });
+    html += `<option value="custom"${rollCalcState.skillKey === 'custom' ? ' selected' : ''}>— Custom —</option>`;
+    return html;
+  }
+
+  // Handlers — all route back through renderAll() so the panel recomputes
+  // and paints fresh state. For number inputs we update state and then
+  // do a targeted repaint (see below) to avoid stomping input focus.
+
+  function rollCalcSetStat(key) {
+    rollCalcState.statKey = key;
+    // Clear value/mod overrides when switching stat — user probably wants
+    // the new stat's fresh values, not the override from the previous one.
+    rollCalcState.statOverride = null;
+    rollCalcState.statmodOverride = null;
+    renderAll();
+  }
+  function rollCalcSetSkill(key) {
+    rollCalcState.skillKey = key;
+    rollCalcState.skillOverride = null;
+    renderAll();
+  }
+  function rollCalcSetStatValue(v) {
+    rollCalcState.statOverride = parseFloat(v);
+    if (!Number.isFinite(rollCalcState.statOverride)) rollCalcState.statOverride = 0;
+    repaintRollCalcOutput();
+  }
+  function rollCalcSetSkillValue(v) {
+    rollCalcState.skillOverride = parseFloat(v);
+    if (!Number.isFinite(rollCalcState.skillOverride)) rollCalcState.skillOverride = 0;
+    repaintRollCalcOutput();
+  }
+  function rollCalcSetStatmod(v) {
+    rollCalcState.statmodOverride = parseFloat(v);
+    if (!Number.isFinite(rollCalcState.statmodOverride)) rollCalcState.statmodOverride = 0;
+    repaintRollCalcOutput();
+  }
+  function rollCalcSetDifficulty(v) {
+    rollCalcState.difficulty = parseInt(v) || 0;
+    repaintRollCalcOutput();
+  }
+  function rollCalcSetMitigation(v) {
+    rollCalcState.mitigation = parseInt(v) || 0;
+    repaintRollCalcOutput();
+  }
+  function rollCalcSetReduction(v) {
+    rollCalcState.reduction = parseInt(v) || 0;
+    repaintRollCalcOutput();
+  }
+  function rollCalcToggle() {
+    rollCalcState.showRaw = !rollCalcState.showRaw;
+    repaintRollCalcOutput();
+  }
+
+  // Targeted repaint — recompute and rewrite only the .state-tile-rollcalc
+  // output area. Keeps input focus stable so typing feels responsive.
+  function repaintRollCalcOutput() {
+    const tile = document.querySelector('.state-tile-rollcalc');
+    if (!tile) return;
+    const ruleset = ctx.getRuleset();
+    const charData = ctx.getCharData();
+    if (!ruleset) return;
+    const result = computeDerivedStats(charData, ruleset);
+    const r = resolveRollCalc(result, charData, ruleset);
+
+    const displayedPool = rollCalcState.showRaw ? r.basePool : r.finalPool;
+    const displayedMod  = r.effStatmod;
+    const modSign = displayedMod >= 0 ? '+' : '−';
+    const modAbs  = Math.abs(displayedMod);
+
+    const bigNum = tile.querySelector('.rc-big-num');
+    if (bigNum) {
+      bigNum.textContent = `${displayedPool}d`;
+      bigNum.classList.toggle('rc-raw', rollCalcState.showRaw);
+    }
+    const bigMod = tile.querySelector('.rc-big-mod');
+    if (bigMod) bigMod.textContent = `${modSign}${modAbs}`;
+    const bigDiff = tile.querySelector('.rc-big-diff');
+    if (bigDiff) bigDiff.textContent = `@ diff ${r.effDifficulty}`;
+
+    const diffNote = r.diffDelta === 0
+      ? 'baseline'
+      : (r.diffDelta > 0 ? `+${r.diffDelta} above baseline` : `${r.diffDelta} below baseline`);
+    const statmodNote = r.diffDelta === 0
+      ? ''
+      : ` (${r.statmod >= 0 ? '+' : '−'}${Math.abs(r.statmod)} base ${r.diffDelta > 0 ? '−' : '+'} ${Math.abs(r.diffDelta)})`;
+
+    const bd = tile.querySelector('.rc-breakdown');
+    if (bd) {
+      bd.innerHTML = `
+        <div class="rc-line"><span class="rc-k">Pool</span><span class="rc-v">${r.statValue} + ${r.skillValue} = <b>${r.basePool}d</b></span></div>
+        <div class="rc-line"><span class="rc-k">Strain penalty</span><span class="rc-v">−${r.strainPenalty}d  <span class="rc-dim">(${r.strainPct}% of ${r.basePool})</span></span></div>
+        <div class="rc-line"><span class="rc-k">After Strain</span><span class="rc-v"><b>${r.finalPool}d</b></span></div>
+        <div class="rc-line"><span class="rc-k">Difficulty</span><span class="rc-v">${r.diff} − ${r.mit} mit − ${r.red} red = <b>${r.effDifficulty}</b>  <span class="rc-dim">(${diffNote})</span></span></div>
+        <div class="rc-line"><span class="rc-k">Stat mod</span><span class="rc-v"><b>${modSign}${modAbs}</b>${escapeHtml(statmodNote)}</span></div>`;
+    }
   }
 
   // ─── DERIVED STATS ───
@@ -2805,6 +3191,11 @@ export function createCombatSection(ctx) {
     toggleDiceModPanel, addDiceMod, updateDiceMod, deleteDiceMod,
     // Strain value-display toggle (click to collapse "10 − 2.5" to "7.5")
     toggleStrainValueDisplay,
+    // Roll Calculator (overview scratch pad)
+    rollCalcSetStat, rollCalcSetSkill,
+    rollCalcSetStatValue, rollCalcSetSkillValue, rollCalcSetStatmod,
+    rollCalcSetDifficulty, rollCalcSetMitigation, rollCalcSetReduction,
+    rollCalcToggle,
     // Pain / Stress (percentile modifiers feeding Strain)
     togglePainPanel, addPainMod, updatePainMod, deletePainMod,
     toggleStressPanel, addStressMod, updateStressMod, deleteStressMod
