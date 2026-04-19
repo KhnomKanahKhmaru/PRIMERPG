@@ -695,9 +695,20 @@ export function computeDerivedStats(character, ruleset) {
   const anyHeadDisabled   = headLocs.some (l => l.status === 'disabled');
   const anyTorsoDisabled  = torsoLocs.some(l => l.status === 'disabled');
 
+  // Whether EVERY hit location is Definitively Destroyed. This gates the
+  // Destroyed tag — Body damage alone going past 2·max isn't enough to
+  // trigger Destroyed, because degradation on a single limb (e.g. bleeding,
+  // exsanguination) can drive Body damage past that threshold while the
+  // rest of the body is still intact. "Destroyed" semantically means
+  // "nothing left of you", which requires nothing left — every limb gone.
+  const allLocsDefDestroyed = locations.length > 0
+    && locations.every(l => l.status === 'definitelyDestroyed');
+
   // Status priority (highest wins):
-  //   1. Destroyed    — Body overkilled past 2·max. "Nothing left of you."
-  //                     Only Body damage produces this; no limb can.
+  //   1. Destroyed    — Body past 2·max AND every limb Def.Destroyed.
+  //                     "Nothing left of you." Needs both conditions so a
+  //                     single limb's degradation driving Body down doesn't
+  //                     falsely imply total annihilation.
   //   2. Dead         — Body at -max, OR any head/torso destroyed. Death
   //                     from any source trumps everything except Destroyed.
   //   3. Incapacitated — Body at 0 HP, OR both head AND torso disabled.
@@ -707,7 +718,9 @@ export function computeDerivedStats(character, ruleset) {
   //   4. Unconscious   — head disabled, and not Incapacitated/Dead/Destroyed.
   //   5. Paralyzed     — torso disabled, and not Incapacitated/Dead/Destroyed.
   //   6. Alive         — everything else.
-  const isDestroyed     = bodyMax > 0 && bodyDamage > 2 * bodyMax;
+  const isDestroyed     = bodyMax > 0
+                       && bodyDamage > 2 * bodyMax
+                       && allLocsDefDestroyed;
   const isDead          = isDestroyed
                        || (bodyMax > 0 && bodyDamage >= 2 * bodyMax)
                        || anyHeadDestroyed
