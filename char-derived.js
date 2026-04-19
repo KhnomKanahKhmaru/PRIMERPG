@@ -618,10 +618,16 @@ export function computeDerivedStats(character, ruleset) {
     const powerCurrent = Math.max(0, Math.min(powerMax, storedCurrent));
     const color = (typeof character.powerColor === 'string' && character.powerColor.trim())
       ? character.powerColor.trim() : '#e0e0e0';
+    // Player-chosen name (e.g. "Vitae", "Mana", "Chi"). Blank / missing falls
+    // back to the canonical "POWER" label. Trim so trailing whitespace doesn't
+    // change whether the default applies.
+    const rawName = (typeof character.powerName === 'string') ? character.powerName.trim() : '';
+    const name = rawName || 'POWER';
     power = {
       max: powerMax,
       current: powerCurrent,
-      color
+      color,
+      name
     };
   }
 
