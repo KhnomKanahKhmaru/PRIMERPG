@@ -381,7 +381,7 @@
     .hl-list { display: flex; flex-direction: column; gap: 6px; }
     .hl-row {
       display: grid;
-      grid-template-columns: 120px 1fr 110px auto;
+      grid-template-columns: 120px 1fr auto;
       gap: 14px;
       align-items: center;
       background: #111;
@@ -398,34 +398,36 @@
        render cleanly without overflowing. */
     .hl-seg { flex: 1 1 0; min-width: 2px; height: 100%; border-radius: 1px; transition: background-color 0.2s ease; }
     .hl-bar-label { font-size: 11px; font-weight: 600; color: #aaa; font-variant-numeric: tabular-nums; min-width: 56px; text-align: right; }
-    .hl-status-label { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #888; text-align: center; }
     .hl-controls { display: flex; align-items: center; gap: 4px; }
     .hl-dmg-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 14px; font-weight: 700; width: 26px; height: 26px; padding: 0; border-radius: 3px; cursor: pointer; line-height: 1; }
     .hl-dmg-btn:hover { background: #222; border-color: #3f3f3f; color: #fff; }
     .hl-dmg-input { width: 52px; text-align: center; background: #0a0a0a; border: 1px solid #2a2a2a; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; font-weight: 600; padding: 4px; border-radius: 3px; outline: none; }
     .hl-dmg-input:focus { border-color: #444; }
 
-    /* Damage-state coloring: name + status label only. Bar colors are
-       handled by the inline progressive gradient, not by these classes. */
-    .hl-status-disabled .hl-status-label       { color: #c89a5a; }
+    /* Per-location name color tint based on damage phase (status label itself
+       was removed; the Body section shows global status). */
     .hl-status-disabled .hl-name               { color: #c89a5a; }
-    .hl-status-destroyed .hl-status-label      { color: #c87777; }
     .hl-status-destroyed .hl-name              { color: #c87777; }
-    .hl-status-destroyed                        { opacity: 0.92; }
-    .hl-status-definitelyDestroyed .hl-status-label { color: #8a3a3a; font-style: italic; }
-    .hl-status-definitelyDestroyed .hl-name        { color: #8a3a3a; text-decoration: line-through; }
-    .hl-status-definitelyDestroyed                  { opacity: 0.65; }
+    .hl-status-destroyed                       { opacity: 0.92; }
+    .hl-status-definitelyDestroyed .hl-name    { color: #8a3a3a; text-decoration: line-through; }
+    .hl-status-definitelyDestroyed             { opacity: 0.72; }
     .hl-row-error { background: #1a0d0d; border-color: #4a1a1a; }
-    .hl-error { color: #c87777; font-size: 11px; font-style: italic; grid-column: 2 / 5; }
+    .hl-error { color: #c87777; font-size: 11px; font-style: italic; grid-column: 2 / 4; }
 
-    /* Body total summary */
-    .body-total { display: flex; align-items: center; gap: 14px; margin-top: 12px; padding: 10px 14px; background: #0e0e0e; border: 1px solid #222; border-radius: 4px; }
+    /* Body pool block — segmented green→black bar + status */
+    .body-total { margin-top: 14px; padding: 12px 14px; background: #0e0e0e; border: 1px solid #222; border-radius: 4px; display: flex; flex-direction: column; gap: 10px; }
+    .body-top-row { display: flex; align-items: center; gap: 14px; }
     .body-label { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #888; }
     .body-value { font-size: 16px; font-weight: 700; color: #e0e0e0; font-variant-numeric: tabular-nums; flex: 1; }
-    .body-status { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #7a9a7a; }
-    .body-total-dead .body-value { color: #c87777; }
-    .body-total-dead .body-status { color: #c87777; }
+    .body-status { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .body-status-alive     { color: #7a9a7a; }
+    .body-status-impaired  { color: #c89a5a; }
+    .body-status-dead      { color: #c87777; }
     .body-total-dead { border-color: #4a1a1a; background: #140808; }
+    .body-total-dead .body-value { color: #c87777; }
+    /* Body segmented bar: same visual treatment as hit-location bars, taller
+       since it carries more weight visually as the "overall status" indicator. */
+    .body-bar-bg { height: 14px; background: #0a0a0a; border: 1px solid #222; border-radius: 2px; overflow: hidden; display: flex; gap: 1px; padding: 1px; }
 
     /* Power Pool */
     .pp-desc { font-size: 12px; color: #888; line-height: 1.6; margin-bottom: 12px; font-style: italic; }
