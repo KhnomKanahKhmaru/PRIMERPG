@@ -111,7 +111,7 @@ export function createCombatSection(ctx) {
   }
 
   function renderDsCard(entry) {
-    const { def, value, error } = entry;
+    const { def, value, error, rollModifier } = entry;
     const display = error ? 'ERR' : fmt(value);
     const unit = def.unit ? ` <span class="ds-card-unit">${escapeHtml(def.unit)}</span>` : '';
     const errTitle = error ? ` title="${escapeHtml(error)}"` : '';
@@ -127,8 +127,20 @@ export function createCombatSection(ctx) {
     const formulaBadge = (rawFormula && !isIdentityFormula)
       ? `<div class="ds-card-formula">${escapeHtml(rawFormula.replace(/\s+/g, ' '))}</div>`
       : '';
+    // Roll modifier badge (top-right). Signed number — "+3", "−1", "±0" — so
+    // the player sees at a glance what they roll with for resistances.
+    // Title tooltip shows the expression (e.g. "max(INTMOD, CHAMOD)") for
+    // transparency on why the number is what it is.
+    let rollBadge = '';
+    if (Number.isFinite(rollModifier)) {
+      const sign = rollModifier > 0 ? '+' : (rollModifier < 0 ? '−' : '±');
+      const absNum = Math.abs(rollModifier);
+      const tip = def.rollModifier ? `Roll modifier: ${def.rollModifier}` : 'Roll modifier';
+      rollBadge = `<div class="ds-card-rollmod" title="${escapeHtml(tip)}">${sign}${absNum}</div>`;
+    }
     return `
       <div class="ds-card"${errTitle}>
+        ${rollBadge}
         <div class="ds-card-name">${escapeHtml(def.name)}${codeBadge}</div>
         ${formulaBadge}
         <div class="ds-card-value${error ? ' ds-card-error' : ''}">${display}${unit}</div>
@@ -1076,19 +1088,21 @@ export function createCombatSection(ctx) {
     html += '<div class="injury-mod-block">';
     html += '<div class="injury-mod-head"><span class="injury-mod-title">Level Modifiers</span><span class="injury-mod-hint">Adjust current Degree (feeds SAN damage pool)</span></div>';
     if (mods.length === 0) {
-      html += '<div class="hl-mod-empty">No modifiers.</div>';
+      html += '<div class="mod-empty">No modifiers.</div>';
     } else {
+      html += '<div class="mod-list">';
       mods.forEach((mod, idx) => {
-        html += `<div class="hl-mod-row">
-          <input type="text" class="hl-mod-name" value="${escapeHtml(mod.name || '')}" placeholder="Modifier name"
+        html += `<div class="mod-item">
+          <input type="text" class="mod-name-input" value="${escapeHtml(mod.name || '')}" placeholder="Modifier name"
                  ${canEdit ? `onchange="updateSanDamageMod('${dmg.id}',${idx},'name',this.value)"` : 'readonly'}>
-          <input type="number" class="hl-mod-value" value="${mod.value || 0}" step="1"
+          <input type="number" class="mod-val-input" value="${mod.value || 0}" step="1"
                  ${canEdit ? `onchange="updateSanDamageMod('${dmg.id}',${idx},'value',this.value)"` : 'readonly'}>
-          ${canEdit ? `<button class="hl-mod-del" onclick="deleteSanDamageMod('${dmg.id}',${idx})" title="Delete modifier">×</button>` : ''}
+          ${canEdit ? `<span class="mod-delete" onclick="deleteSanDamageMod('${dmg.id}',${idx})" title="Delete modifier">×</span>` : ''}
         </div>`;
       });
+      html += '</div>';
     }
-    if (canEdit) html += `<button class="hl-mod-add" onclick="addSanDamageMod('${dmg.id}')">+ Add modifier</button>`;
+    if (canEdit) html += `<div class="mod-add-row"><button class="mod-add-btn" onclick="addSanDamageMod('${dmg.id}')">+ Add modifier</button></div>`;
     html += '</div>';
 
     if (canEdit) {
@@ -1138,21 +1152,25 @@ export function createCombatSection(ctx) {
   function renderSanModifierPanel(san) {
     const mods = Array.isArray(san.modifiers) ? san.modifiers : [];
     let html = '<div class="hl-mod-panel">';
-    html += '<div class="hl-mod-panel-head">SAN Modifiers</div>';
+    html += '<div class="mod-panel-head"><span class="mod-base">SAN Modifiers</span><span class="mod-panel-hint">stack onto max</span></div>';
     if (mods.length === 0) {
-      html += '<div class="hl-mod-empty">No modifiers. Add to raise or lower max SAN.</div>';
+      html += '<div class="mod-empty">No modifiers.</div>';
     } else {
+      html += '<div class="mod-list">';
       mods.forEach((mod, idx) => {
-        html += `<div class="hl-mod-row">
-          <input type="text" class="hl-mod-name" value="${escapeHtml(mod.name || '')}" placeholder="Modifier name"
+        html += `<div class="mod-item">
+          <input type="text" class="mod-name-input" value="${escapeHtml(mod.name || '')}" placeholder="Modifier name"
                  onchange="updateSanMod(${idx}, 'name', this.value)">
-          <input type="number" class="hl-mod-value" value="${mod.value || 0}" step="1"
+          <input type="number" class="mod-val-input" value="${mod.value || 0}" step="1"
                  onchange="updateSanMod(${idx}, 'value', this.value)">
-          <button class="hl-mod-del" onclick="deleteSanMod(${idx})" title="Delete modifier">×</button>
+          <span class="mod-delete" onclick="deleteSanMod(${idx})" title="Delete modifier">×</span>
         </div>`;
       });
+      html += '</div>';
     }
-    html += `<button class="hl-mod-add" onclick="addSanMod()">+ Add modifier</button>`;
+    html += `<div class="mod-add-row">
+      <button class="mod-add-btn" onclick="addSanMod()">+ Add modifier</button>
+    </div>`;
     html += '</div>';
     return html;
   }
