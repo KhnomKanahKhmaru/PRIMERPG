@@ -230,6 +230,17 @@ window.RULESET_DEFAULTS = {
       keepDecimals: true,
       unit: 's'
     },
+    // MENTAL
+    {
+      code: 'SAN',
+      name: 'Sanity',
+      description: 'Mental health pool. Damage (Sanity loss) stacks linearly. Pushing current below thresholds imposes mounting difficulty penalties and ultimately triggers Breaking Point rolls.',
+      group: 'mental',
+      formula: 'CHA + INT',
+      trackDamage: false,
+      keepDecimals: false,
+      unit: ''
+    },
     // POWER
     {
       code: 'POWER',
