@@ -155,7 +155,22 @@ export function createCombatSection(ctx) {
     };
     const statusLabel = statusLabels[status] || '';
 
-    const pct = maxHP > 0 ? Math.max(0, Math.min(100, (remaining / maxHP) * 100)) : 0;
+    // Progressive HP bar — computed as two colored halves.
+    //
+    // Phase 1 (remaining between maxHP and 0, i.e. Healthy):
+    //   Left half = healthy remaining (green), Right half = damage taken (red).
+    //   As damage grows, left shrinks and right grows. At 0 HP, the whole bar
+    //   is red, which visually equals orange (Phase 2 starting color).
+    //
+    // Phase 2 (remaining between 0 and -maxHP, i.e. Disabled → Destroyed):
+    //   Base color is orange across the whole bar. As damage continues past 0,
+    //   deep-red fills in from the LEFT, growing until at -maxHP the bar is
+    //   fully deep-red.
+    //
+    // Phase 3 (remaining between -maxHP and -2*maxHP, i.e. Destroyed → Def. Destroyed):
+    //   Base color is deep-red. Black fills in from the LEFT, growing until
+    //   at -2*maxHP the bar is fully black.
+    const barSegments = computeBarSegments(remaining, maxHP);
 
     const controls = canEdit
       ? `<div class="hl-controls">
@@ -170,12 +185,73 @@ export function createCombatSection(ctx) {
       <div class="hl-row hl-status-${status}">
         <div class="hl-name">${escapeHtml(displayName)}</div>
         <div class="hl-bar-wrap">
-          <div class="hl-bar-bg"><div class="hl-bar-fill" style="width:${pct}%"></div></div>
+          <div class="hl-bar-bg">
+            <div class="hl-bar-seg" style="width:${barSegments.left.pct}%; background:${barSegments.left.color}"></div>
+            <div class="hl-bar-seg" style="width:${barSegments.right.pct}%; background:${barSegments.right.color}"></div>
+          </div>
           <div class="hl-bar-label">${remaining} / ${maxHP}</div>
         </div>
         <div class="hl-status-label">${escapeHtml(statusLabel)}</div>
         ${controls}
       </div>`;
+  }
+
+  // Compute the two bar segments for progressive HP display.
+  // Returns { left: { pct, color }, right: { pct, color } } — percentages
+  // total 100%. Each phase has its own base/overlay color pair.
+  function computeBarSegments(remaining, maxHP) {
+    if (maxHP <= 0) {
+      return { left: { pct: 0, color: '#4a7a4a' }, right: { pct: 100, color: '#6a2a2a' } };
+    }
+
+    // Palette — tuned to progress naturally through the phases:
+    //   healthy green → damage red (Phase 1)
+    //   orange (= 0 HP state) → deep red (Phase 2)
+    //   deep red → near-black (Phase 3)
+    const GREEN    = '#4a7a4a';
+    const RED      = '#9a3a3a';   // Phase 1 damage AND Phase 2 overlay color
+    const ORANGE   = '#b87030';   // Phase 2 base (= appearance at exactly 0 HP)
+    const DEEP_RED = '#5a1818';   // Phase 3 base
+    const BLACK    = '#0a0a0a';   // Phase 3 overlay
+
+    if (remaining >= 0) {
+      // PHASE 1: remaining goes from maxHP down to 0.
+      // Left (green) shrinks; right (red) grows.
+      const leftPct  = Math.max(0, Math.min(100, (remaining / maxHP) * 100));
+      const rightPct = 100 - leftPct;
+      return {
+        left:  { pct: leftPct,  color: GREEN },
+        right: { pct: rightPct, color: RED }
+      };
+    }
+
+    // How deep into "overkill" territory — how far past 0 are we?
+    // At remaining=-maxHP we're exactly at Phase 2 end.
+    // At remaining=-2*maxHP we're at Phase 3 end.
+    const overkill = -remaining;  // positive number; how far past 0
+
+    if (overkill <= maxHP) {
+      // PHASE 2: overkill between 0 and maxHP.
+      // Base color = orange (bar starts this phase fully orange when remaining=0)
+      // Overlay (deep red) fills from LEFT as overkill grows.
+      const overlayPct = Math.max(0, Math.min(100, (overkill / maxHP) * 100));
+      const basePct    = 100 - overlayPct;
+      return {
+        left:  { pct: overlayPct, color: RED },      // deep damage red filling in
+        right: { pct: basePct,    color: ORANGE }    // remaining orange base
+      };
+    }
+
+    // PHASE 3: overkill between maxHP and 2*maxHP (clamped beyond that to full black).
+    // Base color = deep red (bar starts this phase fully deep-red when overkill=maxHP)
+    // Overlay (black) fills from LEFT as overkill grows past maxHP.
+    const phase3Progress = overkill - maxHP;  // 0..maxHP in phase 3
+    const overlayPct = Math.max(0, Math.min(100, (phase3Progress / maxHP) * 100));
+    const basePct    = 100 - overlayPct;
+    return {
+      left:  { pct: overlayPct, color: BLACK },
+      right: { pct: basePct,    color: DEEP_RED }
+    };
   }
 
   // ─── POWER POOL ───
