@@ -43,8 +43,11 @@ export function createCombatSection(ctx) {
     const result = computeDerivedStats(charData, ruleset);
 
     let html = '';
-    html += renderDerivedStatsSection(result, ruleset);
+    // Health section goes first — it's the high-stakes overview (HP, FORT,
+    // hit locations, Body, injuries). Other derived stats come after, since
+    // those are secondary/utility metrics (speed, agility, reflex).
     html += renderHitLocationsSection(result);
+    html += renderDerivedStatsSection(result, ruleset);
     html += renderPowerSection(result, ruleset, charData);
     container.innerHTML = html || '<div class="combat-empty">No combat data configured in this ruleset.</div>';
   }
@@ -56,13 +59,16 @@ export function createCombatSection(ctx) {
 
     // Bucket stats by group code. Stats with an invalid group fall into an
     // "orphan" bucket shown at the end.
-    // POWER is intentionally excluded from the grid — it has its own
-    // dedicated section with a resource bar + color picker + spend controls.
+    // POWER and the entire 'health' group are intentionally excluded here:
+    //   - POWER has its own section with resource bar + color picker + controls
+    //   - Health cards (HP, FORT, etc.) render at the top of the Hit Locations
+    //     section, anchored together with Body, Injuries, and so on
     const buckets = new Map();
     groups.forEach(g => buckets.set(g.code, []));
     const orphans = [];
     result.stats.forEach((entry) => {
-      if (entry.def.code === 'POWER') return;  // has its own section
+      if (entry.def.code === 'POWER') return;      // has its own section
+      if (entry.def.group === 'health') return;    // rendered in the Health section
       const g = entry.def.group;
       if (buckets.has(g)) buckets.get(g).push(entry);
       else orphans.push(entry);
@@ -117,10 +123,33 @@ export function createCombatSection(ctx) {
     if (!result.locations || result.locations.length === 0) return '';
     const body = result.body || { max: 0, current: 0, dead: false, statusLabel: 'Alive', modifiers: [] };
     const canEdit = ctx.getCanEdit();
+    const ruleset = ctx.getRuleset();
 
     let html = '<div class="combat-section">';
-    html += '<div class="combat-section-head">';
-    html += '<div class="combat-section-title">Hit Locations</div>';
+    // Section-level title is "Health" now. This section houses:
+    //   - Health derived stat cards (HP, FORT, anything else in the 'health' group)
+    //   - Hit Locations list (with its own sub-header + Edit Modifiers button)
+    //   - Body bar
+    //   - Injuries manager
+    html += '<div class="combat-section-title">Health</div>';
+
+    // Cards from the 'health' derived stat group, rendered at the top of the
+    // section as an overview strip. These are ALSO filtered OUT of the normal
+    // derived stats grid (renderDerivedStatsSection) so they don't appear twice.
+    const healthStats = [];
+    result.stats.forEach(entry => {
+      if (entry.def.group === 'health') healthStats.push(entry);
+    });
+    if (healthStats.length > 0) {
+      html += '<div class="ds-grid health-cards">';
+      healthStats.forEach(entry => { html += renderDsCard(entry); });
+      html += '</div>';
+    }
+
+    // "Hit Locations" sub-header with the Edit Modifiers button. Acts as the
+    // divider between the cards overview and the location bars below.
+    html += '<div class="combat-subsection-head">';
+    html += '<div class="combat-subsection-title">Hit Locations</div>';
     if (canEdit) {
       html += `<button class="hl-edit-btn${editModifiersMode ? ' active' : ''}" onclick="toggleHlModifierEdit()">` +
               `${editModifiersMode ? 'Done' : 'Edit Modifiers'}</button>`;
