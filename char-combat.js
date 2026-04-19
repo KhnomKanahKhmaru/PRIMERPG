@@ -118,9 +118,19 @@ export function createCombatSection(ctx) {
     const codeBadge = def.code && def.code !== def.name
       ? ` <span class="ds-card-code">${escapeHtml(def.code)}</span>`
       : '';
+    // Formula line — a compact hint of what components feed this stat.
+    // Shown when the formula is meaningfully different from the code itself
+    // (e.g. "CHA + INT" is informative, "FORT" is just the code and adds
+    // nothing). Strip whitespace for compact display.
+    const rawFormula = (def.formula || '').trim();
+    const isIdentityFormula = rawFormula.toUpperCase() === def.code;
+    const formulaBadge = (rawFormula && !isIdentityFormula)
+      ? `<div class="ds-card-formula">${escapeHtml(rawFormula.replace(/\s+/g, ' '))}</div>`
+      : '';
     return `
       <div class="ds-card"${errTitle}>
         <div class="ds-card-name">${escapeHtml(def.name)}${codeBadge}</div>
+        ${formulaBadge}
         <div class="ds-card-value${error ? ' ds-card-error' : ''}">${display}${unit}</div>
         ${def.description ? `<div class="ds-card-desc">${escapeHtml(def.description)}</div>` : ''}
       </div>`;
@@ -220,10 +230,11 @@ export function createCombatSection(ctx) {
 
     const controls = canEdit
       ? `<div class="hl-controls">
-          <button class="hl-dmg-btn" onclick="tickHitLocationDmg('${trackKey}',-1)" title="Heal 1 HP">−</button>
-          <input type="number" class="hl-dmg-input" value="${currentDamage}" min="0" max="${damageCap}"
-                 onchange="setHitLocationDmg('${trackKey}',this.value)">
-          <button class="hl-dmg-btn" onclick="tickHitLocationDmg('${trackKey}',1)" title="Take 1 HP damage">+</button>
+          <button class="hl-dmg-btn" onclick="tickHitLocationDmg('${trackKey}',1)" title="Take 1 HP damage">−</button>
+          <input type="number" class="hl-dmg-input" value="${remaining}" min="${-damageCap}" max="${maxHP}"
+                 onchange="setHitLocationDmg('${trackKey}',this.value)"
+                 title="Current HP (type to set directly)">
+          <button class="hl-dmg-btn" onclick="tickHitLocationDmg('${trackKey}',-1)" title="Heal 1 HP">+</button>
         </div>`
       : '';
 
@@ -893,6 +904,16 @@ export function createCombatSection(ctx) {
     }
     html += '</div>';
 
+    // Sanity stat card at the top — shows name, code, formula, value, and
+    // description. Gives the player a clear reminder of what SAN is and
+    // what they roll for mental resistances.
+    const sanEntry = result.stats.get('SAN');
+    if (sanEntry) {
+      html += '<div class="ds-grid san-card-wrap">';
+      html += renderDsCard(sanEntry);
+      html += '</div>';
+    }
+
     // Status line: SAN label, current/max, colored status pill.
     const statusClass = 'san-status-' + san.status;
     html += '<div class="san-top-row">';
@@ -917,11 +938,11 @@ export function createCombatSection(ctx) {
       // past-Broken state. Input clamp prevents absurd inputs.
       const damageCap = Math.max(san.max * 5, 10);
       html += `<div class="san-controls">
-        <button class="hl-dmg-btn" onclick="tickSanDmg(-1)" title="Heal 1 SAN">−</button>
+        <button class="hl-dmg-btn" onclick="tickSanDmg(1)" title="Take 1 Mental Damage">−</button>
         <input type="number" class="san-dmg-input" value="${san.current}" min="${-damageCap}" max="${san.max}"
                onchange="setSanCurrent(this.value)"
                title="Current SAN (type to set directly)">
-        <button class="hl-dmg-btn" onclick="tickSanDmg(1)" title="Take 1 Mental Damage">+</button>
+        <button class="hl-dmg-btn" onclick="tickSanDmg(-1)" title="Heal 1 SAN">+</button>
       </div>`;
     } else {
       html += `<div class="san-controls san-controls-ro"><span class="san-current-ro">${san.current} / ${san.max}</span></div>`;
@@ -931,6 +952,12 @@ export function createCombatSection(ctx) {
     if (editSanModifiersMode && canEdit) {
       html += renderSanModifierPanel(san);
     }
+
+    // Damages manager — simplified Injuries for mental health. Renders below
+    // the bar and above the Breaking Point panel (if present). Players use
+    // this to record specific mental wounds (e.g. "Traumatic Memory 3rd Degree")
+    // that then feed back into the SAN damage pool.
+    html += renderSanDamagesSection(result);
 
     // Breaking Point reference — shown whenever Broken. This is guidance,
     // not automation. GM rolls d10 per PRIME rules and applies the result.
@@ -942,17 +969,150 @@ export function createCombatSection(ctx) {
     return html;
   }
 
-  // Segment colors match HP location bars. Phase 4 adds BLACK (same as Body
-  // depletion phase on locations, but here triggered purely by SAN damage
-  // past 3×max since there's no separate pool).
+  // UI-only state for Damages, mirroring the Injuries pattern.
+  const expandedSanDamages = new Set();
+  let sanDamagesOpen = false;
+
+  function renderSanDamagesSection(result) {
+    const san = result.san;
+    const damages = (san && san.damages) || [];
+    const canEdit = ctx.getCanEdit();
+
+    let html = '<div class="injury-section san-damages-section">';
+    html += `<div class="injury-head" onclick="toggleSanDamagesSection()">
+      <span class="injury-head-caret">${sanDamagesOpen ? '▾' : '▸'}</span>
+      <span class="injury-head-title">Damages</span>
+      <span class="injury-head-count">${damages.length}</span>
+    </div>`;
+
+    if (!sanDamagesOpen) { html += '</div>'; return html; }
+
+    // Quickadd form — just name + degree. No location, no AoE (SAN is one pool).
+    if (canEdit) {
+      html += `<div class="injury-quickadd-row san-qadd-row">
+        <input type="text" id="qadd-sandmg-name" class="qadd-inj-name" placeholder="Damage name"
+               onkeydown="if(event.key==='Enter')quickAddSanDamage()">
+        <input type="number" id="qadd-sandmg-level" class="qadd-inj-level" placeholder="Deg"
+               min="0" max="99" value="1"
+               onkeydown="if(event.key==='Enter')quickAddSanDamage()">
+        <button class="injury-add-btn" onclick="quickAddSanDamage()">Add</button>
+      </div>`;
+    }
+
+    if (damages.length === 0) {
+      html += '<div class="injury-empty">No damages recorded.</div>';
+    } else {
+      html += '<div class="injury-list">';
+      damages.forEach(d => { html += renderSanDamageCard(d, canEdit); });
+      html += '</div>';
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  // Single damage card. Compact header when collapsed, full editor when open.
+  // Header reads: [caret] [Name] [Nth Degree] [−][+] [×]
+  function renderSanDamageCard(dmg, canEdit) {
+    const open = expandedSanDamages.has(dmg.id);
+
+    let degreeText;
+    if (dmg.currentLevel === dmg.baseLevel) {
+      degreeText = `${ordinal(dmg.currentLevel)} Degree`;
+    } else {
+      degreeText = `${ordinal(dmg.currentLevel)} Degree <span class="injury-base-note">(base ${ordinal(dmg.baseLevel)})</span>`;
+    }
+
+    let html = `<div class="injury-card${open ? ' open' : ''}">`;
+    html += `<div class="injury-card-head" onclick="toggleSanDamageExpand('${dmg.id}')">
+      <span class="injury-caret">${open ? '▾' : '▸'}</span>
+      <span class="injury-name">${escapeHtml(dmg.name || '(unnamed)')}</span>
+      <span class="injury-degree">${degreeText}</span>
+      ${canEdit ? `<span class="injury-quickmod" onclick="event.stopPropagation()">
+        <button class="injury-qm-btn" onclick="event.stopPropagation();tickSanDamageQuickmod('${dmg.id}',-1)" title="Quickmod −1">−</button>
+        <button class="injury-qm-btn" onclick="event.stopPropagation();tickSanDamageQuickmod('${dmg.id}',1)" title="Quickmod +1">+</button>
+      </span>` : ''}
+      ${canEdit ? `<button class="injury-quickdelete" onclick="event.stopPropagation();removeSanDamage('${dmg.id}')" title="Delete damage">×</button>` : ''}
+    </div>`;
+
+    if (open) {
+      html += renderSanDamageBody(dmg, canEdit);
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function renderSanDamageBody(dmg, canEdit) {
+    let html = '<div class="injury-card-body">';
+
+    if (canEdit) {
+      html += `<div class="injury-fields">
+        <div class="injury-field">
+          <span>Name</span>
+          <input type="text" value="${escapeHtml(dmg.name || '')}" placeholder="Damage name"
+                 onchange="updateSanDamageField('${dmg.id}','name',this.value)">
+        </div>
+        <div class="injury-field">
+          <span>Base Degree</span>
+          <input type="number" value="${dmg.baseLevel}" min="0" max="99"
+                 onchange="updateSanDamageField('${dmg.id}','baseLevel',this.value)">
+        </div>
+      </div>
+      <div class="injury-field injury-field-desc">
+        <span>Description</span>
+        <textarea rows="2" placeholder="What caused this, what it feels like, etc."
+                  onchange="updateSanDamageField('${dmg.id}','description',this.value)">${escapeHtml(dmg.description || '')}</textarea>
+      </div>`;
+    } else {
+      html += `<div class="injury-fields-ro">
+        <div><span class="ro-label">Base</span>${ordinal(dmg.baseLevel)} Degree</div>
+        ${dmg.description ? `<div class="injury-desc-ro">${escapeHtml(dmg.description)}</div>` : ''}
+      </div>`;
+    }
+
+    // Level modifiers (parallels injury level modifiers — a list of named
+    // signed values that shift currentLevel).
+    const mods = Array.isArray(dmg.levelModifiers) ? dmg.levelModifiers : [];
+    html += '<div class="injury-mod-block">';
+    html += '<div class="injury-mod-head"><span class="injury-mod-title">Level Modifiers</span><span class="injury-mod-hint">Adjust current Degree (feeds SAN damage pool)</span></div>';
+    if (mods.length === 0) {
+      html += '<div class="hl-mod-empty">No modifiers.</div>';
+    } else {
+      mods.forEach((mod, idx) => {
+        html += `<div class="hl-mod-row">
+          <input type="text" class="hl-mod-name" value="${escapeHtml(mod.name || '')}" placeholder="Modifier name"
+                 ${canEdit ? `onchange="updateSanDamageMod('${dmg.id}',${idx},'name',this.value)"` : 'readonly'}>
+          <input type="number" class="hl-mod-value" value="${mod.value || 0}" step="1"
+                 ${canEdit ? `onchange="updateSanDamageMod('${dmg.id}',${idx},'value',this.value)"` : 'readonly'}>
+          ${canEdit ? `<button class="hl-mod-del" onclick="deleteSanDamageMod('${dmg.id}',${idx})" title="Delete modifier">×</button>` : ''}
+        </div>`;
+      });
+    }
+    if (canEdit) html += `<button class="hl-mod-add" onclick="addSanDamageMod('${dmg.id}')">+ Add modifier</button>`;
+    html += '</div>';
+
+    if (canEdit) {
+      html += `<div class="injury-delete-row">
+        <button class="injury-delete-btn" onclick="removeSanDamage('${dmg.id}')">Delete Damage</button>
+      </div>`;
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  // Segment colors go: cool blue (healthy) → yellow (in shock) → orange
+  // (insane) → red (broken) → black (past broken). This palette reads as
+  // "mental" / "cold" through warm-to-hot fail states, distinct from the
+  // green→red HP palette so players can't mistake the two bars.
   function renderSanSegments(sanMax, damage, segCount) {
     if (sanMax <= 0 || segCount <= 0) return '';
     const COLORS = {
-      green:   '#4a7a4a',
-      yellow:  '#bdb247',
-      red:     '#a63a3a',
-      deepRed: '#5a1818',
-      black:   '#0f0a0a'
+      blue:   '#4a6a9a',
+      yellow: '#bdb247',
+      orange: '#c87a3a',
+      red:    '#a63a3a',
+      black:  '#0f0a0a'
     };
     const dmgPerSeg = sanMax / segCount;
 
@@ -965,10 +1125,10 @@ export function createCombatSection(ctx) {
 
       let color;
       if (damage > 3 * sanMax + base) color = COLORS.black;
-      else if (damage > 2 * sanMax + base) color = COLORS.deepRed;
-      else if (damage > sanMax + base) color = COLORS.red;
+      else if (damage > 2 * sanMax + base) color = COLORS.red;
+      else if (damage > sanMax + base) color = COLORS.orange;
       else if (damage > base) color = COLORS.yellow;
-      else color = COLORS.green;
+      else color = COLORS.blue;
 
       html += `<span class="san-seg" style="background:${color}"></span>`;
     }
@@ -1026,7 +1186,11 @@ export function createCombatSection(ctx) {
     renderAll();
   }
 
-  // Input shows CURRENT (max - damage), possibly negative. Typing sets current.
+  // Input shows CURRENT (max - total damage). Typing sets current.
+  // Manual damage (sanDamage) is the only thing we can edit directly here —
+  // structured damages' contribution is floor we can't dip below without
+  // editing them. If the typed current would require NEGATIVE manual damage,
+  // we clamp manual to 0.
   async function setSanCurrent(val) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
@@ -1034,15 +1198,19 @@ export function createCombatSection(ctx) {
     const result = computeDerivedStats(charData, ruleset);
     if (!result.san) return;
     const sanMax = result.san.max;
+    const damagesContribution = result.san.damagesContribution || 0;
+
     const typed = parseInt(val);
     if (!Number.isFinite(typed)) return;
-    // Damage = max - desiredCurrent. Allow negative currents up to a bound so
-    // players can push past Broken for narrative depth.
     const floorCurrent = -(sanMax * 5);
     const clampedCurrent = Math.min(sanMax, Math.max(floorCurrent, typed));
-    const damage = Math.max(0, sanMax - clampedCurrent);
-    charData.sanDamage = damage;
-    await saveCharacter(ctx.getCharId(), { sanDamage: damage });
+    const totalDesiredDamage = Math.max(0, sanMax - clampedCurrent);
+    // Manual portion = total - structured damages. Clamped at 0 since we can
+    // only control manual; going below requires editing the damages themselves.
+    const manual = Math.max(0, totalDesiredDamage - damagesContribution);
+
+    charData.sanDamage = manual;
+    await saveCharacter(ctx.getCharId(), { sanDamage: manual });
     renderAll();
   }
 
@@ -1077,6 +1245,134 @@ export function createCombatSection(ctx) {
     if (!Array.isArray(charData.sanModifiers) || !charData.sanModifiers[idx]) return;
     charData.sanModifiers.splice(idx, 1);
     await saveCharacter(ctx.getCharId(), { sanModifiers: charData.sanModifiers });
+    renderAll();
+  }
+
+  // ─── SAN DAMAGES ───
+  //
+  // Structured mental wounds. Parallel to injuries but simpler: no location,
+  // no traumas, no degradation. Each damage has a name, description, a
+  // baseLevel (Degree) and optional level modifiers.
+
+  function newSanDamageId() {
+    return 'sandmg_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+  }
+
+  function toggleSanDamagesSection() {
+    sanDamagesOpen = !sanDamagesOpen;
+    renderAll();
+  }
+
+  function toggleSanDamageExpand(id) {
+    if (expandedSanDamages.has(id)) expandedSanDamages.delete(id);
+    else expandedSanDamages.add(id);
+    renderAll();
+  }
+
+  async function quickAddSanDamage() {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.sanDamages)) charData.sanDamages = [];
+
+    const nameEl  = document.getElementById('qadd-sandmg-name');
+    const levelEl = document.getElementById('qadd-sandmg-level');
+
+    const name = nameEl ? (nameEl.value || '').trim() : '';
+    const baseLevel = levelEl ? Math.max(0, parseInt(levelEl.value) || 0) : 0;
+
+    const dmg = {
+      id: newSanDamageId(),
+      name,
+      description: '',
+      baseLevel,
+      levelModifiers: []
+    };
+    charData.sanDamages.push(dmg);
+    expandedSanDamages.add(dmg.id);
+    sanDamagesOpen = true;
+    await saveCharacter(ctx.getCharId(), { sanDamages: charData.sanDamages });
+    renderAll();
+    const freshNameEl = document.getElementById('qadd-sandmg-name');
+    if (freshNameEl) { freshNameEl.value = ''; freshNameEl.focus(); }
+  }
+
+  async function removeSanDamage(id) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.sanDamages)) return;
+    charData.sanDamages = charData.sanDamages.filter(d => d.id !== id);
+    expandedSanDamages.delete(id);
+    await saveCharacter(ctx.getCharId(), { sanDamages: charData.sanDamages });
+    renderAll();
+  }
+
+  async function updateSanDamageField(id, field, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const dmg = (charData.sanDamages || []).find(d => d.id === id);
+    if (!dmg) return;
+    if (field === 'baseLevel') {
+      dmg.baseLevel = Math.max(0, parseInt(val) || 0);
+    } else if (field === 'name' || field === 'description') {
+      dmg[field] = typeof val === 'string' ? val : '';
+    } else {
+      return;
+    }
+    await saveCharacter(ctx.getCharId(), { sanDamages: charData.sanDamages });
+    renderAll();
+  }
+
+  // Quickmod: +/- on collapsed header. Find-or-create a "Quickmod" level
+  // modifier, zero removes it. Same pattern as injuries.
+  async function tickSanDamageQuickmod(id, delta) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const dmg = (charData.sanDamages || []).find(d => d.id === id);
+    if (!dmg) return;
+    if (!Array.isArray(dmg.levelModifiers)) dmg.levelModifiers = [];
+
+    const QM_NAME = 'Quickmod';
+    const idx = dmg.levelModifiers.findIndex(m => m && m.name === QM_NAME);
+    if (idx === -1) {
+      if (delta !== 0) dmg.levelModifiers.push({ name: QM_NAME, value: delta });
+    } else {
+      const next = (parseInt(dmg.levelModifiers[idx].value) || 0) + delta;
+      if (next === 0) dmg.levelModifiers.splice(idx, 1);
+      else dmg.levelModifiers[idx].value = next;
+    }
+    await saveCharacter(ctx.getCharId(), { sanDamages: charData.sanDamages });
+    renderAll();
+  }
+
+  async function addSanDamageMod(id) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const dmg = (charData.sanDamages || []).find(d => d.id === id);
+    if (!dmg) return;
+    if (!Array.isArray(dmg.levelModifiers)) dmg.levelModifiers = [];
+    dmg.levelModifiers.push({ name: '', value: 0 });
+    await saveCharacter(ctx.getCharId(), { sanDamages: charData.sanDamages });
+    renderAll();
+  }
+
+  async function updateSanDamageMod(id, idx, field, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const dmg = (charData.sanDamages || []).find(d => d.id === id);
+    if (!dmg || !Array.isArray(dmg.levelModifiers) || !dmg.levelModifiers[idx]) return;
+    if (field === 'name') dmg.levelModifiers[idx].name = typeof val === 'string' ? val : '';
+    else if (field === 'value') dmg.levelModifiers[idx].value = parseInt(val) || 0;
+    await saveCharacter(ctx.getCharId(), { sanDamages: charData.sanDamages });
+    renderAll();
+  }
+
+  async function deleteSanDamageMod(id, idx) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const dmg = (charData.sanDamages || []).find(d => d.id === id);
+    if (!dmg || !Array.isArray(dmg.levelModifiers) || !dmg.levelModifiers[idx]) return;
+    dmg.levelModifiers.splice(idx, 1);
+    await saveCharacter(ctx.getCharId(), { sanDamages: charData.sanDamages });
     renderAll();
   }
 
@@ -1278,32 +1574,37 @@ export function createCombatSection(ctx) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     if (!charData.hitLocationDamage) charData.hitLocationDamage = {};
-    const desired = Math.max(0, parseInt(val) || 0);
 
-    // The input displays FORT-reduced effective total damage. Given the
-    // injury instances at this location and the current FORT, solve for the
-    // manual damage value M that produces `desired` effective damage.
-    //
-    //   effective = highest + (sum of others) / FORT
-    //
-    // We treat manual as one additional damage instance. Two cases:
+    // The input now shows CURRENT HP (remaining = maxHP - effective damage),
+    // so we need to convert that back to "desired effective damage" before
+    // solving for the manual damage value. Fetch maxHP from computed stats.
+    const ruleset = ctx.getRuleset();
+    const result = computeDerivedStats(charData, ruleset);
+    const locEntry = (result.locations || []).find(l => l.trackKey === trackKey);
+    if (!locEntry) return;
+    const maxHP = locEntry.maxHP || 0;
+
+    const typed = parseInt(val);
+    if (!Number.isFinite(typed)) return;
+    // Clamp current HP between a generous floor (for past-DefDestroyed states)
+    // and the location's maxHP (no overheal above max).
+    const floorCurrent = -(maxHP * 4);
+    const desiredCurrent = Math.min(maxHP, Math.max(floorCurrent, typed));
+    const desired = Math.max(0, maxHP - desiredCurrent);
+
+    // Given `desired` effective damage + existing injury instances at this
+    // location + current FORT, solve for the manual damage value M. See
+    // previous revision for the derivation; two cases:
     //
     //   Case B: M <= highest injury → manual is NOT the new highest.
-    //     effective = I[0] + (others_sum - 0 + M) / FORT
-    //               = I[0] + (sum(I) - I[0] + M) / FORT
-    //     Solving: M = FORT*(desired - I[0]) - (sum(I) - I[0])
+    //     M = FORT*(desired - I[0]) - (sum(I) - I[0])
     //     Valid if M is in [0, I[0]]
     //
     //   Case A: M > highest injury → manual IS the new highest.
-    //     effective = M + sum(I) / FORT
-    //     Solving: M = desired - sum(I)/FORT
+    //     M = desired - sum(I)/FORT
     //     Valid if M > I[0]
     //
-    // If neither case produces a valid M, clamp: either desired is below
-    // the floor (cap manual at 0) or above any reasonable value (use Case A
-    // anyway, may overshoot slightly due to floor-rounding elsewhere).
-
-    // Gather injury instances at this location, so we can solve the equation.
+    // Fallback clamp at 0 if desired is below the injury-only effective floor.
     const injuries = Array.isArray(charData.injuries) ? charData.injuries : [];
     const injInstances = injuries
       .filter(inj => (inj.location || 'torso') === trackKey)
@@ -1316,9 +1617,6 @@ export function createCombatSection(ctx) {
       .filter(lvl => lvl > 0)
       .sort((a, b) => b - a);
 
-    // Fetch FORT from the current derived stats (cached via computeDerivedStats).
-    const ruleset = ctx.getRuleset();
-    const result = computeDerivedStats(charData, ruleset);
     const fort = (result.vars && result.vars.FORT) || 1;
 
     let manual;
@@ -1329,17 +1627,14 @@ export function createCombatSection(ctx) {
       const injSum = injInstances.reduce((s, v) => s + v, 0);
       const othersSum = injSum - injHighest;
 
-      // Case B: manual is not the highest.
       const mCaseB = fort * (desired - injHighest) - othersSum;
       if (mCaseB >= 0 && mCaseB <= injHighest) {
         manual = Math.max(0, Math.round(mCaseB));
       } else {
-        // Case A: manual is the new highest.
         const mCaseA = desired - injSum / fort;
         if (mCaseA > injHighest) {
           manual = Math.max(0, Math.round(mCaseA));
         } else {
-          // desired is below the injury-only effective floor → clamp manual to 0
           manual = 0;
         }
       }
@@ -1816,6 +2111,11 @@ export function createCombatSection(ctx) {
     addTrauma, removeTrauma, updateTraumaField,
     // Sanity
     tickSanDmg, setSanCurrent, toggleSanModifierEdit,
-    addSanMod, updateSanMod, deleteSanMod
+    addSanMod, updateSanMod, deleteSanMod,
+    // Sanity Damages
+    toggleSanDamagesSection, toggleSanDamageExpand,
+    quickAddSanDamage, removeSanDamage, updateSanDamageField,
+    tickSanDamageQuickmod,
+    addSanDamageMod, updateSanDamageMod, deleteSanDamageMod
   };
 }
