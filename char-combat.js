@@ -567,6 +567,10 @@ export function createCombatSection(ctx) {
       <span class="injury-caret">${open ? '▾' : '▸'}</span>
       <span class="injury-name">${escapeHtml(inj.name || '(unnamed)')}</span>
       <span class="injury-degree">${degreeText}</span>
+      ${canEdit ? `<span class="injury-quickmod" onclick="event.stopPropagation()">
+        <button class="injury-qm-btn" onclick="event.stopPropagation();tickInjuryQuickmod('${inj.id}',-1)" title="Quickmod −1">−</button>
+        <button class="injury-qm-btn" onclick="event.stopPropagation();tickInjuryQuickmod('${inj.id}',1)" title="Quickmod +1">+</button>
+      </span>` : ''}
       <span class="injury-loc-pill">${escapeHtml(locLabel)}</span>
       <span class="injury-rate">${rateText}</span>
       ${traumaBadges ? `<span class="injury-trauma-badges">${traumaBadges}</span>` : ''}
@@ -1273,6 +1277,38 @@ export function createCombatSection(ctx) {
     renderAll();
   }
 
+  // Quickmod: a single-click +/- on the injury's collapsed header to adjust
+  // the current Degree without opening the card. Works by find-or-creating
+  // a level modifier named "Quickmod" on the injury.
+  //
+  // If the resulting value is 0, we remove the modifier entirely so the
+  // modifier list stays tidy — clicking + then − returns to baseline cleanly.
+  async function tickInjuryQuickmod(injId, delta) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const inj = (charData.injuries || []).find(x => x.id === injId);
+    if (!inj) return;
+    if (!Array.isArray(inj.levelModifiers)) inj.levelModifiers = [];
+
+    const QM_NAME = 'Quickmod';
+    let qmIdx = inj.levelModifiers.findIndex(m => m && m.name === QM_NAME);
+    if (qmIdx === -1) {
+      // Doesn't exist yet — create with the delta value.
+      if (delta !== 0) inj.levelModifiers.push({ name: QM_NAME, value: delta });
+    } else {
+      const cur = parseInt(inj.levelModifiers[qmIdx].value) || 0;
+      const next = cur + delta;
+      if (next === 0) {
+        // Remove to keep the modifier list clean when returning to baseline.
+        inj.levelModifiers.splice(qmIdx, 1);
+      } else {
+        inj.levelModifiers[qmIdx].value = next;
+      }
+    }
+    await saveCharacter(ctx.getCharId(), { injuries: charData.injuries });
+    renderAll();
+  }
+
   // kind = 'level' | 'degradation' — which modifier list on the injury.
   function injuryModListRef(inj, kind) {
     if (kind === 'level') {
@@ -1384,6 +1420,7 @@ export function createCombatSection(ctx) {
     // Injuries / Traumas
     toggleInjurySection, toggleInjuryExpand, toggleInjuryLocation,
     quickAddInjury, removeInjury, updateInjuryField,
+    tickInjuryQuickmod,
     addInjuryMod, updateInjuryMod, deleteInjuryMod,
     addTrauma, removeTrauma, updateTraumaField
   };
