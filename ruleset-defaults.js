@@ -33,25 +33,27 @@ window.RULESET_DEFAULTS = {
 
   // SIZE: its own scale, XP costs, and tier labels. Has no STATMOD.
   // size.tiers is an array of { level, label, xpCost } objects.
-  // Level 0 is "not takable"; real tiers start at 1.
+  // Tier levels are NOT dense — they jump (e.g. Small=3, Medium=4, Large=6,
+  // skipping 5). The `level` field is the actual SIZE value; the array
+  // index is NOT the SIZE value. Character data stores the SIZE level, not
+  // the index. The `default` field below is the SIZE level for new
+  // characters (Medium = 4).
   size: {
-    default: 6,  // default starting tier for new characters (index into tiers)
+    default: 4,  // Medium — default starting size for new characters
     tiers: [
-      { level: 1,  label: 'Nano',        xpCost: 0 },
-      { level: 2,  label: 'Micro',       xpCost: 0 },
-      { level: 3,  label: 'Tiny',        xpCost: 0 },
-      { level: 4,  label: 'Small',       xpCost: 0 },
-      { level: 5,  label: 'Below Average', xpCost: 0 },
-      { level: 6,  label: 'Medium',      xpCost: 0 },
-      { level: 7,  label: 'Above Average', xpCost: 0 },
-      { level: 8,  label: 'Large',       xpCost: 0 },
-      { level: 9,  label: 'Very Large',  xpCost: 0 },
-      { level: 10, label: 'Huge',        xpCost: 0 },
-      { level: 12, label: 'Massive',     xpCost: 0 },
-      { level: 16, label: 'Giant',       xpCost: 0 },
-      { level: 20, label: 'Colossal',    xpCost: 0 },
-      { level: 24, label: 'Behemoth',    xpCost: 0 },
-      { level: 30, label: 'Cataclysmic', xpCost: 0 }
+      { level: 0,  label: 'Nano',        xpCost: 0 },  // Ants, fleas, grains of rice
+      { level: 1,  label: 'Micro',       xpCost: 0 },  // Scorpions, rat pups, small bats
+      { level: 2,  label: 'Tiny',        xpCost: 0 },  // Rats, cats, human infants
+      { level: 3,  label: 'Small',       xpCost: 0 },  // Wolves, children, kobolds
+      { level: 4,  label: 'Medium',      xpCost: 0 },  // Adult humans, chimps, leopards
+      { level: 6,  label: 'Large',       xpCost: 0 },  // Tigers, bears, werewolves
+      { level: 8,  label: 'Huge',        xpCost: 0 },  // Moose, polar bears, horses, sedans
+      { level: 10, label: 'Massive',     xpCost: 0 },  // Rhinos, hippos, ogres, dinosaurs
+      { level: 12, label: 'Giant',       xpCost: 0 },  // Elephants, T-Rex, young dragons
+      { level: 16, label: 'Colossal',    xpCost: 0 },  // Krakens, adult dragons, sauropods
+      { level: 20, label: 'Titanic',     xpCost: 0 },  // Kaiju, mecha, elder dragons
+      { level: 24, label: 'Behemoth',    xpCost: 0 },  // Large kaiju, worldserpents
+      { level: 30, label: 'Cataclysmic', xpCost: 0 }   // World-tree ents, megakaiju, cthulhu
     ]
   },
 
