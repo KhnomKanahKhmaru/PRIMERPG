@@ -119,6 +119,23 @@ export function createCombatSection(ctx) {
     const canEdit = ctx.getCanEdit();
     const display = error ? 'ERR' : fmt(value);
     const unit = def.unit ? ` <span class="ds-card-unit">${escapeHtml(def.unit)}</span>` : '';
+
+    // Inline strain value reduction — for movement-style stats flagged as
+    // strainReducesValue. Shows next to the base number as a red italic
+    // annotation like "10 − 2.5 ft/sec". Hover tooltip gives the breakdown
+    // and the effective value. Only rendered when there IS a reduction;
+    // zero strain hides it to keep the card clean.
+    let strainAnnotation = '';
+    const valReduction = entry.strainValueReduction || 0;
+    if (valReduction > 0 && Number.isFinite(value)) {
+      const effective = Math.max(0, value - valReduction);
+      const reductionStr = fmt(valReduction);
+      const effectiveStr = fmt(effective);
+      const pct = entry.strainPercent || 0;
+      const tip = `Strain reduces this value by ${reductionStr} (${pct}% of base ${fmt(value)}). Effective: ${effectiveStr}${def.unit ? ' ' + def.unit : ''}.`;
+      strainAnnotation = ` <span class="ds-card-strain-reduction" title="${escapeHtml(tip)}">− ${reductionStr}</span>`;
+    }
+
     const errTitle = error ? ` title="${escapeHtml(error)}"` : '';
     const codeBadge = def.code && def.code !== def.name
       ? ` <span class="ds-card-code">${escapeHtml(def.code)}</span>`
@@ -207,7 +224,7 @@ export function createCombatSection(ctx) {
         ${rollBadge}
         <div class="ds-card-name">${escapeHtml(def.name)}${codeBadge}</div>
         ${formulaBadge}
-        <div class="ds-card-value${error ? ' ds-card-error' : ''}">${display}${unit}</div>
+        <div class="ds-card-value${error ? ' ds-card-error' : ''}">${display}${strainAnnotation}${unit}</div>
         ${dicePill}
         ${def.description ? `<div class="ds-card-desc">${escapeHtml(def.description)}</div>` : ''}
         ${panelHtml}
@@ -1461,17 +1478,16 @@ export function createCombatSection(ctx) {
   }
 
   // Segment colors go: cool blue (healthy) → yellow (in shock) → orange
-  // (insane) → red (broken) → black (past broken). This palette reads as
-  // "mental" / "cold" through warm-to-hot fail states, distinct from the
-  // green→red HP palette so players can't mistake the two bars.
+  // (insane) → red (broken). Once damage hits the Broken threshold (3×max),
+  // every segment is fully red and stays red no matter how much further the
+  // damage goes — Broken is the narrative floor, not a waypoint to worse.
   function renderSanSegments(sanMax, damage, segCount) {
     if (sanMax <= 0 || segCount <= 0) return '';
     const COLORS = {
       blue:   '#4a6a9a',
       yellow: '#bdb247',
       orange: '#c87a3a',
-      red:    '#a63a3a',
-      black:  '#0f0a0a'
+      red:    '#a63a3a'
     };
     const dmgPerSeg = sanMax / segCount;
 
@@ -1483,8 +1499,7 @@ export function createCombatSection(ctx) {
       const base = (rightDistance - 1) * dmgPerSeg;
 
       let color;
-      if (damage > 3 * sanMax + base) color = COLORS.black;
-      else if (damage > 2 * sanMax + base) color = COLORS.red;
+      if (damage > 2 * sanMax + base) color = COLORS.red;
       else if (damage > sanMax + base) color = COLORS.orange;
       else if (damage > base) color = COLORS.yellow;
       else color = COLORS.blue;
