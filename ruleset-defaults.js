@@ -256,7 +256,8 @@ window.RULESET_DEFAULTS = {
   //
   // A resource purchased with XP. Separate from the POW stat. Used by power
   // reserve / energy systems. Ruleset can disable entirely. powMultiplier table
-  // maps POW level ranges to multipliers used by the POWER formula.
+  // maps POWMOD (the stat modifier from POW) ranges to multiplier values used
+  // by the POWER formula (e.g. POWER = POWERPOOL * POW_MULTIPLIER).
   //
   // Cost mode:
   //   'perPoint' — flat rate: cost = costPerPoint * level
@@ -274,20 +275,25 @@ window.RULESET_DEFAULTS = {
     xpPerPoint: [0, 5, 10, 15, 25, 40, 60, 90, 130, 180, 240],
     maxPurchasable: 20,
 
-    // Sparse lookup: each entry maps a range of POW values to a multiplier.
+    // Sparse lookup: each entry maps a range of POWMOD values to a multiplier.
     // The POW_MULTIPLIER variable is set from the first matching entry.
+    //
+    // Default shape: very low POWMOD (−5..−1) all bottom out at ×0.5. Then
+    // POWMOD 0 = ×1, 1 = ×1.5, and from 2 upward the multiplier equals
+    // POWMOD (×2, ×3, …, ×10). This is a linear-past-a-threshold curve.
     powMultiplier: [
-      { powMin: 0, powMax: 1, value: 1   },
-      { powMin: 2, powMax: 3, value: 1   },
-      { powMin: 4, powMax: 5, value: 1.5 },
-      { powMin: 6, powMax: 7, value: 2   },
-      { powMin: 8, powMax: 9, value: 2.5 },
-      { powMin: 10, powMax: 11, value: 3 },
-      { powMin: 12, powMax: 13, value: 3.5 },
-      { powMin: 14, powMax: 15, value: 4 },
-      { powMin: 16, powMax: 17, value: 4.5 },
-      { powMin: 18, powMax: 19, value: 5 },
-      { powMin: 20, powMax: 20, value: 5.5 }
+      { powmodMin: -5, powmodMax: -1, value: 0.5 },
+      { powmodMin: 0,  powmodMax: 0,  value: 1   },
+      { powmodMin: 1,  powmodMax: 1,  value: 1.5 },
+      { powmodMin: 2,  powmodMax: 2,  value: 2   },
+      { powmodMin: 3,  powmodMax: 3,  value: 3   },
+      { powmodMin: 4,  powmodMax: 4,  value: 4   },
+      { powmodMin: 5,  powmodMax: 5,  value: 5   },
+      { powmodMin: 6,  powmodMax: 6,  value: 6   },
+      { powmodMin: 7,  powmodMax: 7,  value: 7   },
+      { powmodMin: 8,  powmodMax: 8,  value: 8   },
+      { powmodMin: 9,  powmodMax: 9,  value: 9   },
+      { powmodMin: 10, powmodMax: 10, value: 10  }
     ]
   }
 };
@@ -485,11 +491,22 @@ window.normalizeRuleset = function(rs) {
         ? src.powMultiplier
             .map(e => {
               if (!e || typeof e !== 'object') return null;
-              const powMin = Number.isFinite(e.powMin) ? e.powMin : null;
-              const powMax = Number.isFinite(e.powMax) ? e.powMax : powMin;
+              // Accept both current (powmodMin/powmodMax) and legacy (powMin/powMax)
+              // field names. Legacy rulesets were indexed by raw POW; if we detect
+              // legacy fields, pass them through as POWMOD values — the numbers
+              // themselves may need re-thinking by the GM, but formulas still work
+              // (we just look them up against POWMOD instead).
+              const minRaw = Number.isFinite(e.powmodMin) ? e.powmodMin
+                           : Number.isFinite(e.powMin)    ? e.powMin    : null;
+              const maxRaw = Number.isFinite(e.powmodMax) ? e.powmodMax
+                           : Number.isFinite(e.powMax)    ? e.powMax    : minRaw;
               const value  = Number.isFinite(e.value) ? e.value : null;
-              if (powMin === null || value === null) return null;
-              return { powMin, powMax: powMax === null ? powMin : powMax, value };
+              if (minRaw === null || value === null) return null;
+              return {
+                powmodMin: minRaw,
+                powmodMax: maxRaw === null ? minRaw : maxRaw,
+                value
+              };
             })
             .filter(Boolean)
         : JSON.parse(JSON.stringify(d.powerPool.powMultiplier))
