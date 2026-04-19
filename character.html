@@ -284,42 +284,162 @@
       font-variant-numeric: tabular-nums;
     }
 
-    /* Movement tile spans the full width and lays stats in a row. */
-    .state-tile-movement { grid-column: 1 / -1; }
-    /* Split layout inside the Movement tile: movement stats on the left,
-       Strain summary clipped onto the right with a vertical divider. */
-    .state-movement-layout {
+    /* Wide tile — full-width inside the state grid. Used by Movement,
+       Roll Calc, and Strain in the bottom stack. */
+    .state-tile-wide { grid-column: 1 / -1; }
+
+    /* Standalone Strain tile (full-width row). Label on the left, big
+       severity-colored percent in the head, breakdown rows inline below. */
+    .state-tile-strain .state-tile-head {
       display: flex;
-      gap: 20px;
-      align-items: stretch;
+      align-items: baseline;
+      gap: 16px;
     }
-    .state-movement-left {
+    .state-strain-rows-inline {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 28px;
+      padding-top: 4px;
+      border-top: 1px solid #1a1a1a;
+    }
+    .state-strain-rows-inline .state-strain-row {
+      min-width: 120px;
+    }
+
+    /* ── Roll Calculator ── */
+    .state-tile-rollcalc { gap: 14px; }
+    .state-tile-rollcalc .state-tile-head {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+    .rc-hint {
+      font-size: 10px;
+      color: #666;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-style: italic;
+    }
+    .rc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 10px 14px;
+    }
+    .rc-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .rc-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: #888;
+    }
+    .rc-field-row { display: flex; gap: 6px; min-width: 0; }
+    .rc-select {
       flex: 1;
       min-width: 0;
+      background: #111;
+      border: 1px solid #222;
+      color: #ccc;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 12px;
+      padding: 4px 6px;
+      border-radius: 3px;
+      outline: none;
+    }
+    .rc-select:hover, .rc-select:focus { border-color: #444; }
+    .rc-select optgroup { color: #888; }
+    .rc-select option { color: #ccc; background: #111; }
+    .rc-num {
+      width: 64px;
+      background: #111;
+      border: 1px solid #222;
+      color: #ccc;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: center;
+      padding: 4px 4px;
+      border-radius: 3px;
+      outline: none;
+      font-variant-numeric: tabular-nums;
+    }
+    .rc-num:hover, .rc-num:focus { border-color: #444; }
+    /* Hide spinner on number inputs — visual noise; tabindex still works. */
+    .rc-num::-webkit-outer-spin-button,
+    .rc-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .rc-num[type=number] { -moz-appearance: textfield; }
+    .rc-field-row .rc-num { flex: 0 0 auto; width: 60px; }
+
+    /* Output block — big number summary + breakdown details below. */
+    .rc-output {
       display: flex;
       flex-direction: column;
       gap: 8px;
+      padding-top: 8px;
+      border-top: 1px solid #1a1a1a;
     }
-    .state-movement-strain {
-      flex: 0 0 200px;
+    .rc-big {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      background: transparent;
+      border: 1px solid #1a1a1a;
+      border-radius: 4px;
+      padding: 10px 14px;
+      cursor: pointer;
+      text-align: left;
+      font-family: 'Open Sans', sans-serif;
+      transition: background 0.1s, border-color 0.1s;
+    }
+    .rc-big:hover { background: #111; border-color: #2a2a2a; }
+    .rc-big-num {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 28px;
+      font-weight: 700;
+      color: #e0e0e0;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+    /* Pre-strain view tints dim — lets the player know they're looking
+       at raw pool, not the real dice they'll roll. */
+    .rc-big-num.rc-raw { color: #888; }
+    .rc-big-mod {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 18px;
+      font-weight: 700;
+      color: #c8a868;
+      font-variant-numeric: tabular-nums;
+    }
+    .rc-big-diff {
+      font-size: 11px;
+      color: #777;
+      font-family: 'Consolas', 'Courier New', monospace;
+      letter-spacing: .04em;
+    }
+    .rc-breakdown {
       display: flex;
       flex-direction: column;
-      gap: 8px;
-      padding-left: 20px;
-      border-left: 1px solid #1a1a1a;
+      gap: 3px;
+      font-size: 11px;
+      color: #aaa;
+      font-family: 'Open Sans', sans-serif;
     }
-    /* When the tile is narrow (stacked layout), drop the divider and
-       let Strain flow below Movement instead of beside it. */
-    @media (max-width: 640px) {
-      .state-movement-layout { flex-direction: column; gap: 12px; }
-      .state-movement-strain {
-        flex: initial;
-        padding-left: 0;
-        padding-top: 12px;
-        border-left: none;
-        border-top: 1px solid #1a1a1a;
-      }
+    .rc-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 2px 4px;
     }
+    .rc-k { color: #888; font-weight: 600; }
+    .rc-v {
+      color: #ccc;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+    .rc-v b { color: #e0e0e0; font-weight: 700; }
+    .rc-dim { color: #666; font-size: 10px; }
+
+    /* Movement stat row inside the Movement tile — simple wrapping flex. */
     .state-movement-row {
       display: flex;
       flex-wrap: wrap;
@@ -1956,6 +2076,16 @@
     deleteDiceMod:        (code, idx) => combat.deleteDiceMod(code, idx),
     // Strain value-display toggle
     toggleStrainValueDisplay: (code) => combat.toggleStrainValueDisplay(code),
+    // Roll Calculator
+    rollCalcSetStat:         (key) => combat.rollCalcSetStat(key),
+    rollCalcSetSkill:        (key) => combat.rollCalcSetSkill(key),
+    rollCalcSetStatValue:    (v)   => combat.rollCalcSetStatValue(v),
+    rollCalcSetSkillValue:   (v)   => combat.rollCalcSetSkillValue(v),
+    rollCalcSetStatmod:      (v)   => combat.rollCalcSetStatmod(v),
+    rollCalcSetDifficulty:   (v)   => combat.rollCalcSetDifficulty(v),
+    rollCalcSetMitigation:   (v)   => combat.rollCalcSetMitigation(v),
+    rollCalcSetReduction:    (v)   => combat.rollCalcSetReduction(v),
+    rollCalcToggle:          ()    => combat.rollCalcToggle(),
     // Pain / Stress (percentile modifiers feeding Strain)
     togglePainPanel:      () => combat.togglePainPanel(),
     addPainMod:           () => combat.addPainMod(),
