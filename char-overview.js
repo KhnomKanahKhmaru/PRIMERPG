@@ -115,31 +115,34 @@ export function createOverviewSection(ctx) {
   }
 
   function renderBodySegments(maxHP, damage, segCount) {
-    // Green → amber → red → dead (black) gradient. Rightmost segments die
-    // first. Each segment "sees" the damage that has chewed through the
-    // segments to its right (its `base`); its own color is driven by how
-    // far past `base` the total damage has progressed.
+    // Color progression as damage accumulates, mapped to the full HP range
+    // (+max → 0 → -max). Rightmost segments transition first.
     //
-    //   damage hasn't reached this seg     → green (healthy)
-    //   damage has reached it              → amber (wounded)
-    //   damage has reached it + ½ body     → red   (heavily wounded)
-    //   damage has reached it + 1 body     → dead  (past dead, black)
+    //   current = +max  (damage = 0)        → fully green      (Healthy)
+    //   current = 0     (damage = maxHP)    → fully yellow     (Incapacitated:
+    //                                           Unconscious and Paralyzed)
+    //   current = -max  (damage = 2·maxHP)  → fully red        (Dead)
+    //   past -max                           → near-black       (Destroyed;
+    //                                           overkilled past death)
     //
-    // Keeping it monotonic matters — a non-monotonic palette makes the
-    // middle of the bar look more damaged than the right, which reads
-    // wrong at a glance.
+    // Per segment, `base` is how much damage has already chewed through
+    // segments to the right of it. Color is driven by how far past `base`
+    // the total damage has progressed. Thresholds use strict > so the
+    // boundary cases land cleanly — exactly `damage = maxHP` shows fully
+    // yellow (not sneaking a red seg in), exactly `2·maxHP` shows fully
+    // red, etc.
     if (maxHP <= 0 || segCount <= 0) return '';
-    const COLORS = { green: '#4a7a3a', amber: '#9a7a2a', red: '#8a3030', dead: '#2a1010' };
+    const COLORS = { green: '#4a7a3a', yellow: '#bdb247', red: '#8a3030', destroyed: '#2a1010' };
     const hpPerSeg = maxHP / segCount;
     let html = '';
     for (let i = 1; i <= segCount; i++) {
       const rightDistance = segCount - i + 1;
       const base = (rightDistance - 1) * hpPerSeg;
       let color;
-      if      (damage > maxHP + base)       color = COLORS.dead;
-      else if (damage > maxHP * 0.5 + base) color = COLORS.red;
-      else if (damage >                base) color = COLORS.amber;
-      else                                   color = COLORS.green;
+      if      (damage > 2 * maxHP + base) color = COLORS.destroyed;
+      else if (damage >     maxHP + base) color = COLORS.red;
+      else if (damage >              base) color = COLORS.yellow;
+      else                                  color = COLORS.green;
       html += `<span class="state-bar-seg" style="background:${color}"></span>`;
     }
     return html;
