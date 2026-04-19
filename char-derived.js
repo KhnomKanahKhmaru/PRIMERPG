@@ -473,7 +473,10 @@ export function computeDerivedStats(character, ruleset) {
   ordered.forEach(def => {
     const c = compiled.get(def.code);
     if (c.error) {
-      stats.set(def.code, { def, value: null, error: c.message, rollModifier: null });
+      stats.set(def.code, {
+        def, value: null, error: c.message,
+        rollBase: null, rollMods: [], rollModTotal: 0, rollModifier: null
+      });
       errors.push({ code: def.code, message: c.message });
       return;
     }
@@ -482,22 +485,41 @@ export function computeDerivedStats(character, ruleset) {
     // Add to symbol table so downstream stats can reference this one.
     if (value !== null) vars[def.code] = value;
 
-    // Evaluate rollModifier expression if present. This is the signed
-    // stat modifier shown in the card's top-right corner, telling the
-    // player what they add to dice when rolling resistance for this stat.
-    // Expression is evaluated against the same symbol table as formula.
-    let rollModifier = null;
+    // Evaluate rollModifier expression if present. This gives the BASE roll
+    // mod (e.g. STRMOD for Health). User-editable modifiers stored on the
+    // character stack ON TOP of this base.
+    let rollBase = null;
     if (def.rollModifier && typeof def.rollModifier === 'string' && def.rollModifier.trim()) {
       const rmCompiled = parseFormula(def.rollModifier);
       if (!rmCompiled.error) {
         const rmValue = evalFormula(rmCompiled, vars);
         if (rmValue !== null && Number.isFinite(rmValue)) {
-          rollModifier = Math.round(rmValue);
+          rollBase = Math.round(rmValue);
         }
       }
     }
 
-    stats.set(def.code, { def, value, rollModifier });
+    // User roll modifiers — stored per stat code on charData.rollModifiers.
+    // Example: { HP: [{ name: 'Brawny Trait', value: 2 }], SAN: [...] }.
+    // Each modifier is a named signed int that stacks linearly onto rollBase.
+    const rollMap = (character && character.rollModifiers && typeof character.rollModifiers === 'object')
+      ? character.rollModifiers : {};
+    const userMods = Array.isArray(rollMap[def.code]) ? rollMap[def.code] : [];
+    const rollModTotal = userMods.reduce((acc, m) => acc + (parseInt(m && m.value) || 0), 0);
+
+    // Final rollModifier = base + user mods. Shown in the card badge.
+    // If base is null AND there are no mods, leave null (no badge at all).
+    const rollModifier = (rollBase === null && userMods.length === 0)
+      ? null
+      : (rollBase || 0) + rollModTotal;
+
+    stats.set(def.code, {
+      def, value,
+      rollBase,
+      rollMods: userMods,
+      rollModTotal,
+      rollModifier
+    });
   });
 
   // 3. Evaluate hit locations. Each has its own formula; maxHP is the result
