@@ -1189,7 +1189,47 @@
 <script>injectNav();</script>
 
 <div class="page">
-  <div id="loading" class="empty">Loading...</div>
+  <div id="loading" class="empty">
+    <div id="loading-text">Loading...</div>
+    <!-- Diagnostic log — only shown if something stalls. The script writes
+         step markers here so we can see exactly which point broke if the
+         normal loading never completes. Hidden by default; revealed after
+         3s if loading still shows. -->
+    <div id="loading-diag" style="display:none;margin-top:20px;text-align:left;font-family:'Consolas',monospace;font-size:11px;color:#888;background:#0a0a0a;border:1px solid #222;padding:10px;border-radius:4px;max-width:600px;margin-left:auto;margin-right:auto;max-height:400px;overflow-y:auto"></div>
+  </div>
+  <script>
+    // Diagnostic step logger — records every phase of the load so we can
+    // see where it stalls even if no exception is thrown. Reveals itself
+    // 3 seconds in if the loading screen is still visible.
+    window.__loadDiag = [];
+    window.__logStep = function(msg) {
+      const ts = Date.now();
+      window.__loadDiag.push({ ts, msg });
+      try {
+        const el = document.getElementById('loading-diag');
+        if (el) {
+          const line = document.createElement('div');
+          line.textContent = '• ' + msg;
+          el.appendChild(line);
+        }
+        if (console && console.log) console.log('[load] ' + msg);
+      } catch (e) {}
+    };
+    setTimeout(function() {
+      const loadingEl = document.getElementById('loading');
+      const diagEl = document.getElementById('loading-diag');
+      if (loadingEl && loadingEl.style.display !== 'none' && diagEl) {
+        diagEl.style.display = 'block';
+        const hint = document.createElement('div');
+        hint.style.cssText = 'margin-top:10px;padding-top:10px;border-top:1px solid #333;color:#888';
+        hint.innerHTML = 'Loading is taking longer than expected. Steps reached above. If the list is empty, the script did not start — likely a module import error. Press <kbd>F12</kbd> and check the Console tab for details.';
+        diagEl.appendChild(hint);
+      }
+    }, 3000);
+    window.__logStep('HTML parsed, pre-module script ran');
+    window.__logStep('window.RULESET_DEFAULTS: ' + (window.RULESET_DEFAULTS ? 'loaded' : 'MISSING'));
+    window.__logStep('window.normalizeRuleset: ' + (typeof window.normalizeRuleset === 'function' ? 'loaded' : 'MISSING'));
+  </script>
   <div id="char-content" style="display:none">
 
     <div class="sheet-wrap">
@@ -1402,6 +1442,11 @@
 </div>
 
 <script type="module">
+  // Step marker at the very top — if the user sees this in their diagnostic
+  // list, we know the module script parsed and started executing. If they
+  // DON'T see it, an import failed and the browser never ran the module.
+  if (window.__logStep) window.__logStep('module script started');
+
   // All Firebase I/O lives in char-firestore.js. We pull in just what's
   // still needed here — the main load flow uses onAuthStateChanged and
   // a few query helpers; bio/mental/etc. modules import their own.
@@ -1430,6 +1475,9 @@
   import { createAdvantagesSection } from './char-advantages.js';
   import { createSituationsSection } from './char-situations.js';
   import { createCombatSection } from './char-combat.js';
+
+  // All imports resolved — module body executes from here.
+  if (window.__logStep) window.__logStep('all modules imported');
 
   // Inline event handlers in dynamically-generated markup call these by
   // name. They're ruleset-aware wrappers that read tables from the
@@ -1864,9 +1912,17 @@
   // Called once Firebase auth resolves. Pulls the character, figures out
   // permissions, loads related playgroups and the Basic Set, then kicks
   // off all the section renderers.
+  if (window.__logStep) window.__logStep('registering onAuthStateChanged listener');
   onAuthStateChanged(auth, async function(user) {
-    if (!user || !user.emailVerified) return;
-    if (loaded) return;
+    if (window.__logStep) window.__logStep('auth callback fired: user=' + (user ? user.uid.slice(0,8) : 'null') + ' verified=' + (user ? user.emailVerified : 'n/a'));
+    if (!user || !user.emailVerified) {
+      if (window.__logStep) window.__logStep('EARLY EXIT: no user or email not verified');
+      return;
+    }
+    if (loaded) {
+      if (window.__logStep) window.__logStep('EARLY EXIT: already loaded');
+      return;
+    }
     loaded = true;
 
     // Wrap the whole load flow so silent promise rejections don't leave the
@@ -1879,6 +1935,7 @@
     myUid = user.uid;
 
     // Populate the nav's username + alerts dropdown.
+    if (window.__logStep) window.__logStep('loading user doc');
     const userData = await loadUser(user.uid);
     if (userData) {
       setNavUsername(userData.username);
@@ -1887,15 +1944,18 @@
     initAlerts(db, user.uid);
 
     // Load the character. Bounce back to home if it's missing.
+    if (window.__logStep) window.__logStep('loading character doc: ' + charId);
     const char = await loadCharacter(charId);
     if (!char) { window.location.href = 'home.html'; return; }
     charData = char;
     canEdit = charData.uid === user.uid;
+    if (window.__logStep) window.__logStep('character loaded, canEdit=' + canEdit);
 
     // GM check: Leader or Administrator of this character's playgroup.
     // Character owners get GM powers on their own sheet too, so a solo
     // character (no playgroup) still gets Situation-editing rights.
     if (charData.playgroupId) {
+      if (window.__logStep) window.__logStep('checking GM role for playgroup: ' + charData.playgroupId);
       const role = await loadMembershipRole(user.uid, charData.playgroupId);
       isGM = role === 'Leader' || role === 'Administrator';
     } else {
@@ -1905,16 +1965,20 @@
     // Resolve the ruleset that governs this character — playgroup's
     // attached ruleset, else Basic Set, else defaults. Always returns a
     // fully-normalized ruleset object.
+    if (window.__logStep) window.__logStep('resolving active ruleset');
     activeRuleset = await resolveActiveRuleset(charData);
+    if (window.__logStep) window.__logStep('ruleset resolved: ' + (activeRuleset.name || '(unnamed)') + ' derivedStats=' + (activeRuleset.derivedStats ? activeRuleset.derivedStats.length : 'MISSING'));
 
     // Silently clamp any stat/skill values that exceed the ruleset's caps.
     // This can happen if the ruleset was swapped or had its caps lowered
     // after the character was built. Persists the clamped values so future
     // loads don't need to re-clamp.
+    if (window.__logStep) window.__logStep('clamping character to ruleset');
     await clampCharacterToRuleset();
 
     // Load all playgroups this user is in — used by the bio's
     // "attach to playgroup" dropdown in edit mode.
+    if (window.__logStep) window.__logStep('loading user playgroups');
     userPlaygroups = await loadUserPlaygroups(user.uid);
 
     // Primary skills come from the active ruleset. If the ruleset has
@@ -1924,15 +1988,18 @@
       : FALLBACK_SKILLS;
 
     // Everything's loaded — swap loading screen for the sheet.
+    if (window.__logStep) window.__logStep('hiding loading, showing content');
     document.getElementById('loading').style.display = 'none';
     document.getElementById('char-content').style.display = 'block';
 
     // Render every section. Each wrapped individually so a single broken
     // section doesn't prevent the rest from showing.
     const safeRender = async (label, fn) => {
+      if (window.__logStep) window.__logStep('rendering ' + label);
       try { await fn(); }
       catch (e) {
         console.error('[' + label + '] render failed:', e);
+        if (window.__logStep) window.__logStep(label + ' FAILED: ' + e.message);
         const marker = document.createElement('div');
         marker.style.cssText = 'padding:12px;margin:8px 0;background:#2a0d0d;border:1px solid #6a2a2a;color:#e08080;font-size:12px;border-radius:4px';
         marker.textContent = label + ' section failed to render: ' + (e.message || e) + ' (see console for full stack)';
@@ -1954,18 +2021,32 @@
       document.getElementById('danger-zone').style.display = 'block';
     }
 
+    if (window.__logStep) window.__logStep('load complete');
+
     } catch (err) {
       // Final catch: anything in the pre-render flow blew up. Surface to the
       // user + console so they can tell us what broke instead of staring at
       // a loading spinner that never resolves.
       console.error('[character load] Fatal error:', err);
+      if (window.__logStep) window.__logStep('FATAL: ' + (err && err.message ? err.message : String(err)));
       const loadingEl = document.getElementById('loading');
       if (loadingEl) {
         loadingEl.style.color = '#e08080';
-        loadingEl.innerHTML = '<div style="padding:20px"><strong>Failed to load character.</strong><br><br>' +
-          '<pre style="white-space:pre-wrap;font-size:11px;text-align:left;background:#1a0a0a;padding:12px;border:1px solid #4a1a1a;border-radius:4px;margin-top:12px">' +
-          (err && err.stack ? err.stack : String(err)) +
-          '</pre><br><button onclick="location.reload()" style="padding:6px 14px;background:#1a1a1a;border:1px solid #333;color:#ccc;border-radius:3px;cursor:pointer">Retry</button></div>';
+        const textEl = document.getElementById('loading-text');
+        if (textEl) textEl.innerHTML = '<strong>Failed to load character.</strong>';
+        const diagEl = document.getElementById('loading-diag');
+        if (diagEl) {
+          diagEl.style.display = 'block';
+          const errBlock = document.createElement('div');
+          errBlock.style.cssText = 'margin-top:10px;padding:10px;background:#2a0d0d;border:1px solid #6a2a2a;color:#e08080;border-radius:3px;white-space:pre-wrap';
+          errBlock.textContent = err && err.stack ? err.stack : String(err);
+          diagEl.appendChild(errBlock);
+          const retry = document.createElement('button');
+          retry.textContent = 'Retry';
+          retry.style.cssText = 'margin-top:10px;padding:6px 14px;background:#1a1a1a;border:1px solid #333;color:#ccc;border-radius:3px;cursor:pointer';
+          retry.onclick = () => location.reload();
+          diagEl.appendChild(retry);
+        }
       }
     }
   });
