@@ -600,6 +600,19 @@
     .ds-card-code { font-family: 'Consolas', 'Courier New', monospace; font-size: 9px; color: #555; font-weight: 400; letter-spacing: 0; }
     .ds-card-formula { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #666; font-weight: 500; letter-spacing: 0; margin-bottom: 4px; }
     .ds-card-value { font-size: 24px; font-weight: 700; color: #e8e8e8; font-variant-numeric: tabular-nums; line-height: 1.1; }
+    /* Strain-induced value reduction — shown inline next to the big number
+       as a red italic annotation (e.g. "10 − 2.5 ft/sec"). Hover tooltip
+       gives the breakdown and effective value. */
+    .ds-card-strain-reduction {
+      color: #e07878;
+      font-style: italic;
+      font-size: 17px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      cursor: help;
+      margin: 0 2px;
+    }
+    .ds-card-strain-reduction:hover { color: #ff8a8a; }
     .ds-card-error { color: #c87777; font-size: 14px; }
     .ds-card-unit { font-size: 11px; font-weight: 500; color: #666; margin-left: 3px; }
     .ds-card-desc { font-size: 11px; color: #666; line-height: 1.5; margin-top: 6px; font-style: italic; }
