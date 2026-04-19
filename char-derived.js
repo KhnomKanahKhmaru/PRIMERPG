@@ -723,19 +723,24 @@ export function computeDerivedStats(character, ruleset) {
   //
   // Linear mental health pool. Damage stacks directly — no FORT reduction.
   //
-  // Max comes from the SAN derived stat (CHA + INT by default). Modifiers
-  // (sanModifiers) add to that max, same pattern as Body. Current = max -
-  // damage, and can go negative past 0 as the character slides through:
+  // Two damage sources both contribute to total:
+  //   - sanDamage (number): untracked manual damage from +/- controls
+  //   - sanDamages (array of {id, name, baseLevel, levelModifiers, description}):
+  //     structured "damages" the player/GM records, each with its own level and
+  //     optional modifiers. Parallels Injuries but without location/traumas/
+  //     degradation — mental wounds are pool-wide, not located.
+  //
+  // Effective SAN damage = sanDamage + sum(damage.currentLevel for each entry)
+  //
+  // Max comes from the SAN derived stat (CHA + INT by default). sanModifiers
+  // (array of {name, value}) adjust max same pattern as Body.
+  //
+  // Status bands (in terms of current = max - damage):
   //   current > 0              → Healthy
   //   0  ≥ current > -SAN      → In Shock       (+1 Diff all rolls)
   //   -SAN ≥ current > -2*SAN  → Insane         (+2 Diff SAN, +1 Diff others)
   //   current ≤ -2*SAN         → Broken         (+3 Diff SAN, +1 Diff others,
   //                                               Breaking Point roll required)
-  //
-  // Damage can push beyond -2*SAN; the bar visualizes this with deeper black
-  // Phase 4 segments, and every additional Mental Damage past Broken forces
-  // another Breaking Point roll (enforced narratively; code just displays
-  // the state).
   let san = null;
   const sanStatEntry = stats.get('SAN');
   if (sanStatEntry && sanStatEntry.value !== null) {
@@ -743,7 +748,32 @@ export function computeDerivedStats(character, ruleset) {
     const sanMods = Array.isArray(character.sanModifiers) ? character.sanModifiers : [];
     const sanModTotal = sanMods.reduce((acc, m) => acc + (parseInt(m.value) || 0), 0);
     const sanMax = Math.max(0, baseMax + sanModTotal);
-    const sanDamage = Math.max(0, Number.isFinite(character.sanDamage) ? character.sanDamage : 0);
+
+    // Manual damage — untracked lump from +/- controls.
+    const manualDamage = Math.max(0, Number.isFinite(character.sanDamage) ? character.sanDamage : 0);
+
+    // Structured damages — compute currentLevel for each, carry them on the
+    // result so the UI can render cards without re-doing the math.
+    const damagesIn = Array.isArray(character.sanDamages) ? character.sanDamages : [];
+    const damages = damagesIn
+      .filter(d => d && typeof d === 'object')
+      .map(d => {
+        const base = Number.isFinite(d.baseLevel) ? d.baseLevel : 0;
+        const mods = Array.isArray(d.levelModifiers) ? d.levelModifiers : [];
+        const modTotal = mods.reduce((a, m) => a + (parseInt(m.value) || 0), 0);
+        const currentLevel = Math.max(0, base + modTotal);
+        return {
+          id: d.id || ('sandmg_' + Math.random().toString(36).slice(2, 9)),
+          name: typeof d.name === 'string' ? d.name : '',
+          description: typeof d.description === 'string' ? d.description : '',
+          baseLevel: base,
+          currentLevel,
+          levelModifiers: mods
+        };
+      });
+    const damagesContribution = damages.reduce((s, d) => s + d.currentLevel, 0);
+
+    const sanDamage = manualDamage + damagesContribution;
     const sanCurrent = sanMax - sanDamage;  // can be negative; that's the point
 
     let sanStatus = 'healthy';
@@ -779,6 +809,9 @@ export function computeDerivedStats(character, ruleset) {
       max: sanMax,
       current: sanCurrent,
       damage: sanDamage,
+      manualDamage,
+      damagesContribution,
+      damages,                 // structured damages with computed currentLevel
       modifiers: sanMods,
       status: sanStatus,
       statusLabel: sanStatusLabel,
