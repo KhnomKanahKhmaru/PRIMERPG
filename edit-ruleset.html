@@ -105,13 +105,12 @@
     .pp-xp-table input { background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 4px 8px; border-radius: 3px; outline: none; width: 100%; text-align: center; }
 
     /* POW→multiplier table */
-    .pm-table { display: flex; flex-direction: column; gap: 4px; max-width: 400px; }
-    .pm-row { display: grid; grid-template-columns: 60px 60px 1fr 24px; gap: 6px; align-items: center; background: #111; border: 1px solid #1a1a1a; border-radius: 3px; padding: 6px 8px; }
+    .pm-table { display: flex; flex-direction: column; gap: 4px; max-width: 320px; }
+    .pm-row { display: grid; grid-template-columns: 110px 1fr; gap: 10px; align-items: center; background: #111; border: 1px solid #1a1a1a; border-radius: 3px; padding: 6px 10px; }
+    .pm-label { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: #aaa; font-variant-numeric: tabular-nums; }
     .pm-row input { background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 3px 6px; border-radius: 3px; outline: none; width: 100%; text-align: center; }
     .pm-row input:focus { border-color: #444; }
-    .pm-row .delete-x { color: #555; font-size: 14px; cursor: pointer; text-align: center; line-height: 1; }
-    .pm-row .delete-x:hover { color: #c84b4b; }
-    .pm-list-header { display: grid; grid-template-columns: 60px 60px 1fr 24px; gap: 6px; padding: 0 8px 4px; font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #666; border-bottom: 1px solid #1a1a1a; margin-bottom: 4px; }
+    .pm-list-header { display: grid; grid-template-columns: 110px 1fr; gap: 10px; padding: 0 10px 4px; font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #666; border-bottom: 1px solid #1a1a1a; margin-bottom: 4px; max-width: 320px; }
 
     /* XP table grid */
     .xp-table { display: grid; grid-template-columns: 60px 1fr; gap: 4px; align-items: center; margin-bottom: 10px; max-width: 320px; }
@@ -623,17 +622,12 @@
 
           <div style="margin-top:14px">
             <h4 style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#aaa;margin-bottom:6px">POWMOD → Multiplier Table</h4>
-            <div class="section-desc" style="margin-bottom:8px">For each range of <code>POWMOD</code> (the stat modifier from POW), the value to use for <code>POW_MULTIPLIER</code> in formulas. Ranges are inclusive on both ends. The first matching range wins.</div>
+            <div class="section-desc" style="margin-bottom:8px">For each value of <code>POWMOD</code> (the stat modifier from POW), the value to use for <code>POW_MULTIPLIER</code> in formulas. Characters with POWMOD outside this range clamp to the nearest defined value.</div>
             <div class="pm-list-header">
-              <div style="text-align:center">POWMOD ≥</div>
-              <div style="text-align:center">POWMOD ≤</div>
+              <div style="text-align:left;padding-left:4px">POWMOD</div>
               <div style="text-align:center">Multiplier</div>
-              <div></div>
             </div>
             <div class="pm-table" id="pm-table"></div>
-            <div style="margin-top:6px">
-              <button class="btn small" onclick="addPmRange()">+ Add range</button>
-            </div>
           </div>
         </div>
       </div>
@@ -1698,40 +1692,46 @@
 
   function renderPowMultiplierTable() {
     const container = document.getElementById('pm-table');
-    const table = (state.powerPool && state.powerPool.powMultiplier) || [];
-    container.innerHTML = table.map((e, i) => `
-      <div class="pm-row">
-        <input type="number" value="${e.powmodMin}" oninput="updatePmField(${i},'powmodMin',this.value)">
-        <input type="number" value="${e.powmodMax}" oninput="updatePmField(${i},'powmodMax',this.value)">
-        <input type="number" step="0.01" value="${e.value}" oninput="updatePmField(${i},'value',this.value)">
-        <span class="delete-x" onclick="removePmRange(${i})" title="Remove">×</span>
-      </div>
-    `).join('') || '<div class="empty">No ranges defined.</div>';
+    if (!state.powerPool.powMultiplier) state.powerPool.powMultiplier = [];
+    const table = state.powerPool.powMultiplier;
+
+    // Build a value lookup by POWMOD. The normalizer ensures the expected
+    // rows exist (−1..10); if somehow missing, render defaults as 1 so the
+    // row still shows.
+    const byPowmod = new Map();
+    table.forEach(e => { if (Number.isFinite(e.powmod)) byPowmod.set(e.powmod, e.value); });
+
+    // Always render the standard range (−1..10). GMs can extend by editing
+    // the ruleset data directly if they need wider bounds.
+    const rows = [];
+    for (let p = -1; p <= 10; p++) {
+      const val = byPowmod.has(p) ? byPowmod.get(p) : 1;
+      rows.push(`
+        <div class="pm-row">
+          <div class="pm-label">POWMOD ${p >= 0 ? '+' : ''}${p}</div>
+          <input type="number" step="0.01" value="${val}" oninput="updatePmValue(${p},this.value)">
+        </div>
+      `);
+    }
+    container.innerHTML = rows.join('');
   }
 
-  window.updatePmField = function(i, field, val) {
-    const entry = state.powerPool.powMultiplier[i];
-    if (!entry) return;
-    entry[field] = parseFloat(val) || 0;
-  };
-
-  window.removePmRange = function(i) {
-    state.powerPool.powMultiplier.splice(i, 1);
-    renderPowMultiplierTable();
-  };
-
-  window.addPmRange = function() {
-    if (!state.powerPool.powMultiplier) state.powerPool.powMultiplier = [];
-    // Default new range: one slot above the highest existing powmodMax.
-    const max = state.powerPool.powMultiplier.length > 0
-      ? Math.max(...state.powerPool.powMultiplier.map(e => e.powmodMax))
-      : -1;
-    state.powerPool.powMultiplier.push({
-      powmodMin: max + 1,
-      powmodMax: max + 1,
-      value: 1
-    });
-    renderPowMultiplierTable();
+  // Update (or insert) the multiplier for a given POWMOD. Because the table
+  // is authoritative storage, we find-or-create the entry rather than relying
+  // on array index (since POWMOD may be negative).
+  window.updatePmValue = function(powmod, val) {
+    const table = state.powerPool.powMultiplier;
+    const num = parseFloat(val);
+    const value = Number.isFinite(num) ? num : 0;
+    const entry = table.find(e => e.powmod === powmod);
+    if (entry) {
+      entry.value = value;
+    } else {
+      table.push({ powmod, value });
+      // Keep the underlying array sorted so the data reads cleanly when
+      // inspected / serialized.
+      table.sort((a, b) => a.powmod - b.powmod);
+    }
   };
 
   // Helper: escape attribute values safely.
