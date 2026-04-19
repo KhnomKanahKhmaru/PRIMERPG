@@ -143,25 +143,48 @@ export function createCombatSection(ctx) {
       rollBadge = `<div class="ds-card-rollmod" title="${escapeHtml(tip)}">${sign}${absNum}</div>`;
     }
 
-    // Bottom-area DICE MOD pill — editable. Shows net bonus dice from
-    // abilities/traits. Click to open an inline editor. Hidden when no
-    // dice mods exist and we're not editable (keeps view-only cards clean).
+    // Bottom-area DICE MOD pill — editable. Shows the FINAL dice count the
+    // player actually rolls, factoring in dice modifiers AND Strain penalty
+    // (for active rolls). Click to expand an editor with the full breakdown.
+    //
+    // When the pool == base dice (no mods AND no strain penalty), nothing
+    // to show in view-only mode — keeps clean cards. Edit mode still shows
+    // the "+ Dice Mod" pill so players can add mods.
     const hasDiceMods = Array.isArray(diceMods) && diceMods.length > 0;
+    const isPassive = entry.isPassive === true;
+    const strainPenalty = entry.strainPenalty || 0;
+    const finalDice = Number.isFinite(entry.finalDice)
+      ? entry.finalDice
+      : (Number.isFinite(value) ? value : 0);
+    const baseDice = Number.isFinite(value) ? value : 0;
+    const dicePoolDiffersFromBase = finalDice !== baseDice;
     const openPanel = expandedDiceMods.has(def.code);
     let dicePill = '';
-    if (canEdit || hasDiceMods) {
+    if (canEdit || hasDiceMods || dicePoolDiffersFromBase) {
       let pillLabel;
-      if (hasDiceMods) {
-        const sign = diceModTotal > 0 ? '+' : (diceModTotal < 0 ? '−' : '±');
-        pillLabel = `${sign}${Math.abs(diceModTotal)}d`;
+      let pillClass;
+      if (dicePoolDiffersFromBase || hasDiceMods) {
+        pillLabel = `${finalDice}d`;
+        pillClass = ' has-mods';
       } else {
         pillLabel = '+ Dice Mod';
+        pillClass = ' empty';
       }
-      const pillTip = hasDiceMods
-        ? `Bonus dice added to the roll pool (base ${fmt(value)}${unit ? '' : ''} + ${diceModTotal >= 0 ? '+' : ''}${diceModTotal}d)${canEdit ? '. Click to edit.' : ''}`
-        : 'Add bonus dice from abilities or traits';
+      const tipParts = [];
+      tipParts.push(`Rolling ${finalDice}d (base ${baseDice})`);
+      if (hasDiceMods) {
+        const sign = diceModTotal >= 0 ? '+' : '−';
+        tipParts.push(`${sign}${Math.abs(diceModTotal)}d bonus`);
+      }
+      if (strainPenalty > 0) {
+        tipParts.push(`−${strainPenalty}d Strain`);
+      } else if (isPassive) {
+        tipParts.push('passive — Strain does not apply');
+      }
+      if (canEdit) tipParts.push('Click to edit');
+      const pillTip = tipParts.join(' · ');
       dicePill = canEdit
-        ? `<button class="ds-card-dicepill${openPanel ? ' open' : ''}${hasDiceMods ? ' has-mods' : ' empty'}"
+        ? `<button class="ds-card-dicepill${openPanel ? ' open' : ''}${pillClass}"
                   onclick="toggleDiceModPanel('${escapeHtml(def.code)}')"
                   title="${escapeHtml(pillTip)}"
                   type="button">${pillLabel}</button>`
@@ -171,7 +194,12 @@ export function createCombatSection(ctx) {
     // Expanded panel content (dice modifier editor).
     let panelHtml = '';
     if (openPanel && canEdit) {
-      panelHtml = renderDiceModPanel(def.code, value, diceMods, diceModTotal);
+      panelHtml = renderDiceModPanel(def.code, value, diceMods, diceModTotal, {
+        isPassive,
+        strainPenalty,
+        finalDice,
+        strainPercent: entry.strainPercent || 0
+      });
     }
 
     return `
@@ -187,20 +215,30 @@ export function createCombatSection(ctx) {
   }
 
   // Dice modifier editor panel — lives inside an expanded card. Shows the
-  // total dice the player rolls (base + all mods) at the top, then the list
-  // of mods with name/value/delete, then an add button.
-  function renderDiceModPanel(code, baseValue, diceMods, diceModTotal) {
+  // total dice the player rolls (base + all mods − strain) at the top, then
+  // the list of mods with name/value/delete, then an add button.
+  function renderDiceModPanel(code, baseValue, diceMods, diceModTotal, strainInfo) {
     const mods = Array.isArray(diceMods) ? diceMods : [];
     const base = Number.isFinite(baseValue) ? baseValue : 0;
-    const totalDice = base + (diceModTotal || 0);
+    const modTotal = diceModTotal || 0;
+    const si = strainInfo || { isPassive: false, strainPenalty: 0, finalDice: base + modTotal, strainPercent: 0 };
 
     let html = '<div class="ds-rollmod-panel">';
 
-    // Summary row: "Rolling Nd" with breakdown
+    // Summary line: the final dice count with a compact breakdown.
+    //   "Rolling 12d   = 10 base + 2 bonus"
+    //   "Rolling 8d    = 10 base + 2 bonus − 4 strain (50%)"
+    //   "Rolling 10d   = 10 base  (passive — strain doesn't apply)"
+    const breakdownParts = [`${base} base`];
+    if (modTotal !== 0) breakdownParts.push(`${modTotal >= 0 ? '+' : '−'} ${Math.abs(modTotal)} bonus`);
+    if (si.strainPenalty > 0) breakdownParts.push(`− ${si.strainPenalty} strain (${si.strainPercent}%)`);
+    const passiveNote = si.isPassive && si.strainPercent > 0
+      ? '<span class="ds-dm-passive-note"> · passive roll · strain does not apply</span>'
+      : '';
     html += `<div class="ds-dicemod-summary">
       <span class="ds-dm-summary-label">Rolling</span>
-      <span class="ds-dm-summary-value">${totalDice}d</span>
-      <span class="ds-dm-summary-breakdown">= ${base} base${(diceModTotal || 0) !== 0 ? ` ${(diceModTotal > 0 ? '+' : '−')} ${Math.abs(diceModTotal)}` : ''}</span>
+      <span class="ds-dm-summary-value">${si.finalDice}d</span>
+      <span class="ds-dm-summary-breakdown">= ${breakdownParts.join(' ')}${passiveNote}</span>
     </div>`;
 
     if (mods.length === 0) {
@@ -267,6 +305,183 @@ export function createCombatSection(ctx) {
     renderAll();
   }
 
+  // ─── PAIN / STRESS ───
+  //
+  // Pain is % of Body missing. Stress is % of SAN range used up (with 3×
+  // denominator to account for SAN's negative range). Strain = Pain + Stress
+  // and is used to reduce dice pools on active rolls.
+  //
+  // Both show as clickable pills with the same interaction pattern as Dice
+  // Mod pills: click to expand an inline editor with percentile modifiers.
+
+  const expandedPainPanel = { open: false };
+  const expandedStressPanel = { open: false };
+
+  function renderPainPill(result) {
+    const pain = result.pain;
+    if (!pain) return '';
+    const canEdit = ctx.getCanEdit();
+    const strain = result.strain || { percent: 0 };
+    return renderStrainPill({
+      id: 'pain',
+      label: 'Pain',
+      data: pain,
+      strain,
+      expanded: expandedPainPanel.open,
+      canEdit,
+      toggleFn: 'togglePainPanel',
+      addFn: 'addPainMod',
+      updateFn: 'updatePainMod',
+      deleteFn: 'deletePainMod',
+      baseDescription: `${pain.basePercent}% base = ${(result.body && result.body.damage) || 0} / ${(result.body && result.body.max) || 0} Body missing`
+    });
+  }
+
+  function renderStressPill(result) {
+    const stress = result.stress;
+    if (!stress) return '';
+    const canEdit = ctx.getCanEdit();
+    const strain = result.strain || { percent: 0 };
+    const sanMax = (result.san && result.san.max) || 0;
+    return renderStrainPill({
+      id: 'stress',
+      label: 'Stress',
+      data: stress,
+      strain,
+      expanded: expandedStressPanel.open,
+      canEdit,
+      toggleFn: 'toggleStressPanel',
+      addFn: 'addStressMod',
+      updateFn: 'updateStressMod',
+      deleteFn: 'deleteStressMod',
+      baseDescription: `${stress.basePercent}% base = ${(result.san && result.san.damage) || 0} / ${sanMax * 3} SAN range lost`
+    });
+  }
+
+  // Shared renderer for Pain and Stress — same layout, different data/handlers.
+  function renderStrainPill(opts) {
+    const {
+      id, label, data, strain, expanded, canEdit,
+      toggleFn, addFn, updateFn, deleteFn, baseDescription
+    } = opts;
+
+    const mods = Array.isArray(data.modifiers) ? data.modifiers : [];
+    const finalPct = data.finalPercent;
+    const pillClass = finalPct === 0 ? ' strain-zero' : (finalPct >= 75 ? ' strain-crit' : (finalPct >= 50 ? ' strain-heavy' : ' strain-light'));
+
+    let html = `<div class="strain-block">`;
+    // Header row: always visible. Click toggles the panel (if editable).
+    const tipParts = [baseDescription];
+    if (mods.length > 0) {
+      const sign = data.modTotal >= 0 ? '+' : '−';
+      tipParts.push(`${sign}${Math.abs(data.modTotal)}% from modifiers`);
+    }
+    tipParts.push(`Strain total: ${strain.percent}%`);
+    if (canEdit) tipParts.push('Click to edit modifiers');
+    const tip = tipParts.join(' · ');
+
+    const openClass = expanded ? ' open' : '';
+    const headTag = canEdit ? 'button' : 'div';
+    const headAttrs = canEdit
+      ? `type="button" onclick="${toggleFn}()"`
+      : '';
+    html += `<${headTag} class="strain-head${openClass}${pillClass}" ${headAttrs} title="${escapeHtml(tip)}">
+      <span class="strain-label">${escapeHtml(label)}</span>
+      <span class="strain-percent">${finalPct}%</span>
+      <span class="strain-breakdown">${data.basePercent}% base${data.modTotal !== 0 ? ` ${data.modTotal > 0 ? '+' : '−'} ${Math.abs(data.modTotal)}%` : ''}</span>
+    </${headTag}>`;
+
+    if (expanded && canEdit) {
+      html += '<div class="strain-panel">';
+      html += `<div class="strain-panel-base">Base: ${data.basePercent}% (computed from ${label === 'Pain' ? 'Body damage' : 'SAN damage'})</div>`;
+      if (mods.length === 0) {
+        html += '<div class="mod-empty">No modifiers. Add percentile adjustments (e.g. "Adrenaline: −10%" or "Fatigue: +15%").</div>';
+      } else {
+        html += '<div class="mod-list">';
+        mods.forEach((mod, idx) => {
+          html += `<div class="mod-item">
+            <input type="text" class="mod-name-input" value="${escapeHtml(mod.name || '')}" placeholder="e.g. Adrenaline Surge"
+                   onchange="${updateFn}(${idx},'name',this.value)">
+            <input type="number" class="mod-val-input" value="${mod.value || 0}" step="1"
+                   onchange="${updateFn}(${idx},'value',this.value)"
+                   title="Percentile modifier (signed)">
+            <span class="mod-unit">%</span>
+            <span class="mod-delete" onclick="${deleteFn}(${idx})" title="Delete">×</span>
+          </div>`;
+        });
+        html += '</div>';
+      }
+      html += `<div class="mod-add-row"><button class="mod-add-btn" onclick="${addFn}()">+ Add modifier</button></div>`;
+      html += `<div class="strain-panel-total">Total: ${finalPct}% → contributes to Strain (${strain.percent}% overall)</div>`;
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function togglePainPanel() {
+    expandedPainPanel.open = !expandedPainPanel.open;
+    renderAll();
+  }
+  function toggleStressPanel() {
+    expandedStressPanel.open = !expandedStressPanel.open;
+    renderAll();
+  }
+
+  async function addPainMod() {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.painModifiers)) charData.painModifiers = [];
+    charData.painModifiers.push({ name: '', value: 0 });
+    expandedPainPanel.open = true;
+    await saveCharacter(ctx.getCharId(), { painModifiers: charData.painModifiers });
+    renderAll();
+  }
+  async function updatePainMod(idx, field, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.painModifiers) || !charData.painModifiers[idx]) return;
+    if (field === 'name') charData.painModifiers[idx].name = typeof val === 'string' ? val : '';
+    else if (field === 'value') charData.painModifiers[idx].value = parseInt(val) || 0;
+    await saveCharacter(ctx.getCharId(), { painModifiers: charData.painModifiers });
+    renderAll();
+  }
+  async function deletePainMod(idx) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.painModifiers) || !charData.painModifiers[idx]) return;
+    charData.painModifiers.splice(idx, 1);
+    await saveCharacter(ctx.getCharId(), { painModifiers: charData.painModifiers });
+    renderAll();
+  }
+
+  async function addStressMod() {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.stressModifiers)) charData.stressModifiers = [];
+    charData.stressModifiers.push({ name: '', value: 0 });
+    expandedStressPanel.open = true;
+    await saveCharacter(ctx.getCharId(), { stressModifiers: charData.stressModifiers });
+    renderAll();
+  }
+  async function updateStressMod(idx, field, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.stressModifiers) || !charData.stressModifiers[idx]) return;
+    if (field === 'name') charData.stressModifiers[idx].name = typeof val === 'string' ? val : '';
+    else if (field === 'value') charData.stressModifiers[idx].value = parseInt(val) || 0;
+    await saveCharacter(ctx.getCharId(), { stressModifiers: charData.stressModifiers });
+    renderAll();
+  }
+  async function deleteStressMod(idx) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.stressModifiers) || !charData.stressModifiers[idx]) return;
+    charData.stressModifiers.splice(idx, 1);
+    await saveCharacter(ctx.getCharId(), { stressModifiers: charData.stressModifiers });
+    renderAll();
+  }
+
   // ─── HIT LOCATIONS ───
 
   // UI-only state: whether we're in "edit modifiers" mode for the Hit Locations
@@ -317,6 +532,11 @@ export function createCombatSection(ctx) {
     // Body total goes at the bottom, summarizing the overall state after
     // you've read through the individual locations above.
     html += renderBodyBlock(body);
+
+    // Pain indicator — percent of Body missing, editable modifiers. Sits
+    // between Body (which shows physical damage) and Injuries (detailed
+    // wound list), conceptually linking "how hurt you are" to "what hurts".
+    html += renderPainPill(result);
 
     // Injuries manager — a collapsible list of wounds with degradation tracking.
     html += renderInjuriesSection(result);
@@ -1083,6 +1303,12 @@ export function createCombatSection(ctx) {
     if (editSanModifiersMode && canEdit) {
       html += renderSanModifierPanel(san);
     }
+
+    // Stress indicator — percent of SAN's full range (max → -2×max) that's
+    // been used up. Editable percentile modifiers, parallels Pain pill in
+    // the Health section. Combines with Pain to form Strain, which reduces
+    // dice pools on non-passive active rolls.
+    html += renderStressPill(result);
 
     // Damages manager — simplified Injuries for mental health. Renders below
     // the bar and above the Breaking Point panel (if present). Players use
@@ -2255,6 +2481,9 @@ export function createCombatSection(ctx) {
     tickSanDamageQuickmod,
     addSanDamageMod, updateSanDamageMod, deleteSanDamageMod,
     // Card dice modifiers (player/GM-editable bonus dice for rolls)
-    toggleDiceModPanel, addDiceMod, updateDiceMod, deleteDiceMod
+    toggleDiceModPanel, addDiceMod, updateDiceMod, deleteDiceMod,
+    // Pain / Stress (percentile modifiers feeding Strain)
+    togglePainPanel, addPainMod, updatePainMod, deletePainMod,
+    toggleStressPanel, addStressMod, updateStressMod, deleteStressMod
   };
 }
