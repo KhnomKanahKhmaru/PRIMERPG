@@ -78,24 +78,22 @@ export function createOverviewSection(ctx) {
   // ─── BODY TILE ───
 
   function renderBodyTile(body) {
-    // Pull the same statusLabel the Combat tab uses (e.g. "Dead",
-    // "Unconscious", "Paralyzed", "Unconscious & Paralyzed") — computed in
-    // char-derived.js from per-location disability, not a simple damage
-    // threshold. Falls back to damage-based tiers for the color pill only.
+    // Body status label — computed in char-derived.js with priority
+    // Destroyed > Dead > Incapacitated > Unconscious > Paralyzed > Alive.
+    // Falls back to a damage-based label if statusLabel is somehow missing.
     const label = (body.statusLabel && body.statusLabel.trim())
       ? body.statusLabel
       : (body.damage > 0 ? 'Wounded' : 'Healthy');
 
-    // Severity class for the pill — dead is most severe, impaired next,
-    // then a gradient for raw damage levels. Matches the Combat tab's
-    // three-tier color system so the same visual language carries over.
+    // Pill color class — mirrors the severity tiers of the label. We reuse
+    // the existing CSS classes rather than adding new ones; Destroyed and
+    // Dead share the death palette, Incapacitated uses the disabled tone
+    // (same as individual Unconscious/Paralyzed since it's both of them).
     let statusClass;
-    if (body.dead) {
+    if (body.destroyed || body.dead) {
       statusClass = 's-dead';
-    } else if (body.unconscious || body.paralyzed) {
+    } else if (body.incapacitated || body.unconscious || body.paralyzed) {
       statusClass = 's-disabled';
-    } else if (body.damage >= body.max / 2) {
-      statusClass = 's-injured';
     } else if (body.damage > 0) {
       statusClass = 's-injured';
     } else {
