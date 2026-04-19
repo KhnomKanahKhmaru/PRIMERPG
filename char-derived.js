@@ -473,7 +473,7 @@ export function computeDerivedStats(character, ruleset) {
   ordered.forEach(def => {
     const c = compiled.get(def.code);
     if (c.error) {
-      stats.set(def.code, { def, value: null, error: c.message });
+      stats.set(def.code, { def, value: null, error: c.message, rollModifier: null });
       errors.push({ code: def.code, message: c.message });
       return;
     }
@@ -481,7 +481,23 @@ export function computeDerivedStats(character, ruleset) {
     if (value !== null && !def.keepDecimals) value = Math.floor(value);
     // Add to symbol table so downstream stats can reference this one.
     if (value !== null) vars[def.code] = value;
-    stats.set(def.code, { def, value });
+
+    // Evaluate rollModifier expression if present. This is the signed
+    // stat modifier shown in the card's top-right corner, telling the
+    // player what they add to dice when rolling resistance for this stat.
+    // Expression is evaluated against the same symbol table as formula.
+    let rollModifier = null;
+    if (def.rollModifier && typeof def.rollModifier === 'string' && def.rollModifier.trim()) {
+      const rmCompiled = parseFormula(def.rollModifier);
+      if (!rmCompiled.error) {
+        const rmValue = evalFormula(rmCompiled, vars);
+        if (rmValue !== null && Number.isFinite(rmValue)) {
+          rollModifier = Math.round(rmValue);
+        }
+      }
+    }
+
+    stats.set(def.code, { def, value, rollModifier });
   });
 
   // 3. Evaluate hit locations. Each has its own formula; maxHP is the result
