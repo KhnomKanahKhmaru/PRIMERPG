@@ -165,11 +165,11 @@ window.RULESET_DEFAULTS = {
     // HEALTH
     {
       code: 'HP',
-      name: 'HP',
-      description: 'Hit Points — overall durability of the body.',
+      name: 'Health',
+      description: 'Physical durability. Roll for physical resistances.',
       group: 'health',
       formula: 'STR + SIZE',
-      trackDamage: false,   // The per-location tracker covers damage; HP is the base value
+      trackDamage: false,
       keepDecimals: false,
       unit: ''
     },
@@ -234,7 +234,7 @@ window.RULESET_DEFAULTS = {
     {
       code: 'SAN',
       name: 'Sanity',
-      description: 'Mental health pool. Damage (Sanity loss) stacks linearly. Pushing current below thresholds imposes mounting difficulty penalties and ultimately triggers Breaking Point rolls.',
+      description: 'Mental durability. Roll for mental resistances.',
       group: 'mental',
       formula: 'CHA + INT',
       trackDamage: false,
@@ -493,6 +493,25 @@ window.normalizeRuleset = function(rs) {
       if (!code || seenCodes.has(code)) return;
       out.derivedStats.push(JSON.parse(JSON.stringify(defaultStat)));
       seenCodes.add(code);
+    });
+
+    // One-time sync for a small set of core stats where a prior default name
+    // or description didn't reflect current UX wording. We only overwrite
+    // when the stored value EXACTLY matches a known old default — that way,
+    // anyone who intentionally renamed HP to "Hitpoints" keeps their version.
+    const OLD_CORE_DEFAULTS = {
+      HP: {
+        oldNames: ['HP'],
+        oldDescs: ['Hit Points — overall durability of the body.'],
+        newName: 'Health',
+        newDesc: 'Physical durability. Roll for physical resistances.'
+      }
+    };
+    out.derivedStats.forEach(s => {
+      const match = OLD_CORE_DEFAULTS[s.code];
+      if (!match) return;
+      if (match.oldNames.includes(s.name)) s.name = match.newName;
+      if (match.oldDescs.includes(s.description)) s.description = match.newDesc;
     });
   }
 
