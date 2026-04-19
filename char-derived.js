@@ -212,6 +212,27 @@ function evalNode(node, vars) {
 
 // ─── PUBLIC API ───
 
+// Compute total XP cost of a given Power Pool level for this ruleset.
+// Respects costMode ('perPoint' flat vs 'perLevel' table).
+// Returns 0 for level 0 or if Power Pool is disabled.
+export function powerPoolXpCost(level, ruleset) {
+  const pp = ruleset && ruleset.powerPool;
+  if (!pp || !pp.enabled) return 0;
+  const lv = Math.max(0, Math.floor(level || 0));
+  if (lv === 0) return 0;
+  if (pp.costMode === 'perPoint') {
+    const rate = Number.isFinite(pp.costPerPoint) ? pp.costPerPoint : 0;
+    return lv * rate;
+  }
+  // perLevel — sum costs for levels 1..lv (index 0 is typically 0 = "no pool bought")
+  const table = Array.isArray(pp.xpPerPoint) ? pp.xpPerPoint : [];
+  let total = 0;
+  for (let i = 1; i <= lv; i++) {
+    total += Number.isFinite(table[i]) ? table[i] : 0;
+  }
+  return total;
+}
+
 // parseFormula(src) -> { ast } or { error, message }
 // Valid formulas return { ast }. Invalid ones return { error: true, message }.
 export function parseFormula(src) {
