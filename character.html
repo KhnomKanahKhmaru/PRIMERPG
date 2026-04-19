@@ -463,6 +463,100 @@
       font-family: 'Consolas', 'Courier New', monospace;
       font-variant-numeric: tabular-nums;
     }
+    .ds-dm-passive-note {
+      color: #4a7a4a;
+      font-style: italic;
+      font-family: 'Open Sans', sans-serif;
+    }
+
+    /* ─── PAIN / STRESS / STRAIN ─── */
+    /* Shared pill block — appears in both Health (Pain) and Sanity (Stress)
+       sections. Click the head row to expand an editor for percentile
+       modifiers that adjust the base %. Left-edge color reflects severity. */
+    .strain-block {
+      margin: 12px 0;
+    }
+    .strain-head {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      width: 100%;
+      padding: 10px 14px;
+      background: #0e0e0e;
+      border: 1px solid #222;
+      border-left: 3px solid #2a2a2a;
+      border-radius: 4px;
+      cursor: pointer;
+      text-align: left;
+      font-family: 'Open Sans', sans-serif;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    button.strain-head:hover { background: #141414; }
+    .strain-head.strain-zero  { border-left-color: #2a3a2a; }
+    .strain-head.strain-light { border-left-color: #6a8a4a; }
+    .strain-head.strain-heavy { border-left-color: #c88a3a; }
+    .strain-head.strain-crit  { border-left-color: #c85a3a; }
+    .strain-head.open {
+      background: #141414;
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+    .strain-label {
+      font-size: 11px; font-weight: 700; letter-spacing: .12em;
+      text-transform: uppercase; color: #aaa;
+      min-width: 60px;
+    }
+    .strain-percent {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 18px; font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: #e0e0e0;
+    }
+    .strain-head.strain-zero  .strain-percent { color: #666; }
+    .strain-head.strain-light .strain-percent { color: #a0c080; }
+    .strain-head.strain-heavy .strain-percent { color: #d8a860; }
+    .strain-head.strain-crit  .strain-percent { color: #e07878; }
+    .strain-breakdown {
+      font-size: 10px;
+      color: #666;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-variant-numeric: tabular-nums;
+      flex: 1;
+    }
+
+    /* Expanded panel below the head row */
+    .strain-panel {
+      padding: 10px 14px 12px;
+      background: #0a0a0a;
+      border: 1px solid #222;
+      border-top: none;
+      border-radius: 0 0 4px 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .strain-panel-base {
+      font-size: 11px;
+      color: #888;
+      font-style: italic;
+      padding: 4px 8px;
+      background: #111;
+      border-radius: 3px;
+    }
+    .strain-panel-total {
+      font-size: 11px;
+      color: #888;
+      font-weight: 600;
+      padding-top: 8px;
+      border-top: 1px solid #1a1a1a;
+    }
+    /* The '%' suffix after the value input in a strain mod row */
+    .mod-unit {
+      font-size: 11px;
+      color: #666;
+      font-family: 'Consolas', 'Courier New', monospace;
+      margin-left: -4px;
+    }
 
     /* Expanded roll-modifier panel inside the card */
     .ds-card.rollmod-open { border-color: #3a3018; }
@@ -1520,6 +1614,15 @@
     addDiceMod:           (code) => combat.addDiceMod(code),
     updateDiceMod:        (code, idx, field, val) => combat.updateDiceMod(code, idx, field, val),
     deleteDiceMod:        (code, idx) => combat.deleteDiceMod(code, idx),
+    // Pain / Stress (percentile modifiers feeding Strain)
+    togglePainPanel:      () => combat.togglePainPanel(),
+    addPainMod:           () => combat.addPainMod(),
+    updatePainMod:        (idx, field, val) => combat.updatePainMod(idx, field, val),
+    deletePainMod:        (idx) => combat.deletePainMod(idx),
+    toggleStressPanel:    () => combat.toggleStressPanel(),
+    addStressMod:         () => combat.addStressMod(),
+    updateStressMod:      (idx, field, val) => combat.updateStressMod(idx, field, val),
+    deleteStressMod:      (idx) => combat.deleteStressMod(idx),
     addHlMod:             (target)           => combat.addModifier(target),
     updateHlMod:          (target, i, field, val) => combat.updateModifier(target, i, field, val),
     deleteHlMod:          (target, i)        => combat.deleteModifier(target, i),
