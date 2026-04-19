@@ -124,13 +124,13 @@ export function createCombatSection(ctx) {
     }
     html += '</div>';
 
-    // Body block goes FIRST — it's the most important status read and sets
-    // context for what the per-location bars are scaled against.
-    html += renderBodyBlock(body);
-
     html += '<div class="hl-list">';
     result.locations.forEach(loc => { html += renderHlRow(loc, body); });
     html += '</div>';
+
+    // Body total goes at the bottom, summarizing the overall state after
+    // you've read through the individual locations above.
+    html += renderBodyBlock(body);
 
     html += '</div>';
     return html;
