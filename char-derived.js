@@ -475,7 +475,7 @@ export function computeDerivedStats(character, ruleset) {
     if (c.error) {
       stats.set(def.code, {
         def, value: null, error: c.message,
-        rollBase: null, rollMods: [], rollModTotal: 0, rollModifier: null
+        rollModifier: null, diceMods: [], diceModTotal: 0
       });
       errors.push({ code: def.code, message: c.message });
       return;
@@ -485,40 +485,35 @@ export function computeDerivedStats(character, ruleset) {
     // Add to symbol table so downstream stats can reference this one.
     if (value !== null) vars[def.code] = value;
 
-    // Evaluate rollModifier expression if present. This gives the BASE roll
-    // mod (e.g. STRMOD for Health). User-editable modifiers stored on the
-    // character stack ON TOP of this base.
-    let rollBase = null;
+    // Evaluate rollModifier expression if present. This is the STATIC mod
+    // that gets added to the ROLL TOTAL (sum of dice) — e.g. STRMOD for
+    // Health, max(INTMOD, CHAMOD) for Sanity. Read-only, shown in the card's
+    // top-right corner as a signed badge.
+    let rollModifier = null;
     if (def.rollModifier && typeof def.rollModifier === 'string' && def.rollModifier.trim()) {
       const rmCompiled = parseFormula(def.rollModifier);
       if (!rmCompiled.error) {
         const rmValue = evalFormula(rmCompiled, vars);
         if (rmValue !== null && Number.isFinite(rmValue)) {
-          rollBase = Math.round(rmValue);
+          rollModifier = Math.round(rmValue);
         }
       }
     }
 
-    // User roll modifiers — stored per stat code on charData.rollModifiers.
+    // Dice modifiers — player/GM-editable bonus DICE added to the roll POOL
+    // (not the total). E.g. "Brawny Trait: +2d" means you roll 2 extra D10s
+    // when making a Health check. Stored per stat code on charData.diceModifiers.
     // Example: { HP: [{ name: 'Brawny Trait', value: 2 }], SAN: [...] }.
-    // Each modifier is a named signed int that stacks linearly onto rollBase.
-    const rollMap = (character && character.rollModifiers && typeof character.rollModifiers === 'object')
-      ? character.rollModifiers : {};
-    const userMods = Array.isArray(rollMap[def.code]) ? rollMap[def.code] : [];
-    const rollModTotal = userMods.reduce((acc, m) => acc + (parseInt(m && m.value) || 0), 0);
-
-    // Final rollModifier = base + user mods. Shown in the card badge.
-    // If base is null AND there are no mods, leave null (no badge at all).
-    const rollModifier = (rollBase === null && userMods.length === 0)
-      ? null
-      : (rollBase || 0) + rollModTotal;
+    const diceMap = (character && character.diceModifiers && typeof character.diceModifiers === 'object')
+      ? character.diceModifiers : {};
+    const diceMods = Array.isArray(diceMap[def.code]) ? diceMap[def.code] : [];
+    const diceModTotal = diceMods.reduce((acc, m) => acc + (parseInt(m && m.value) || 0), 0);
 
     stats.set(def.code, {
       def, value,
-      rollBase,
-      rollMods: userMods,
-      rollModTotal,
-      rollModifier
+      rollModifier,     // static mod (STRMOD, etc.) — read-only, added to roll total
+      diceMods,         // list of {name, value} — editable bonus dice
+      diceModTotal      // sum of dice modifier values
     });
   });
 
