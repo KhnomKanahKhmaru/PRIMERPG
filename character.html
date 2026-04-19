@@ -391,8 +391,10 @@
     }
     .hl-name { font-size: 13px; font-weight: 600; color: #ccc; }
     .hl-bar-wrap { display: flex; align-items: center; gap: 10px; }
-    .hl-bar-bg { flex: 1; height: 10px; background: #0a0a0a; border: 1px solid #222; border-radius: 2px; overflow: hidden; }
-    .hl-bar-fill { height: 100%; background: #4a7a4a; transition: width 0.15s; }
+    .hl-bar-bg { flex: 1; height: 10px; background: #0a0a0a; border: 1px solid #222; border-radius: 2px; overflow: hidden; display: flex; }
+    /* Progressive HP bar uses two segments side-by-side. Colors + widths are
+       computed in char-combat.js and applied inline based on damage phase. */
+    .hl-bar-seg { height: 100%; transition: width 0.18s ease, background-color 0.18s ease; }
     .hl-bar-label { font-size: 11px; font-weight: 600; color: #aaa; font-variant-numeric: tabular-nums; min-width: 56px; text-align: right; }
     .hl-status-label { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #888; text-align: center; }
     .hl-controls { display: flex; align-items: center; gap: 4px; }
@@ -401,18 +403,16 @@
     .hl-dmg-input { width: 52px; text-align: center; background: #0a0a0a; border: 1px solid #2a2a2a; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; font-weight: 600; padding: 4px; border-radius: 3px; outline: none; }
     .hl-dmg-input:focus { border-color: #444; }
 
-    /* Damage-state coloring: bar, name, status label progressively dim/darken */
-    .hl-status-disabled .hl-bar-fill           { background: #8a6a3a; }
+    /* Damage-state coloring: name + status label only. Bar colors are
+       handled by the inline progressive gradient, not by these classes. */
     .hl-status-disabled .hl-status-label       { color: #c89a5a; }
     .hl-status-disabled .hl-name               { color: #c89a5a; }
-    .hl-status-destroyed .hl-bar-fill          { background: #6a2a2a; }
     .hl-status-destroyed .hl-status-label      { color: #c87777; }
     .hl-status-destroyed .hl-name              { color: #c87777; }
-    .hl-status-destroyed                        { opacity: 0.88; }
-    .hl-status-definitelyDestroyed .hl-bar-fill    { background: #3a0a0a; }
+    .hl-status-destroyed                        { opacity: 0.92; }
     .hl-status-definitelyDestroyed .hl-status-label { color: #8a3a3a; font-style: italic; }
     .hl-status-definitelyDestroyed .hl-name        { color: #8a3a3a; text-decoration: line-through; }
-    .hl-status-definitelyDestroyed                  { opacity: 0.55; }
+    .hl-status-definitelyDestroyed                  { opacity: 0.65; }
     .hl-row-error { background: #1a0d0d; border-color: #4a1a1a; }
     .hl-error { color: #c87777; font-size: 11px; font-style: italic; grid-column: 2 / 5; }
 
