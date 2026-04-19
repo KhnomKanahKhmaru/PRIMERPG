@@ -169,6 +169,10 @@ window.RULESET_DEFAULTS = {
       description: 'Physical durability. Roll for physical resistances.',
       group: 'health',
       formula: 'STR + SIZE',
+      // Stat modifier you roll with when the GM calls for a Health check —
+      // e.g. resisting poison, disease, or other bodily trauma. Shown in the
+      // card's top-right corner as a signed badge (+2, −1).
+      rollModifier: 'STRMOD',
       trackDamage: false,
       keepDecimals: false,
       unit: ''
@@ -237,6 +241,11 @@ window.RULESET_DEFAULTS = {
       description: 'Mental durability. Roll for mental resistances.',
       group: 'mental',
       formula: 'CHA + INT',
+      // For mental resistance rolls, character uses whichever of INT or CHA
+      // gives the better modifier — reflects that sharp minds AND strong
+      // willpower both help resist mental pressure, and the stronger trait
+      // carries you through.
+      rollModifier: 'max(INTMOD, CHAMOD)',
       trackDamage: false,
       keepDecimals: false,
       unit: ''
@@ -470,6 +479,10 @@ window.normalizeRuleset = function(rs) {
           description: (typeof s.description === 'string') ? s.description : '',
           group: validGroupCodes.has(rawGroup) ? rawGroup : fallbackGroup,
           formula: (typeof s.formula === 'string') ? s.formula : '0',
+          // Optional expression — displayed in the top-right of the card as
+          // a signed badge indicating which stat modifier the player rolls
+          // with when making resistance checks for this stat.
+          rollModifier: (typeof s.rollModifier === 'string') ? s.rollModifier : '',
           trackDamage: s.trackDamage === true,
           keepDecimals: s.keepDecimals === true,
           unit: (typeof s.unit === 'string') ? s.unit : ''
@@ -509,9 +522,18 @@ window.normalizeRuleset = function(rs) {
     };
     out.derivedStats.forEach(s => {
       const match = OLD_CORE_DEFAULTS[s.code];
-      if (!match) return;
-      if (match.oldNames.includes(s.name)) s.name = match.newName;
-      if (match.oldDescs.includes(s.description)) s.description = match.newDesc;
+      if (match) {
+        if (match.oldNames.includes(s.name)) s.name = match.newName;
+        if (match.oldDescs.includes(s.description)) s.description = match.newDesc;
+      }
+      // Backfill rollModifier from defaults for any core stat whose roll
+      // modifier wasn't set yet. Non-destructive: we only fill when empty.
+      if (!s.rollModifier) {
+        const defaultStat = d.derivedStats.find(ds => ds.code === s.code);
+        if (defaultStat && defaultStat.rollModifier) {
+          s.rollModifier = defaultStat.rollModifier;
+        }
+      }
     });
   }
 
