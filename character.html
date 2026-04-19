@@ -600,19 +600,43 @@
     .ds-card-code { font-family: 'Consolas', 'Courier New', monospace; font-size: 9px; color: #555; font-weight: 400; letter-spacing: 0; }
     .ds-card-formula { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #666; font-weight: 500; letter-spacing: 0; margin-bottom: 4px; }
     .ds-card-value { font-size: 24px; font-weight: 700; color: #e8e8e8; font-variant-numeric: tabular-nums; line-height: 1.1; }
-    /* Strain-induced value reduction — shown inline next to the big number
-       as a red italic annotation (e.g. "10 − 2.5 ft/sec"). Hover tooltip
-       gives the breakdown and effective value. */
+    /* Strain value toggle — clickable wrapper around two alternate
+       displays: the full breakdown ("10 − 2.5") and the pre-computed
+       effective value ("7.5"). Card class 'strain-collapsed' flips which
+       one is visible. Cursor signals the value is clickable. */
+    .ds-card-strain-toggle {
+      cursor: pointer;
+      -webkit-user-select: none;
+         -moz-user-select: none;
+              user-select: none;
+      border-radius: 3px;
+      padding: 0 2px;
+      margin: 0 -2px;
+      transition: background 0.1s;
+    }
+    .ds-card-strain-toggle:hover { background: rgba(255,255,255,0.04); }
+    /* Both spans render inline by default; CSS below hides whichever one
+       is inactive for the current card state. */
+    .ds-card-strain-expanded,
+    .ds-card-strain-effective { display: inline; }
+    .ds-card.strain-collapsed .ds-card-strain-expanded { display: none; }
+    .ds-card:not(.strain-collapsed) .ds-card-strain-effective { display: none; }
+    /* The "− 2.5" part of the expanded view — red italic emphasis. */
     .ds-card-strain-reduction {
       color: #e07878;
       font-style: italic;
       font-size: 17px;
       font-weight: 600;
       font-variant-numeric: tabular-nums;
-      cursor: help;
-      margin: 0 2px;
+      margin-left: 2px;
     }
-    .ds-card-strain-reduction:hover { color: #ff8a8a; }
+    /* The collapsed "7.5" effective value — tinted red italic so the
+       player sees it's a strain-reduced number, not the base stat. */
+    .ds-card-strain-effective {
+      color: #e07878;
+      font-style: italic;
+      font-variant-numeric: tabular-nums;
+    }
     .ds-card-error { color: #c87777; font-size: 14px; }
     .ds-card-unit { font-size: 11px; font-weight: 500; color: #666; margin-left: 3px; }
     .ds-card-desc { font-size: 11px; color: #666; line-height: 1.5; margin-top: 6px; font-style: italic; }
@@ -1675,6 +1699,8 @@
     addDiceMod:           (code) => combat.addDiceMod(code),
     updateDiceMod:        (code, idx, field, val) => combat.updateDiceMod(code, idx, field, val),
     deleteDiceMod:        (code, idx) => combat.deleteDiceMod(code, idx),
+    // Strain value-display toggle
+    toggleStrainValueDisplay: (code) => combat.toggleStrainValueDisplay(code),
     // Pain / Stress (percentile modifiers feeding Strain)
     togglePainPanel:      () => combat.togglePainPanel(),
     addPainMod:           () => combat.addPainMod(),
