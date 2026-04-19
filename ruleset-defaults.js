@@ -197,7 +197,7 @@ window.RULESET_DEFAULTS = {
     {
       code: 'SPD',
       name: 'Speed',
-      description: 'Movement speed, in feet per second.',
+      description: 'How fast you can move in feet per second.',
       group: 'movement',
       formula: 'DEX * 2.5',
       trackDamage: false,
@@ -210,7 +210,7 @@ window.RULESET_DEFAULTS = {
     {
       code: 'SPDUP',
       name: 'Speed Boost',
-      description: 'Bonus feet of movement from raw strength.',
+      description: 'You may add increments equal to this amount to your Speed; every time you do so, you gain +1 Dice Penalty towards all physical actions for the rest of the Round.',
       group: 'movement',
       formula: 'STR * 1',
       trackDamage: false,
@@ -221,7 +221,7 @@ window.RULESET_DEFAULTS = {
     {
       code: 'AGL',
       name: 'Agility',
-      description: 'General agility: dodging, tumbling, quick footwork.',
+      description: 'You may make a number of "free" (without normal penalties for spamming) Fast Actions, Fast Reactions, and Reactions per Round, equal to this. This applies independently to each.',
       group: 'movement',
       formula: '(DEX + PER) / 2 - 1',
       trackDamage: false,
@@ -231,7 +231,7 @@ window.RULESET_DEFAULTS = {
     {
       code: 'RFX',
       name: 'Reflex',
-      description: 'Reaction time in seconds. Lower is faster.',
+      description: 'Reaction time in seconds; used mostly for flavor, but also to determine whether you can participate in high-speed combat, or whether you get speedblitz\'d.',
       group: 'movement',
       // Tuned curve: each 4 points of combined DEXMOD+PERMOD halves the
       // reaction time. At 0/0 this is 0.20s (average human); at 2/2 it's
@@ -538,6 +538,33 @@ window.normalizeRuleset = function(rs) {
         oldDescs: ['Hit Points — overall durability of the body.'],
         newName: 'Health',
         newDesc: 'Physical durability. Roll for physical resistances.'
+      },
+      // Movement stats — descriptions refined to reflect the actual rules
+      // wording. Old stock phrasings were flavor-only; new versions tell
+      // the player what the number DOES at the table.
+      SPD: {
+        oldNames: ['Speed'],
+        oldDescs: ['Movement speed, in feet per second.'],
+        newName: 'Speed',
+        newDesc: 'How fast you can move in feet per second.'
+      },
+      SPDUP: {
+        oldNames: ['Speed Boost'],
+        oldDescs: ['Bonus feet of movement from raw strength.'],
+        newName: 'Speed Boost',
+        newDesc: 'You may add increments equal to this amount to your Speed; every time you do so, you gain +1 Dice Penalty towards all physical actions for the rest of the Round.'
+      },
+      AGL: {
+        oldNames: ['Agility'],
+        oldDescs: ['General agility: dodging, tumbling, quick footwork.'],
+        newName: 'Agility',
+        newDesc: 'You may make a number of "free" (without normal penalties for spamming) Fast Actions, Fast Reactions, and Reactions per Round, equal to this. This applies independently to each.'
+      },
+      RFX: {
+        oldNames: ['Reflex'],
+        oldDescs: ['Reaction time in seconds. Lower is faster.'],
+        newName: 'Reflex',
+        newDesc: 'Reaction time in seconds; used mostly for flavor, but also to determine whether you can participate in high-speed combat, or whether you get speedblitz\'d.'
       }
     };
     out.derivedStats.forEach(s => {
