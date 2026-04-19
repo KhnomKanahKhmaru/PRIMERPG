@@ -391,10 +391,12 @@
     }
     .hl-name { font-size: 13px; font-weight: 600; color: #ccc; }
     .hl-bar-wrap { display: flex; align-items: center; gap: 10px; }
-    .hl-bar-bg { flex: 1; height: 10px; background: #0a0a0a; border: 1px solid #222; border-radius: 2px; overflow: hidden; display: flex; }
-    /* Progressive HP bar uses two segments side-by-side. Colors + widths are
-       computed in char-combat.js and applied inline based on damage phase. */
-    .hl-bar-seg { height: 100%; transition: width 0.18s ease, background-color 0.18s ease; }
+    .hl-bar-bg { flex: 1; height: 12px; background: #0a0a0a; border: 1px solid #222; border-radius: 2px; overflow: hidden; display: flex; gap: 1px; padding: 1px; }
+    /* Segmented HP bar — one <span> per HP point. Colors set inline per-segment
+       based on damage phase. Segments have a tiny gap so they read as distinct
+       blocks. flex:1 + min-width:0 lets tiny segments on high-HP bars still
+       render cleanly without overflowing. */
+    .hl-seg { flex: 1 1 0; min-width: 2px; height: 100%; border-radius: 1px; transition: background-color 0.2s ease; }
     .hl-bar-label { font-size: 11px; font-weight: 600; color: #aaa; font-variant-numeric: tabular-nums; min-width: 56px; text-align: right; }
     .hl-status-label { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #888; text-align: center; }
     .hl-controls { display: flex; align-items: center; gap: 4px; }
