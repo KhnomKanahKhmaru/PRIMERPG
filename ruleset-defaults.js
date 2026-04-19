@@ -173,6 +173,18 @@ window.RULESET_DEFAULTS = {
       keepDecimals: false,
       unit: ''
     },
+    {
+      code: 'FORT',
+      name: 'Fortitude',
+      description: 'Damage-stacking resilience. Biggest wound hits you in full; additional wounds stack through Fortitude at reduced efficiency. Higher FORT → multiple small hits bite you less.',
+      group: 'health',
+      // FORT is pre-computed in the symbol table from STRMOD via the
+      // fortitudeTable lookup; the formula here just reads that value.
+      formula: 'FORT',
+      trackDamage: false,
+      keepDecimals: true,
+      unit: ''
+    },
     // MOVEMENT
     {
       code: 'SPD',
@@ -255,6 +267,35 @@ window.RULESET_DEFAULTS = {
     destroyed:           { label: 'Destroyed',             formula: '-maxHP' },
     definitelyDestroyed: { label: 'Definitively Destroyed', formula: '-2 * maxHP' }
   },
+
+  // ── FORTITUDE TABLE ──
+  //
+  // Looks up FORT (Fortitude) by STRMOD. Flat per-STRMOD entries, one row per
+  // value — characters with STRMOD outside the declared range clamp to the
+  // nearest endpoint.
+  //
+  // FORT is used in the per-location damage calculation:
+  //   effective damage = highest instance + (sum of other instances) / FORT
+  // So FORT=1 means damage stacks linearly; FORT=2 halves the impact of every
+  // secondary wound; FORT=10 means the biggest hit matters, everything else
+  // barely registers.
+  //
+  // Default curve: STRMOD −1 → 1, 0 → 1, 1 → 1.5, 2 → 2, linear past that.
+  // Same shape as POW_MULTIPLIER — feel free to retune per ruleset.
+  fortitudeTable: [
+    { strmod: -1, value: 1   },
+    { strmod: 0,  value: 1   },
+    { strmod: 1,  value: 1.5 },
+    { strmod: 2,  value: 2   },
+    { strmod: 3,  value: 3   },
+    { strmod: 4,  value: 4   },
+    { strmod: 5,  value: 5   },
+    { strmod: 6,  value: 6   },
+    { strmod: 7,  value: 7   },
+    { strmod: 8,  value: 8   },
+    { strmod: 9,  value: 9   },
+    { strmod: 10, value: 10  }
+  ],
 
   // ── POWER POOL ──
   //
@@ -468,6 +509,29 @@ window.normalizeRuleset = function(rs) {
         };
       }
     });
+  }
+
+  // ── FORTITUDE TABLE ──
+  // Flat per-STRMOD lookup → FORT value. Defaults to the Basic Set curve if
+  // missing. When user-supplied, each entry is validated and missing STRMOD
+  // values fall back to defaults so partial tables don't break the lookup.
+  {
+    const defaultRows = JSON.parse(JSON.stringify(d.fortitudeTable));
+    const byStrmod = new Map();
+    defaultRows.forEach(r => byStrmod.set(r.strmod, r.value));
+
+    if (Array.isArray(out.fortitudeTable)) {
+      out.fortitudeTable.forEach(e => {
+        if (!e || typeof e !== 'object') return;
+        const value = Number.isFinite(e.value) ? e.value : null;
+        if (value === null) return;
+        if (Number.isFinite(e.strmod)) byStrmod.set(e.strmod, value);
+      });
+    }
+
+    out.fortitudeTable = Array.from(byStrmod.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([strmod, value]) => ({ strmod, value }));
   }
 
   // ── POWER POOL ──
