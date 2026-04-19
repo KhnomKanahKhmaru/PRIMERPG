@@ -113,14 +113,29 @@ export function createCombatSection(ctx) {
   }
 
   function renderBodyTile(body) {
-    // Status derived from Body totals, mirroring the combat tab's state
-    // ladder: healthy → injured (< 75%) → disabled (≤ 0) → dead.
-    let statusLabel, statusClass;
-    if (body.damage >= 2 * body.max)      { statusLabel = 'Dead';     statusClass = 's-dead'; }
-    else if (body.damage >= body.max)     { statusLabel = 'Disabled'; statusClass = 's-disabled'; }
-    else if (body.damage >= body.max / 2) { statusLabel = 'Injured';  statusClass = 's-injured'; }
-    else if (body.damage > 0)             { statusLabel = 'Wounded';  statusClass = 's-injured'; }
-    else                                  { statusLabel = 'Healthy';  statusClass = 's-healthy'; }
+    // Pull the same statusLabel the Combat tab uses (e.g. "Dead",
+    // "Unconscious", "Paralyzed", "Unconscious & Paralyzed") — computed in
+    // char-derived.js from per-location disability, not a simple damage
+    // threshold. Falls back to damage-based tiers for the color pill only.
+    const label = (body.statusLabel && body.statusLabel.trim())
+      ? body.statusLabel
+      : (body.damage > 0 ? 'Wounded' : 'Healthy');
+
+    // Severity class for the pill — dead is most severe, impaired next,
+    // then a gradient for raw damage levels. Matches the Combat tab's
+    // three-tier color system so the same visual language carries over.
+    let statusClass;
+    if (body.dead) {
+      statusClass = 's-dead';
+    } else if (body.unconscious || body.paralyzed) {
+      statusClass = 's-disabled';
+    } else if (body.damage >= body.max / 2) {
+      statusClass = 's-injured';
+    } else if (body.damage > 0) {
+      statusClass = 's-injured';
+    } else {
+      statusClass = 's-healthy';
+    }
 
     const segHtml = renderBodySegments(body.max, body.damage, Math.min(body.max, 40));
     return `
@@ -130,7 +145,7 @@ export function createCombatSection(ctx) {
           <span class="state-tile-nums">${body.current}<span class="sep">/</span><span class="max">${body.max}</span></span>
         </div>
         <div class="state-bar">${segHtml}</div>
-        <span class="state-tile-status ${statusClass}">${escapeHtml(statusLabel)}</span>
+        <span class="state-tile-status ${statusClass}">${escapeHtml(label)}</span>
       </div>`;
   }
 
