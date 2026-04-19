@@ -110,12 +110,12 @@ export function createCombatSection(ctx) {
     return html;
   }
 
-  // UI-only state: which cards currently have their roll-modifier panel
-  // expanded. Set of stat codes. Not persisted across reloads.
-  const expandedRollMods = new Set();
+  // UI-only state: which cards currently have their dice-mod panel expanded.
+  // Set of stat codes. Not persisted across reloads.
+  const expandedDiceMods = new Set();
 
   function renderDsCard(entry) {
-    const { def, value, error, rollModifier, rollBase, rollMods, rollModTotal } = entry;
+    const { def, value, error, rollModifier, diceMods, diceModTotal } = entry;
     const canEdit = ctx.getCanEdit();
     const display = error ? 'ERR' : fmt(value);
     const unit = def.unit ? ` <span class="ds-card-unit">${escapeHtml(def.unit)}</span>` : '';
@@ -123,140 +123,147 @@ export function createCombatSection(ctx) {
     const codeBadge = def.code && def.code !== def.name
       ? ` <span class="ds-card-code">${escapeHtml(def.code)}</span>`
       : '';
-    // Formula line — a compact hint of what components feed this stat.
-    // Shown when the formula is meaningfully different from the code itself.
     const rawFormula = (def.formula || '').trim();
     const isIdentityFormula = rawFormula.toUpperCase() === def.code;
     const formulaBadge = (rawFormula && !isIdentityFormula)
       ? `<div class="ds-card-formula">${escapeHtml(rawFormula.replace(/\s+/g, ' '))}</div>`
       : '';
 
-    // Roll modifier badge — clickable when this card has a roll modifier
-    // (either a base formula like STRMOD, or any user-added modifiers).
-    // Click expands a modifier panel where the player/GM can add named
-    // signed values that stack onto the base.
-    const hasRollMod = Number.isFinite(rollModifier);
-    const hasBase = Number.isFinite(rollBase);
-    const openPanel = expandedRollMods.has(def.code);
-    let rollBadgeHtml = '';
-    if (hasRollMod) {
+    // Top-right STATIC mod badge — read-only. Shows the rollModifier value
+    // (e.g. STRMOD for Health). Added to the total of a roll's summed dice.
+    //   roll = sum of (value)D10 + rollModifier
+    // This is separate from dice mods, which add bonus DICE to the pool.
+    let rollBadge = '';
+    if (Number.isFinite(rollModifier)) {
       const sign = rollModifier > 0 ? '+' : (rollModifier < 0 ? '−' : '±');
       const absNum = Math.abs(rollModifier);
-      const tipParts = [];
-      if (hasBase) {
-        const baseSign = rollBase > 0 ? '+' : (rollBase < 0 ? '−' : '±');
-        tipParts.push(`Base ${baseSign}${Math.abs(rollBase)} (${def.rollModifier})`);
-      }
-      if (rollMods && rollMods.length > 0) {
-        const modSign = rollModTotal > 0 ? '+' : (rollModTotal < 0 ? '−' : '±');
-        tipParts.push(`Modifiers ${modSign}${Math.abs(rollModTotal)}`);
-      }
-      tipParts.push(canEdit ? 'Click to edit modifiers' : 'Roll modifier');
-      const tip = tipParts.join(' · ');
-      rollBadgeHtml = `<button class="ds-card-rollmod${openPanel ? ' open' : ''}${canEdit ? ' editable' : ''}"
-                              ${canEdit ? `onclick="toggleRollModPanel('${escapeHtml(def.code)}')"` : 'disabled'}
-                              title="${escapeHtml(tip)}"
-                              type="button">${sign}${absNum}</button>`;
-    } else if (canEdit && hasBase === false) {
-      // No base, no mods — show a subtle "+" button for adding the first mod.
-      // This is only offered for stats without a base formula so players can
-      // still add roll modifiers to stats like SPD, AGL, etc. if they want.
-      rollBadgeHtml = `<button class="ds-card-rollmod-empty"
-                              onclick="toggleRollModPanel('${escapeHtml(def.code)}')"
-                              title="Add a roll modifier"
-                              type="button">+</button>`;
+      const tip = def.rollModifier
+        ? `Static roll modifier: ${def.rollModifier} — added to the roll total`
+        : 'Static roll modifier — added to the roll total';
+      rollBadge = `<div class="ds-card-rollmod" title="${escapeHtml(tip)}">${sign}${absNum}</div>`;
     }
 
-    // Expanded roll-modifier panel — list of user mods with add button.
+    // Bottom-area DICE MOD pill — editable. Shows net bonus dice from
+    // abilities/traits. Click to open an inline editor. Hidden when no
+    // dice mods exist and we're not editable (keeps view-only cards clean).
+    const hasDiceMods = Array.isArray(diceMods) && diceMods.length > 0;
+    const openPanel = expandedDiceMods.has(def.code);
+    let dicePill = '';
+    if (canEdit || hasDiceMods) {
+      let pillLabel;
+      if (hasDiceMods) {
+        const sign = diceModTotal > 0 ? '+' : (diceModTotal < 0 ? '−' : '±');
+        pillLabel = `${sign}${Math.abs(diceModTotal)}d`;
+      } else {
+        pillLabel = '+ Dice Mod';
+      }
+      const pillTip = hasDiceMods
+        ? `Bonus dice added to the roll pool (base ${fmt(value)}${unit ? '' : ''} + ${diceModTotal >= 0 ? '+' : ''}${diceModTotal}d)${canEdit ? '. Click to edit.' : ''}`
+        : 'Add bonus dice from abilities or traits';
+      dicePill = canEdit
+        ? `<button class="ds-card-dicepill${openPanel ? ' open' : ''}${hasDiceMods ? ' has-mods' : ' empty'}"
+                  onclick="toggleDiceModPanel('${escapeHtml(def.code)}')"
+                  title="${escapeHtml(pillTip)}"
+                  type="button">${pillLabel}</button>`
+        : `<span class="ds-card-dicepill has-mods readonly" title="${escapeHtml(pillTip)}">${pillLabel}</span>`;
+    }
+
+    // Expanded panel content (dice modifier editor).
     let panelHtml = '';
     if (openPanel && canEdit) {
-      panelHtml = renderRollModPanel(def.code, rollBase, rollMods);
+      panelHtml = renderDiceModPanel(def.code, value, diceMods, diceModTotal);
     }
 
     return `
       <div class="ds-card${openPanel ? ' rollmod-open' : ''}"${errTitle}>
-        ${rollBadgeHtml}
+        ${rollBadge}
         <div class="ds-card-name">${escapeHtml(def.name)}${codeBadge}</div>
         ${formulaBadge}
         <div class="ds-card-value${error ? ' ds-card-error' : ''}">${display}${unit}</div>
+        ${dicePill}
         ${def.description ? `<div class="ds-card-desc">${escapeHtml(def.description)}</div>` : ''}
         ${panelHtml}
       </div>`;
   }
 
-  function renderRollModPanel(code, rollBase, rollMods) {
-    const mods = Array.isArray(rollMods) ? rollMods : [];
+  // Dice modifier editor panel — lives inside an expanded card. Shows the
+  // total dice the player rolls (base + all mods) at the top, then the list
+  // of mods with name/value/delete, then an add button.
+  function renderDiceModPanel(code, baseValue, diceMods, diceModTotal) {
+    const mods = Array.isArray(diceMods) ? diceMods : [];
+    const base = Number.isFinite(baseValue) ? baseValue : 0;
+    const totalDice = base + (diceModTotal || 0);
+
     let html = '<div class="ds-rollmod-panel">';
-    // Breakdown: base row + user mod rows. Base is informational only —
-    // can't be edited here (that's the ruleset's responsibility).
-    if (Number.isFinite(rollBase)) {
-      const sign = rollBase > 0 ? '+' : (rollBase < 0 ? '−' : '±');
-      html += `<div class="ds-rollmod-base">
-        <span class="ds-rm-base-label">Base</span>
-        <span class="ds-rm-base-value">${sign}${Math.abs(rollBase)}</span>
-      </div>`;
-    }
+
+    // Summary row: "Rolling Nd" with breakdown
+    html += `<div class="ds-dicemod-summary">
+      <span class="ds-dm-summary-label">Rolling</span>
+      <span class="ds-dm-summary-value">${totalDice}d</span>
+      <span class="ds-dm-summary-breakdown">= ${base} base${(diceModTotal || 0) !== 0 ? ` ${(diceModTotal > 0 ? '+' : '−')} ${Math.abs(diceModTotal)}` : ''}</span>
+    </div>`;
+
     if (mods.length === 0) {
-      html += '<div class="mod-empty">No modifiers. Add traits or abilities that bonus this roll.</div>';
+      html += '<div class="mod-empty">No dice modifiers. Add bonus dice from abilities or traits.</div>';
     } else {
       html += '<div class="mod-list">';
       mods.forEach((mod, idx) => {
         html += `<div class="mod-item">
           <input type="text" class="mod-name-input" value="${escapeHtml(mod.name || '')}" placeholder="e.g. Brawny Trait"
-                 onchange="updateRollMod('${escapeHtml(code)}',${idx},'name',this.value)">
+                 onchange="updateDiceMod('${escapeHtml(code)}',${idx},'name',this.value)">
           <input type="number" class="mod-val-input" value="${mod.value || 0}" step="1"
-                 onchange="updateRollMod('${escapeHtml(code)}',${idx},'value',this.value)">
-          <span class="mod-delete" onclick="deleteRollMod('${escapeHtml(code)}',${idx})" title="Delete modifier">×</span>
+                 onchange="updateDiceMod('${escapeHtml(code)}',${idx},'value',this.value)"
+                 title="Bonus dice (negative = penalty dice)">
+          <span class="mod-delete" onclick="deleteDiceMod('${escapeHtml(code)}',${idx})" title="Delete">×</span>
         </div>`;
       });
       html += '</div>';
     }
-    html += `<div class="mod-add-row"><button class="mod-add-btn" onclick="addRollMod('${escapeHtml(code)}')">+ Add modifier</button></div>`;
+    html += `<div class="mod-add-row"><button class="mod-add-btn" onclick="addDiceMod('${escapeHtml(code)}')">+ Add dice mod</button></div>`;
     html += '</div>';
     return html;
   }
 
-  // ─── ROLL MOD HANDLERS ───
+  // ─── DICE MOD HANDLERS ───
 
-  function toggleRollModPanel(code) {
-    if (expandedRollMods.has(code)) expandedRollMods.delete(code);
-    else expandedRollMods.add(code);
+  function toggleDiceModPanel(code) {
+    if (expandedDiceMods.has(code)) expandedDiceMods.delete(code);
+    else expandedDiceMods.add(code);
     renderAll();
   }
 
-  async function addRollMod(code) {
+  async function addDiceMod(code) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
-    if (!charData.rollModifiers || typeof charData.rollModifiers !== 'object') {
-      charData.rollModifiers = {};
+    if (!charData.diceModifiers || typeof charData.diceModifiers !== 'object') {
+      charData.diceModifiers = {};
     }
-    if (!Array.isArray(charData.rollModifiers[code])) charData.rollModifiers[code] = [];
-    charData.rollModifiers[code].push({ name: '', value: 0 });
-    expandedRollMods.add(code);  // ensure panel stays open after add
-    await saveCharacter(ctx.getCharId(), { rollModifiers: charData.rollModifiers });
+    if (!Array.isArray(charData.diceModifiers[code])) charData.diceModifiers[code] = [];
+    charData.diceModifiers[code].push({ name: '', value: 1 });
+    expandedDiceMods.add(code);
+    await saveCharacter(ctx.getCharId(), { diceModifiers: charData.diceModifiers });
     renderAll();
   }
 
-  async function updateRollMod(code, idx, field, val) {
+  async function updateDiceMod(code, idx, field, val) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
-    const list = charData.rollModifiers && charData.rollModifiers[code];
+    const list = charData.diceModifiers && charData.diceModifiers[code];
     if (!Array.isArray(list) || !list[idx]) return;
     if (field === 'name') list[idx].name = typeof val === 'string' ? val : '';
     else if (field === 'value') list[idx].value = parseInt(val) || 0;
-    await saveCharacter(ctx.getCharId(), { rollModifiers: charData.rollModifiers });
+    await saveCharacter(ctx.getCharId(), { diceModifiers: charData.diceModifiers });
     renderAll();
   }
 
-  async function deleteRollMod(code, idx) {
+  async function deleteDiceMod(code, idx) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
-    const list = charData.rollModifiers && charData.rollModifiers[code];
+    const list = charData.diceModifiers && charData.diceModifiers[code];
     if (!Array.isArray(list) || !list[idx]) return;
     list.splice(idx, 1);
-    // Clean up empty arrays so the stored object doesn't accumulate noise.
-    if (list.length === 0) delete charData.rollModifiers[code];
-    await saveCharacter(ctx.getCharId(), { rollModifiers: charData.rollModifiers });
+    if (list.length === 0) delete charData.diceModifiers[code];
+    await saveCharacter(ctx.getCharId(), { diceModifiers: charData.diceModifiers });
     renderAll();
   }
 
@@ -2247,7 +2254,7 @@ export function createCombatSection(ctx) {
     quickAddSanDamage, removeSanDamage, updateSanDamageField,
     tickSanDamageQuickmod,
     addSanDamageMod, updateSanDamageMod, deleteSanDamageMod,
-    // Card roll modifiers (player/GM-editable bonuses to roll badges)
-    toggleRollModPanel, addRollMod, updateRollMod, deleteRollMod
+    // Card dice modifiers (player/GM-editable bonus dice for rolls)
+    toggleDiceModPanel, addDiceMod, updateDiceMod, deleteDiceMod
   };
 }
