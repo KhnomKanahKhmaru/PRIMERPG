@@ -298,12 +298,14 @@ export function buildSymbolTable(character, ruleset) {
   // SIZE is stored outside the main stats list but lives in stats.size.
   if (typeof stats.size === 'number') {
     table.SIZE = stats.size;
-    // SIZEMOD derives from the SIZE tier index — convention: SIZEMOD =
-    // SIZE - 6 (so Medium=0, Large=+1, Small=-1, etc.). This matches PRIME
-    // Basic Set defaults.
-    table.SIZEMOD = stats.size - 6;
+    // SIZEMOD derives from SIZE relative to Medium (the reference tier).
+    // Medium is SIZE 4 in the PRIME Basic Set, so SIZEMOD = SIZE - 4.
+    // This makes Medium=0, Large=+2, Tiny=-2, etc. Homebrew rulesets with
+    // different SIZE scales should compute SIZEMOD in their formulas using
+    // raw SIZE if this convention doesn't fit.
+    table.SIZEMOD = stats.size - 4;
   } else {
-    table.SIZE = 6;
+    table.SIZE = 4;
     table.SIZEMOD = 0;
   }
 
