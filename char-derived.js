@@ -914,7 +914,69 @@ export function computeDerivedStats(character, ruleset) {
     };
   });
 
-  return { stats, locations, errors, vars, body, power, san, injuries };
+  // ─── PAIN / STRESS / STRAIN ───
+  //
+  // Pain: percent of Body you're missing (bodyDamage / bodyMax × 100).
+  // Stress: percent of SAN range you've lost (sanDamage / (sanMax × 3) × 100).
+  //   SAN denominator is 3× because SAN ranges from +max down to -2*max, so
+  //   the total damageable range is 3× the displayed max.
+  // Strain: Pain + Stress, capped at 100.
+  //
+  // All three support percentile MODIFIERS (charData.painModifiers /
+  // sanModifiers arrays of {name, value}) that stack additively onto the
+  // base percentage. Final values clamp to [0, 100].
+  //
+  // Strain reduces the dice count on any stat whose def.passiveRoll isn't
+  // true — applied in the stats loop's post-pass below.
+  let pain = null;
+  if (body && body.max > 0) {
+    const rawPct = (body.damage / body.max) * 100;
+    const basePct = Math.max(0, Math.min(100, Math.round(rawPct)));
+    const mods = Array.isArray(character.painModifiers) ? character.painModifiers : [];
+    const modTotal = mods.reduce((a, m) => a + (parseInt(m && m.value) || 0), 0);
+    const finalPct = Math.max(0, Math.min(100, Math.round(basePct + modTotal)));
+    pain = { basePercent: basePct, modifiers: mods, modTotal, finalPercent: finalPct };
+  }
+
+  let stress = null;
+  if (san && san.max > 0) {
+    const denom = san.max * 3;
+    const rawPct = (san.damage / denom) * 100;
+    const basePct = Math.max(0, Math.min(100, Math.round(rawPct)));
+    const mods = Array.isArray(character.stressModifiers) ? character.stressModifiers : [];
+    const modTotal = mods.reduce((a, m) => a + (parseInt(m && m.value) || 0), 0);
+    const finalPct = Math.max(0, Math.min(100, Math.round(basePct + modTotal)));
+    stress = { basePercent: basePct, modifiers: mods, modTotal, finalPercent: finalPct };
+  }
+
+  const painPct = pain ? pain.finalPercent : 0;
+  const stressPct = stress ? stress.finalPercent : 0;
+  const strainPct = Math.max(0, Math.min(100, painPct + stressPct));
+  const strain = { painPercent: painPct, stressPercent: stressPct, percent: strainPct };
+
+  // Post-pass: for each stat entry, compute strain-adjusted dice count.
+  // Passive rolls are exempt (HP/SAN resistance rolls don't suffer Strain).
+  stats.forEach(entry => {
+    const def = entry.def;
+    const baseDice = (entry.value != null && Number.isFinite(entry.value))
+      ? Math.floor(entry.value) : 0;
+    const diceModTotal = entry.diceModTotal || 0;
+    const poolBeforeStrain = Math.max(0, baseDice + diceModTotal);
+
+    const isPassive = def.passiveRoll === true;
+    const strainPenalty = isPassive
+      ? 0
+      : Math.floor(poolBeforeStrain * strainPct / 100);
+    const finalDice = Math.max(0, poolBeforeStrain - strainPenalty);
+
+    entry.isPassive = isPassive;
+    entry.strainPenalty = strainPenalty;
+    entry.finalDice = finalDice;
+    entry.poolBeforeStrain = poolBeforeStrain;
+    entry.strainPercent = strainPct;
+  });
+
+  return { stats, locations, errors, vars, body, power, san, injuries, pain, stress, strain };
 }
 
 // ─── DEGRADATION TABLE ───
