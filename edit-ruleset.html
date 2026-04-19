@@ -622,11 +622,11 @@
           </div>
 
           <div style="margin-top:14px">
-            <h4 style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#aaa;margin-bottom:6px">POW → Multiplier Table</h4>
-            <div class="section-desc" style="margin-bottom:8px">For each POW range, the value to use for <code>POW_MULTIPLIER</code>. Ranges are inclusive on both ends. The first matching range wins.</div>
+            <h4 style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#aaa;margin-bottom:6px">POWMOD → Multiplier Table</h4>
+            <div class="section-desc" style="margin-bottom:8px">For each range of <code>POWMOD</code> (the stat modifier from POW), the value to use for <code>POW_MULTIPLIER</code> in formulas. Ranges are inclusive on both ends. The first matching range wins.</div>
             <div class="pm-list-header">
-              <div style="text-align:center">POW ≥</div>
-              <div style="text-align:center">POW ≤</div>
+              <div style="text-align:center">POWMOD ≥</div>
+              <div style="text-align:center">POWMOD ≤</div>
               <div style="text-align:center">Multiplier</div>
               <div></div>
             </div>
@@ -1701,8 +1701,8 @@
     const table = (state.powerPool && state.powerPool.powMultiplier) || [];
     container.innerHTML = table.map((e, i) => `
       <div class="pm-row">
-        <input type="number" value="${e.powMin}" oninput="updatePmField(${i},'powMin',this.value)">
-        <input type="number" value="${e.powMax}" oninput="updatePmField(${i},'powMax',this.value)">
+        <input type="number" value="${e.powmodMin}" oninput="updatePmField(${i},'powmodMin',this.value)">
+        <input type="number" value="${e.powmodMax}" oninput="updatePmField(${i},'powmodMax',this.value)">
         <input type="number" step="0.01" value="${e.value}" oninput="updatePmField(${i},'value',this.value)">
         <span class="delete-x" onclick="removePmRange(${i})" title="Remove">×</span>
       </div>
@@ -1722,13 +1722,13 @@
 
   window.addPmRange = function() {
     if (!state.powerPool.powMultiplier) state.powerPool.powMultiplier = [];
-    // Default new range: one slot above the highest existing powMax.
+    // Default new range: one slot above the highest existing powmodMax.
     const max = state.powerPool.powMultiplier.length > 0
-      ? Math.max(...state.powerPool.powMultiplier.map(e => e.powMax))
+      ? Math.max(...state.powerPool.powMultiplier.map(e => e.powmodMax))
       : -1;
     state.powerPool.powMultiplier.push({
-      powMin: max + 1,
-      powMax: max + 1,
+      powmodMin: max + 1,
+      powmodMax: max + 1,
       value: 1
     });
     renderPowMultiplierTable();
