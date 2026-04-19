@@ -352,7 +352,8 @@ export function createCombatSection(ctx) {
     difficulty: 6,
     mitigation: 0,
     reduction:  0,
-    showRaw:    false        // false = strain-reduced pool; true = pre-strain
+    showRaw:    false,       // false = strain-reduced pool; true = pre-strain
+    passive:    false        // true = skip Strain penalty (e.g. raw resistance / untimed check)
   };
 
   // Build the list of options the STAT dropdown offers. Pulls every base
@@ -436,6 +437,63 @@ export function createCombatSection(ctx) {
     return opts;
   }
 
+  // Analytical distribution of the result of a PRIME roll, using the
+  // normal approximation. Given a dice pool, a per-die target number (the
+  // effective difficulty), and a fixed stat modifier, returns the mean and
+  // the 70% central interval (15th and 85th percentiles under normal).
+  //
+  // Mechanics modeled:
+  //   • rolling a 1   → −1 result, no explosion
+  //   • rolling D..9  → +1 result, no explosion  (only when D ≤ 9)
+  //   • rolling a 10  → +1 result AND re-roll a new die ("explodes")
+  //   • all else      → 0 result
+  //
+  // The explosion chain is geometric: each 10 triggers another die with
+  // the same rules, so per-seat expectations are E[X]/(1−0.1). Difficulty
+  // above 10 doesn't change per-die probability (only 10s can hit); the
+  // caller passes that penalty into the stat modifier instead.
+  function computeRollDistribution(pool, difficulty, statmod) {
+    if (pool <= 0) {
+      return { mean: statmod, std: 0, low: statmod, high: statmod };
+    }
+    // Clamp difficulty for the dice calculation. Below 2 is equivalent to
+    // D=2 (1s still subtract). Above 10 is equivalent to D=10 (only 10s
+    // can still succeed); the excess is handled by effStatmod.
+    const D = Math.max(2, Math.min(10, parseInt(difficulty) || 2));
+
+    const p_neg     = 0.1;             // rolling a 1
+    const p_zero    = (D - 2) / 10;    // rolling 2..D−1
+    const p_pos_nx  = (10 - D) / 10;   // rolling D..9 (+1, no explode)
+    const p_pos_ex  = 0.1;             // rolling 10   (+1, explode)
+
+    // Raw per-die contribution X (before the explosion chain).
+    // E[X]  = p_pos_nx + p_pos_ex − p_neg       = (10 − D) / 10
+    // E[X²] = p_pos_nx + p_pos_ex + p_neg       = (12 − D) / 10  (|±1|² = 1)
+    const EX  = p_pos_nx + p_pos_ex - p_neg;
+    const EX2 = p_pos_nx + p_pos_ex + p_neg;
+
+    // Per-seat Y = X + I·Y' where I = indicator(rolled 10), Y' is an
+    // independent copy of Y (the recursive explosion).
+    //   E[Y]  = E[X] / (1 − p_ex)
+    //   E[Y²] = (E[X²] + 2·p_ex·E[Y]) / (1 − p_ex)
+    const EY  = EX  / (1 - p_pos_ex);
+    const EY2 = (EX2 + 2 * p_pos_ex * EY) / (1 - p_pos_ex);
+    const VY  = Math.max(0, EY2 - EY * EY);
+
+    const mean = pool * EY + statmod;
+    const std  = Math.sqrt(pool * VY);
+    // Central 70% interval — ±1.036σ under a normal approximation. Good
+    // enough for N ≥ 3 or so; at very small pools the distribution is
+    // skewed but the numbers still communicate "roughly this range".
+    const Z_70 = 1.036;
+    return {
+      mean,
+      std,
+      low:  mean - Z_70 * std,
+      high: mean + Z_70 * std
+    };
+  }
+
   // Resolve the current calculation inputs by combining state with the
   // picked dropdown option's live values. Overrides win over live data.
   function resolveRollCalc(result, charData, ruleset) {
@@ -463,14 +521,47 @@ export function createCombatSection(ctx) {
 
     const basePool = Math.max(0, (parseInt(statValue) || 0) + (parseInt(skillValue) || 0));
     const strainPct = (result.strain && result.strain.percent) || 0;
-    const strainPenalty = Math.floor(basePool * strainPct / 100);
+    // Passive rolls bypass Strain — used for resistance checks and untimed
+    // activities where physical/mental wear doesn't degrade the dice pool.
+    const isPassive = rollCalcState.passive === true;
+    const strainPenalty = isPassive ? 0 : Math.floor(basePool * strainPct / 100);
     const finalPool = Math.max(0, basePool - strainPenalty);
+
+    // Distribution of result = pool rolls + effStatmod. Based on the pool
+    // the player actually rolls (post-strain if active, raw if passive).
+    const dist = computeRollDistribution(finalPool, effDifficulty, effStatmod);
 
     return {
       statOpts, skillOpts, pickedStat, pickedSkill,
       statValue, skillValue, statmod,
       diff, mit, red, effDifficulty, diffDelta, effStatmod,
-      basePool, strainPct, strainPenalty, finalPool
+      basePool, strainPct, strainPenalty, finalPool,
+      isPassive, dist
+    };
+  }
+
+  // Format the expected-result display. For pool=0 it's deterministic
+  // (just the statmod); otherwise show the mean with the 70% CI range.
+  // Returns { mean, rangeText } strings ready to render.
+  function formatRollExpected(dist, pool) {
+    const meanRound = Math.round(dist.mean);
+    const sign = meanRound >= 0 ? '+' : '−';
+    const meanText = `${sign}${Math.abs(meanRound)}`;
+    if (pool <= 0) {
+      return { meanText, rangeText: 'fixed result (no dice)' };
+    }
+    const lowRound  = Math.round(dist.low);
+    const highRound = Math.round(dist.high);
+    // When the CI collapses to a single point (tiny std), just show the
+    // mean once rather than "3 — 3 — 3".
+    if (lowRound === highRound) {
+      return { meanText, rangeText: '~70% land here' };
+    }
+    const lowSign  = lowRound  >= 0 ? '+' : '−';
+    const highSign = highRound >= 0 ? '+' : '−';
+    return {
+      meanText,
+      rangeText: `likely ${lowSign}${Math.abs(lowRound)} — ${highSign}${Math.abs(highRound)}`
     };
   }
 
@@ -483,13 +574,16 @@ export function createCombatSection(ctx) {
     const skillOptionsHtml = buildRollCalcSkillSelectHtml(r.skillOpts);
 
     // Display values — toggle between strain-reduced (default) and raw.
+    // Passive mode makes both states show the same number (strain=0).
     const displayedPool = rollCalcState.showRaw ? r.basePool : r.finalPool;
     const displayedMod  = r.effStatmod;
     const modSign = displayedMod >= 0 ? '+' : '−';
     const modAbs  = Math.abs(displayedMod);
-    const toggleTip = rollCalcState.showRaw
-      ? `Showing raw pool. Click to see ${r.finalPool}d after Strain.`
-      : `Showing Strain-reduced pool. Click to see raw ${r.basePool}d.`;
+    const toggleTip = r.isPassive
+      ? 'Passive — Strain does not apply to this roll.'
+      : (rollCalcState.showRaw
+        ? `Showing raw pool. Click to see ${r.finalPool}d after Strain.`
+        : `Showing Strain-reduced pool. Click to see raw ${r.basePool}d.`);
 
     // Breakdown lines for the detail panel below the big output.
     const diffNote = r.diffDelta === 0
@@ -499,10 +593,21 @@ export function createCombatSection(ctx) {
       ? ''
       : ` (${r.statmod >= 0 ? '+' : '−'}${Math.abs(r.statmod)} base ${r.diffDelta > 0 ? '−' : '+'} ${Math.abs(r.diffDelta)})`;
 
+    const expected = formatRollExpected(r.dist, r.finalPool);
+    // Strain line changes depending on passive / active. In passive mode
+    // we explicitly show "ignored" so the player knows why it's 0.
+    const strainLine = r.isPassive
+      ? `<div class="rc-line"><span class="rc-k">Strain penalty</span><span class="rc-v">— <span class="rc-dim">(passive — ignored)</span></span></div>`
+      : `<div class="rc-line"><span class="rc-k">Strain penalty</span><span class="rc-v">−${r.strainPenalty}d  <span class="rc-dim">(${r.strainPct}% of ${r.basePool})</span></span></div>`;
+
     return `
       <div class="state-tile state-tile-wide state-tile-rollcalc">
         <div class="state-tile-head">
           <span class="state-tile-label">Roll Calculator</span>
+          <div class="rc-mode" role="group" aria-label="Roll mode">
+            <button type="button" class="rc-mode-btn${!r.isPassive ? ' active' : ''}" onclick="rollCalcSetPassive(false)" title="Active roll — Strain reduces your dice pool">Active</button>
+            <button type="button" class="rc-mode-btn${r.isPassive ? ' active' : ''}"  onclick="rollCalcSetPassive(true)"  title="Passive roll — Strain does not apply (resistance checks, untimed tasks)">Passive</button>
+          </div>
           <span class="rc-hint">(STAT + SKILL) @ Difficulty + Mod</span>
         </div>
 
@@ -561,14 +666,24 @@ export function createCombatSection(ctx) {
         </div>
 
         <div class="rc-output">
-          <button type="button" class="rc-big" onclick="rollCalcToggle()" title="${escapeHtml(toggleTip)}">
-            <span class="rc-big-num ${rollCalcState.showRaw ? 'rc-raw' : ''}">${displayedPool}d</span>
-            <span class="rc-big-mod">${modSign}${modAbs}</span>
-            <span class="rc-big-diff">@ diff ${r.effDifficulty}</span>
-          </button>
+          <div class="rc-output-pair">
+            <button type="button" class="rc-big${r.isPassive ? ' rc-big-passive' : ''}" onclick="rollCalcToggle()" title="${escapeHtml(toggleTip)}">
+              <span class="rc-big-label">Dice Pool</span>
+              <span class="rc-big-main">
+                <span class="rc-big-num ${rollCalcState.showRaw && !r.isPassive ? 'rc-raw' : ''}">${displayedPool}d</span>
+                <span class="rc-big-mod">${modSign}${modAbs}</span>
+              </span>
+              <span class="rc-big-diff">@ diff ${r.effDifficulty}${r.isPassive ? ' · passive' : ''}</span>
+            </button>
+            <div class="rc-expected">
+              <span class="rc-big-label">Expected Result</span>
+              <span class="rc-expected-mean">${expected.meanText}</span>
+              <span class="rc-expected-range">${escapeHtml(expected.rangeText)}</span>
+            </div>
+          </div>
           <div class="rc-breakdown">
             <div class="rc-line"><span class="rc-k">Pool</span><span class="rc-v">${r.statValue} + ${r.skillValue} = <b>${r.basePool}d</b></span></div>
-            <div class="rc-line"><span class="rc-k">Strain penalty</span><span class="rc-v">−${r.strainPenalty}d  <span class="rc-dim">(${r.strainPct}% of ${r.basePool})</span></span></div>
+            ${strainLine}
             <div class="rc-line"><span class="rc-k">After Strain</span><span class="rc-v"><b>${r.finalPool}d</b></span></div>
             <div class="rc-line"><span class="rc-k">Difficulty</span><span class="rc-v">${r.diff} − ${r.mit} mit − ${r.red} red = <b>${r.effDifficulty}</b>  <span class="rc-dim">(${diffNote})</span></span></div>
             <div class="rc-line"><span class="rc-k">Stat mod</span><span class="rc-v"><b>${modSign}${modAbs}</b>${escapeHtml(statmodNote)}</span></div>
@@ -664,9 +779,14 @@ export function createCombatSection(ctx) {
     rollCalcState.showRaw = !rollCalcState.showRaw;
     repaintRollCalcOutput();
   }
+  function rollCalcSetPassive(flag) {
+    rollCalcState.passive = !!flag;
+    repaintRollCalcOutput();
+  }
 
-  // Targeted repaint — recompute and rewrite only the .state-tile-rollcalc
-  // output area. Keeps input focus stable so typing feels responsive.
+  // Targeted repaint — recompute and rewrite only the output areas of the
+  // .state-tile-rollcalc (big pool, expected result, breakdown, mode pills).
+  // Keeps input focus stable so typing feels responsive.
   function repaintRollCalcOutput() {
     const tile = document.querySelector('.state-tile-rollcalc');
     if (!tile) return;
@@ -681,15 +801,33 @@ export function createCombatSection(ctx) {
     const modSign = displayedMod >= 0 ? '+' : '−';
     const modAbs  = Math.abs(displayedMod);
 
+    // Active/Passive pill state.
+    const modeBtns = tile.querySelectorAll('.rc-mode-btn');
+    if (modeBtns.length === 2) {
+      modeBtns[0].classList.toggle('active', !r.isPassive);
+      modeBtns[1].classList.toggle('active',  r.isPassive);
+    }
+
+    // Big dice pool button.
+    const bigBtn = tile.querySelector('.rc-big');
+    if (bigBtn) bigBtn.classList.toggle('rc-big-passive', r.isPassive);
+
     const bigNum = tile.querySelector('.rc-big-num');
     if (bigNum) {
       bigNum.textContent = `${displayedPool}d`;
-      bigNum.classList.toggle('rc-raw', rollCalcState.showRaw);
+      bigNum.classList.toggle('rc-raw', rollCalcState.showRaw && !r.isPassive);
     }
     const bigMod = tile.querySelector('.rc-big-mod');
     if (bigMod) bigMod.textContent = `${modSign}${modAbs}`;
     const bigDiff = tile.querySelector('.rc-big-diff');
-    if (bigDiff) bigDiff.textContent = `@ diff ${r.effDifficulty}`;
+    if (bigDiff) bigDiff.textContent = `@ diff ${r.effDifficulty}${r.isPassive ? ' · passive' : ''}`;
+
+    // Expected result block.
+    const expected = formatRollExpected(r.dist, r.finalPool);
+    const expMean  = tile.querySelector('.rc-expected-mean');
+    const expRange = tile.querySelector('.rc-expected-range');
+    if (expMean)  expMean.textContent  = expected.meanText;
+    if (expRange) expRange.textContent = expected.rangeText;
 
     const diffNote = r.diffDelta === 0
       ? 'baseline'
@@ -698,11 +836,15 @@ export function createCombatSection(ctx) {
       ? ''
       : ` (${r.statmod >= 0 ? '+' : '−'}${Math.abs(r.statmod)} base ${r.diffDelta > 0 ? '−' : '+'} ${Math.abs(r.diffDelta)})`;
 
+    const strainLineHtml = r.isPassive
+      ? `<div class="rc-line"><span class="rc-k">Strain penalty</span><span class="rc-v">— <span class="rc-dim">(passive — ignored)</span></span></div>`
+      : `<div class="rc-line"><span class="rc-k">Strain penalty</span><span class="rc-v">−${r.strainPenalty}d  <span class="rc-dim">(${r.strainPct}% of ${r.basePool})</span></span></div>`;
+
     const bd = tile.querySelector('.rc-breakdown');
     if (bd) {
       bd.innerHTML = `
         <div class="rc-line"><span class="rc-k">Pool</span><span class="rc-v">${r.statValue} + ${r.skillValue} = <b>${r.basePool}d</b></span></div>
-        <div class="rc-line"><span class="rc-k">Strain penalty</span><span class="rc-v">−${r.strainPenalty}d  <span class="rc-dim">(${r.strainPct}% of ${r.basePool})</span></span></div>
+        ${strainLineHtml}
         <div class="rc-line"><span class="rc-k">After Strain</span><span class="rc-v"><b>${r.finalPool}d</b></span></div>
         <div class="rc-line"><span class="rc-k">Difficulty</span><span class="rc-v">${r.diff} − ${r.mit} mit − ${r.red} red = <b>${r.effDifficulty}</b>  <span class="rc-dim">(${diffNote})</span></span></div>
         <div class="rc-line"><span class="rc-k">Stat mod</span><span class="rc-v"><b>${modSign}${modAbs}</b>${escapeHtml(statmodNote)}</span></div>`;
@@ -3195,7 +3337,7 @@ export function createCombatSection(ctx) {
     rollCalcSetStat, rollCalcSetSkill,
     rollCalcSetStatValue, rollCalcSetSkillValue, rollCalcSetStatmod,
     rollCalcSetDifficulty, rollCalcSetMitigation, rollCalcSetReduction,
-    rollCalcToggle,
+    rollCalcToggle, rollCalcSetPassive,
     // Pain / Stress (percentile modifiers feeding Strain)
     togglePainPanel, addPainMod, updatePainMod, deletePainMod,
     toggleStressPanel, addStressMod, updateStressMod, deleteStressMod
