@@ -107,11 +107,6 @@ export function createCombatSection(ctx) {
     const movementHtml = renderMovementTile(result, ruleset);
     if (movementHtml) tiles.push(movementHtml);
 
-    // MOVEMENT tile — spans full width below the others. Shows each stat
-    // with its unit and (for strain-affected ones) the red-italic reduction.
-    const movementHtml = renderMovementTile(result, ruleset);
-    if (movementHtml) tiles.push(movementHtml);
-
     host.innerHTML = tiles.length
       ? `<div class="state-grid">${tiles.join('')}</div>`
       : '<div class="state-empty">No state data available.</div>';
