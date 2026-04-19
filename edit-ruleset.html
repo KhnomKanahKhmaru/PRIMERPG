@@ -64,17 +64,16 @@
 
     /* Derived stat row grid */
     .ds-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
-    .ds-row { display: grid; grid-template-columns: 100px 140px 110px 1fr 130px 70px 60px 24px; gap: 6px; align-items: center; background: #111; border: 1px solid #1a1a1a; border-radius: 4px; padding: 8px 10px; }
+    .ds-row { display: grid; grid-template-columns: 100px 140px 110px 1fr 70px 60px 24px; gap: 6px; align-items: center; background: #111; border: 1px solid #1a1a1a; border-radius: 4px; padding: 8px 10px; }
     .ds-row input, .ds-row select, .ds-row textarea { background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 5px 8px; border-radius: 3px; outline: none; width: 100%; }
     .ds-row input:focus, .ds-row select:focus, .ds-row textarea:focus { border-color: #444; }
     .ds-row .ds-formula { font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; }
-    .ds-row .ds-rollmod { font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; }
-    .ds-row .ds-formula.invalid, .ds-row .ds-rollmod.invalid { border-color: #5a2a2a; background: #1a0d0d; }
+    .ds-row .ds-formula.invalid { border-color: #5a2a2a; background: #1a0d0d; }
     .ds-row .delete-x { color: #555; font-size: 18px; cursor: pointer; padding: 0 4px; line-height: 1.6; text-align: center; }
     .ds-row .delete-x:hover { color: #c84b4b; }
     .ds-row .ds-code { font-family: 'Consolas', 'Courier New', monospace; font-weight: 600; text-transform: uppercase; }
 
-    .ds-list-header { display: grid; grid-template-columns: 100px 140px 110px 1fr 130px 70px 60px 24px; gap: 6px; padding: 0 10px 4px; font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #666; border-bottom: 1px solid #1a1a1a; margin-bottom: 8px; }
+    .ds-list-header { display: grid; grid-template-columns: 100px 140px 110px 1fr 70px 60px 24px; gap: 6px; padding: 0 10px 4px; font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #666; border-bottom: 1px solid #1a1a1a; margin-bottom: 8px; }
 
     .ds-error-msg { font-size: 10px; color: #c87777; padding-left: 10px; margin-top: -2px; margin-bottom: 4px; min-height: 12px; }
 
@@ -518,7 +517,6 @@
           <div>Name</div>
           <div>Group</div>
           <div>Formula</div>
-          <div title="Stat modifier rolled when resisting with this stat. Shown in the card's top-right. E.g. STRMOD, max(INTMOD, CHAMOD). Leave blank for no badge.">Roll Mod</div>
           <div style="text-align:center">Keep Dec.</div>
           <div style="text-align:center">Unit</div>
           <div></div>
@@ -1401,15 +1399,6 @@
       const parsed = parseFormula(ds.formula || '');
       const invalidClass = parsed.error ? 'invalid' : '';
       const errMsg = parsed.error ? parsed.message : '';
-      // Roll modifier is optional — only parse/validate if non-empty. Empty is
-      // valid and means "no roll-modifier badge".
-      const rmRaw = (ds.rollModifier || '').trim();
-      let rmInvalid = '';
-      let rmErrMsg = '';
-      if (rmRaw) {
-        const rmParsed = parseFormula(rmRaw);
-        if (rmParsed.error) { rmInvalid = 'invalid'; rmErrMsg = rmParsed.message; }
-      }
       return `
         <div class="ds-row">
           <input type="text" class="ds-code" value="${escapeHtmlAttr(ds.code)}"
@@ -1423,10 +1412,6 @@
                  oninput="updateDsFormula(${i},this.value)"
                  placeholder="e.g. STR + SIZEMOD"
                  title="${escapeHtmlAttr(errMsg)}">
-          <input type="text" class="ds-rollmod ${rmInvalid}" value="${escapeHtmlAttr(ds.rollModifier || '')}"
-                 oninput="updateDsRollMod(${i},this.value)"
-                 placeholder="STRMOD"
-                 title="${escapeHtmlAttr(rmErrMsg || 'Stat modifier for resistance rolls. Supports max(), min(), arithmetic.')}">
           <div class="ds-toggle ${ds.keepDecimals ? 'on' : ''}" onclick="toggleDsFlag(${i},'keepDecimals')" title="Keep decimal places (don't floor)">${ds.keepDecimals ? '0.5' : '0'}</div>
           <input type="text" value="${escapeHtmlAttr(ds.unit)}"
                  oninput="updateDsField(${i},'unit',this.value)"
@@ -1475,24 +1460,6 @@
     }
   };
 
-  // Roll modifier expression — optional. Validates inline without re-rendering
-  // the list so focus doesn't jump while typing. Blank is valid and means
-  // "no roll-modifier badge on this stat's card".
-  window.updateDsRollMod = function(i, val) {
-    if (!state.derivedStats[i]) return;
-    state.derivedStats[i].rollModifier = val;
-    const input = event.target;
-    const trimmed = (val || '').trim();
-    if (!trimmed) {
-      input.classList.remove('invalid');
-      input.title = 'Stat modifier for resistance rolls. Supports max(), min(), arithmetic.';
-      return;
-    }
-    const parsed = parseFormula(trimmed);
-    input.classList.toggle('invalid', !!parsed.error);
-    input.title = parsed.error ? parsed.message : 'Valid expression.';
-  };
-
   window.toggleDsFlag = function(i, flag) {
     if (!state.derivedStats[i]) return;
     state.derivedStats[i][flag] = !state.derivedStats[i][flag];
@@ -1518,7 +1485,6 @@
       description: '',
       group: fallbackGroup,
       formula: '0',
-      rollModifier: '',
       trackDamage: false,
       keepDecimals: false,
       unit: ''
