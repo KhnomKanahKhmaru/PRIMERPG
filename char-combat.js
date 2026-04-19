@@ -877,24 +877,30 @@ export function createCombatSection(ctx) {
     // Below 80, use 1 seg per point.
     const SEG_CAP = 80;
     const segCount = Math.min(body.max, SEG_CAP);
-    // How many segments should be black? Proportional to damage taken — but
-    // guard against rounding flipping the whole bar black when body is close
-    // to but not actually at 0. Rule: only go fully black when body.current == 0.
-    const bodyAtZero = body.current <= 0;
-    let blackSegs;
-    if (bodyAtZero) {
-      blackSegs = segCount;
-    } else {
-      const raw = Math.floor((body.damage / body.max) * segCount);
-      blackSegs = Math.min(raw, segCount - 1);
-      if (body.damage > 0 && blackSegs === 0) blackSegs = 1;
-    }
 
+    // Color progression — same scheme as the Overview Body tile so the two
+    // views stay visually in sync:
+    //
+    //   current = +max  (damage = 0)        → fully green      (Healthy)
+    //   current = 0     (damage = maxHP)    → fully yellow     (Incapacitated:
+    //                                           Unconscious and Paralyzed)
+    //   current = -max  (damage = 2·maxHP)  → fully red        (Dead)
+    //   past -max                           → near-black       (Destroyed;
+    //                                           overkilled past death)
+    //
+    // Per segment, `base` is how much damage has already chewed through
+    // segments to the right of it. Rightmost segments transition first.
+    const COLORS = { green: '#4a7a4a', yellow: '#bdb247', red: '#8a3030', destroyed: '#0f0a0a' };
+    const hpPerSeg = body.max / segCount;
     let segHtml = '';
     for (let i = 1; i <= segCount; i++) {
-      // Damage fills right-to-left (rightmost segments go black first).
-      const rightIdx = segCount - i + 1;
-      const color = rightIdx <= blackSegs ? '#0f0a0a' : '#4a7a4a';
+      const rightDistance = segCount - i + 1;
+      const base = (rightDistance - 1) * hpPerSeg;
+      let color;
+      if      (body.damage > 2 * body.max + base) color = COLORS.destroyed;
+      else if (body.damage >     body.max + base) color = COLORS.red;
+      else if (body.damage >                base) color = COLORS.yellow;
+      else                                        color = COLORS.green;
       segHtml += `<span class="hl-seg" style="background:${color}"></span>`;
     }
 
