@@ -429,7 +429,7 @@ export function createCombatSection(ctx) {
   // The segmented POWER resource bar. Always at most 10 segments; if max > 10
   // each segment represents multiple points. Depletion fills from the right.
   function renderPowerBar(power, canEdit) {
-    const { max, current, color } = power;
+    const { max, current, color, name } = power;
 
     // Cap to 10 segments. Each segment represents max/segCount points.
     // For max=5 → 5 segs, max=30 → 10 segs of 3 each, max=100 → 10 segs of 10.
@@ -437,22 +437,55 @@ export function createCombatSection(ctx) {
     const segCount = Math.max(1, Math.min(MAX_SEGS, max));
     const perSegment = max / segCount;
 
-    // How many segments are depleted? Depletion is right-to-left.
-    // Remaining = current. Filled segs = ceil(current / perSegment) so a
-    // partially-depleted segment still appears filled until it empties.
-    // Guard: if current === max, all filled; if current === 0, all depleted.
-    let filledSegs;
-    if (current >= max) filledSegs = segCount;
-    else if (current <= 0) filledSegs = 0;
-    else filledSegs = Math.ceil(current / perSegment);
+    // Compute segment fills for smooth right-to-left depletion.
+    //
+    //   fullSegs      — segments on the LEFT that are 100% filled.
+    //   partialFill   — fractional fill of the ONE segment just to the right
+    //                   of the full ones (0 if perfectly at a boundary).
+    //   everything else to the right of the partial one is empty.
+    //
+    // At max=100, perSegment=10:
+    //   current=100 → fullSegs=10, partialFill=0, no partial segment
+    //   current=97  → fullSegs=9,  partialFill=0.7 (seg 10 is 70% filled)
+    //   current=90  → fullSegs=9,  partialFill=0  (seg 10 is empty)
+    //   current=85  → fullSegs=8,  partialFill=0.5 (seg 9 is 50% filled, 10 empty)
+    //   current=0   → fullSegs=0,  partialFill=0
+    //
+    // This gives a smoothly animating bar even on chunky 10-point segments.
+    let fullSegs, partialFill;
+    if (current >= max) {
+      fullSegs = segCount;
+      partialFill = 0;
+    } else if (current <= 0) {
+      fullSegs = 0;
+      partialFill = 0;
+    } else {
+      fullSegs = Math.floor(current / perSegment);
+      // Leftover within the "active" segment, as a 0..1 fraction.
+      partialFill = (current - fullSegs * perSegment) / perSegment;
+      // Clamp to [0, 1] defensively; floating-point math can push slightly
+      // outside on edge values.
+      if (partialFill < 0) partialFill = 0;
+      if (partialFill > 1) { fullSegs += 1; partialFill = 0; }
+    }
 
-    // Render each segment. Filled = player color, depleted = black.
+    const DEPLETED_BG = '#0f0a0a';  // matches hit location depletion tone
+
+    // Render each segment. The "active" segment (first one past the full ones)
+    // gets a linear-gradient: color on the left side, depleted on the right.
+    // This visually reads as the segment draining from its right edge.
     let segHtml = '';
     for (let i = 1; i <= segCount; i++) {
-      // Fill from LEFT — leftmost segCount-filled+1 through leftmost are filled.
-      // i.e. the first `filledSegs` segments (from left) are filled.
-      const segColor = i <= filledSegs ? color : '#0f0a0a';
-      segHtml += `<span class="power-seg" style="background:${escapeHtml(segColor)}"></span>`;
+      let style;
+      if (i <= fullSegs) {
+        style = `background:${escapeHtml(color)}`;
+      } else if (i === fullSegs + 1 && partialFill > 0) {
+        const pct = (partialFill * 100).toFixed(1);
+        style = `background:linear-gradient(to right, ${escapeHtml(color)} ${pct}%, ${DEPLETED_BG} ${pct}%)`;
+      } else {
+        style = `background:${DEPLETED_BG}`;
+      }
+      segHtml += `<span class="power-seg" style="${style}"></span>`;
     }
 
     // Per-segment hint (shows only when max > 10, to explain the compression).
@@ -478,10 +511,23 @@ export function createCombatSection(ctx) {
         </label>`
       : '';
 
+    // Name label — editable inline if the player can edit, otherwise static.
+    // Uses a transparent input styled to look like a label. On focus a border
+    // appears so the player knows it's editable. Blank submissions revert to
+    // "POWER" (handled on the derivation side).
+    // maxlength is a soft cap so the layout doesn't blow up if someone pastes
+    // a novel; 24 characters fits most thematic names.
+    const nameEl = canEdit
+      ? `<input type="text" class="power-name-input" value="${escapeHtml(name)}"
+                maxlength="24" placeholder="POWER"
+                onchange="setPowerName(this.value)"
+                title="Click to rename">`
+      : `<span class="power-label">${escapeHtml(name)}</span>`;
+
     return `
       <div class="power-block">
         <div class="power-top-row">
-          <span class="power-label">POWER</span>
+          ${nameEl}
           <span class="power-value">${fmt(current)} / ${fmt(max)}</span>
           ${segHint}
           ${colorPicker}
@@ -625,6 +671,21 @@ export function createCombatSection(ctx) {
     renderAll();
   }
 
+  // Player-chosen bar name ("Vitae", "Mana", whatever). Blank / whitespace-only
+  // input falls back to "POWER" on the derivation side. We store the raw trimmed
+  // string; the label default is applied when rendering. Storing null/empty
+  // over a prior name reliably clears it.
+  async function setPowerName(name) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const cleaned = (typeof name === 'string') ? name.trim() : '';
+    // Soft length cap to protect the layout from pasted essays.
+    const capped = cleaned.slice(0, 24);
+    charData.powerName = capped;
+    await saveCharacter(ctx.getCharId(), { powerName: capped });
+    renderAll();
+  }
+
   // Total XP spent on Power Pool — consumed by calcTotalXp in character.html
   // so the header XP bar reflects purchases.
   function powerPoolXpDelta() {
@@ -722,7 +783,7 @@ export function createCombatSection(ctx) {
     renderAll,
     tickHitLocationDmg, setHitLocationDmg,
     tickPowerPool, setPowerPool,
-    tickPower, setPower, setPowerColor,
+    tickPower, setPower, setPowerColor, setPowerName,
     powerPoolXpDelta,
     toggleEditMode, addModifier, updateModifier, deleteModifier
   };
