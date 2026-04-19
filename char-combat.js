@@ -95,9 +95,12 @@ export function createCombatSection(ctx) {
       tiles.push(renderStrainTile(result.pain, result.stress, strain));
     }
 
-    // POWER tile — power pool current/max, simple fill bar.
+    // POWER tile — power pool current/max, simple fill bar. Always
+    // rendered when the pool is present in the result (even if max is 0
+    // from a freshly-created character), so the Overview grid stays
+    // balanced and players can see "no power yet" at a glance.
     const power = result.power;
-    if (power && power.max > 0) {
+    if (power) {
       tiles.push(renderPowerTile(power));
     }
 
@@ -197,34 +200,49 @@ export function createCombatSection(ctx) {
 
   function renderStrainTile(pain, stress, strain) {
     const pct = strain.percent;
-    // Severity palette: zero = dim gray, 1–49 = green, 50–74 = amber, 75+ = red.
-    let fillColor;
-    if (pct <= 0)      fillColor = '#2a3a2a';
-    else if (pct < 50) fillColor = '#6a8a4a';
-    else if (pct < 75) fillColor = '#c88a3a';
-    else               fillColor = '#c85a3a';
-    const breakdown = `Pain ${(pain && pain.finalPercent) || 0}% + Stress ${(stress && stress.finalPercent) || 0}%`;
+    // Severity palette — tints the big number to match the Combat tab
+    // Pain/Stress pill colors so the same visual language carries over.
+    let pctColor;
+    if (pct <= 0)      pctColor = '#666';
+    else if (pct < 50) pctColor = '#a0c080';
+    else if (pct < 75) pctColor = '#d8a860';
+    else               pctColor = '#e07878';
+    const painPct   = (pain && pain.finalPercent) || 0;
+    const stressPct = (stress && stress.finalPercent) || 0;
+    // Each breakdown line — labeled so the player immediately knows which
+    // component comes from physical pain vs mental stress.
     return `
       <div class="state-tile">
         <div class="state-tile-head">
           <span class="state-tile-label">Strain</span>
-          <span class="state-tile-nums">${pct}%</span>
         </div>
-        <div class="state-strain-bar">
-          <div class="state-strain-fill" style="width:${pct}%;background:${fillColor}"></div>
+        <div class="state-strain-big" style="color:${pctColor}">${pct}%</div>
+        <div class="state-strain-rows">
+          <div class="state-strain-row">
+            <span class="state-strain-k">Pain</span>
+            <span class="state-strain-v">${painPct}%</span>
+          </div>
+          <div class="state-strain-row">
+            <span class="state-strain-k">Stress</span>
+            <span class="state-strain-v">${stressPct}%</span>
+          </div>
         </div>
-        <div class="state-strain-breakdown">${escapeHtml(breakdown)}</div>
       </div>`;
   }
 
   function renderPowerTile(power) {
-    const pct = power.max > 0 ? Math.max(0, Math.min(100, (power.current / power.max) * 100)) : 0;
+    // Always renders — even if max is 0 (new character / power pool not
+    // yet purchased). Shows a full empty bar so the tile is always present
+    // on the overview grid, mirroring Body/Sanity which always show.
+    const max = power.max || 0;
+    const current = power.current || 0;
+    const pct = max > 0 ? Math.max(0, Math.min(100, (current / max) * 100)) : 0;
     // Purple fill to distinguish power pool visually from health bars.
     return `
       <div class="state-tile">
         <div class="state-tile-head">
           <span class="state-tile-label">Power</span>
-          <span class="state-tile-nums">${fmt(power.current)}<span class="sep">/</span><span class="max">${fmt(power.max)}</span></span>
+          <span class="state-tile-nums">${fmt(current)}<span class="sep">/</span><span class="max">${fmt(max)}</span></span>
         </div>
         <div class="state-strain-bar">
           <div class="state-strain-fill" style="width:${pct}%;background:#6a4a9a"></div>
@@ -244,19 +262,37 @@ export function createCombatSection(ctx) {
     const items = movementStats.map(entry => {
       const { def, value } = entry;
       const valStr = fmt(value);
-      let strainBit = '';
+      const unit = def.unit ? `<span class="mi-unit">${escapeHtml(def.unit)}</span>` : '';
       const reduction = entry.strainValueReduction || 0;
-      if (reduction > 0) {
+      const hasStrain = reduction > 0;
+
+      // Strain-reduced stat — emit both display variants and wire the
+      // click handler so toggling the Overview item syncs with the same
+      // toggle on the Combat tab (they share data-code + .strain-collapsed).
+      if (hasStrain) {
         const effective = Math.max(0, value - reduction);
         const effStr = fmt(effective);
-        const tip = `Strain reduces to ${effStr}${def.unit ? ' ' + def.unit : ''} (base ${valStr} − ${fmt(reduction)})`;
-        strainBit = ` <span class="mi-strain" title="${escapeHtml(tip)}">− ${fmt(reduction)}</span>`;
+        const redStr = fmt(reduction);
+        const collapsed = collapsedStrainValues.has(def.code);
+        const collapsedCls = collapsed ? ' strain-collapsed' : '';
+        const expandedTip = `Strain reduces to ${effStr}${def.unit ? ' ' + def.unit : ''}. Click to show effective.`;
+        const effectiveTip = `Base ${valStr} reduced by ${redStr} Strain. Click to show breakdown.`;
+        return `
+          <div class="state-movement-item clickable${collapsedCls}" data-code="${escapeHtml(def.code)}" title="${escapeHtml(def.description || '')}" onclick="toggleStrainValueDisplay('${escapeHtml(def.code)}')">
+            <span class="mi-label">${escapeHtml(def.name)}</span>
+            <span class="mi-val">
+              <span class="mi-expanded" title="${escapeHtml(expandedTip)}">${valStr} <span class="mi-strain">− ${redStr}</span></span>
+              <span class="mi-effective" title="${escapeHtml(effectiveTip)}">${effStr}</span>
+              ${unit}
+            </span>
+          </div>`;
       }
-      const unit = def.unit ? `<span class="mi-unit">${escapeHtml(def.unit)}</span>` : '';
+
+      // Non-strain stat — plain read-only display, no click affordance.
       return `
         <div class="state-movement-item" title="${escapeHtml(def.description || '')}">
           <span class="mi-label">${escapeHtml(def.name)}</span>
-          <span class="mi-val">${valStr}${strainBit} ${unit}</span>
+          <span class="mi-val">${valStr} ${unit}</span>
         </div>`;
     }).join('');
 
@@ -340,8 +376,13 @@ export function createCombatSection(ctx) {
     if (!code) return;
     if (collapsedStrainValues.has(code)) collapsedStrainValues.delete(code);
     else collapsedStrainValues.add(code);
-    const cards = document.querySelectorAll(`.ds-card[data-code="${CSS.escape(code)}"]`);
-    cards.forEach(card => card.classList.toggle('strain-collapsed'));
+    // Flip the class on BOTH the Combat-tab card and the Overview movement
+    // item. They share data-code, so one selector catches both views —
+    // click in either place, both views update in sync without a render.
+    const targets = document.querySelectorAll(
+      `.ds-card[data-code="${CSS.escape(code)}"], .state-movement-item[data-code="${CSS.escape(code)}"]`
+    );
+    targets.forEach(el => el.classList.toggle('strain-collapsed'));
   }
 
   function renderDsCard(entry) {
