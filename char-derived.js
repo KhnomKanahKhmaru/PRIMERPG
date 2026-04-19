@@ -477,6 +477,21 @@ export function computeDerivedStats(character, ruleset) {
   const hlModsMap = (character.hitLocationModifiers && typeof character.hitLocationModifiers === 'object')
     ? character.hitLocationModifiers : {};
 
+  // Pre-compute how much damage each location takes from injuries. An injury's
+  // currentLevel (base + levelModifiers) IS damage applied to its location, on
+  // top of any manual damage ticked in via the +/- controls. We need this BEFORE
+  // the location loop runs so currentDamage includes both sources.
+  const injuriesIn = Array.isArray(character.injuries) ? character.injuries : [];
+  const injuryDamageByLocation = new Map();
+  injuriesIn.forEach(inj => {
+    const base = Number.isFinite(inj.baseLevel) ? inj.baseLevel : 0;
+    const mods = Array.isArray(inj.levelModifiers) ? inj.levelModifiers : [];
+    const modTotal = mods.reduce((a, m) => a + (parseInt(m.value) || 0), 0);
+    const current = Math.max(0, base + modTotal);
+    const loc = typeof inj.location === 'string' ? inj.location : 'torso';
+    injuryDamageByLocation.set(loc, (injuryDamageByLocation.get(loc) || 0) + current);
+  });
+
   locDefs.forEach(def => {
     const compiledHp = parseFormula(def.hpFormula);
     let baseMaxHP = evalFormula(compiledHp, vars);
@@ -488,7 +503,13 @@ export function computeDerivedStats(character, ruleset) {
       // Build the tracking key. Single-count locations use just the code
       // (e.g. "head"), multi-count use code-N (e.g. "arm-1").
       const trackKey = (def.count && def.count > 1) ? `${def.code}-${i}` : def.code;
-      const currentDamage = (typeof damageMap[trackKey] === 'number') ? damageMap[trackKey] : 0;
+      // Manual damage — tracked via +/- controls, stored in hitLocationDamage.
+      const manualDamage = (typeof damageMap[trackKey] === 'number') ? damageMap[trackKey] : 0;
+      // Injury-driven damage — sum of currentLevels of all injuries tagged to
+      // this trackKey. This is computed fresh every render because injury
+      // levels can change without the manual damage map ever being touched.
+      const injuryDamage = injuryDamageByLocation.get(trackKey) || 0;
+      const currentDamage = manualDamage + injuryDamage;
 
       // Apply modifiers. Each modifier adds its value (positive or negative)
       // to the base maxHP computed from the formula. Clamp min to 0 so a
@@ -530,8 +551,10 @@ export function computeDerivedStats(character, ruleset) {
         index: i,
         trackKey,
         maxHP,
-        baseMaxHP,     // pre-modifier max, useful for UI displaying "base +mod=total"
-        currentDamage,
+        baseMaxHP,        // pre-modifier max, useful for UI displaying "base +mod=total"
+        currentDamage,    // manual + injury damage (what UI and Body total use)
+        manualDamage,     // just the +/- ticked damage
+        injuryDamage,     // just the sum of injury currentLevels at this location
         modifiers: mods,
         thresholds,
         status,
