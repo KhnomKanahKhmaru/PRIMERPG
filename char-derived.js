@@ -677,7 +677,12 @@ export function computeDerivedStats(character, ruleset) {
   const bodyModTotal = bodyMods.reduce((acc, m) => acc + (parseInt(m.value) || 0), 0);
   bodyMax = Math.max(0, bodyMax + bodyModTotal);
 
-  const bodyCurrent = Math.max(0, bodyMax - bodyDamage);
+  // bodyCurrent is the signed remaining Body, mirroring the full-range bar
+  // shown in the UI: goes from +bodyMax (Healthy) through 0 (Incapacitated)
+  // down to -bodyMax (Dead) and beyond (Destroyed). We don't clamp at 0 so
+  // the number shown can distinguish "just passed out" from "your corpse is
+  // being desecrated" without needing a separate flag to tell them apart.
+  const bodyCurrent = bodyMax - bodyDamage;
 
   // Find head/torso for status. Multiple heads/torsos (unusual): any in a
   // death-triggering state kills the character. Disable status requires at
@@ -690,28 +695,53 @@ export function computeDerivedStats(character, ruleset) {
   const anyHeadDisabled   = headLocs.some (l => l.status === 'disabled');
   const anyTorsoDisabled  = torsoLocs.some(l => l.status === 'disabled');
 
-  const isDead = (bodyMax > 0 && bodyCurrent <= 0)
-              || anyHeadDestroyed
-              || anyTorsoDestroyed;
-  const isUnconscious = !isDead && anyHeadDisabled;
-  const isParalyzed   = !isDead && anyTorsoDisabled;
+  // Status priority (highest wins):
+  //   1. Destroyed    — Body overkilled past 2·max. "Nothing left of you."
+  //                     Only Body damage produces this; no limb can.
+  //   2. Dead         — Body at -max, OR any head/torso destroyed. Death
+  //                     from any source trumps everything except Destroyed.
+  //   3. Incapacitated — Body at 0 HP, OR both head AND torso disabled.
+  //                      Covers "Unconscious AND Paralyzed" as a single
+  //                      tag — trumps either individual state since it IS
+  //                      literally both.
+  //   4. Unconscious   — head disabled, and not Incapacitated/Dead/Destroyed.
+  //   5. Paralyzed     — torso disabled, and not Incapacitated/Dead/Destroyed.
+  //   6. Alive         — everything else.
+  const isDestroyed     = bodyMax > 0 && bodyDamage > 2 * bodyMax;
+  const isDead          = isDestroyed
+                       || (bodyMax > 0 && bodyDamage >= 2 * bodyMax)
+                       || anyHeadDestroyed
+                       || anyTorsoDestroyed;
+  const isIncapacitated = !isDead
+                       && ((bodyMax > 0 && bodyDamage >= bodyMax)
+                           || (anyHeadDisabled && anyTorsoDisabled));
+  // Individual disability states only show if nothing stronger applies.
+  // These keep being exposed (not folded into Incapacitated) so callers
+  // that need to know specifically "which limb is down" can still check.
+  const isUnconscious   = !isDead && !isIncapacitated && anyHeadDisabled;
+  const isParalyzed     = !isDead && !isIncapacitated && anyTorsoDisabled;
 
-  // Build a compact status object the combat UI can read directly.
   let statusLabel;
-  if (isDead) statusLabel = 'DEAD';
-  else if (isUnconscious && isParalyzed) statusLabel = 'Unconscious & Paralyzed';
-  else if (isUnconscious) statusLabel = 'Unconscious';
-  else if (isParalyzed) statusLabel = 'Paralyzed';
-  else statusLabel = 'Alive';
+  if      (isDestroyed)     statusLabel = 'DESTROYED';
+  else if (isDead)          statusLabel = 'DEAD';
+  else if (isIncapacitated) statusLabel = 'Incapacitated';
+  else if (isUnconscious)   statusLabel = 'Unconscious';
+  else if (isParalyzed)     statusLabel = 'Paralyzed';
+  else                      statusLabel = 'Alive';
 
   const body = {
     max: bodyMax,
     current: bodyCurrent,
     damage: bodyDamage,
     modifiers: bodyMods,
-    dead: isDead,
-    unconscious: isUnconscious,
-    paralyzed: isParalyzed,
+    // Flags — expose each tier as its own boolean so UI code can branch
+    // cleanly. `dead` stays true for Destroyed too (destroyed IS dead, just
+    // more so), so existing `body.dead` consumers keep working.
+    destroyed:     isDestroyed,
+    dead:          isDead,
+    incapacitated: isIncapacitated,
+    unconscious:   isUnconscious,
+    paralyzed:     isParalyzed,
     statusLabel
   };
 
