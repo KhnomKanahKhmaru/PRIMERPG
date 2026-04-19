@@ -32,9 +32,18 @@ export function createCombatSection(ctx) {
 
   function renderAll() {
     const container = document.getElementById('combat-content');
-    if (!container) return;
     const ruleset = ctx.getRuleset();
     const charData = ctx.getCharData();
+
+    // Always try to update the Overview's State-of-Things tile. It lives
+    // on a different tab but reads the same computed state — we refresh it
+    // on every Combat renderAll so the two views never drift.
+    if (ruleset) {
+      const result = computeDerivedStats(charData, ruleset);
+      renderOverviewState(result, ruleset);
+    }
+
+    if (!container) return;
     if (!ruleset) {
       container.innerHTML = '<div class="combat-empty">No ruleset loaded.</div>';
       return;
@@ -55,6 +64,209 @@ export function createCombatSection(ctx) {
     // Power last (its own complex section with resource bar).
     html += renderPowerSection(result, ruleset, charData);
     container.innerHTML = html || '<div class="combat-empty">No combat data configured in this ruleset.</div>';
+  }
+
+  // ─── STATE OF THINGS (overview dashboard) ───
+  // Read-only summary showing Body, Sanity, Strain, Power, Movement. Lives
+  // on the Overview tab. No controls — players go to Combat tab to edit.
+  // We compute everything from the same pipeline as the Combat tab, so
+  // numbers always match between the two views.
+  function renderOverviewState(result, ruleset) {
+    const host = document.getElementById('state-body');
+    if (!host) return;
+
+    const tiles = [];
+
+    // BODY tile — HP current/max, segmented green→red bar, overall status.
+    const body = result.body;
+    if (body && body.max > 0) {
+      tiles.push(renderBodyTile(body));
+    }
+
+    // SANITY tile — SAN current/max, blue→red bar, status label.
+    const san = result.san;
+    if (san && san.max > 0) {
+      tiles.push(renderSanTile(san));
+    }
+
+    // STRAIN tile — pain + stress combined, single linear bar with tier color.
+    const strain = result.strain;
+    if (strain) {
+      tiles.push(renderStrainTile(result.pain, result.stress, strain));
+    }
+
+    // POWER tile — power pool current/max, simple fill bar.
+    const power = result.power;
+    if (power && power.max > 0) {
+      tiles.push(renderPowerTile(power));
+    }
+
+    // MOVEMENT tile — spans full width below the others. Shows each stat
+    // with its unit and (for strain-affected ones) the red-italic reduction.
+    const movementHtml = renderMovementTile(result, ruleset);
+    if (movementHtml) tiles.push(movementHtml);
+
+    host.innerHTML = tiles.length
+      ? `<div class="state-grid">${tiles.join('')}</div>`
+      : '<div class="state-empty">No state data available.</div>';
+  }
+
+  function renderBodyTile(body) {
+    // Status derived from Body totals, mirroring the combat tab's state
+    // ladder: healthy → injured (< 75%) → disabled (≤ 0) → dead.
+    let statusLabel, statusClass;
+    if (body.damage >= 2 * body.max)      { statusLabel = 'Dead';     statusClass = 's-dead'; }
+    else if (body.damage >= body.max)     { statusLabel = 'Disabled'; statusClass = 's-disabled'; }
+    else if (body.damage >= body.max / 2) { statusLabel = 'Injured';  statusClass = 's-injured'; }
+    else if (body.damage > 0)             { statusLabel = 'Wounded';  statusClass = 's-injured'; }
+    else                                  { statusLabel = 'Healthy';  statusClass = 's-healthy'; }
+
+    const segHtml = renderBodySegments(body.max, body.damage, Math.min(body.max, 40));
+    return `
+      <div class="state-tile">
+        <div class="state-tile-head">
+          <span class="state-tile-label">Body</span>
+          <span class="state-tile-nums">${body.current}<span class="sep">/</span><span class="max">${body.max}</span></span>
+        </div>
+        <div class="state-bar">${segHtml}</div>
+        <span class="state-tile-status ${statusClass}">${escapeHtml(statusLabel)}</span>
+      </div>`;
+  }
+
+  function renderBodySegments(maxHP, damage, segCount) {
+    // Green → amber → red gradient. Rightmost segments die first.
+    if (maxHP <= 0 || segCount <= 0) return '';
+    const COLORS = { green: '#4a7a3a', amber: '#9a7a2a', red: '#8a3030', dead: '#2a1010' };
+    const hpPerSeg = maxHP / segCount;
+    let html = '';
+    for (let i = 1; i <= segCount; i++) {
+      const rightDistance = segCount - i + 1;
+      const base = (rightDistance - 1) * hpPerSeg;
+      let color;
+      if (damage > maxHP + base)         color = COLORS.dead;
+      else if (damage > maxHP * 0.75 + base) color = COLORS.red;
+      else if (damage > maxHP * 0.5 + base)  color = COLORS.amber;
+      else if (damage > base)                color = COLORS.red;
+      else                                   color = COLORS.green;
+      html += `<span class="state-bar-seg" style="background:${color}"></span>`;
+    }
+    return html;
+  }
+
+  function renderSanTile(san) {
+    // Status label + class mirror the Combat tab's SAN tiers.
+    const tierMap = {
+      healthy:  { label: 'Healthy',  cls: 's-healthy' },
+      inShock:  { label: 'In Shock', cls: 's-shock' },
+      insane:   { label: 'Insane',   cls: 's-insane' },
+      broken:   { label: 'Broken',   cls: 's-broken' }
+    };
+    const tier = tierMap[san.status] || tierMap.healthy;
+    const segCount = Math.min(san.max, 40);
+    const segHtml = renderSanOverviewSegments(san.max, san.damage, segCount);
+    return `
+      <div class="state-tile">
+        <div class="state-tile-head">
+          <span class="state-tile-label">Sanity</span>
+          <span class="state-tile-nums">${san.current}<span class="sep">/</span><span class="max">${san.max}</span></span>
+        </div>
+        <div class="state-bar">${segHtml}</div>
+        <span class="state-tile-status ${tier.cls}">${escapeHtml(tier.label)}</span>
+      </div>`;
+  }
+
+  function renderSanOverviewSegments(sanMax, damage, segCount) {
+    // Same palette as Combat tab: blue (healthy) → yellow → orange → red.
+    // Fully-red state past 3*max, matching the "broken floor" behavior.
+    if (sanMax <= 0 || segCount <= 0) return '';
+    const COLORS = { blue: '#4a6a9a', yellow: '#bdb247', orange: '#c87a3a', red: '#a63a3a' };
+    const dmgPerSeg = sanMax / segCount;
+    let html = '';
+    for (let i = 1; i <= segCount; i++) {
+      const rightDistance = segCount - i + 1;
+      const base = (rightDistance - 1) * dmgPerSeg;
+      let color;
+      if (damage > 2 * sanMax + base)     color = COLORS.red;
+      else if (damage > sanMax + base)    color = COLORS.orange;
+      else if (damage > base)             color = COLORS.yellow;
+      else                                color = COLORS.blue;
+      html += `<span class="state-bar-seg" style="background:${color}"></span>`;
+    }
+    return html;
+  }
+
+  function renderStrainTile(pain, stress, strain) {
+    const pct = strain.percent;
+    // Severity palette: zero = dim gray, 1–49 = green, 50–74 = amber, 75+ = red.
+    let fillColor;
+    if (pct <= 0)      fillColor = '#2a3a2a';
+    else if (pct < 50) fillColor = '#6a8a4a';
+    else if (pct < 75) fillColor = '#c88a3a';
+    else               fillColor = '#c85a3a';
+    const breakdown = `Pain ${(pain && pain.finalPercent) || 0}% + Stress ${(stress && stress.finalPercent) || 0}%`;
+    return `
+      <div class="state-tile">
+        <div class="state-tile-head">
+          <span class="state-tile-label">Strain</span>
+          <span class="state-tile-nums">${pct}%</span>
+        </div>
+        <div class="state-strain-bar">
+          <div class="state-strain-fill" style="width:${pct}%;background:${fillColor}"></div>
+        </div>
+        <div class="state-strain-breakdown">${escapeHtml(breakdown)}</div>
+      </div>`;
+  }
+
+  function renderPowerTile(power) {
+    const pct = power.max > 0 ? Math.max(0, Math.min(100, (power.current / power.max) * 100)) : 0;
+    // Purple fill to distinguish power pool visually from health bars.
+    return `
+      <div class="state-tile">
+        <div class="state-tile-head">
+          <span class="state-tile-label">Power</span>
+          <span class="state-tile-nums">${fmt(power.current)}<span class="sep">/</span><span class="max">${fmt(power.max)}</span></span>
+        </div>
+        <div class="state-strain-bar">
+          <div class="state-strain-fill" style="width:${pct}%;background:#6a4a9a"></div>
+        </div>
+      </div>`;
+  }
+
+  function renderMovementTile(result, ruleset) {
+    // Pull any derived stat in the 'movement' group. Order preserved from
+    // the ruleset so rule authors can shuffle display without code changes.
+    const movementStats = (ruleset.derivedStats || [])
+      .filter(def => def.group === 'movement')
+      .map(def => result.stats.get(def.code))
+      .filter(entry => entry && !entry.error && Number.isFinite(entry.value));
+    if (movementStats.length === 0) return '';
+
+    const items = movementStats.map(entry => {
+      const { def, value } = entry;
+      const valStr = fmt(value);
+      let strainBit = '';
+      const reduction = entry.strainValueReduction || 0;
+      if (reduction > 0) {
+        const effective = Math.max(0, value - reduction);
+        const effStr = fmt(effective);
+        const tip = `Strain reduces to ${effStr}${def.unit ? ' ' + def.unit : ''} (base ${valStr} − ${fmt(reduction)})`;
+        strainBit = ` <span class="mi-strain" title="${escapeHtml(tip)}">− ${fmt(reduction)}</span>`;
+      }
+      const unit = def.unit ? `<span class="mi-unit">${escapeHtml(def.unit)}</span>` : '';
+      return `
+        <div class="state-movement-item" title="${escapeHtml(def.description || '')}">
+          <span class="mi-label">${escapeHtml(def.name)}</span>
+          <span class="mi-val">${valStr}${strainBit} ${unit}</span>
+        </div>`;
+    }).join('');
+
+    return `
+      <div class="state-tile state-tile-movement">
+        <div class="state-tile-head">
+          <span class="state-tile-label">Movement</span>
+        </div>
+        <div class="state-movement-row">${items}</div>
+      </div>`;
   }
 
   // ─── DERIVED STATS ───
