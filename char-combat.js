@@ -43,33 +43,44 @@ export function createCombatSection(ctx) {
     const result = computeDerivedStats(charData, ruleset);
 
     let html = '';
-    // Health section goes first — it's the high-stakes overview (HP, FORT,
-    // hit locations, Body, injuries). Other derived stats come after, since
-    // those are secondary/utility metrics (speed, agility, reflex).
+    // Movement at the very top — speed, agility, reflex. Fast-lookup info
+    // you need during play, positioned ahead of the more detailed health UI.
+    html += renderDerivedStatsSection(result, ruleset, { includeGroups: ['movement'] });
+    // Health section — HP/FORT cards + hit locations + Body + injuries.
     html += renderHitLocationsSection(result);
-    html += renderDerivedStatsSection(result, ruleset);
+    // All other derived stat groups (mental, etc.) render below — 'movement'
+    // and 'health' were already handled above.
+    html += renderDerivedStatsSection(result, ruleset, { excludeGroups: ['movement'] });
+    // Power last (its own complex section with resource bar).
     html += renderPowerSection(result, ruleset, charData);
     container.innerHTML = html || '<div class="combat-empty">No combat data configured in this ruleset.</div>';
   }
 
   // ─── DERIVED STATS ───
 
-  function renderDerivedStatsSection(result, ruleset) {
+  function renderDerivedStatsSection(result, ruleset, opts) {
+    opts = opts || {};
+    const includeGroups = Array.isArray(opts.includeGroups) ? new Set(opts.includeGroups) : null;
+    const excludeGroups = new Set(Array.isArray(opts.excludeGroups) ? opts.excludeGroups : []);
     const groups = ruleset.derivedStatGroups || [];
 
     // Bucket stats by group code. Stats with an invalid group fall into an
     // "orphan" bucket shown at the end.
-    // POWER and the entire 'health' group are intentionally excluded here:
-    //   - POWER has its own section with resource bar + color picker + controls
-    //   - Health cards (HP, FORT, etc.) render at the top of the Hit Locations
-    //     section, anchored together with Body, Injuries, and so on
+    // Exclusions:
+    //   - POWER → rendered in its own section (resource bar + controls)
+    //   - 'health' group → rendered inside the Health section (cards above
+    //     Hit Locations list)
+    //   - Any group listed in opts.excludeGroups
+    //   - If opts.includeGroups is set, ONLY those groups render here
     const buckets = new Map();
     groups.forEach(g => buckets.set(g.code, []));
     const orphans = [];
     result.stats.forEach((entry) => {
-      if (entry.def.code === 'POWER') return;      // has its own section
-      if (entry.def.group === 'health') return;    // rendered in the Health section
+      if (entry.def.code === 'POWER') return;
+      if (entry.def.group === 'health') return;
       const g = entry.def.group;
+      if (includeGroups && !includeGroups.has(g)) return;
+      if (excludeGroups.has(g)) return;
       if (buckets.has(g)) buckets.get(g).push(entry);
       else orphans.push(entry);
     });
