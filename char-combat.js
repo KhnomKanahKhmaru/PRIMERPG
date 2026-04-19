@@ -145,7 +145,7 @@ export function createCombatSection(ctx) {
     }
 
     const remaining = maxHP - currentDamage;
-    const damageCap = Math.max(maxHP * 3, 10);
+    const damageCap = Math.max(maxHP * 4, 10);
 
     const statusLabels = {
       healthy: '',
@@ -155,22 +155,7 @@ export function createCombatSection(ctx) {
     };
     const statusLabel = statusLabels[status] || '';
 
-    // Progressive HP bar — computed as two colored halves.
-    //
-    // Phase 1 (remaining between maxHP and 0, i.e. Healthy):
-    //   Left half = healthy remaining (green), Right half = damage taken (red).
-    //   As damage grows, left shrinks and right grows. At 0 HP, the whole bar
-    //   is red, which visually equals orange (Phase 2 starting color).
-    //
-    // Phase 2 (remaining between 0 and -maxHP, i.e. Disabled → Destroyed):
-    //   Base color is orange across the whole bar. As damage continues past 0,
-    //   deep-red fills in from the LEFT, growing until at -maxHP the bar is
-    //   fully deep-red.
-    //
-    // Phase 3 (remaining between -maxHP and -2*maxHP, i.e. Destroyed → Def. Destroyed):
-    //   Base color is deep-red. Black fills in from the LEFT, growing until
-    //   at -2*maxHP the bar is fully black.
-    const barSegments = computeBarSegments(remaining, maxHP);
+    const segmentsHtml = renderHpSegments(maxHP, currentDamage);
 
     const controls = canEdit
       ? `<div class="hl-controls">
@@ -185,10 +170,7 @@ export function createCombatSection(ctx) {
       <div class="hl-row hl-status-${status}">
         <div class="hl-name">${escapeHtml(displayName)}</div>
         <div class="hl-bar-wrap">
-          <div class="hl-bar-bg">
-            <div class="hl-bar-seg" style="width:${barSegments.left.pct}%; background:${barSegments.left.color}"></div>
-            <div class="hl-bar-seg" style="width:${barSegments.right.pct}%; background:${barSegments.right.color}"></div>
-          </div>
+          <div class="hl-bar-bg">${segmentsHtml}</div>
           <div class="hl-bar-label">${remaining} / ${maxHP}</div>
         </div>
         <div class="hl-status-label">${escapeHtml(statusLabel)}</div>
@@ -196,62 +178,66 @@ export function createCombatSection(ctx) {
       </div>`;
   }
 
-  // Compute the two bar segments for progressive HP display.
-  // Returns { left: { pct, color }, right: { pct, color } } — percentages
-  // total 100%. Each phase has its own base/overlay color pair.
-  function computeBarSegments(remaining, maxHP) {
-    if (maxHP <= 0) {
-      return { left: { pct: 0, color: '#4a7a4a' }, right: { pct: 100, color: '#6a2a2a' } };
-    }
+  // Build the segmented HP bar. One <span> per HP point. Segments deteriorate
+  // right-to-left: undamaged segments on the LEFT stay green, damage accumulates
+  // on the RIGHT in phase colors.
+  //
+  // Phases (each phase = one maxHP worth of damage):
+  //   1. Healthy → Disabled (damage 0..maxHP): green → yellow from the right
+  //   2. Disabled → Destroyed (damage maxHP..2*maxHP): yellow → red from the right
+  //   3. Destroyed → Def. Destroyed (damage 2*maxHP..3*maxHP): red → deep red
+  //   4. Beyond Def. Destroyed (damage 3*maxHP..4*maxHP): deep red → black
+  //
+  // Colors applied per-segment by mapping the segment's index (from the left)
+  // to its current state given the total damage taken.
+  function renderHpSegments(maxHP, damage) {
+    if (maxHP <= 0) return '';
 
-    // Palette — tuned to progress naturally through the phases:
-    //   healthy green → damage red (Phase 1)
-    //   orange (= 0 HP state) → deep red (Phase 2)
-    //   deep red → near-black (Phase 3)
-    const GREEN    = '#4a7a4a';
-    const RED      = '#9a3a3a';   // Phase 1 damage AND Phase 2 overlay color
-    const ORANGE   = '#b87030';   // Phase 2 base (= appearance at exactly 0 HP)
-    const DEEP_RED = '#5a1818';   // Phase 3 base
-    const BLACK    = '#0a0a0a';   // Phase 3 overlay
-
-    if (remaining >= 0) {
-      // PHASE 1: remaining goes from maxHP down to 0.
-      // Left (green) shrinks; right (red) grows.
-      const leftPct  = Math.max(0, Math.min(100, (remaining / maxHP) * 100));
-      const rightPct = 100 - leftPct;
-      return {
-        left:  { pct: leftPct,  color: GREEN },
-        right: { pct: rightPct, color: RED }
-      };
-    }
-
-    // How deep into "overkill" territory — how far past 0 are we?
-    // At remaining=-maxHP we're exactly at Phase 2 end.
-    // At remaining=-2*maxHP we're at Phase 3 end.
-    const overkill = -remaining;  // positive number; how far past 0
-
-    if (overkill <= maxHP) {
-      // PHASE 2: overkill between 0 and maxHP.
-      // Base color = orange (bar starts this phase fully orange when remaining=0)
-      // Overlay (deep red) fills from LEFT as overkill grows.
-      const overlayPct = Math.max(0, Math.min(100, (overkill / maxHP) * 100));
-      const basePct    = 100 - overlayPct;
-      return {
-        left:  { pct: overlayPct, color: RED },      // deep damage red filling in
-        right: { pct: basePct,    color: ORANGE }    // remaining orange base
-      };
-    }
-
-    // PHASE 3: overkill between maxHP and 2*maxHP (clamped beyond that to full black).
-    // Base color = deep red (bar starts this phase fully deep-red when overkill=maxHP)
-    // Overlay (black) fills from LEFT as overkill grows past maxHP.
-    const phase3Progress = overkill - maxHP;  // 0..maxHP in phase 3
-    const overlayPct = Math.max(0, Math.min(100, (phase3Progress / maxHP) * 100));
-    const basePct    = 100 - overlayPct;
-    return {
-      left:  { pct: overlayPct, color: BLACK },
-      right: { pct: basePct,    color: DEEP_RED }
+    // Segment colors by phase. Each segment in the bar gets colored based on
+    // which phase of damage has reached it, counting from the right.
+    const COLORS = {
+      green:    '#4a7a4a',
+      yellow:   '#bdb247',
+      red:      '#a63a3a',
+      deepRed:  '#5a1818',
+      black:    '#0f0a0a'
     };
+
+    // For each segment (indexed 1..maxHP from the LEFT), determine its color.
+    //
+    // Distance from the RIGHT edge of the bar is: maxHP - i + 1 (1-indexed from right).
+    // A segment "sees" the first `distanceFromRight` HP of damage. If total
+    // damage >= the segment's "damage threshold", it transitions to the next
+    // phase color. Each maxHP worth of damage shifts the right-side segments
+    // one phase deeper.
+    //
+    // Logic for each segment i (1..maxHP):
+    //   - Let rightDistance = maxHP - i + 1 (how far from the right; 1 = rightmost)
+    //   - If damage >= 3*maxHP + rightDistance → black (phase 4 reached this seg)
+    //   - Else if damage >= 2*maxHP + rightDistance → deep red (phase 3)
+    //   - Else if damage >= 1*maxHP + rightDistance → red (phase 2)
+    //   - Else if damage >= rightDistance          → yellow (phase 1)
+    //   - Else                                     → green (still healthy)
+    //
+    // Why this works:
+    //   At damage=0, no segment is touched → all green. ✓
+    //   At damage=1, rightmost segment (rightDistance=1) yellows. ✓
+    //   At damage=maxHP, all segments yellow (every rightDistance <= maxHP). ✓
+    //   At damage=maxHP+1, rightmost hits phase 2 (red), rest still yellow. ✓
+    //   At damage=2*maxHP, all red. ✓ And so on.
+
+    let html = '';
+    for (let i = 1; i <= maxHP; i++) {
+      const rightDistance = maxHP - i + 1;
+      let color;
+      if      (damage >= 3 * maxHP + rightDistance) color = COLORS.black;
+      else if (damage >= 2 * maxHP + rightDistance) color = COLORS.deepRed;
+      else if (damage >= 1 * maxHP + rightDistance) color = COLORS.red;
+      else if (damage >=              rightDistance) color = COLORS.yellow;
+      else                                           color = COLORS.green;
+      html += `<span class="hl-seg" style="background:${color}"></span>`;
+    }
+    return html;
   }
 
   // ─── POWER POOL ───
