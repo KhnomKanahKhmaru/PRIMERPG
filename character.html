@@ -371,11 +371,10 @@
     .ds-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
     .ds-card { background: #111; border: 1px solid #1f1f1f; border-radius: 4px; padding: 10px 12px; position: relative; }
     .ds-card-name { font-size: 10px; font-weight: 700; letter-spacing: .06em; color: #888; text-transform: uppercase; margin-bottom: 6px; padding-right: 36px; }
-    /* Roll-modifier badge — shown top-right, tells player what stat modifier
-       they add to dice when rolling resistance for this derived stat. Signed
-       number (+N / −N / ±0). Uses tabular numbers so the sign column aligns
-       visually regardless of magnitude.
-       Clickable when editable — opens an inline modifier panel below. */
+    /* Roll-modifier badge — shown top-right. Read-only: signed static number
+       (e.g. +STRMOD) that's added to the TOTAL of a roll's dice sum. Hover
+       tooltip explains what it is. Not editable here — separate "dice mod"
+       system handles bonus DICE (see .ds-card-dicepill below). */
     .ds-card-rollmod {
       position: absolute;
       top: 8px;
@@ -392,34 +391,78 @@
       line-height: 1.1;
       letter-spacing: 0;
       cursor: help;
+    }
+
+    /* Dice-mod pill — below the value. Clickable in edit mode. Shows net
+       bonus dice from abilities ("+2d"), or a prompt to add the first one.
+       When the card's panel is open, the pill is highlighted. */
+    .ds-card-dicepill {
+      display: inline-block;
+      margin: 4px 0 2px;
       font-family: 'Consolas', 'Courier New', monospace;
-    }
-    .ds-card-rollmod.editable { cursor: pointer; }
-    .ds-card-rollmod.editable:hover { background: #2a2418; border-color: #5a4a28; color: #e0c888; }
-    .ds-card-rollmod.open {
-      background: #3a2a10;
-      border-color: #a08040;
-      color: #ffd080;
-    }
-    /* Empty-state button ("+") shown on cards without a base roll mod when
-       edit is allowed — lets player add the first modifier. */
-    .ds-card-rollmod-empty {
-      position: absolute;
-      top: 8px;
-      right: 10px;
-      font-family: 'Open Sans', sans-serif;
-      font-size: 14px;
+      font-size: 11px;
       font-weight: 700;
-      color: #444;
-      background: transparent;
-      border: 1px dashed #2a2a2a;
-      border-radius: 4px;
-      padding: 1px 8px;
-      line-height: 1.1;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0;
+      padding: 3px 10px;
+      border-radius: 10px;
       cursor: pointer;
       transition: all 0.15s;
+      background: transparent;
+      font-family: 'Consolas', 'Courier New', monospace;
     }
-    .ds-card-rollmod-empty:hover { color: #aaa; border-color: #555; border-style: solid; background: #1a1a1a; }
+    .ds-card-dicepill.has-mods {
+      background: #10222a;
+      border: 1px solid #1d4050;
+      color: #6ec0e0;
+    }
+    .ds-card-dicepill.has-mods:hover { background: #163244; border-color: #2e5a70; color: #92d0ea; }
+    .ds-card-dicepill.empty {
+      background: transparent;
+      border: 1px dashed #2a2a2a;
+      color: #555;
+      font-weight: 500;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 10px;
+      letter-spacing: .04em;
+    }
+    .ds-card-dicepill.empty:hover { border-style: solid; border-color: #555; color: #aaa; background: #141414; }
+    .ds-card-dicepill.open {
+      background: #1d4050 !important;
+      border-color: #4a7a95 !important;
+      color: #a8e0f0 !important;
+    }
+    .ds-card-dicepill.readonly { cursor: help; }
+
+    /* Panel summary — shows total dice the player actually rolls. */
+    .ds-dicemod-summary {
+      display: flex; align-items: baseline; gap: 6px;
+      padding: 6px 10px;
+      background: #10222a;
+      border: 1px solid #1d4050;
+      border-radius: 3px;
+      font-size: 11px;
+    }
+    .ds-dm-summary-label {
+      color: #888;
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      font-weight: 700;
+    }
+    .ds-dm-summary-value {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 14px;
+      font-weight: 700;
+      color: #92d0ea;
+      font-variant-numeric: tabular-nums;
+    }
+    .ds-dm-summary-breakdown {
+      color: #6a8a98;
+      font-size: 10px;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-variant-numeric: tabular-nums;
+    }
 
     /* Expanded roll-modifier panel inside the card */
     .ds-card.rollmod-open { border-color: #3a3018; }
@@ -430,7 +473,16 @@
       display: flex;
       flex-direction: column;
       gap: 8px;
+      min-width: 0;
     }
+    /* Force inputs and flex rows inside the narrow card panel to respect
+       the card's width. Without min-width:0, inputs refuse to shrink below
+       their default `size` attribute — which pushes the × button visually
+       past the card's right edge and lets the neighbor card cover it. */
+    .ds-rollmod-panel .mod-item { min-width: 0; }
+    .ds-rollmod-panel .mod-name-input { min-width: 0; flex: 1 1 0; }
+    .ds-rollmod-panel .mod-val-input { width: 48px; flex: 0 0 48px; }
+    .ds-rollmod-panel .mod-delete { flex: 0 0 auto; }
     .ds-rollmod-base {
       display: flex;
       align-items: center;
@@ -1463,11 +1515,11 @@
     addSanDamageMod:         (id) => combat.addSanDamageMod(id),
     updateSanDamageMod:      (id, idx, field, val) => combat.updateSanDamageMod(id, idx, field, val),
     deleteSanDamageMod:      (id, idx) => combat.deleteSanDamageMod(id, idx),
-    // Card roll modifiers
-    toggleRollModPanel:   (code) => combat.toggleRollModPanel(code),
-    addRollMod:           (code) => combat.addRollMod(code),
-    updateRollMod:        (code, idx, field, val) => combat.updateRollMod(code, idx, field, val),
-    deleteRollMod:        (code, idx) => combat.deleteRollMod(code, idx),
+    // Card dice modifiers
+    toggleDiceModPanel:   (code) => combat.toggleDiceModPanel(code),
+    addDiceMod:           (code) => combat.addDiceMod(code),
+    updateDiceMod:        (code, idx, field, val) => combat.updateDiceMod(code, idx, field, val),
+    deleteDiceMod:        (code, idx) => combat.deleteDiceMod(code, idx),
     addHlMod:             (target)           => combat.addModifier(target),
     updateHlMod:          (target, i, field, val) => combat.updateModifier(target, i, field, val),
     deleteHlMod:          (target, i)        => combat.deleteModifier(target, i),
