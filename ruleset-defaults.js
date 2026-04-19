@@ -209,7 +209,11 @@ window.RULESET_DEFAULTS = {
       name: 'Reflex',
       description: 'Reaction time in seconds. Lower is faster.',
       group: 'movement',
-      formula: '0.2 / (2 ^ ((DEXMOD + PERMOD) / 2))',
+      // Tuned curve: each 4 points of combined DEXMOD+PERMOD halves the
+      // reaction time. At 0/0 this is 0.20s (average human); at 2/2 it's
+      // 0.10s (gifted); at 4/4 it's 0.05s (exceptional). Negative stats
+      // push it above 0.20s (slow reactions).
+      formula: '0.2 / (2 ^ ((DEXMOD + PERMOD) / 4))',
       trackDamage: false,
       keepDecimals: true,
       unit: 's'
