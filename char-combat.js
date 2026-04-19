@@ -813,33 +813,44 @@ export function createCombatSection(ctx) {
       black:    '#0f0a0a'
     };
 
-    // Phase 4 (location is Def.Destroyed): use Body pool to determine how much
-    // of the bar is black vs deep red. Body damage is proportionally mapped
-    // onto maxHP segments.
+    // Phase 4 (location is Def.Destroyed): the limb has no HP of its own
+    // anymore — it's gone — so its bar stops tracking per-limb damage and
+    // instead becomes a live readout of the shared Body pool. Uses the
+    // same 4-state palette as the Body bar itself:
     //
-    // Rounding guard: never fully black out until Body is *actually* at 0.
-    // Proportional rounding would round a 28/30 body up to all segments,
-    // misreading "almost dead" as "fully dead". Only go fully black when the
-    // Body pool is literally empty.
+    //   Body = +max (undamaged)   → green
+    //   Body = 0    (Incapacitated) → yellow
+    //   Body = -max (Dead)         → red
+    //   past -max + all Def.Destroyed (Destroyed) → near-black
+    //
+    // Same gating as the Body bar: black only shows when body.destroyed is
+    // true (which requires all limbs Def.Destroyed). Otherwise, a single
+    // limb's degradation pushing Body past 2·max would wrongly turn the
+    // bar black even though the character isn't totally annihilated.
+    //
+    // The limb's bar is scaled to its own `maxHP` segment count regardless
+    // of Body's size — each segment represents body.max/maxHP points of
+    // Body damage, computed the same right-to-left `base` way.
     if (status === 'definitelyDestroyed' && body && body.max > 0) {
-      const bodyAtZero = body.current <= 0;
-      let blackSegCount;
-      if (bodyAtZero) {
-        blackSegCount = maxHP;
-      } else {
-        // Use floor so partial fills don't promote. Clamp so there's always
-        // at least 1 non-black segment while any Body remains.
-        const raw = Math.floor((body.damage / body.max) * maxHP);
-        blackSegCount = Math.min(raw, maxHP - 1);
-        // And at least 1 black if ANY damage is present (so the visual isn't
-        // static until a big tick happens).
-        if (body.damage > 0 && blackSegCount === 0) blackSegCount = 1;
-      }
+      const BODY_COLORS = {
+        green:     COLORS.green,
+        yellow:    COLORS.yellow,
+        red:       COLORS.red,
+        // Use the limb's `black` tone (matches Body bar's destroyed color)
+        // rather than limb's `deepRed`, since we want "completely gone"
+        // here, not "just very injured".
+        destroyed: COLORS.black
+      };
+      const hpPerSeg = body.max / maxHP;
       let html = '';
       for (let i = 1; i <= maxHP; i++) {
-        // Segment i (from left). The rightmost `blackSegCount` segments are black.
-        const rightIdx = maxHP - i + 1;  // 1 = rightmost
-        const color = rightIdx <= blackSegCount ? COLORS.black : COLORS.deepRed;
+        const rightDistance = maxHP - i + 1;
+        const base = (rightDistance - 1) * hpPerSeg;
+        let color;
+        if      (body.destroyed && body.damage > 2 * body.max + base) color = BODY_COLORS.destroyed;
+        else if (body.damage >     body.max + base) color = BODY_COLORS.red;
+        else if (body.damage >                base) color = BODY_COLORS.yellow;
+        else                                        color = BODY_COLORS.green;
         html += `<span class="hl-seg" style="background:${color}"></span>`;
       }
       return html;
@@ -885,8 +896,13 @@ export function createCombatSection(ctx) {
     //   current = 0     (damage = maxHP)    → fully yellow     (Incapacitated:
     //                                           Unconscious and Paralyzed)
     //   current = -max  (damage = 2·maxHP)  → fully red        (Dead)
-    //   past -max                           → near-black       (Destroyed;
-    //                                           overkilled past death)
+    //   past -max + all limbs Def.Destroyed → near-black       (Destroyed;
+    //                                           character fully annihilated)
+    //
+    // The "destroyed" black state is gated on body.destroyed — a Body past
+    // 2·max alone isn't enough, because single-limb degradation (bleeding,
+    // exsanguination) can drive Body down without the whole character being
+    // gone. body.destroyed additionally requires all limbs to be Def.Destroyed.
     //
     // Per segment, `base` is how much damage has already chewed through
     // segments to the right of it. Rightmost segments transition first.
@@ -897,7 +913,7 @@ export function createCombatSection(ctx) {
       const rightDistance = segCount - i + 1;
       const base = (rightDistance - 1) * hpPerSeg;
       let color;
-      if      (body.damage > 2 * body.max + base) color = COLORS.destroyed;
+      if      (body.destroyed && body.damage > 2 * body.max + base) color = COLORS.destroyed;
       else if (body.damage >     body.max + base) color = COLORS.red;
       else if (body.damage >                base) color = COLORS.yellow;
       else                                        color = COLORS.green;
