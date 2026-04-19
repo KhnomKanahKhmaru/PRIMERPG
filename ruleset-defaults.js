@@ -131,7 +131,155 @@ window.RULESET_DEFAULTS = {
   // Catalog entries. tier = index into advantageTiers / disadvantageTiers.
   // category is one of: physical, mental, social, background, special.
   advantages: [],
-  disadvantages: []
+  disadvantages: [],
+
+  // ── DERIVED STATS SYSTEM ──
+  //
+  // Derived stats are values computed from base stats via formulas. The ruleset
+  // defines them and their formulas; the character sheet evaluates them on the
+  // fly. Formulas are strings like "(STR + SIZEMOD) / 2 + 1" — see char-derived.js
+  // for the evaluator.
+  //
+  // Formula variables available:
+  //   - Base stats by code: STR, DEX, PER, INT, CHA, POW, SIZE
+  //   - STATMODs by code:   STRMOD, DEXMOD, PERMOD, INTMOD, CHAMOD, POWMOD, SIZEMOD
+  //   - Derived stats by code: HP, AGL, etc. (evaluated in dependency order)
+  //   - Purchased resources: POWERPOOL (value of power pool purchase)
+  //   - Per-location context inside hit location formulas: maxHP, currentDamage
+  //
+  // Results are floored by default (Math.floor), unless the stat is flagged
+  // `keepDecimals: true` (used by things like Reflex which are genuinely fractional).
+
+  // Groups for organizing derived stats on the Combat tab. GM-customizable.
+  // Every group has a code (stable ID) and a label (display name).
+  derivedStatGroups: [
+    { code: 'health',   label: 'Health'   },
+    { code: 'movement', label: 'Movement' },
+    { code: 'mental',   label: 'Mental'   },
+    { code: 'power',    label: 'Power'    }
+  ],
+
+  derivedStats: [
+    // HEALTH
+    {
+      code: 'HP',
+      name: 'HP',
+      description: 'Hit Points — overall durability of the body.',
+      group: 'health',
+      formula: 'STR + SIZEMOD',
+      trackDamage: false,   // The per-location tracker covers damage; HP is the base value
+      keepDecimals: false,
+      unit: ''
+    },
+    // MOVEMENT
+    {
+      code: 'SPD',
+      name: 'Speed',
+      description: 'Movement speed, in feet per second.',
+      group: 'movement',
+      formula: 'DEX * 2.5',
+      trackDamage: false,
+      keepDecimals: true,     // 2.5 * DEX naturally fractional
+      unit: 'ft/sec'
+    },
+    {
+      code: 'SPDUP',
+      name: 'Speed Boost',
+      description: 'Bonus feet of movement from raw strength.',
+      group: 'movement',
+      formula: 'STR * 1',
+      trackDamage: false,
+      keepDecimals: false,
+      unit: 'ft'
+    },
+    {
+      code: 'AGL',
+      name: 'Agility',
+      description: 'General agility: dodging, tumbling, quick footwork.',
+      group: 'movement',
+      formula: '(DEX + PER) / 2 - 1',
+      trackDamage: false,
+      keepDecimals: false,
+      unit: ''
+    },
+    {
+      code: 'RFX',
+      name: 'Reflex',
+      description: 'Reaction time in seconds. Lower is faster.',
+      group: 'movement',
+      formula: '0.2 / (2 ^ ((DEXMOD + PERMOD) / 2))',
+      trackDamage: false,
+      keepDecimals: true,
+      unit: 's'
+    },
+    // POWER
+    {
+      code: 'POWER',
+      name: 'Power Reserve',
+      description: 'Total power energy available. Scales with your Power Pool and POW.',
+      group: 'power',
+      formula: 'POWERPOOL * POW_MULTIPLIER',
+      trackDamage: false,
+      keepDecimals: true,
+      unit: ''
+    }
+  ],
+
+  // ── HIT LOCATIONS ──
+  //
+  // Structural body parts. Each has its own HP formula (with maxHP being the
+  // base HP derived stat) and a count (e.g. 2 arms). The character sheet creates
+  // a damage tracker per location × count; a character with count=2 arms gets
+  // "arm-1" and "arm-2" tracked separately.
+  //
+  // Damage thresholds below are applied to each location's max HP to determine
+  // Disabled / Destroyed / Definitively Destroyed states.
+  hitLocations: [
+    { code: 'head',  name: 'Head',  count: 1, hpFormula: '(HP / 2) + (SIZEMOD / 2) - 1' },
+    { code: 'torso', name: 'Torso', count: 1, hpFormula: 'HP' },
+    { code: 'arm',   name: 'Arm',   count: 2, hpFormula: '(HP / 2) + (SIZEMOD / 2)' },
+    { code: 'leg',   name: 'Leg',   count: 2, hpFormula: '(HP / 2) + (SIZEMOD / 2)' }
+  ],
+
+  // Damage thresholds — formulas evaluated with a `maxHP` variable bound to the
+  // location's max. `currentDamage` is also available if you need fancier rules.
+  // Default is: 0 = Disabled, -maxHP = Destroyed, -2*maxHP = Definitively Destroyed.
+  damageThresholds: {
+    disabled:            { label: 'Disabled',              formula: '0' },
+    destroyed:           { label: 'Destroyed',             formula: '-maxHP' },
+    definitelyDestroyed: { label: 'Definitively Destroyed', formula: '-2 * maxHP' }
+  },
+
+  // ── POWER POOL ──
+  //
+  // A resource purchased with XP. Separate from the POW stat. Used by power
+  // reserve / energy systems. Ruleset can disable entirely. powMultiplier table
+  // maps POW level ranges to multipliers used by the POWER formula.
+  //
+  // Entry N of xpPerPoint = XP cost to BUY level N. Index 0 is free (no pool).
+  powerPool: {
+    enabled: true,
+    name: 'Power Pool',
+    description: 'A reserve of power energy you pay XP to cultivate. Scales the POWER formula.',
+    xpPerPoint: [0, 5, 10, 15, 25, 40, 60, 90, 130, 180, 240],
+    maxPurchasable: 10,
+
+    // Sparse lookup: each entry maps a range of POW values to a multiplier.
+    // The POW_MULTIPLIER variable is set from the first matching entry.
+    powMultiplier: [
+      { powMin: 0, powMax: 1, value: 1   },
+      { powMin: 2, powMax: 3, value: 1   },
+      { powMin: 4, powMax: 5, value: 1.5 },
+      { powMin: 6, powMax: 7, value: 2   },
+      { powMin: 8, powMax: 9, value: 2.5 },
+      { powMin: 10, powMax: 11, value: 3 },
+      { powMin: 12, powMax: 13, value: 3.5 },
+      { powMin: 14, powMax: 15, value: 4 },
+      { powMin: 16, powMax: 17, value: 4.5 },
+      { powMin: 18, powMax: 19, value: 5 },
+      { powMin: 20, powMax: 20, value: 5.5 }
+    ]
+  }
 };
 
 // Normalize any ruleset doc by filling in missing fields from defaults.
@@ -202,6 +350,135 @@ window.normalizeRuleset = function(rs) {
   };
   out.advantages    = Array.isArray(out.advantages)    ? out.advantages.map(normalizeEntry).filter(Boolean)    : [];
   out.disadvantages = Array.isArray(out.disadvantages) ? out.disadvantages.map(normalizeEntry).filter(Boolean) : [];
+
+  // ── DERIVED STAT GROUPS ──
+  // Each group needs a code (stable ID) and label. Silently drop any that
+  // are missing a code. Duplicate codes are filtered to the first occurrence.
+  if (!Array.isArray(out.derivedStatGroups) || out.derivedStatGroups.length === 0) {
+    out.derivedStatGroups = JSON.parse(JSON.stringify(d.derivedStatGroups));
+  } else {
+    const seenGroups = new Set();
+    out.derivedStatGroups = out.derivedStatGroups
+      .map(g => {
+        if (!g || typeof g !== 'object') return null;
+        const code = (typeof g.code === 'string') ? g.code.trim().toLowerCase() : '';
+        if (!code || seenGroups.has(code)) return null;
+        seenGroups.add(code);
+        return {
+          code,
+          label: (typeof g.label === 'string' && g.label.trim()) ? g.label.trim() : code
+        };
+      })
+      .filter(Boolean);
+    if (out.derivedStatGroups.length === 0) {
+      out.derivedStatGroups = JSON.parse(JSON.stringify(d.derivedStatGroups));
+    }
+  }
+
+  // ── DERIVED STATS ──
+  // Each entry: { code, name, description, group, formula, trackDamage, keepDecimals, unit }
+  // `code` is required and must be uppercase; formulas refer to other derived stats by code.
+  // `group` must match a group code (silently fallback to first group if orphaned).
+  const validGroupCodes = new Set(out.derivedStatGroups.map(g => g.code));
+  const fallbackGroup = out.derivedStatGroups[0].code;
+  if (!Array.isArray(out.derivedStats)) {
+    out.derivedStats = JSON.parse(JSON.stringify(d.derivedStats));
+  } else {
+    const seenCodes = new Set();
+    out.derivedStats = out.derivedStats
+      .map(s => {
+        if (!s || typeof s !== 'object') return null;
+        const code = (typeof s.code === 'string') ? s.code.trim().toUpperCase() : '';
+        if (!code || seenCodes.has(code)) return null;
+        seenCodes.add(code);
+        const rawGroup = (typeof s.group === 'string') ? s.group.trim().toLowerCase() : '';
+        return {
+          code,
+          name: (typeof s.name === 'string' && s.name.trim()) ? s.name.trim() : code,
+          description: (typeof s.description === 'string') ? s.description : '',
+          group: validGroupCodes.has(rawGroup) ? rawGroup : fallbackGroup,
+          formula: (typeof s.formula === 'string') ? s.formula : '0',
+          trackDamage: s.trackDamage === true,
+          keepDecimals: s.keepDecimals === true,
+          unit: (typeof s.unit === 'string') ? s.unit : ''
+        };
+      })
+      .filter(Boolean);
+  }
+
+  // ── HIT LOCATIONS ──
+  // Each entry: { code, name, count, hpFormula }. `count` is how many copies
+  // of this location exist (e.g. 2 arms). Codes must be unique and non-empty.
+  if (!Array.isArray(out.hitLocations)) {
+    out.hitLocations = JSON.parse(JSON.stringify(d.hitLocations));
+  } else {
+    const seenLocs = new Set();
+    out.hitLocations = out.hitLocations
+      .map(l => {
+        if (!l || typeof l !== 'object') return null;
+        const code = (typeof l.code === 'string') ? l.code.trim().toLowerCase() : '';
+        if (!code || seenLocs.has(code)) return null;
+        seenLocs.add(code);
+        const count = Number.isInteger(l.count) && l.count > 0 ? l.count : 1;
+        return {
+          code,
+          name: (typeof l.name === 'string' && l.name.trim()) ? l.name.trim() : code,
+          count,
+          hpFormula: (typeof l.hpFormula === 'string' && l.hpFormula.trim()) ? l.hpFormula : 'HP'
+        };
+      })
+      .filter(Boolean);
+  }
+
+  // ── DAMAGE THRESHOLDS ──
+  // Three thresholds: disabled, destroyed, definitelyDestroyed. Always present
+  // in the output object even if missing from input.
+  if (!out.damageThresholds || typeof out.damageThresholds !== 'object') {
+    out.damageThresholds = JSON.parse(JSON.stringify(d.damageThresholds));
+  } else {
+    ['disabled', 'destroyed', 'definitelyDestroyed'].forEach(key => {
+      const defaultEntry = d.damageThresholds[key];
+      const src = out.damageThresholds[key];
+      if (!src || typeof src !== 'object') {
+        out.damageThresholds[key] = JSON.parse(JSON.stringify(defaultEntry));
+      } else {
+        out.damageThresholds[key] = {
+          label: (typeof src.label === 'string' && src.label.trim()) ? src.label.trim() : defaultEntry.label,
+          formula: (typeof src.formula === 'string' && src.formula.trim()) ? src.formula : defaultEntry.formula
+        };
+      }
+    });
+  }
+
+  // ── POWER POOL ──
+  // Ruleset-level on/off, XP cost table, and POW range → multiplier lookup.
+  if (!out.powerPool || typeof out.powerPool !== 'object') {
+    out.powerPool = JSON.parse(JSON.stringify(d.powerPool));
+  } else {
+    const src = out.powerPool;
+    out.powerPool = {
+      enabled: src.enabled !== false,  // default on unless explicitly false
+      name: (typeof src.name === 'string' && src.name.trim()) ? src.name.trim() : d.powerPool.name,
+      description: (typeof src.description === 'string') ? src.description : d.powerPool.description,
+      xpPerPoint: (Array.isArray(src.xpPerPoint) && src.xpPerPoint.length > 0)
+        ? src.xpPerPoint.map(v => Number.isFinite(v) ? v : 0)
+        : d.powerPool.xpPerPoint.slice(),
+      maxPurchasable: Number.isInteger(src.maxPurchasable) && src.maxPurchasable >= 0
+        ? src.maxPurchasable : d.powerPool.maxPurchasable,
+      powMultiplier: Array.isArray(src.powMultiplier) && src.powMultiplier.length > 0
+        ? src.powMultiplier
+            .map(e => {
+              if (!e || typeof e !== 'object') return null;
+              const powMin = Number.isFinite(e.powMin) ? e.powMin : null;
+              const powMax = Number.isFinite(e.powMax) ? e.powMax : powMin;
+              const value  = Number.isFinite(e.value) ? e.value : null;
+              if (powMin === null || value === null) return null;
+              return { powMin, powMax: powMax === null ? powMin : powMax, value };
+            })
+            .filter(Boolean)
+        : JSON.parse(JSON.stringify(d.powerPool.powMultiplier))
+    };
+  }
 
   return out;
 };
