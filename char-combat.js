@@ -113,6 +113,24 @@ export function createCombatSection(ctx) {
   // UI-only state: which cards currently have their dice-mod panel expanded.
   // Set of stat codes. Not persisted across reloads.
   const expandedDiceMods = new Set();
+  // Tracks which stat cards have their strain-reduced value COLLAPSED —
+  // i.e. showing just the final effective number ("7.5 ft/sec") rather
+  // than the full breakdown ("10 − 2.5 ft/sec"). Per-stat toggle, lives
+  // in memory only (resets on full re-render, persists across in-place
+  // toggles via pure CSS class swap, no render needed).
+  const collapsedStrainValues = new Set();
+
+  // Toggle handler for the strain-value display. CSS-driven: flips a class
+  // on the card(s) with this stat code, so both display variants live in
+  // the DOM and we swap visibility without running renderAll. That avoids
+  // losing focus/scroll and makes the click feel instant.
+  function toggleStrainValueDisplay(code) {
+    if (!code) return;
+    if (collapsedStrainValues.has(code)) collapsedStrainValues.delete(code);
+    else collapsedStrainValues.add(code);
+    const cards = document.querySelectorAll(`.ds-card[data-code="${CSS.escape(code)}"]`);
+    cards.forEach(card => card.classList.toggle('strain-collapsed'));
+  }
 
   function renderDsCard(entry) {
     const { def, value, error, rollModifier, diceMods, diceModTotal } = entry;
@@ -121,19 +139,32 @@ export function createCombatSection(ctx) {
     const unit = def.unit ? ` <span class="ds-card-unit">${escapeHtml(def.unit)}</span>` : '';
 
     // Inline strain value reduction — for movement-style stats flagged as
-    // strainReducesValue. Shows next to the base number as a red italic
-    // annotation like "10 − 2.5 ft/sec". Hover tooltip gives the breakdown
-    // and the effective value. Only rendered when there IS a reduction;
-    // zero strain hides it to keep the card clean.
-    let strainAnnotation = '';
+    // strainReducesValue. Two display modes baked into the markup at once:
+    //
+    //   EXPANDED (default):  "10 − 2.5 ft/sec"   ← base and reduction both shown
+    //   COLLAPSED:           "7.5 ft/sec"        ← pre-computed effective value
+    //
+    // The card has a 'strain-collapsed' class if the player clicked to
+    // collapse; CSS hides whichever span is inactive. Click anywhere on
+    // the value toggles the class in-place (no re-render). Both spans
+    // carry their own tooltip explaining the other mode.
+    let valueBody;
     const valReduction = entry.strainValueReduction || 0;
-    if (valReduction > 0 && Number.isFinite(value)) {
+    const hasStrainDisplay = valReduction > 0 && Number.isFinite(value) && !error;
+    if (hasStrainDisplay) {
       const effective = Math.max(0, value - valReduction);
       const reductionStr = fmt(valReduction);
       const effectiveStr = fmt(effective);
+      const baseStr = fmt(value);
       const pct = entry.strainPercent || 0;
-      const tip = `Strain reduces this value by ${reductionStr} (${pct}% of base ${fmt(value)}). Effective: ${effectiveStr}${def.unit ? ' ' + def.unit : ''}.`;
-      strainAnnotation = ` <span class="ds-card-strain-reduction" title="${escapeHtml(tip)}">− ${reductionStr}</span>`;
+      const expandedTip = `Strain reduces this value by ${reductionStr} (${pct}% of base ${baseStr}). Effective: ${effectiveStr}${def.unit ? ' ' + def.unit : ''}. Click to show effective only.`;
+      const collapsedTip = `Effective ${effectiveStr}${def.unit ? ' ' + def.unit : ''} — base ${baseStr} reduced by ${reductionStr} (${pct}% Strain). Click to show breakdown.`;
+      valueBody = `<span class="ds-card-strain-toggle" onclick="toggleStrainValueDisplay('${escapeHtml(def.code)}')">` +
+          `<span class="ds-card-strain-expanded" title="${escapeHtml(expandedTip)}">${baseStr} <span class="ds-card-strain-reduction">− ${reductionStr}</span></span>` +
+          `<span class="ds-card-strain-effective" title="${escapeHtml(collapsedTip)}">${effectiveStr}</span>` +
+        `</span>`;
+    } else {
+      valueBody = display;
     }
 
     const errTitle = error ? ` title="${escapeHtml(error)}"` : '';
@@ -219,12 +250,16 @@ export function createCombatSection(ctx) {
       });
     }
 
+    const collapsedClass = hasStrainDisplay && collapsedStrainValues.has(def.code)
+      ? ' strain-collapsed'
+      : '';
+
     return `
-      <div class="ds-card${openPanel ? ' rollmod-open' : ''}"${errTitle}>
+      <div class="ds-card${openPanel ? ' rollmod-open' : ''}${collapsedClass}" data-code="${escapeHtml(def.code)}"${errTitle}>
         ${rollBadge}
         <div class="ds-card-name">${escapeHtml(def.name)}${codeBadge}</div>
         ${formulaBadge}
-        <div class="ds-card-value${error ? ' ds-card-error' : ''}">${display}${strainAnnotation}${unit}</div>
+        <div class="ds-card-value${error ? ' ds-card-error' : ''}">${valueBody}${unit}</div>
         ${dicePill}
         ${def.description ? `<div class="ds-card-desc">${escapeHtml(def.description)}</div>` : ''}
         ${panelHtml}
@@ -2497,6 +2532,8 @@ export function createCombatSection(ctx) {
     addSanDamageMod, updateSanDamageMod, deleteSanDamageMod,
     // Card dice modifiers (player/GM-editable bonus dice for rolls)
     toggleDiceModPanel, addDiceMod, updateDiceMod, deleteDiceMod,
+    // Strain value-display toggle (click to collapse "10 − 2.5" to "7.5")
+    toggleStrainValueDisplay,
     // Pain / Stress (percentile modifiers feeding Strain)
     togglePainPanel, addPainMod, updatePainMod, deletePainMod,
     toggleStressPanel, addStressMod, updateStressMod, deleteStressMod
