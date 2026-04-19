@@ -505,5 +505,63 @@ export function computeDerivedStats(character, ruleset) {
     if (err) errors.push({ code: def.code, message: err });
   });
 
-  return { stats, locations, errors, vars };
+  // ─── BODY POOL & CHARACTER STATUS ───
+  //
+  // Body is the total damage pool. Its max is the sum of all location maxHPs;
+  // its current is bodyMax minus the sum of all damage everywhere. Every point
+  // of location damage is also a point of Body damage — they're the same pool.
+  //
+  // Damage past Def. Destroyed on a limb (phase 4) still ticks Body down. The
+  // Def. Destroyed location's own bar reflects Body's state rather than more
+  // location-specific damage.
+  //
+  // Character statuses derive from two sources:
+  //   - Head/Torso hit location status (Disabled/Destroyed/etc.)
+  //   - Body pool (0 = Dead)
+  //
+  // Priority: Dead > (Unconscious + Paralyzed) > Unconscious > Paralyzed > Alive
+  let bodyMax = 0;
+  let bodyDamage = 0;
+  locations.forEach(l => {
+    if (typeof l.maxHP === 'number') bodyMax += l.maxHP;
+    if (typeof l.currentDamage === 'number') bodyDamage += l.currentDamage;
+  });
+  const bodyCurrent = Math.max(0, bodyMax - bodyDamage);
+
+  // Find head/torso for status. Multiple heads/torsos (unusual): any in a
+  // death-triggering state kills the character. Disable status requires at
+  // least one to be disabled (not all).
+  const headLocs  = locations.filter(l => l.def.code === 'head');
+  const torsoLocs = locations.filter(l => l.def.code === 'torso');
+
+  const anyHeadDestroyed  = headLocs.some (l => l.status === 'destroyed' || l.status === 'definitelyDestroyed');
+  const anyTorsoDestroyed = torsoLocs.some(l => l.status === 'destroyed' || l.status === 'definitelyDestroyed');
+  const anyHeadDisabled   = headLocs.some (l => l.status === 'disabled');
+  const anyTorsoDisabled  = torsoLocs.some(l => l.status === 'disabled');
+
+  const isDead = (bodyMax > 0 && bodyCurrent <= 0)
+              || anyHeadDestroyed
+              || anyTorsoDestroyed;
+  const isUnconscious = !isDead && anyHeadDisabled;
+  const isParalyzed   = !isDead && anyTorsoDisabled;
+
+  // Build a compact status object the combat UI can read directly.
+  let statusLabel;
+  if (isDead) statusLabel = 'DEAD';
+  else if (isUnconscious && isParalyzed) statusLabel = 'Unconscious & Paralyzed';
+  else if (isUnconscious) statusLabel = 'Unconscious';
+  else if (isParalyzed) statusLabel = 'Paralyzed';
+  else statusLabel = 'Alive';
+
+  const body = {
+    max: bodyMax,
+    current: bodyCurrent,
+    damage: bodyDamage,
+    dead: isDead,
+    unconscious: isUnconscious,
+    paralyzed: isParalyzed,
+    statusLabel
+  };
+
+  return { stats, locations, errors, vars, body };
 }
