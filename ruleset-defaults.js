@@ -465,6 +465,24 @@ window.normalizeRuleset = function(rs) {
         };
       })
       .filter(Boolean);
+
+    // Auto-inject any NEW default stats that aren't in the user's list yet.
+    // Rationale: when we add a core mechanic like FORT to the defaults, we
+    // want existing rulesets to inherit it automatically — otherwise every
+    // saved ruleset would need manual editing.
+    //
+    // Conservative: we only add stats that are TOTALLY ABSENT from the user's
+    // list. If a stat is present with any config (even modified), we leave it
+    // alone — the user's version wins. If a user explicitly DELETES a default
+    // stat, it'll re-appear on next normalize; that's acceptable given the
+    // low cost of re-deleting vs. the high cost of "I added FORT to defaults
+    // but my characters don't see it".
+    d.derivedStats.forEach(defaultStat => {
+      const code = (defaultStat.code || '').toUpperCase();
+      if (!code || seenCodes.has(code)) return;
+      out.derivedStats.push(JSON.parse(JSON.stringify(defaultStat)));
+      seenCodes.add(code);
+    });
   }
 
   // ── HIT LOCATIONS ──
