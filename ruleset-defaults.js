@@ -173,6 +173,10 @@ window.RULESET_DEFAULTS = {
       // e.g. resisting poison, disease, or other bodily trauma. Shown in the
       // card's top-right corner as a signed badge (+2, −1).
       rollModifier: 'STRMOD',
+      // Passive rolls are immune to Strain (Pain + Stress). Characters don't
+      // suffer dice penalties when resisting bodily trauma just because they're
+      // in pain — the whole point of the roll is to see if they can endure.
+      passiveRoll: true,
       trackDamage: false,
       keepDecimals: false,
       unit: ''
@@ -246,6 +250,8 @@ window.RULESET_DEFAULTS = {
       // willpower both help resist mental pressure, and the stronger trait
       // carries you through.
       rollModifier: 'max(INTMOD, CHAMOD)',
+      // Passive roll — Sanity resistance rolls are not reduced by Strain.
+      passiveRoll: true,
       trackDamage: false,
       keepDecimals: false,
       unit: ''
@@ -483,6 +489,10 @@ window.normalizeRuleset = function(rs) {
           // a signed badge indicating which stat modifier the player rolls
           // with when making resistance checks for this stat.
           rollModifier: (typeof s.rollModifier === 'string') ? s.rollModifier : '',
+          // Passive rolls are exempt from Strain dice penalties. Defaults
+          // to false so new stats are treated as active (Strain applies) —
+          // only explicitly-marked passive stats skip it.
+          passiveRoll: s.passiveRoll === true,
           trackDamage: s.trackDamage === true,
           keepDecimals: s.keepDecimals === true,
           unit: (typeof s.unit === 'string') ? s.unit : ''
@@ -532,6 +542,16 @@ window.normalizeRuleset = function(rs) {
         const defaultStat = d.derivedStats.find(ds => ds.code === s.code);
         if (defaultStat && defaultStat.rollModifier) {
           s.rollModifier = defaultStat.rollModifier;
+        }
+      }
+      // Backfill passiveRoll for HP/SAN (or any default stat) if the saved
+      // value still matches the pre-flag default of false. Safe: we only
+      // flip false → true for stats that are DEFAULT passive; stats the user
+      // actively set non-passive aren't touched.
+      if (s.passiveRoll !== true) {
+        const defaultStat = d.derivedStats.find(ds => ds.code === s.code);
+        if (defaultStat && defaultStat.passiveRoll === true) {
+          s.passiveRoll = true;
         }
       }
     });
