@@ -46,6 +46,73 @@
     .sub-panel { display: none; }
     .sub-panel.active { display: block; }
 
+    /* ═══ DERIVED STATS / COMBAT TAB ═══ */
+    /* Formula reference — a quiet, collapsible cheatsheet for GMs */
+    .formula-ref { background: #0b0b0b; border: 1px solid #1a1a1a; border-radius: 4px; padding: 10px 14px; margin-bottom: 14px; font-size: 11px; color: #888; line-height: 1.6; }
+    .formula-ref h4 { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #aaa; margin-bottom: 6px; }
+    .formula-ref code { background: #111; border: 1px solid #222; color: #ccc; padding: 1px 5px; border-radius: 2px; font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; }
+    .formula-ref-grid { display: grid; grid-template-columns: 140px 1fr; gap: 3px 12px; margin-top: 4px; }
+
+    /* Group pill row — one chip per group, with an "edit groups" link */
+    .group-list { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
+    .group-pill { display: flex; align-items: center; gap: 4px; background: #111; border: 1px solid #222; border-radius: 3px; padding: 3px 8px; font-size: 11px; color: #aaa; }
+    .group-pill input { background: transparent; border: none; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; outline: none; width: 90px; padding: 0; }
+    .group-pill .gp-remove { color: #555; cursor: pointer; font-size: 14px; line-height: 1; margin-left: 2px; }
+    .group-pill .gp-remove:hover { color: #c84b4b; }
+    .group-add-btn { background: transparent; border: 1px dashed #333; color: #888; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 3px 10px; border-radius: 3px; cursor: pointer; }
+    .group-add-btn:hover { border-color: #555; color: #aaa; }
+
+    /* Derived stat row grid */
+    .ds-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+    .ds-row { display: grid; grid-template-columns: 100px 140px 110px 1fr 70px 60px 24px; gap: 6px; align-items: center; background: #111; border: 1px solid #1a1a1a; border-radius: 4px; padding: 8px 10px; }
+    .ds-row input, .ds-row select, .ds-row textarea { background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 5px 8px; border-radius: 3px; outline: none; width: 100%; }
+    .ds-row input:focus, .ds-row select:focus, .ds-row textarea:focus { border-color: #444; }
+    .ds-row .ds-formula { font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; }
+    .ds-row .ds-formula.invalid { border-color: #5a2a2a; background: #1a0d0d; }
+    .ds-row .delete-x { color: #555; font-size: 18px; cursor: pointer; padding: 0 4px; line-height: 1.6; text-align: center; }
+    .ds-row .delete-x:hover { color: #c84b4b; }
+    .ds-row .ds-code { font-family: 'Consolas', 'Courier New', monospace; font-weight: 600; text-transform: uppercase; }
+
+    .ds-list-header { display: grid; grid-template-columns: 100px 140px 110px 1fr 70px 60px 24px; gap: 6px; padding: 0 10px 4px; font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #666; border-bottom: 1px solid #1a1a1a; margin-bottom: 8px; }
+
+    .ds-error-msg { font-size: 10px; color: #c87777; padding-left: 10px; margin-top: -2px; margin-bottom: 4px; min-height: 12px; }
+
+    /* Toggle switches for booleans (trackDamage, keepDecimals, etc.) */
+    .ds-toggle { cursor: pointer; user-select: none; background: #0a0a0a; border: 1px solid #222; border-radius: 3px; padding: 4px 8px; font-size: 11px; color: #666; text-align: center; }
+    .ds-toggle.on { background: #1f2c3a; border-color: #3a5878; color: #cfe3f6; }
+    .ds-toggle:hover { border-color: #444; }
+
+    /* Hit location row — similar pattern, simpler columns */
+    .hl-row { display: grid; grid-template-columns: 100px 140px 70px 1fr 24px; gap: 6px; align-items: center; background: #111; border: 1px solid #1a1a1a; border-radius: 4px; padding: 8px 10px; }
+    .hl-row input { background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 5px 8px; border-radius: 3px; outline: none; width: 100%; }
+    .hl-row input:focus { border-color: #444; }
+    .hl-row .hl-formula { font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; }
+    .hl-row .hl-formula.invalid { border-color: #5a2a2a; background: #1a0d0d; }
+    .hl-list-header { display: grid; grid-template-columns: 100px 140px 70px 1fr 24px; gap: 6px; padding: 0 10px 4px; font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #666; border-bottom: 1px solid #1a1a1a; margin-bottom: 8px; }
+
+    /* Damage thresholds — three rows, labeled */
+    .threshold-row { display: grid; grid-template-columns: 180px 200px 1fr; gap: 10px; align-items: center; background: #111; border: 1px solid #1a1a1a; border-radius: 4px; padding: 8px 10px; margin-bottom: 6px; }
+    .threshold-row-static { font-size: 11px; color: #888; padding-left: 4px; }
+    .threshold-row input { background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 5px 8px; border-radius: 3px; outline: none; width: 100%; }
+    .threshold-row input.threshold-formula { font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; }
+    .threshold-row input.invalid { border-color: #5a2a2a; background: #1a0d0d; }
+
+    /* Power pool section */
+    .pp-toggle-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .pp-xp-table { display: grid; grid-template-columns: 60px 1fr; gap: 4px 10px; align-items: center; max-width: 320px; margin-bottom: 12px; }
+    .pp-xp-table .tth { font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #888; padding: 4px 2px 6px; border-bottom: 1px solid #1a1a1a; }
+    .pp-xp-table .lbl { font-size: 11px; color: #888; padding: 0 4px; }
+    .pp-xp-table input { background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 4px 8px; border-radius: 3px; outline: none; width: 100%; text-align: center; }
+
+    /* POW→multiplier table */
+    .pm-table { display: flex; flex-direction: column; gap: 4px; max-width: 400px; }
+    .pm-row { display: grid; grid-template-columns: 60px 60px 1fr 24px; gap: 6px; align-items: center; background: #111; border: 1px solid #1a1a1a; border-radius: 3px; padding: 6px 8px; }
+    .pm-row input { background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 3px 6px; border-radius: 3px; outline: none; width: 100%; text-align: center; }
+    .pm-row input:focus { border-color: #444; }
+    .pm-row .delete-x { color: #555; font-size: 14px; cursor: pointer; text-align: center; line-height: 1; }
+    .pm-row .delete-x:hover { color: #c84b4b; }
+    .pm-list-header { display: grid; grid-template-columns: 60px 60px 1fr 24px; gap: 6px; padding: 0 8px 4px; font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #666; border-bottom: 1px solid #1a1a1a; margin-bottom: 4px; }
+
     /* XP table grid */
     .xp-table { display: grid; grid-template-columns: 60px 1fr; gap: 4px; align-items: center; margin-bottom: 10px; max-width: 320px; }
     .xp-table .xp-lbl { font-size: 11px; color: #888; text-align: right; padding-right: 8px; }
@@ -170,6 +237,7 @@
     <div class="top-tabs">
       <div class="top-tab active" id="top-tab-core"   onclick="switchTopTab('core')">Core Rules</div>
       <div class="top-tab"        id="top-tab-ad"     onclick="switchTopTab('ad')">Advantages &amp; Disadvantages</div>
+      <div class="top-tab"        id="top-tab-combat" onclick="switchTopTab('combat')">Derived Stats &amp; Combat</div>
     </div>
 
     <!-- ═══════════════════════ CORE RULES TAB ═══════════════════════ -->
@@ -407,6 +475,155 @@
 
     </div><!-- /top-panel-ad -->
 
+    <!-- ═══════════════════════ DERIVED STATS & COMBAT TAB ═══════════════════════ -->
+    <div class="top-panel" id="top-panel-combat">
+
+      <!-- FORMULA REFERENCE (collapsible) -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Formula Reference</div>
+        </div>
+        <div class="section-desc">Formulas are written in plain math. Supported: <code>+ - * / ^</code> (power), parentheses, and functions <code>floor()</code>, <code>ceil()</code>, <code>round()</code>, <code>min()</code>, <code>max()</code>, <code>abs()</code>. Results are floored automatically unless a stat is flagged to keep decimals (like Reflex). See below for available variables.</div>
+        <div class="formula-ref">
+          <h4>Variables available to formulas</h4>
+          <div class="formula-ref-grid">
+            <div><code>STR DEX PER INT CHA POW</code></div><div>Current stat values</div>
+            <div><code>STRMOD DEXMOD PERMOD INTMOD CHAMOD POWMOD</code></div><div>STATMODs (from the ruleset's statMod table)</div>
+            <div><code>SIZE SIZEMOD</code></div><div>SIZE tier and its modifier (SIZE − 6)</div>
+            <div><code>POWERPOOL</code></div><div>Character's purchased Power Pool level</div>
+            <div><code>POW_MULTIPLIER</code></div><div>Looked up from POW via the POW→multiplier table below</div>
+            <div><code>&lt;code&gt;</code></div><div>Any earlier derived stat by its CODE (e.g. <code>HP</code> in Head HP formula)</div>
+            <div><code>maxHP</code>, <code>currentDamage</code></div><div>Only available in damage threshold formulas</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DERIVED STAT GROUPS -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Derived Stat Groups</div>
+        </div>
+        <div class="section-desc">How derived stats are organized on the character's Combat tab. Every derived stat belongs to exactly one group. Edit labels directly; click × to remove. Removing a group reassigns its stats to the first remaining group.</div>
+        <div class="group-list" id="dsg-list"></div>
+      </div>
+
+      <!-- DERIVED STATS -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Derived Stats</div>
+        </div>
+        <div class="section-desc">Stats computed from base stats via formulas. Each has a CODE (used in formulas), a display name, a group, and a formula. Toggle "Keep decimals" for stats like Reflex or Speed that are genuinely fractional.</div>
+        <div class="ds-list-header" id="ds-list-header" style="display:none">
+          <div>Code</div>
+          <div>Name</div>
+          <div>Group</div>
+          <div>Formula</div>
+          <div style="text-align:center">Keep Dec.</div>
+          <div style="text-align:center">Unit</div>
+          <div></div>
+        </div>
+        <div class="ds-list" id="ds-list"></div>
+        <div style="margin-top:8px">
+          <button class="btn small" onclick="addDerivedStat()">+ Add Derived Stat</button>
+        </div>
+      </div>
+
+      <!-- HIT LOCATIONS -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Hit Locations</div>
+        </div>
+        <div class="section-desc">Body parts tracked separately for damage. <code>Count</code> is how many copies exist (e.g. 2 arms). <code>maxHP</code> is not a variable here — use <code>HP</code> and <code>SIZEMOD</code> to express the location's max HP.</div>
+        <div class="hl-list-header" id="hl-list-header" style="display:none">
+          <div>Code</div>
+          <div>Display Name</div>
+          <div style="text-align:center">Count</div>
+          <div>HP Formula</div>
+          <div></div>
+        </div>
+        <div class="ds-list" id="hl-list"></div>
+        <div style="margin-top:8px">
+          <button class="btn small" onclick="addHitLocation()">+ Add Hit Location</button>
+        </div>
+      </div>
+
+      <!-- DAMAGE THRESHOLDS -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Damage Thresholds</div>
+        </div>
+        <div class="section-desc">When a location's remaining HP (<code>maxHP − currentDamage</code>) reaches these thresholds, it enters the named state. Formulas have access to <code>maxHP</code> (the location's max) and <code>currentDamage</code>.</div>
+
+        <div class="threshold-row">
+          <div class="threshold-row-static">Disabled at remaining ≤</div>
+          <input type="text" id="th-disabled-formula" class="threshold-formula" placeholder="0">
+          <input type="text" id="th-disabled-label" placeholder="Label (e.g. Disabled)">
+        </div>
+        <div class="threshold-row">
+          <div class="threshold-row-static">Destroyed at remaining ≤</div>
+          <input type="text" id="th-destroyed-formula" class="threshold-formula" placeholder="-maxHP">
+          <input type="text" id="th-destroyed-label" placeholder="Label (e.g. Destroyed)">
+        </div>
+        <div class="threshold-row">
+          <div class="threshold-row-static">Def. Destroyed at remaining ≤</div>
+          <input type="text" id="th-definitelyDestroyed-formula" class="threshold-formula" placeholder="-2 * maxHP">
+          <input type="text" id="th-definitelyDestroyed-label" placeholder="Label (e.g. Definitively Destroyed)">
+        </div>
+      </div>
+
+      <!-- POWER POOL -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Power Pool</div>
+        </div>
+        <div class="section-desc">A purchasable resource separate from the POW stat. Disable entirely for rulesets that don't use power/magic. The POW → Multiplier table determines <code>POW_MULTIPLIER</code>, which formulas like <code>POWER = POWERPOOL * POW_MULTIPLIER</code> use.</div>
+
+        <div class="pp-toggle-row">
+          <div class="ds-toggle" id="pp-enabled" onclick="togglePowerPoolEnabled()">Enabled</div>
+          <span style="font-size:11px;color:#666" id="pp-enabled-hint"></span>
+        </div>
+
+        <div id="pp-config" style="display:none">
+          <div class="row" style="margin-bottom:12px">
+            <div class="field">
+              <label>Display Name</label>
+              <input type="text" id="pp-name" placeholder="Power Pool">
+            </div>
+            <div class="field">
+              <label>Max Purchasable</label>
+              <input type="number" id="pp-max" min="0">
+            </div>
+          </div>
+          <div class="field">
+            <label>Description</label>
+            <textarea id="pp-description" rows="2" placeholder="Explain what Power Pool means in your ruleset."></textarea>
+          </div>
+
+          <div style="margin-top:14px">
+            <h4 style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#aaa;margin-bottom:6px">XP Cost per Level</h4>
+            <div class="section-desc" style="margin-bottom:8px">Cost to buy each level of Power Pool. Level 0 should usually be 0 (no pool).</div>
+            <div class="pp-xp-table" id="pp-xp-table"></div>
+          </div>
+
+          <div style="margin-top:14px">
+            <h4 style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#aaa;margin-bottom:6px">POW → Multiplier Table</h4>
+            <div class="section-desc" style="margin-bottom:8px">For each POW range, the value to use for <code>POW_MULTIPLIER</code>. Ranges are inclusive on both ends. The first matching range wins.</div>
+            <div class="pm-list-header">
+              <div style="text-align:center">POW ≥</div>
+              <div style="text-align:center">POW ≤</div>
+              <div style="text-align:center">Multiplier</div>
+              <div></div>
+            </div>
+            <div class="pm-table" id="pm-table"></div>
+            <div style="margin-top:6px">
+              <button class="btn small" onclick="addPmRange()">+ Add range</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /top-panel-combat -->
+
     <div class="footer-actions">
       <button class="btn primary" id="submit-btn" onclick="saveRuleset()">Save</button>
       <button class="btn" onclick="window.location.href='my-rulesets.html'">Cancel</button>
@@ -420,6 +637,9 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
   import { getAuth, signOut } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
   import { getFirestore, doc, getDoc, addDoc, updateDoc, deleteDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+
+  // Parser for live formula validation — shows red borders on invalid formulas as the GM types.
+  import { parseFormula } from './char-derived.js';
 
   const firebaseConfig = {
     apiKey: "AIzaSyCf94yLvAtJ9pLgJ3FsV7ir4Qh9XXm3nHg",
@@ -568,6 +788,13 @@
     renderFilterChips('dis');
     renderAdList('adv');
     renderAdList('dis');
+
+    // Derived Stats & Combat tab
+    renderDerivedStatGroups();
+    renderDerivedStats();
+    renderHitLocations();
+    renderDamageThresholds();
+    renderPowerPool();
 
     renderScaleSummary();
 
@@ -1087,6 +1314,382 @@
     renderScaleSummary();
   }
 
+  // ════════════════════════════════════════════════════════════════════
+  // DERIVED STATS & COMBAT TAB
+  // ════════════════════════════════════════════════════════════════════
+
+  // ── GROUPS ──
+
+  function renderDerivedStatGroups() {
+    const container = document.getElementById('dsg-list');
+    const groups = state.derivedStatGroups || [];
+    let html = '';
+    groups.forEach((g, i) => {
+      html += `<div class="group-pill">
+        <span style="color:#666;font-size:10px;font-family:'Consolas',monospace">${g.code}</span>
+        <input type="text" value="${(g.label||'').replace(/"/g,'&quot;')}" oninput="updateDsgLabel(${i},this.value)">
+        ${groups.length > 1 ? `<span class="gp-remove" onclick="removeDsg(${i})" title="Remove">×</span>` : ''}
+      </div>`;
+    });
+    html += `<button class="group-add-btn" onclick="addDsg()">+ Add Group</button>`;
+    container.innerHTML = html;
+  }
+
+  window.updateDsgLabel = function(i, val) {
+    if (!state.derivedStatGroups[i]) return;
+    state.derivedStatGroups[i].label = val;
+    // Re-render the group dropdowns on derived stat rows so new labels show.
+    renderDerivedStats();
+  };
+
+  window.addDsg = function() {
+    // Generate a unique code. Start with "group", add N until unique.
+    const existing = new Set(state.derivedStatGroups.map(g => g.code));
+    let n = 1;
+    let code = 'group';
+    while (existing.has(code)) { n++; code = 'group' + n; }
+    state.derivedStatGroups.push({ code, label: 'New Group' });
+    renderDerivedStatGroups();
+    renderDerivedStats();  // dropdowns need the new option
+  };
+
+  window.removeDsg = function(i) {
+    const removed = state.derivedStatGroups[i];
+    if (!removed) return;
+    if (state.derivedStatGroups.length <= 1) { alert('At least one group is required.'); return; }
+    // Reassign any derived stats in the removed group to the first surviving group.
+    state.derivedStatGroups.splice(i, 1);
+    const fallback = state.derivedStatGroups[0].code;
+    (state.derivedStats || []).forEach(ds => {
+      if (ds.group === removed.code) ds.group = fallback;
+    });
+    renderDerivedStatGroups();
+    renderDerivedStats();
+  };
+
+  // ── DERIVED STATS ──
+
+  function renderDerivedStats() {
+    const container = document.getElementById('ds-list');
+    const header = document.getElementById('ds-list-header');
+    const stats = state.derivedStats || [];
+    const groups = state.derivedStatGroups || [];
+
+    if (stats.length === 0) {
+      if (header) header.style.display = 'none';
+      container.innerHTML = '<div class="empty">No derived stats defined yet.</div>';
+      return;
+    }
+    if (header) header.style.display = 'grid';
+
+    container.innerHTML = stats.map((ds, i) => {
+      const groupOptions = groups.map(g =>
+        `<option value="${g.code}" ${g.code === ds.group ? 'selected' : ''}>${escapeHtmlAttr(g.label)}</option>`
+      ).join('');
+      const parsed = parseFormula(ds.formula || '');
+      const invalidClass = parsed.error ? 'invalid' : '';
+      const errMsg = parsed.error ? parsed.message : '';
+      return `
+        <div class="ds-row">
+          <input type="text" class="ds-code" value="${escapeHtmlAttr(ds.code)}"
+                 oninput="updateDsField(${i},'code',this.value.toUpperCase())"
+                 placeholder="CODE">
+          <input type="text" value="${escapeHtmlAttr(ds.name)}"
+                 oninput="updateDsField(${i},'name',this.value)"
+                 placeholder="Display name">
+          <select onchange="updateDsField(${i},'group',this.value)">${groupOptions}</select>
+          <input type="text" class="ds-formula ${invalidClass}" value="${escapeHtmlAttr(ds.formula)}"
+                 oninput="updateDsFormula(${i},this.value)"
+                 placeholder="e.g. STR + SIZEMOD"
+                 title="${escapeHtmlAttr(errMsg)}">
+          <div class="ds-toggle ${ds.keepDecimals ? 'on' : ''}" onclick="toggleDsFlag(${i},'keepDecimals')" title="Keep decimal places (don't floor)">${ds.keepDecimals ? '0.5' : '0'}</div>
+          <input type="text" value="${escapeHtmlAttr(ds.unit)}"
+                 oninput="updateDsField(${i},'unit',this.value)"
+                 placeholder="Unit">
+          <span class="delete-x" onclick="removeDerivedStat(${i})" title="Remove">×</span>
+        </div>
+        ${errMsg ? `<div class="ds-error-msg">${escapeHtmlAttr(ds.code||'?')}: ${escapeHtmlAttr(errMsg)}</div>` : ''}
+      `;
+    }).join('');
+  }
+
+  window.updateDsField = function(i, field, val) {
+    if (!state.derivedStats[i]) return;
+    state.derivedStats[i][field] = val;
+    // Name/code/group/unit changes don't need a re-render — the input holds
+    // the new value. Only re-render if code changed (other formulas may
+    // reference it) or group changed (affects grouping elsewhere).
+    if (field === 'code' || field === 'group') renderDerivedStats();
+  };
+
+  window.updateDsFormula = function(i, val) {
+    if (!state.derivedStats[i]) return;
+    state.derivedStats[i].formula = val;
+    // Toggle the invalid class + error message inline without re-rendering
+    // the whole list (which would steal focus).
+    const input = event.target;
+    const parsed = parseFormula(val);
+    input.classList.toggle('invalid', !!parsed.error);
+    input.title = parsed.error ? parsed.message : '';
+    // Find and update the adjacent error message div (if any).
+    const row = input.closest('.ds-row');
+    if (row) {
+      const next = row.nextElementSibling;
+      if (next && next.classList.contains('ds-error-msg')) {
+        if (parsed.error) {
+          next.textContent = (state.derivedStats[i].code || '?') + ': ' + parsed.message;
+        } else {
+          next.remove();
+        }
+      } else if (parsed.error) {
+        const div = document.createElement('div');
+        div.className = 'ds-error-msg';
+        div.textContent = (state.derivedStats[i].code || '?') + ': ' + parsed.message;
+        row.insertAdjacentElement('afterend', div);
+      }
+    }
+  };
+
+  window.toggleDsFlag = function(i, flag) {
+    if (!state.derivedStats[i]) return;
+    state.derivedStats[i][flag] = !state.derivedStats[i][flag];
+    renderDerivedStats();
+  };
+
+  window.removeDerivedStat = function(i) {
+    state.derivedStats.splice(i, 1);
+    renderDerivedStats();
+  };
+
+  window.addDerivedStat = function() {
+    if (!state.derivedStats) state.derivedStats = [];
+    const fallbackGroup = (state.derivedStatGroups[0] || { code: 'health' }).code;
+    // Generate a unique CODE.
+    const existing = new Set(state.derivedStats.map(s => s.code));
+    let code = 'NEW';
+    let n = 1;
+    while (existing.has(code)) { n++; code = 'NEW' + n; }
+    state.derivedStats.push({
+      code,
+      name: 'New Stat',
+      description: '',
+      group: fallbackGroup,
+      formula: '0',
+      trackDamage: false,
+      keepDecimals: false,
+      unit: ''
+    });
+    renderDerivedStats();
+  };
+
+  // ── HIT LOCATIONS ──
+
+  function renderHitLocations() {
+    const container = document.getElementById('hl-list');
+    const header = document.getElementById('hl-list-header');
+    const locs = state.hitLocations || [];
+
+    if (locs.length === 0) {
+      if (header) header.style.display = 'none';
+      container.innerHTML = '<div class="empty">No hit locations defined.</div>';
+      return;
+    }
+    if (header) header.style.display = 'grid';
+
+    container.innerHTML = locs.map((l, i) => {
+      const parsed = parseFormula(l.hpFormula || '');
+      const invalidClass = parsed.error ? 'invalid' : '';
+      return `
+        <div class="hl-row">
+          <input type="text" value="${escapeHtmlAttr(l.code)}"
+                 oninput="updateHlField(${i},'code',this.value.toLowerCase())"
+                 placeholder="code" style="font-family:'Consolas',monospace;font-size:11px">
+          <input type="text" value="${escapeHtmlAttr(l.name)}"
+                 oninput="updateHlField(${i},'name',this.value)"
+                 placeholder="Name (e.g. Head)">
+          <input type="number" value="${l.count || 1}" min="1" max="20"
+                 oninput="updateHlField(${i},'count',parseInt(this.value)||1)" style="text-align:center">
+          <input type="text" class="hl-formula ${invalidClass}" value="${escapeHtmlAttr(l.hpFormula)}"
+                 oninput="updateHlFormula(${i},this.value)"
+                 placeholder="e.g. (HP/2) + (SIZEMOD/2)"
+                 title="${escapeHtmlAttr(parsed.error ? parsed.message : '')}">
+          <span class="delete-x" onclick="removeHitLocation(${i})" title="Remove">×</span>
+        </div>
+      `;
+    }).join('');
+  }
+
+  window.updateHlField = function(i, field, val) {
+    if (!state.hitLocations[i]) return;
+    state.hitLocations[i][field] = val;
+  };
+
+  window.updateHlFormula = function(i, val) {
+    if (!state.hitLocations[i]) return;
+    state.hitLocations[i].hpFormula = val;
+    const input = event.target;
+    const parsed = parseFormula(val);
+    input.classList.toggle('invalid', !!parsed.error);
+    input.title = parsed.error ? parsed.message : '';
+  };
+
+  window.removeHitLocation = function(i) {
+    state.hitLocations.splice(i, 1);
+    renderHitLocations();
+  };
+
+  window.addHitLocation = function() {
+    if (!state.hitLocations) state.hitLocations = [];
+    const existing = new Set(state.hitLocations.map(l => l.code));
+    let code = 'location';
+    let n = 1;
+    while (existing.has(code)) { n++; code = 'location' + n; }
+    state.hitLocations.push({
+      code, name: 'New Location', count: 1, hpFormula: 'HP'
+    });
+    renderHitLocations();
+  };
+
+  // ── DAMAGE THRESHOLDS ──
+
+  function renderDamageThresholds() {
+    const t = state.damageThresholds || {};
+    ['disabled', 'destroyed', 'definitelyDestroyed'].forEach(key => {
+      const entry = t[key] || {};
+      const fInput = document.getElementById('th-' + key + '-formula');
+      const lInput = document.getElementById('th-' + key + '-label');
+      if (!fInput || !lInput) return;
+      fInput.value = entry.formula || '';
+      lInput.value = entry.label || '';
+      // Live-validate formula on input.
+      fInput.oninput = (e) => {
+        if (!state.damageThresholds[key]) state.damageThresholds[key] = {};
+        state.damageThresholds[key].formula = e.target.value;
+        // maxHP and currentDamage are known vars here; we can still parse.
+        const parsed = parseFormula(e.target.value);
+        e.target.classList.toggle('invalid', !!parsed.error);
+        e.target.title = parsed.error ? parsed.message : '';
+      };
+      lInput.oninput = (e) => {
+        if (!state.damageThresholds[key]) state.damageThresholds[key] = {};
+        state.damageThresholds[key].label = e.target.value;
+      };
+      // Paint initial validation state.
+      const parsed = parseFormula(fInput.value);
+      fInput.classList.toggle('invalid', !!parsed.error);
+      fInput.title = parsed.error ? parsed.message : '';
+    });
+  }
+
+  // ── POWER POOL ──
+
+  function renderPowerPool() {
+    const pp = state.powerPool || {};
+    const toggle = document.getElementById('pp-enabled');
+    const config = document.getElementById('pp-config');
+    const hint = document.getElementById('pp-enabled-hint');
+
+    const enabled = pp.enabled !== false;
+    toggle.classList.toggle('on', enabled);
+    toggle.textContent = enabled ? 'Enabled' : 'Disabled';
+    config.style.display = enabled ? 'block' : 'none';
+    hint.textContent = enabled
+      ? 'Characters can purchase Power Pool with XP.'
+      : 'Power Pool is hidden from characters in this ruleset.';
+
+    if (!enabled) return;
+
+    // Name / description / max.
+    document.getElementById('pp-name').value = pp.name || '';
+    document.getElementById('pp-name').oninput = (e) => { state.powerPool.name = e.target.value; };
+    document.getElementById('pp-description').value = pp.description || '';
+    document.getElementById('pp-description').oninput = (e) => { state.powerPool.description = e.target.value; };
+    document.getElementById('pp-max').value = pp.maxPurchasable ?? 10;
+    document.getElementById('pp-max').oninput = (e) => {
+      const v = Math.max(0, parseInt(e.target.value) || 0);
+      state.powerPool.maxPurchasable = v;
+      // Adjust xpPerPoint to match new max (keep existing entries, pad with 0s, trim extras).
+      while (state.powerPool.xpPerPoint.length < v + 1) state.powerPool.xpPerPoint.push(0);
+      while (state.powerPool.xpPerPoint.length > v + 1) state.powerPool.xpPerPoint.pop();
+      renderPowerPoolXpTable();
+    };
+
+    renderPowerPoolXpTable();
+    renderPowMultiplierTable();
+  }
+
+  function renderPowerPoolXpTable() {
+    const container = document.getElementById('pp-xp-table');
+    const pp = state.powerPool;
+    const max = pp.maxPurchasable ?? 10;
+    let html = '<div class="tth" style="text-align:right">Level</div><div class="tth">XP Cost</div>';
+    for (let i = 0; i <= max; i++) {
+      const cost = (pp.xpPerPoint && pp.xpPerPoint[i] !== undefined) ? pp.xpPerPoint[i] : 0;
+      html += `<div class="lbl" style="text-align:right">Level ${i}</div>`;
+      html += `<input type="number" value="${cost}" oninput="updatePowerPoolXp(${i},this.value)">`;
+    }
+    container.innerHTML = html;
+  }
+
+  window.updatePowerPoolXp = function(i, val) {
+    const v = Math.max(0, parseInt(val) || 0);
+    if (!state.powerPool.xpPerPoint) state.powerPool.xpPerPoint = [];
+    while (state.powerPool.xpPerPoint.length <= i) state.powerPool.xpPerPoint.push(0);
+    state.powerPool.xpPerPoint[i] = v;
+  };
+
+  window.togglePowerPoolEnabled = function() {
+    state.powerPool.enabled = !state.powerPool.enabled;
+    renderPowerPool();
+  };
+
+  function renderPowMultiplierTable() {
+    const container = document.getElementById('pm-table');
+    const table = (state.powerPool && state.powerPool.powMultiplier) || [];
+    container.innerHTML = table.map((e, i) => `
+      <div class="pm-row">
+        <input type="number" value="${e.powMin}" oninput="updatePmField(${i},'powMin',this.value)">
+        <input type="number" value="${e.powMax}" oninput="updatePmField(${i},'powMax',this.value)">
+        <input type="number" step="0.01" value="${e.value}" oninput="updatePmField(${i},'value',this.value)">
+        <span class="delete-x" onclick="removePmRange(${i})" title="Remove">×</span>
+      </div>
+    `).join('') || '<div class="empty">No ranges defined.</div>';
+  }
+
+  window.updatePmField = function(i, field, val) {
+    const entry = state.powerPool.powMultiplier[i];
+    if (!entry) return;
+    entry[field] = parseFloat(val) || 0;
+  };
+
+  window.removePmRange = function(i) {
+    state.powerPool.powMultiplier.splice(i, 1);
+    renderPowMultiplierTable();
+  };
+
+  window.addPmRange = function() {
+    if (!state.powerPool.powMultiplier) state.powerPool.powMultiplier = [];
+    // Default new range: one slot above the highest existing powMax.
+    const max = state.powerPool.powMultiplier.length > 0
+      ? Math.max(...state.powerPool.powMultiplier.map(e => e.powMax))
+      : -1;
+    state.powerPool.powMultiplier.push({
+      powMin: max + 1,
+      powMax: max + 1,
+      value: 1
+    });
+    renderPowMultiplierTable();
+  };
+
+  // Helper: escape attribute values safely.
+  function escapeHtmlAttr(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
   // ── IMPORT FROM BASIC ──
   window.importFromBasic = function() {
     if (!basicSetData) return;
@@ -1113,6 +1716,12 @@
     state.disadvantageTiers = JSON.parse(JSON.stringify(src.disadvantageTiers));
     state.advantages        = JSON.parse(JSON.stringify(src.advantages));
     state.disadvantages     = JSON.parse(JSON.stringify(src.disadvantages));
+    // Derived Stats & Combat
+    state.derivedStatGroups = JSON.parse(JSON.stringify(src.derivedStatGroups));
+    state.derivedStats      = JSON.parse(JSON.stringify(src.derivedStats));
+    state.hitLocations      = JSON.parse(JSON.stringify(src.hitLocations));
+    state.damageThresholds  = JSON.parse(JSON.stringify(src.damageThresholds));
+    state.powerPool         = JSON.parse(JSON.stringify(src.powerPool));
     initUI();
   }
 
@@ -1163,7 +1772,13 @@
       advantageTiers:    state.advantageTiers,
       disadvantageTiers: state.disadvantageTiers,
       advantages:        state.advantages,
-      disadvantages:     state.disadvantages
+      disadvantages:     state.disadvantages,
+      // Derived Stats & Combat
+      derivedStatGroups: state.derivedStatGroups,
+      derivedStats:      state.derivedStats,
+      hitLocations:      state.hitLocations,
+      damageThresholds:  state.damageThresholds,
+      powerPool:         state.powerPool
     };
 
     try {
