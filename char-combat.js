@@ -1009,23 +1009,73 @@ export function createCombatSection(ctx) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     if (!charData.hitLocationDamage) charData.hitLocationDamage = {};
-    const typed = Math.max(0, parseInt(val) || 0);
+    const desired = Math.max(0, parseInt(val) || 0);
 
-    // The input displays TOTAL damage (manual + injury). Compute injury
-    // contribution for this location so we can back out the manual piece.
-    // If typed < injury damage, the manual pool clamps to 0 (you'd need to
-    // heal an injury via level-mods to go below the injury-contributed floor).
+    // The input displays FORT-reduced effective total damage. Given the
+    // injury instances at this location and the current FORT, solve for the
+    // manual damage value M that produces `desired` effective damage.
+    //
+    //   effective = highest + (sum of others) / FORT
+    //
+    // We treat manual as one additional damage instance. Two cases:
+    //
+    //   Case B: M <= highest injury → manual is NOT the new highest.
+    //     effective = I[0] + (others_sum - 0 + M) / FORT
+    //               = I[0] + (sum(I) - I[0] + M) / FORT
+    //     Solving: M = FORT*(desired - I[0]) - (sum(I) - I[0])
+    //     Valid if M is in [0, I[0]]
+    //
+    //   Case A: M > highest injury → manual IS the new highest.
+    //     effective = M + sum(I) / FORT
+    //     Solving: M = desired - sum(I)/FORT
+    //     Valid if M > I[0]
+    //
+    // If neither case produces a valid M, clamp: either desired is below
+    // the floor (cap manual at 0) or above any reasonable value (use Case A
+    // anyway, may overshoot slightly due to floor-rounding elsewhere).
+
+    // Gather injury instances at this location, so we can solve the equation.
     const injuries = Array.isArray(charData.injuries) ? charData.injuries : [];
-    let injuryDamageHere = 0;
-    injuries.forEach(inj => {
-      if ((inj.location || 'torso') !== trackKey) return;
-      const base = Number.isFinite(inj.baseLevel) ? inj.baseLevel : 0;
-      const mods = Array.isArray(inj.levelModifiers) ? inj.levelModifiers : [];
-      const modTotal = mods.reduce((a, m) => a + (parseInt(m.value) || 0), 0);
-      injuryDamageHere += Math.max(0, base + modTotal);
-    });
+    const injInstances = injuries
+      .filter(inj => (inj.location || 'torso') === trackKey)
+      .map(inj => {
+        const base = Number.isFinite(inj.baseLevel) ? inj.baseLevel : 0;
+        const mods = Array.isArray(inj.levelModifiers) ? inj.levelModifiers : [];
+        const modTotal = mods.reduce((a, m) => a + (parseInt(m.value) || 0), 0);
+        return Math.max(0, base + modTotal);
+      })
+      .filter(lvl => lvl > 0)
+      .sort((a, b) => b - a);
 
-    const manual = Math.max(0, typed - injuryDamageHere);
+    // Fetch FORT from the current derived stats (cached via computeDerivedStats).
+    const ruleset = ctx.getRuleset();
+    const result = computeDerivedStats(charData, ruleset);
+    const fort = (result.vars && result.vars.FORT) || 1;
+
+    let manual;
+    if (injInstances.length === 0) {
+      manual = desired;
+    } else {
+      const injHighest = injInstances[0];
+      const injSum = injInstances.reduce((s, v) => s + v, 0);
+      const othersSum = injSum - injHighest;
+
+      // Case B: manual is not the highest.
+      const mCaseB = fort * (desired - injHighest) - othersSum;
+      if (mCaseB >= 0 && mCaseB <= injHighest) {
+        manual = Math.max(0, Math.round(mCaseB));
+      } else {
+        // Case A: manual is the new highest.
+        const mCaseA = desired - injSum / fort;
+        if (mCaseA > injHighest) {
+          manual = Math.max(0, Math.round(mCaseA));
+        } else {
+          // desired is below the injury-only effective floor → clamp manual to 0
+          manual = 0;
+        }
+      }
+    }
+
     charData.hitLocationDamage[trackKey] = manual;
     await saveCharacter(ctx.getCharId(), { hitLocationDamage: charData.hitLocationDamage });
     renderAll();
