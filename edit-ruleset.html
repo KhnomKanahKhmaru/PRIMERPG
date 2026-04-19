@@ -600,9 +600,25 @@
           </div>
 
           <div style="margin-top:14px">
-            <h4 style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#aaa;margin-bottom:6px">XP Cost per Level</h4>
-            <div class="section-desc" style="margin-bottom:8px">Cost to buy each level of Power Pool. Level 0 should usually be 0 (no pool).</div>
-            <div class="pp-xp-table" id="pp-xp-table"></div>
+            <h4 style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#aaa;margin-bottom:6px">XP Cost</h4>
+            <div class="section-desc" style="margin-bottom:8px">How much XP each point of Power Pool costs. Use <b>Flat rate</b> for a simple cost-per-point system, or <b>Per-level table</b> to set a custom cost curve where each level can cost a different amount.</div>
+            <div class="pp-toggle-row">
+              <div class="ds-toggle" id="pp-mode-perPoint" onclick="setPowerPoolMode('perPoint')">Flat rate</div>
+              <div class="ds-toggle" id="pp-mode-perLevel" onclick="setPowerPoolMode('perLevel')">Per-level table</div>
+            </div>
+
+            <div id="pp-flat-row" style="display:none;margin-top:10px;max-width:320px">
+              <div class="field">
+                <label>XP per Point</label>
+                <input type="number" id="pp-flat-cost" min="0" step="1" style="max-width:100px">
+              </div>
+              <div class="section-desc" id="pp-flat-hint" style="margin-top:4px">At this rate, Level 5 costs — XP total.</div>
+            </div>
+
+            <div id="pp-table-row" style="display:none;margin-top:10px">
+              <div class="section-desc" style="margin-bottom:8px">Cost to buy each level of Power Pool. Level 0 should usually be 0 (no pool).</div>
+              <div class="pp-xp-table" id="pp-xp-table"></div>
+            </div>
           </div>
 
           <div style="margin-top:14px">
@@ -1612,11 +1628,48 @@
       while (state.powerPool.xpPerPoint.length < v + 1) state.powerPool.xpPerPoint.push(0);
       while (state.powerPool.xpPerPoint.length > v + 1) state.powerPool.xpPerPoint.pop();
       renderPowerPoolXpTable();
+      renderPowerPoolFlatHint();
     };
 
+    // Mode toggle — flat rate vs per-level table.
+    const mode = pp.costMode || 'perPoint';
+    document.getElementById('pp-mode-perPoint').classList.toggle('on', mode === 'perPoint');
+    document.getElementById('pp-mode-perLevel').classList.toggle('on', mode === 'perLevel');
+    document.getElementById('pp-flat-row').style.display  = mode === 'perPoint' ? 'block' : 'none';
+    document.getElementById('pp-table-row').style.display = mode === 'perLevel' ? 'block' : 'none';
+
+    // Flat cost input
+    const flatInput = document.getElementById('pp-flat-cost');
+    flatInput.value = (pp.costPerPoint != null) ? pp.costPerPoint : 2;
+    flatInput.oninput = (e) => {
+      const v = Math.max(0, parseFloat(e.target.value) || 0);
+      state.powerPool.costPerPoint = v;
+      renderPowerPoolFlatHint();
+    };
+
+    renderPowerPoolFlatHint();
     renderPowerPoolXpTable();
     renderPowMultiplierTable();
   }
+
+  // Show a "Level 5 costs — XP" hint beneath the flat cost input so GMs see
+  // the resulting cost at a glance.
+  function renderPowerPoolFlatHint() {
+    const pp = state.powerPool || {};
+    const el = document.getElementById('pp-flat-hint');
+    if (!el) return;
+    const max = pp.maxPurchasable ?? 10;
+    const rate = pp.costPerPoint ?? 0;
+    // Show cost at half-max and at max as anchor points.
+    const halfLevel = Math.max(1, Math.floor(max / 2));
+    el.innerHTML = `At this rate, Level ${halfLevel} costs <b>${halfLevel * rate} XP</b>, and Level ${max} costs <b>${max * rate} XP</b>.`;
+  }
+
+  window.setPowerPoolMode = function(mode) {
+    if (mode !== 'perPoint' && mode !== 'perLevel') return;
+    state.powerPool.costMode = mode;
+    renderPowerPool();
+  };
 
   function renderPowerPoolXpTable() {
     const container = document.getElementById('pp-xp-table');
