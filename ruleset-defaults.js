@@ -256,13 +256,21 @@ window.RULESET_DEFAULTS = {
   // reserve / energy systems. Ruleset can disable entirely. powMultiplier table
   // maps POW level ranges to multipliers used by the POWER formula.
   //
-  // Entry N of xpPerPoint = XP cost to BUY level N. Index 0 is free (no pool).
+  // Cost mode:
+  //   'perPoint' — flat rate: cost = costPerPoint * level
+  //   'perLevel' — per-level table: cost = sum of xpPerPoint[0..level]
+  //
+  // Basic Set defaults to perPoint at 2 XP/point — simple and flat.
+  // Rulesets with curved progression (expensive higher tiers) should switch to
+  // perLevel and fill out xpPerPoint.
   powerPool: {
     enabled: true,
     name: 'Power Pool',
     description: 'A reserve of power energy you pay XP to cultivate. Scales the POWER formula.',
+    costMode: 'perPoint',
+    costPerPoint: 2,
     xpPerPoint: [0, 5, 10, 15, 25, 40, 60, 90, 130, 180, 240],
-    maxPurchasable: 10,
+    maxPurchasable: 20,
 
     // Sparse lookup: each entry maps a range of POW values to a multiplier.
     // The POW_MULTIPLIER variable is set from the first matching entry.
@@ -460,6 +468,12 @@ window.normalizeRuleset = function(rs) {
       enabled: src.enabled !== false,  // default on unless explicitly false
       name: (typeof src.name === 'string' && src.name.trim()) ? src.name.trim() : d.powerPool.name,
       description: (typeof src.description === 'string') ? src.description : d.powerPool.description,
+      // costMode: 'perPoint' (flat) or 'perLevel' (table). Anything else falls back to default.
+      costMode: (src.costMode === 'perPoint' || src.costMode === 'perLevel')
+        ? src.costMode : d.powerPool.costMode,
+      // Flat cost-per-point. Used only when costMode === 'perPoint'. Must be non-negative.
+      costPerPoint: Number.isFinite(src.costPerPoint) && src.costPerPoint >= 0
+        ? src.costPerPoint : d.powerPool.costPerPoint,
       xpPerPoint: (Array.isArray(src.xpPerPoint) && src.xpPerPoint.length > 0)
         ? src.xpPerPoint.map(v => Number.isFinite(v) ? v : 0)
         : d.powerPool.xpPerPoint.slice(),
