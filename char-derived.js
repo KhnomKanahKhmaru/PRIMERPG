@@ -452,18 +452,33 @@ export function computeDerivedStats(character, ruleset) {
   const damageMap = (character.hitLocationDamage && typeof character.hitLocationDamage === 'object')
     ? character.hitLocationDamage : {};
 
+  // Hit location modifiers: { trackKey: [{ name, value }, ...], ... }
+  // Each modifier is added to that instance's maxHP. Tracked per instance,
+  // not per location def, so "arm-1" and "arm-2" can have different mods.
+  const hlModsMap = (character.hitLocationModifiers && typeof character.hitLocationModifiers === 'object')
+    ? character.hitLocationModifiers : {};
+
   locDefs.forEach(def => {
     const compiledHp = parseFormula(def.hpFormula);
-    let maxHP = evalFormula(compiledHp, vars);
+    let baseMaxHP = evalFormula(compiledHp, vars);
     let err = null;
-    if (compiledHp.error) { err = compiledHp.message; maxHP = null; }
-    else if (maxHP !== null) maxHP = Math.floor(maxHP);
+    if (compiledHp.error) { err = compiledHp.message; baseMaxHP = null; }
+    else if (baseMaxHP !== null) baseMaxHP = Math.floor(baseMaxHP);
 
     for (let i = 1; i <= (def.count || 1); i++) {
       // Build the tracking key. Single-count locations use just the code
       // (e.g. "head"), multi-count use code-N (e.g. "arm-1").
       const trackKey = (def.count && def.count > 1) ? `${def.code}-${i}` : def.code;
       const currentDamage = (typeof damageMap[trackKey] === 'number') ? damageMap[trackKey] : 0;
+
+      // Apply modifiers. Each modifier adds its value (positive or negative)
+      // to the base maxHP computed from the formula. Clamp min to 0 so a
+      // pile of negative mods doesn't produce a negative maxHP (which would
+      // break threshold comparisons and bar rendering).
+      const mods = Array.isArray(hlModsMap[trackKey]) ? hlModsMap[trackKey] : [];
+      const modTotal = mods.reduce((acc, m) => acc + (parseInt(m.value) || 0), 0);
+      let maxHP = baseMaxHP;
+      if (maxHP !== null) maxHP = Math.max(0, maxHP + modTotal);
 
       // Evaluate thresholds. maxHP and currentDamage are injected as vars.
       const thresholds = {};
@@ -496,7 +511,9 @@ export function computeDerivedStats(character, ruleset) {
         index: i,
         trackKey,
         maxHP,
+        baseMaxHP,     // pre-modifier max, useful for UI displaying "base +mod=total"
         currentDamage,
+        modifiers: mods,
         thresholds,
         status,
         error: err
@@ -507,9 +524,11 @@ export function computeDerivedStats(character, ruleset) {
 
   // ─── BODY POOL & CHARACTER STATUS ───
   //
-  // Body is the total damage pool. Its max is the sum of all location maxHPs;
-  // its current is bodyMax minus the sum of all damage everywhere. Every point
-  // of location damage is also a point of Body damage — they're the same pool.
+  // Body is the total damage pool. Its max is the sum of all location maxHPs
+  // (which already include per-location modifiers) plus any Body-specific
+  // modifiers. Its current is bodyMax minus the sum of all damage everywhere.
+  // Every point of location damage is also a point of Body damage — they're
+  // the same pool.
   //
   // Damage past Def. Destroyed on a limb (phase 4) still ticks Body down. The
   // Def. Destroyed location's own bar reflects Body's state rather than more
@@ -526,6 +545,13 @@ export function computeDerivedStats(character, ruleset) {
     if (typeof l.maxHP === 'number') bodyMax += l.maxHP;
     if (typeof l.currentDamage === 'number') bodyDamage += l.currentDamage;
   });
+
+  // Body-level modifiers live on charData.bodyModifiers = [{ name, value }, ...]
+  // These stack onto bodyMax after location-modifier contributions are rolled in.
+  const bodyMods = Array.isArray(character.bodyModifiers) ? character.bodyModifiers : [];
+  const bodyModTotal = bodyMods.reduce((acc, m) => acc + (parseInt(m.value) || 0), 0);
+  bodyMax = Math.max(0, bodyMax + bodyModTotal);
+
   const bodyCurrent = Math.max(0, bodyMax - bodyDamage);
 
   // Find head/torso for status. Multiple heads/torsos (unusual): any in a
@@ -557,6 +583,7 @@ export function computeDerivedStats(character, ruleset) {
     max: bodyMax,
     current: bodyCurrent,
     damage: bodyDamage,
+    modifiers: bodyMods,
     dead: isDead,
     unconscious: isUnconscious,
     paralyzed: isParalyzed,
