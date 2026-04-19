@@ -989,7 +989,7 @@
       const pp = charData.powerPool || 0;
       const mult = activeRuleset.powerPool && activeRuleset.powerPool.powMultiplier;
       const entry = Array.isArray(mult)
-        ? mult.find(e => powmod !== null && powmod >= e.powmodMin && powmod <= e.powmodMax)
+        ? mult.find(e => powmod !== null && e.powmod === powmod)
         : null;
       const multiplier = entry ? entry.value : 1;
       const expected = pp * multiplier;
@@ -1002,7 +1002,6 @@
       console.log('  POW_MULTIPLIER        :', multiplier);
       console.log('  Expected POWER (max)  :', expected);
       console.log('  Stored powerCurrent   :', charData.powerCurrent);
-      // Find the POWER derived stat and show its formula
       const powerDef = (activeRuleset.derivedStats || []).find(s => s.code === 'POWER');
       console.log('  POWER formula         :', powerDef ? powerDef.formula : '(no POWER stat defined)');
     }
