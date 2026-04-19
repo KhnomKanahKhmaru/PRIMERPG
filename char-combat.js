@@ -106,12 +106,24 @@ export function createCombatSection(ctx) {
 
   // ─── HIT LOCATIONS ───
 
+  // UI-only state: whether we're in "edit modifiers" mode for the Hit Locations
+  // section. Not persisted; resets on page reload.
+  let editModifiersMode = false;
+
   function renderHitLocationsSection(result) {
     if (!result.locations || result.locations.length === 0) return '';
-    const body = result.body || { max: 0, current: 0, dead: false, statusLabel: 'Alive' };
+    const body = result.body || { max: 0, current: 0, dead: false, statusLabel: 'Alive', modifiers: [] };
+    const canEdit = ctx.getCanEdit();
 
     let html = '<div class="combat-section">';
+    html += '<div class="combat-section-head">';
     html += '<div class="combat-section-title">Hit Locations</div>';
+    if (canEdit) {
+      html += `<button class="hl-edit-btn${editModifiersMode ? ' active' : ''}" onclick="toggleHlModifierEdit()">` +
+              `${editModifiersMode ? 'Done' : 'Edit Modifiers'}</button>`;
+    }
+    html += '</div>';
+
     html += '<div class="hl-list">';
     result.locations.forEach(loc => { html += renderHlRow(loc, body); });
     html += '</div>';
@@ -123,7 +135,7 @@ export function createCombatSection(ctx) {
   }
 
   function renderHlRow(loc, body) {
-    const { def, trackKey, maxHP, currentDamage, status, error, index } = loc;
+    const { def, trackKey, maxHP, baseMaxHP, currentDamage, status, error, index, modifiers } = loc;
     const canEdit = ctx.getCanEdit();
 
     const displayName = (def.count && def.count > 1)
@@ -132,6 +144,7 @@ export function createCombatSection(ctx) {
 
     if (error || maxHP === null) {
       return `<div class="hl-row hl-row-error" title="${escapeHtml(error || 'Formula error')}">
+        <div class="hl-status-label"></div>
         <div class="hl-name">${escapeHtml(displayName)}</div>
         <div class="hl-error">Formula error</div>
       </div>`;
@@ -145,6 +158,15 @@ export function createCombatSection(ctx) {
 
     const segmentsHtml = renderHpSegments(maxHP, currentDamage, status, body);
 
+    // Left-side status label. "Healthy" as a blank cell (kept for grid alignment).
+    const statusLabels = {
+      healthy: '',
+      disabled: 'Disabled',
+      destroyed: 'Destroyed',
+      definitelyDestroyed: 'Def. Destroyed'
+    };
+    const statusText = statusLabels[status] || '';
+
     const controls = canEdit
       ? `<div class="hl-controls">
           <button class="hl-dmg-btn" onclick="tickHitLocationDmg('${trackKey}',-1)" title="Heal 1 HP">−</button>
@@ -154,16 +176,61 @@ export function createCombatSection(ctx) {
         </div>`
       : '';
 
-    // Per-location status label removed per spec — Body section tells the whole
-    // story. Grid collapses to 3 columns now (name + bar + controls).
-    return `
+    // Main row always rendered.
+    let html = `
       <div class="hl-row hl-status-${status}">
+        <div class="hl-status-label">${escapeHtml(statusText)}</div>
         <div class="hl-name">${escapeHtml(displayName)}</div>
         <div class="hl-bar-wrap">
           <div class="hl-bar-bg">${segmentsHtml}</div>
           <div class="hl-bar-label">${remaining} / ${maxHP}</div>
         </div>
         ${controls}
+      </div>`;
+
+    // Inline modifier editor, only when in edit mode.
+    if (editModifiersMode && canEdit) {
+      html += renderModifierEditor(trackKey, modifiers || [], baseMaxHP);
+    }
+    return html;
+  }
+
+  // Modifier editor rendered directly below a hit location row (or Body block).
+  // Shows the base value, a list of current modifiers (name + value + delete),
+  // and an add row.
+  //
+  // target: trackKey for hit locations (e.g. "head", "arm-1"), or "body" for Body.
+  // mods: array of { name, value }
+  // baseMaxHP: the formula-computed value BEFORE modifiers. For Body, this is
+  //   the sum of location base maxHPs; but we pass it from the caller.
+  function renderModifierEditor(target, mods, baseValue) {
+    const isBody = target === 'body';
+    const listRows = mods.length === 0
+      ? '<div class="mod-empty">No modifiers.</div>'
+      : mods.map((m, i) => {
+          const safeName = escapeHtml(m.name || '');
+          return `<div class="mod-item">
+            <input type="text" class="mod-name-input" value="${safeName}"
+                   placeholder="Modifier name"
+                   onchange="updateHlMod('${target}',${i},'name',this.value)">
+            <input type="number" class="mod-val-input" value="${parseInt(m.value) || 0}"
+                   onchange="updateHlMod('${target}',${i},'value',this.value)">
+            <span class="mod-delete" onclick="deleteHlMod('${target}',${i})">×</span>
+          </div>`;
+        }).join('');
+
+    return `
+      <div class="hl-mod-panel">
+        <div class="mod-panel-head">
+          <span class="mod-base">Base ${baseValue != null ? baseValue : '—'}</span>
+          <span class="mod-panel-hint">modifiers stack onto max</span>
+        </div>
+        <div class="mod-list">${listRows}</div>
+        <div class="mod-add-row">
+          <input type="text" class="mod-name-input" id="mod-add-name-${target}" placeholder="Modifier name">
+          <input type="number" class="mod-val-input" id="mod-add-val-${target}" placeholder="±" value="0">
+          <button class="mod-add-btn" onclick="addHlMod('${target}')">Add</button>
+        </div>
       </div>`;
   }
 
@@ -235,6 +302,7 @@ export function createCombatSection(ctx) {
   // down via flex and stay visually coherent.
   function renderBodyBlock(body) {
     if (!body || body.max <= 0) return '';
+    const canEdit = ctx.getCanEdit();
 
     // Cap segment count for visual sanity on very high Body totals.
     // Characters with Body > 80 get scaled to 80 segments (each = Body/80 points).
@@ -262,7 +330,12 @@ export function createCombatSection(ctx) {
 
     const rowClass = 'body-total' + (body.dead ? ' body-total-dead' : '');
 
-    return `
+    // Body base for modifier editor = total max MINUS any body-specific mods
+    // (those are added on top). So base = max - sum(body modifiers).
+    const bodyModTotal = (body.modifiers || []).reduce((acc, m) => acc + (parseInt(m.value) || 0), 0);
+    const bodyBase = body.max - bodyModTotal;
+
+    let html = `
       <div class="${rowClass}">
         <div class="body-top-row">
           <span class="body-label">Body</span>
@@ -271,6 +344,11 @@ export function createCombatSection(ctx) {
         </div>
         <div class="body-bar-bg">${segHtml}</div>
       </div>`;
+
+    if (editModifiersMode && canEdit) {
+      html += renderModifierEditor('body', body.modifiers || [], bodyBase);
+    }
+    return html;
   }
 
   // ─── POWER POOL ───
@@ -379,6 +457,80 @@ export function createCombatSection(ctx) {
     return powerPoolXpCost(level, ruleset);
   }
 
+  // ─── MODIFIER HANDLERS ───
+  // Modifiers apply to maxHP of a hit location, or to Body's max. Storage:
+  //   charData.hitLocationModifiers = { trackKey: [{name, value}, ...] }
+  //   charData.bodyModifiers        = [{name, value}, ...]
+  // Empty arrays are cleaned up on save to keep Firestore docs tidy.
+
+  function toggleEditMode() {
+    editModifiersMode = !editModifiersMode;
+    renderAll();
+  }
+
+  async function addModifier(target) {
+    if (!ctx.getCanEdit()) return;
+    const nameInput = document.getElementById('mod-add-name-' + target);
+    const valInput  = document.getElementById('mod-add-val-' + target);
+    if (!nameInput || !valInput) return;
+    const name = (nameInput.value || '').trim();
+    const value = parseInt(valInput.value) || 0;
+    if (!name) { nameInput.focus(); return; }
+
+    const charData = ctx.getCharData();
+    if (target === 'body') {
+      if (!Array.isArray(charData.bodyModifiers)) charData.bodyModifiers = [];
+      charData.bodyModifiers.push({ name, value });
+      await saveCharacter(ctx.getCharId(), { bodyModifiers: charData.bodyModifiers });
+    } else {
+      if (!charData.hitLocationModifiers) charData.hitLocationModifiers = {};
+      if (!Array.isArray(charData.hitLocationModifiers[target])) {
+        charData.hitLocationModifiers[target] = [];
+      }
+      charData.hitLocationModifiers[target].push({ name, value });
+      await saveCharacter(ctx.getCharId(), { hitLocationModifiers: charData.hitLocationModifiers });
+    }
+    renderAll();
+  }
+
+  async function updateModifier(target, i, field, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const arr = target === 'body'
+      ? charData.bodyModifiers
+      : (charData.hitLocationModifiers && charData.hitLocationModifiers[target]);
+    if (!Array.isArray(arr) || !arr[i]) return;
+    if (field === 'value') {
+      arr[i].value = parseInt(val) || 0;
+    } else {
+      arr[i][field] = val;
+    }
+    const payload = target === 'body'
+      ? { bodyModifiers: charData.bodyModifiers }
+      : { hitLocationModifiers: charData.hitLocationModifiers };
+    await saveCharacter(ctx.getCharId(), payload);
+    // Re-render so numeric changes propagate through maxHP / body totals / bar
+    // segments. A name-only change doesn't strictly need a re-render but we do
+    // one anyway for simplicity.
+    renderAll();
+  }
+
+  async function deleteModifier(target, i) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (target === 'body') {
+      if (!Array.isArray(charData.bodyModifiers)) return;
+      charData.bodyModifiers.splice(i, 1);
+      await saveCharacter(ctx.getCharId(), { bodyModifiers: charData.bodyModifiers });
+    } else {
+      const arr = charData.hitLocationModifiers && charData.hitLocationModifiers[target];
+      if (!Array.isArray(arr)) return;
+      arr.splice(i, 1);
+      await saveCharacter(ctx.getCharId(), { hitLocationModifiers: charData.hitLocationModifiers });
+    }
+    renderAll();
+  }
+
   // ─── UTIL ───
 
   function escapeHtml(s) {
@@ -393,6 +545,7 @@ export function createCombatSection(ctx) {
     renderAll,
     tickHitLocationDmg, setHitLocationDmg,
     tickPowerPool, setPowerPool,
-    powerPoolXpDelta
+    powerPoolXpDelta,
+    toggleEditMode, addModifier, updateModifier, deleteModifier
   };
 }
