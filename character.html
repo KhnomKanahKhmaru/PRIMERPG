@@ -230,7 +230,41 @@
       min-width: 2px;
       transition: background 0.2s;
     }
-    /* Strain progress bar — single linear fill, no segments. */
+    /* Strain tile — no bar. Big number up top in severity-colored text,
+       and a Pain / Stress breakdown below with explicit labels. */
+    .state-strain-big {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      align-self: flex-start;
+    }
+    .state-strain-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding-top: 4px;
+      border-top: 1px solid #1a1a1a;
+    }
+    .state-strain-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 12px;
+    }
+    .state-strain-k {
+      font-weight: 600;
+      letter-spacing: .05em;
+      color: #aaa;
+    }
+    .state-strain-v {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-weight: 600;
+      color: #ccc;
+      font-variant-numeric: tabular-nums;
+    }
+    /* Power + other progress bars — keep the shared class name. */
     .state-strain-bar {
       position: relative;
       height: 10px;
@@ -288,6 +322,32 @@
       font-size: 13px;
       font-weight: 600;
       margin-left: 4px;
+    }
+    /* Clickable variant — toggle between "10 − 2.5" and "7.5" inline.
+       Uses the same .strain-collapsed class convention as the Combat tab
+       Dice/Stat cards so the same toggleStrainValueDisplay() handler
+       flips both views in sync. */
+    .state-movement-item.clickable {
+      cursor: pointer;
+      -webkit-user-select: none;
+         -moz-user-select: none;
+              user-select: none;
+      border-radius: 3px;
+      padding: 2px 6px;
+      margin: -2px -6px;
+      transition: background 0.1s;
+    }
+    .state-movement-item.clickable:hover { background: rgba(255,255,255,0.04); }
+    .state-movement-item .mi-expanded,
+    .state-movement-item .mi-effective { display: inline; }
+    .state-movement-item.strain-collapsed .mi-expanded { display: none; }
+    .state-movement-item:not(.strain-collapsed) .mi-effective { display: none; }
+    /* Collapsed value takes the same red italic as the reduction — signals
+       this number has been modified by Strain. */
+    .state-movement-item .mi-effective {
+      color: #e07878;
+      font-style: italic;
+      font-weight: 600;
     }
 
     /* ═══ ADVANTAGES / DISADVANTAGES ═══ */
