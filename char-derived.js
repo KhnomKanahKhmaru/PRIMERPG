@@ -740,22 +740,25 @@ export function computeDerivedStats(character, ruleset) {
 // difference. For differences beyond the table, clamp to the highest row
 // (Every Second); for differences below 0 no degradation occurs.
 //
+// Labels are kept in "Every X" phrasing so the UI can prepend "Degrades" and
+// read naturally: "Degrades Every 6 Hours", "Degrades Every Second".
+//
 // Tier names follow PRIME's severity scale (Minor → Mythical); they're
 // included so the UI can color/label injuries by severity band.
 const DEGRADATION_RATES = [
-  { diff: 0,  seconds: 86400, label: '24 Hours',        tier: 'Minor'      },
-  { diff: 1,  seconds: 57600, label: '16 Hours',        tier: 'Minor'      },
-  { diff: 2,  seconds: 28800, label: '8 Hours',         tier: 'Minor'      },
-  { diff: 3,  seconds: 21600, label: '6 Hours',         tier: 'Moderate'   },
-  { diff: 4,  seconds: 14400, label: '4 Hours',         tier: 'Moderate'   },
-  { diff: 5,  seconds: 7200,  label: '2 Hours',         tier: 'Moderate'   },
-  { diff: 6,  seconds: 3600,  label: '1 Hour',          tier: 'Major'      },
-  { diff: 7,  seconds: 2400,  label: '40 Minutes',      tier: 'Major'      },
-  { diff: 8,  seconds: 1200,  label: '20 Minutes',      tier: 'Major'      },
-  { diff: 9,  seconds: 600,   label: '10 Minutes',      tier: 'Massive'    },
-  { diff: 10, seconds: 360,   label: '6 Minutes',       tier: 'Massive'    },
-  { diff: 11, seconds: 120,   label: '2 Minutes',       tier: 'Massive'    },
-  { diff: 12, seconds: 60,    label: 'Every Minute',    tier: 'Monumental' },
+  { diff: 0,  seconds: 86400, label: 'Every 24 Hours',   tier: 'Minor'      },
+  { diff: 1,  seconds: 57600, label: 'Every 16 Hours',   tier: 'Minor'      },
+  { diff: 2,  seconds: 28800, label: 'Every 8 Hours',    tier: 'Minor'      },
+  { diff: 3,  seconds: 21600, label: 'Every 6 Hours',    tier: 'Moderate'   },
+  { diff: 4,  seconds: 14400, label: 'Every 4 Hours',    tier: 'Moderate'   },
+  { diff: 5,  seconds: 7200,  label: 'Every 2 Hours',    tier: 'Moderate'   },
+  { diff: 6,  seconds: 3600,  label: 'Every Hour',       tier: 'Major'      },
+  { diff: 7,  seconds: 2400,  label: 'Every 40 Minutes', tier: 'Major'      },
+  { diff: 8,  seconds: 1200,  label: 'Every 20 Minutes', tier: 'Major'      },
+  { diff: 9,  seconds: 600,   label: 'Every 10 Minutes', tier: 'Massive'    },
+  { diff: 10, seconds: 360,   label: 'Every 6 Minutes',  tier: 'Massive'    },
+  { diff: 11, seconds: 120,   label: 'Every 2 Minutes',  tier: 'Massive'    },
+  { diff: 12, seconds: 60,    label: 'Every Minute',     tier: 'Monumental' },
   { diff: 13, seconds: 45,    label: 'Every 45 Seconds', tier: 'Monumental' },
   { diff: 14, seconds: 30,    label: 'Every 30 Seconds', tier: 'Monumental' },
   { diff: 15, seconds: 18,    label: 'Every 18 Seconds', tier: 'Mega'       },
