@@ -8,7 +8,7 @@
 // is cheap (<1ms) so no caching; simpler and always current.
 
 import { saveCharacter } from './char-firestore.js';
-import { computeDerivedStats, powerPoolXpCost } from './char-derived.js';
+import { computeDerivedStats, powerPoolXpCost, TRAUMA_TIERS } from './char-derived.js';
 
 export function createCombatSection(ctx) {
   // ctx shape:
@@ -134,6 +134,9 @@ export function createCombatSection(ctx) {
     // Body total goes at the bottom, summarizing the overall state after
     // you've read through the individual locations above.
     html += renderBodyBlock(body);
+
+    // Injuries manager — a collapsible list of wounds with degradation tracking.
+    html += renderInjuriesSection(result);
 
     html += '</div>';
     return html;
@@ -393,6 +396,284 @@ export function createCombatSection(ctx) {
       html += renderModifierEditor('body', body.modifiers || [], bodyBase);
     }
     return html;
+  }
+
+  // ─── INJURIES ───
+  //
+  // Collapsible manager under the Body bar. Each injury has its own expandable
+  // card (click header to toggle details). Injuries are free-floating — location
+  // is a pick from the character's hit locations, defaulting to torso.
+  //
+  // UI-only state: which injury cards are expanded right now. Not persisted —
+  // resets on reload so you start with a tidy list.
+  const expandedInjuries = new Set();
+  // Whether the whole Injuries section is shown. Remembered across renders in
+  // the same session so it doesn't snap shut when you add/remove things.
+  let injuriesOpen = false;
+
+  function renderInjuriesSection(result) {
+    const canEdit = ctx.getCanEdit();
+    const injuries = result.injuries || [];
+    const count = injuries.length;
+
+    let html = '<div class="injury-section">';
+    html += `<div class="injury-head" onclick="toggleInjurySection()">
+      <span class="injury-head-caret">${injuriesOpen ? '▾' : '▸'}</span>
+      <span class="injury-head-title">Injuries</span>
+      <span class="injury-head-count">${count}</span>
+    </div>`;
+
+    if (!injuriesOpen) { html += '</div>'; return html; }
+
+    // Add-injury row when the section is expanded.
+    if (canEdit) {
+      html += `<div class="injury-add-row">
+        <button class="injury-add-btn" onclick="addInjury()">+ Add Injury</button>
+      </div>`;
+    }
+
+    if (count === 0) {
+      html += '<div class="injury-empty">No injuries recorded.</div>';
+    } else {
+      html += '<div class="injury-list">';
+      injuries.forEach(inj => { html += renderInjuryCard(inj, canEdit, result); });
+      html += '</div>';
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  // A single injury card. Header shows the essentials; the body (shown when
+  // expanded) has the full editor: location, base level, description, level
+  // mods, degradation mods, and traumas.
+  function renderInjuryCard(inj, canEdit, result) {
+    const open = expandedInjuries.has(inj.id);
+    const locations = result.locations || [];
+
+    // Resolve location display name. Falls back to the stored key if we can't
+    // find a matching location (e.g. ruleset changed out from under the data).
+    const locLabel = locationLabel(inj.location, locations) || inj.location;
+
+    // Severity tier color hint based on current level vs half-HP.
+    const severity = severityClass(inj.diff);
+
+    // Header: caret, name, current vs base level, location, rate.
+    // Clicking anywhere in the header (except controls) toggles expand.
+    const rateText = inj.rate
+      ? escapeHtml(inj.rate.label)
+      : '<span class="injury-norate">No degradation</span>';
+
+    let html = `<div class="injury-card ${severity}${open ? ' open' : ''}">`;
+    html += `<div class="injury-card-head" onclick="toggleInjuryExpand('${inj.id}')">
+      <span class="injury-caret">${open ? '▾' : '▸'}</span>
+      <span class="injury-name">${escapeHtml(inj.name || '(unnamed)')}</span>
+      <span class="injury-level">Lvl ${inj.currentLevel}${
+        inj.currentLevel !== inj.baseLevel ? ` <span class="injury-base-note">(base ${inj.baseLevel})</span>` : ''
+      }</span>
+      <span class="injury-loc">${escapeHtml(locLabel)}</span>
+      <span class="injury-rate">${rateText}</span>
+    </div>`;
+
+    if (open) {
+      html += renderInjuryBody(inj, canEdit, result);
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function renderInjuryBody(inj, canEdit, result) {
+    const locations = result.locations || [];
+
+    // Location options — dedupe by trackKey. Use the display name the hit
+    // location section uses (paired limbs get Right/Left labels).
+    const locOptions = locations.map(l => {
+      const displayName = getLocationDisplayName(l.def, l.index);
+      const selected = l.trackKey === inj.location ? 'selected' : '';
+      return `<option value="${escapeHtml(l.trackKey)}" ${selected}>${escapeHtml(displayName)}</option>`;
+    }).join('');
+
+    const rateExplain = inj.rate
+      ? `Rate driven by base ${inj.baseLevel}${inj.effectiveBase !== inj.baseLevel ? ` (effective ${inj.effectiveBase} after modifiers)` : ''} vs half-HP ${inj.halfHp} → +${inj.diff} → ${escapeHtml(inj.rate.tier)}`
+      : `Below degradation threshold (needs base ≥ ${inj.halfHp}; currently ${inj.effectiveBase})`;
+
+    let html = '<div class="injury-card-body">';
+
+    // Top-row editable fields: name, base level, location.
+    if (canEdit) {
+      html += `<div class="injury-fields">
+        <label class="injury-field injury-field-name">
+          <span>Name</span>
+          <input type="text" value="${escapeHtml(inj.name)}" maxlength="60"
+                 onchange="updateInjuryField('${inj.id}','name',this.value)">
+        </label>
+        <label class="injury-field injury-field-level">
+          <span>Base Level</span>
+          <input type="number" value="${inj.baseLevel}" min="0" max="99"
+                 onchange="updateInjuryField('${inj.id}','baseLevel',this.value)">
+        </label>
+        <label class="injury-field injury-field-loc">
+          <span>Location</span>
+          <select onchange="updateInjuryField('${inj.id}','location',this.value)">${locOptions}</select>
+        </label>
+      </div>`;
+      html += `<label class="injury-field injury-field-desc">
+        <span>Description</span>
+        <textarea rows="2" maxlength="500"
+                  onchange="updateInjuryField('${inj.id}','description',this.value)"
+                  placeholder="Narrative details about this injury...">${escapeHtml(inj.description)}</textarea>
+      </label>`;
+    } else {
+      // Read-only view
+      html += `<div class="injury-fields-ro">
+        <div><span class="ro-label">Location:</span> ${escapeHtml(locationLabel(inj.location, locations) || inj.location)}</div>
+        <div><span class="ro-label">Base Level:</span> ${inj.baseLevel}</div>
+        ${inj.description ? `<div class="injury-desc-ro">${escapeHtml(inj.description)}</div>` : ''}
+      </div>`;
+    }
+
+    html += `<div class="injury-rate-info">${rateExplain}</div>`;
+
+    // Two separate modifier lists — level (adjusts current severity) and
+    // degradation (adjusts rate lookup only).
+    html += renderInjuryModList(inj.id, 'level', 'Level Modifiers',
+      'adjust current severity only', inj.levelModifiers, canEdit);
+    html += renderInjuryModList(inj.id, 'degradation', 'Degradation Modifiers',
+      'shift rate lookup — use for stabilization, destabilizing traumas, etc.',
+      inj.degradationModifiers, canEdit);
+
+    // Traumas sub-list
+    html += renderTraumaList(inj, canEdit);
+
+    if (canEdit) {
+      html += `<div class="injury-delete-row">
+        <button class="injury-delete-btn" onclick="removeInjury('${inj.id}')">Delete Injury</button>
+      </div>`;
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  function renderInjuryModList(injId, kind, title, hint, mods, canEdit) {
+    const arr = Array.isArray(mods) ? mods : [];
+    const rows = arr.length === 0
+      ? '<div class="mod-empty">No modifiers.</div>'
+      : arr.map((m, i) => `
+        <div class="mod-item">
+          <input type="text" class="mod-name-input" value="${escapeHtml(m.name || '')}"
+                 placeholder="Modifier name" ${canEdit ? '' : 'disabled'}
+                 onchange="updateInjuryMod('${injId}','${kind}',${i},'name',this.value)">
+          <input type="number" class="mod-val-input" value="${parseInt(m.value) || 0}"
+                 ${canEdit ? '' : 'disabled'}
+                 onchange="updateInjuryMod('${injId}','${kind}',${i},'value',this.value)">
+          ${canEdit ? `<span class="mod-delete" onclick="deleteInjuryMod('${injId}','${kind}',${i})">×</span>` : ''}
+        </div>`).join('');
+
+    const addRow = canEdit
+      ? `<div class="mod-add-row">
+          <input type="text" class="mod-name-input" id="inj-mod-name-${injId}-${kind}" placeholder="Name">
+          <input type="number" class="mod-val-input" id="inj-mod-val-${injId}-${kind}" placeholder="±" value="0">
+          <button class="mod-add-btn" onclick="addInjuryMod('${injId}','${kind}')">Add</button>
+        </div>`
+      : '';
+
+    return `
+      <div class="injury-mod-block">
+        <div class="injury-mod-head">
+          <span class="injury-mod-title">${escapeHtml(title)}</span>
+          <span class="injury-mod-hint">${escapeHtml(hint)}</span>
+        </div>
+        <div class="mod-list">${rows}</div>
+        ${addRow}
+      </div>`;
+  }
+
+  function renderTraumaList(inj, canEdit) {
+    const traumas = inj.traumas || [];
+    let html = '<div class="trauma-block">';
+    html += `<div class="trauma-head">
+      <span class="trauma-title">Traumas</span>
+      <span class="trauma-count">${traumas.length}</span>
+    </div>`;
+
+    if (traumas.length === 0) {
+      html += '<div class="trauma-empty">No traumas attached.</div>';
+    } else {
+      html += '<div class="trauma-list">';
+      traumas.forEach((t, i) => { html += renderTraumaCard(inj.id, t, i, canEdit); });
+      html += '</div>';
+    }
+
+    if (canEdit) {
+      html += `<div class="trauma-add-row">
+        <button class="trauma-add-btn" onclick="addTrauma('${inj.id}')">+ Add Trauma</button>
+      </div>`;
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  function renderTraumaCard(injId, trauma, idx, canEdit) {
+    const tierOpts = TRAUMA_TIERS.map(t =>
+      `<option value="${t}" ${trauma.level === t ? 'selected' : ''}>${t}</option>`
+    ).join('');
+
+    if (!canEdit) {
+      return `<div class="trauma-card">
+        <div class="trauma-card-head">
+          <span class="trauma-tier">(${escapeHtml(trauma.level || 'Minor')})</span>
+          <span class="trauma-name">${escapeHtml(trauma.name || '(unnamed)')}</span>
+        </div>
+        ${trauma.description ? `<div class="trauma-desc">${escapeHtml(trauma.description)}</div>` : ''}
+        ${trauma.system ? `<div class="trauma-system"><span class="trauma-sys-label">System:</span> ${escapeHtml(trauma.system)}</div>` : ''}
+      </div>`;
+    }
+
+    return `<div class="trauma-card editing">
+      <div class="trauma-card-head">
+        <select class="trauma-tier-select" onchange="updateTraumaField('${injId}',${idx},'level',this.value)">
+          ${tierOpts}
+        </select>
+        <input type="text" class="trauma-name-input" value="${escapeHtml(trauma.name || '')}"
+               placeholder="Trauma name" maxlength="60"
+               onchange="updateTraumaField('${injId}',${idx},'name',this.value)">
+        <span class="mod-delete" onclick="removeTrauma('${injId}',${idx})">×</span>
+      </div>
+      <label class="trauma-field">
+        <span>Description</span>
+        <textarea rows="2" maxlength="300"
+                  onchange="updateTraumaField('${injId}',${idx},'description',this.value)"
+                  placeholder="Flavor / what the trauma represents">${escapeHtml(trauma.description || '')}</textarea>
+      </label>
+      <label class="trauma-field">
+        <span>System</span>
+        <textarea rows="2" maxlength="500"
+                  onchange="updateTraumaField('${injId}',${idx},'system',this.value)"
+                  placeholder="Mechanical effect. GMs implement via degradation modifiers above.">${escapeHtml(trauma.system || '')}</textarea>
+      </label>
+    </div>`;
+  }
+
+  // Given a location trackKey, return its display name. Null if not found.
+  function locationLabel(trackKey, locations) {
+    const l = locations.find(x => x.trackKey === trackKey);
+    if (!l) return null;
+    return getLocationDisplayName(l.def, l.index);
+  }
+
+  // CSS class hint based on the injury's diff (effective base minus half-HP).
+  // Maps to severity tier coloring.
+  function severityClass(diff) {
+    if (diff < 0) return 'severity-none';
+    if (diff <= 2) return 'severity-minor';
+    if (diff <= 5) return 'severity-moderate';
+    if (diff <= 8) return 'severity-major';
+    if (diff <= 11) return 'severity-massive';
+    if (diff <= 14) return 'severity-monumental';
+    if (diff <= 17) return 'severity-mega';
+    return 'severity-mythical';
   }
 
   // ─── POWER (RESOURCE BAR) + POWER POOL (PURCHASE) ───
@@ -769,6 +1050,171 @@ export function createCombatSection(ctx) {
     renderAll();
   }
 
+  // ─── INJURY / TRAUMA HANDLERS ───
+  // Storage: charData.injuries = [{ id, name, description, baseLevel,
+  //   location, levelModifiers, degradationModifiers, traumas }]
+
+  function toggleInjurySection() {
+    injuriesOpen = !injuriesOpen;
+    // When closing, also collapse all individual cards so re-opening is clean.
+    if (!injuriesOpen) expandedInjuries.clear();
+    renderAll();
+  }
+
+  function toggleInjuryExpand(id) {
+    if (expandedInjuries.has(id)) expandedInjuries.delete(id);
+    else expandedInjuries.add(id);
+    renderAll();
+  }
+
+  function newInjuryId() {
+    return 'inj_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+
+  function newTraumaId() {
+    return 'tr_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+
+  async function addInjury() {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.injuries)) charData.injuries = [];
+    const inj = {
+      id: newInjuryId(),
+      name: '',
+      description: '',
+      baseLevel: 0,
+      location: 'torso',
+      levelModifiers: [],
+      degradationModifiers: [],
+      traumas: []
+    };
+    charData.injuries.push(inj);
+    // Auto-expand the new card so the player can start filling it in.
+    expandedInjuries.add(inj.id);
+    // Also make sure the section is open so they can see it.
+    injuriesOpen = true;
+    await saveCharacter(ctx.getCharId(), { injuries: charData.injuries });
+    renderAll();
+  }
+
+  async function removeInjury(id) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.injuries)) return;
+    charData.injuries = charData.injuries.filter(x => x.id !== id);
+    expandedInjuries.delete(id);
+    await saveCharacter(ctx.getCharId(), { injuries: charData.injuries });
+    renderAll();
+  }
+
+  async function updateInjuryField(id, field, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const inj = (charData.injuries || []).find(x => x.id === id);
+    if (!inj) return;
+    if (field === 'baseLevel') {
+      inj.baseLevel = Math.max(0, parseInt(val) || 0);
+    } else if (field === 'location' || field === 'name' || field === 'description') {
+      inj[field] = typeof val === 'string' ? val : '';
+    } else {
+      return;
+    }
+    await saveCharacter(ctx.getCharId(), { injuries: charData.injuries });
+    renderAll();
+  }
+
+  // kind = 'level' | 'degradation' — which modifier list on the injury.
+  function injuryModListRef(inj, kind) {
+    if (kind === 'level') {
+      if (!Array.isArray(inj.levelModifiers)) inj.levelModifiers = [];
+      return inj.levelModifiers;
+    } else if (kind === 'degradation') {
+      if (!Array.isArray(inj.degradationModifiers)) inj.degradationModifiers = [];
+      return inj.degradationModifiers;
+    }
+    return null;
+  }
+
+  async function addInjuryMod(injId, kind) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const inj = (charData.injuries || []).find(x => x.id === injId);
+    if (!inj) return;
+    const nameEl = document.getElementById(`inj-mod-name-${injId}-${kind}`);
+    const valEl  = document.getElementById(`inj-mod-val-${injId}-${kind}`);
+    const name = nameEl ? (nameEl.value || '').trim() : '';
+    const value = valEl ? (parseInt(valEl.value) || 0) : 0;
+    if (!name) { if (nameEl) nameEl.focus(); return; }
+    const list = injuryModListRef(inj, kind);
+    if (!list) return;
+    list.push({ name, value });
+    await saveCharacter(ctx.getCharId(), { injuries: charData.injuries });
+    renderAll();
+  }
+
+  async function updateInjuryMod(injId, kind, i, field, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const inj = (charData.injuries || []).find(x => x.id === injId);
+    if (!inj) return;
+    const list = injuryModListRef(inj, kind);
+    if (!list || !list[i]) return;
+    if (field === 'value') list[i].value = parseInt(val) || 0;
+    else list[i][field] = val;
+    await saveCharacter(ctx.getCharId(), { injuries: charData.injuries });
+    renderAll();
+  }
+
+  async function deleteInjuryMod(injId, kind, i) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const inj = (charData.injuries || []).find(x => x.id === injId);
+    if (!inj) return;
+    const list = injuryModListRef(inj, kind);
+    if (!list) return;
+    list.splice(i, 1);
+    await saveCharacter(ctx.getCharId(), { injuries: charData.injuries });
+    renderAll();
+  }
+
+  async function addTrauma(injId) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const inj = (charData.injuries || []).find(x => x.id === injId);
+    if (!inj) return;
+    if (!Array.isArray(inj.traumas)) inj.traumas = [];
+    inj.traumas.push({
+      id: newTraumaId(),
+      name: '',
+      level: 'Minor',
+      description: '',
+      system: ''
+    });
+    await saveCharacter(ctx.getCharId(), { injuries: charData.injuries });
+    renderAll();
+  }
+
+  async function removeTrauma(injId, i) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const inj = (charData.injuries || []).find(x => x.id === injId);
+    if (!inj || !Array.isArray(inj.traumas)) return;
+    inj.traumas.splice(i, 1);
+    await saveCharacter(ctx.getCharId(), { injuries: charData.injuries });
+    renderAll();
+  }
+
+  async function updateTraumaField(injId, i, field, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const inj = (charData.injuries || []).find(x => x.id === injId);
+    if (!inj || !Array.isArray(inj.traumas) || !inj.traumas[i]) return;
+    inj.traumas[i][field] = typeof val === 'string' ? val : '';
+    await saveCharacter(ctx.getCharId(), { injuries: charData.injuries });
+    renderAll();
+  }
+
   // ─── UTIL ───
 
   function escapeHtml(s) {
@@ -785,6 +1231,11 @@ export function createCombatSection(ctx) {
     tickPowerPool, setPowerPool,
     tickPower, setPower, setPowerColor, setPowerName,
     powerPoolXpDelta,
-    toggleEditMode, addModifier, updateModifier, deleteModifier
+    toggleEditMode, addModifier, updateModifier, deleteModifier,
+    // Injuries / Traumas
+    toggleInjurySection, toggleInjuryExpand,
+    addInjury, removeInjury, updateInjuryField,
+    addInjuryMod, updateInjuryMod, deleteInjuryMod,
+    addTrauma, removeTrauma, updateTraumaField
   };
 }
