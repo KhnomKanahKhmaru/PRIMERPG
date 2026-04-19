@@ -400,21 +400,49 @@ export function createCombatSection(ctx) {
 
   // ─── INJURIES ───
   //
-  // Collapsible manager under the Body bar. Each injury has its own expandable
-  // card (click header to toggle details). Injuries are free-floating — location
-  // is a pick from the character's hit locations, defaulting to torso.
+  // Collapsible manager under the Body bar. Injuries are grouped by hit
+  // location (collapsible sub-groups), so you can see "Torso (2)" at a glance
+  // and expand to see the injuries there. Each individual injury is ALSO
+  // collapsible within its location group for full detail editing.
   //
-  // UI-only state: which injury cards are expanded right now. Not persisted —
-  // resets on reload so you start with a tidy list.
+  // UI-only state: which injury cards are expanded, and which location groups
+  // are open. Not persisted — resets each page load. Location groups with
+  // injuries default to expanded; locations you explicitly collapse stay
+  // collapsed for the session.
   const expandedInjuries = new Set();
-  // Whether the whole Injuries section is shown. Remembered across renders in
-  // the same session so it doesn't snap shut when you add/remove things.
+  const openInjuryLocations = new Set();
+  let injuryLocationsInitialized = false;
+  // Whether the whole Injuries section is shown.
   let injuriesOpen = false;
+
+  // Convert a non-negative integer to its English ordinal string.
+  //   ordinal(1) → "1st", ordinal(2) → "2nd", ordinal(3) → "3rd"
+  //   ordinal(11) → "11th", ordinal(21) → "21st", ordinal(42) → "42nd"
+  // Standard rule: "th" unless the last TWO digits are 11/12/13, in which
+  // case "th"; otherwise the last digit picks st/nd/rd for 1/2/3.
+  function ordinal(n) {
+    const abs = Math.abs(n);
+    const mod100 = abs % 100;
+    if (mod100 >= 11 && mod100 <= 13) return n + 'th';
+    const mod10 = abs % 10;
+    if (mod10 === 1) return n + 'st';
+    if (mod10 === 2) return n + 'nd';
+    if (mod10 === 3) return n + 'rd';
+    return n + 'th';
+  }
 
   function renderInjuriesSection(result) {
     const canEdit = ctx.getCanEdit();
     const injuries = result.injuries || [];
     const count = injuries.length;
+
+    // On first render (or first render after data loads), auto-open any
+    // location group that has injuries. User-driven toggles after that
+    // stick for the session.
+    if (!injuryLocationsInitialized) {
+      injuries.forEach(inj => openInjuryLocations.add(inj.location));
+      injuryLocationsInitialized = true;
+    }
 
     let html = '<div class="injury-section">';
     html += `<div class="injury-head" onclick="toggleInjurySection()">
@@ -425,15 +453,9 @@ export function createCombatSection(ctx) {
 
     if (!injuriesOpen) { html += '</div>'; return html; }
 
-    // Add-injury row when the section is expanded. Inline three-field form
-    // (Name, Degree, Location) for the common-case quick-add workflow. The
-    // resulting injury opens expanded by default so you can still fill in
-    // description, modifiers, traumas, etc. — quick-add is a speed shortcut,
-    // not a constraint.
+    // Quick-add inline form when the section is expanded.
     if (canEdit) {
       const locations = result.locations || [];
-      // Default location: 'torso' if the ruleset has one, otherwise the first
-      // available location (so characters without a torso still work).
       const defaultLoc = locations.some(l => l.trackKey === 'torso')
         ? 'torso'
         : (locations[0] ? locations[0].trackKey : '');
@@ -453,47 +475,101 @@ export function createCombatSection(ctx) {
       </div>`;
     }
 
+    // "Hit Locations" divider + grouped list. Only locations that have
+    // injuries show as groups — empty ones stay out of the list to avoid
+    // clutter. Add via the quick-add form above.
+    html += '<div class="injury-divider">Hit Locations</div>';
+
     if (count === 0) {
       html += '<div class="injury-empty">No injuries recorded.</div>';
     } else {
-      html += '<div class="injury-list">';
-      injuries.forEach(inj => { html += renderInjuryCard(inj, canEdit, result); });
-      html += '</div>';
+      html += renderInjuryGroupsByLocation(injuries, result, canEdit);
     }
 
     html += '</div>';
     return html;
   }
 
-  // A single injury card. Header shows the essentials; the body (shown when
-  // expanded) has the full editor: location, base level, description, level
-  // mods, degradation mods, and traumas.
+  function renderInjuryGroupsByLocation(injuries, result, canEdit) {
+    // Group injuries by trackKey, preserving the order hit locations appear
+    // in the ruleset (so Head first, then Torso, then Arms, then Legs, etc.).
+    const locations = result.locations || [];
+    const locationOrder = locations.map(l => l.trackKey);
+
+    const groups = new Map();
+    locationOrder.forEach(k => groups.set(k, []));
+    injuries.forEach(inj => {
+      const loc = inj.location || 'torso';
+      if (!groups.has(loc)) groups.set(loc, []);
+      groups.get(loc).push(inj);
+    });
+
+    let html = '<div class="injury-loc-groups">';
+    groups.forEach((groupInjuries, trackKey) => {
+      if (groupInjuries.length === 0) return;  // hide empty groups
+      const locLabel = locationLabel(trackKey, locations) || trackKey;
+      const open = openInjuryLocations.has(trackKey);
+      html += `<div class="injury-loc-group${open ? ' open' : ''}">`;
+      html += `<div class="injury-loc-head" onclick="toggleInjuryLocation('${escapeHtml(trackKey)}')">
+        <span class="injury-loc-caret">${open ? '▾' : '▸'}</span>
+        <span class="injury-loc-label">${escapeHtml(locLabel)}</span>
+        <span class="injury-loc-count">${groupInjuries.length}</span>
+      </div>`;
+      if (open) {
+        html += '<div class="injury-list">';
+        groupInjuries.forEach(inj => { html += renderInjuryCard(inj, canEdit, result); });
+        html += '</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  // A single injury card. Compact header when collapsed; full editor when open.
+  // Header layout (collapsed):
+  //   ▸ [Name]  [7th Degree]  [Torso pill]  [Degrades Every 6 Hours]  [trauma badges…]
   function renderInjuryCard(inj, canEdit, result) {
     const open = expandedInjuries.has(inj.id);
     const locations = result.locations || [];
-
-    // Resolve location display name. Falls back to the stored key if we can't
-    // find a matching location (e.g. ruleset changed out from under the data).
     const locLabel = locationLabel(inj.location, locations) || inj.location;
-
-    // Severity tier color hint based on current level vs half-HP.
     const severity = severityClass(inj.diff);
 
-    // Header: caret, name, current vs base level, location, rate.
-    // Clicking anywhere in the header (except controls) toggles expand.
+    // Degree text — ordinal. If modified, show "(from 7th)" in a tiny note.
+    let degreeText;
+    if (inj.currentLevel === inj.baseLevel) {
+      degreeText = `${ordinal(inj.currentLevel)} Degree`;
+    } else {
+      degreeText = `${ordinal(inj.currentLevel)} Degree <span class="injury-base-note">(base ${ordinal(inj.baseLevel)})</span>`;
+    }
+
+    // Rate text — "Degrades Every X" or "Stable" if below threshold.
     const rateText = inj.rate
-      ? escapeHtml(inj.rate.label)
-      : '<span class="injury-norate">No degradation</span>';
+      ? `Degrades ${escapeHtml(inj.rate.label)}`
+      : '<span class="injury-norate">Stable</span>';
+
+    // Trauma badges on the header — visible even when collapsed. Each badge
+    // is a small pill colored by the trauma's severity tier. Hover reveals
+    // description and system text via the native title attribute (simple
+    // tooltip; fancy custom tooltips can come later).
+    const traumaBadges = (inj.traumas || []).map(t => {
+      const tierSlug = (t.level || 'Minor').toLowerCase();
+      const tip = [
+        (t.level || 'Minor') + ' Trauma',
+        t.description || '',
+        t.system ? '⚙ ' + t.system : ''
+      ].filter(Boolean).join('\n');
+      return `<span class="trauma-badge tt-${tierSlug}" title="${escapeHtml(tip)}">${escapeHtml(t.name || '(unnamed)')}</span>`;
+    }).join('');
 
     let html = `<div class="injury-card ${severity}${open ? ' open' : ''}">`;
     html += `<div class="injury-card-head" onclick="toggleInjuryExpand('${inj.id}')">
       <span class="injury-caret">${open ? '▾' : '▸'}</span>
       <span class="injury-name">${escapeHtml(inj.name || '(unnamed)')}</span>
-      <span class="injury-level">Lvl ${inj.currentLevel}${
-        inj.currentLevel !== inj.baseLevel ? ` <span class="injury-base-note">(base ${inj.baseLevel})</span>` : ''
-      }</span>
-      <span class="injury-loc">${escapeHtml(locLabel)}</span>
+      <span class="injury-degree">${degreeText}</span>
+      <span class="injury-loc-pill">${escapeHtml(locLabel)}</span>
       <span class="injury-rate">${rateText}</span>
+      ${traumaBadges ? `<span class="injury-trauma-badges">${traumaBadges}</span>` : ''}
     </div>`;
 
     if (open) {
@@ -515,8 +591,8 @@ export function createCombatSection(ctx) {
     }).join('');
 
     const rateExplain = inj.rate
-      ? `Rate driven by base ${inj.baseLevel}${inj.effectiveBase !== inj.baseLevel ? ` (effective ${inj.effectiveBase} after modifiers)` : ''} vs half-HP ${inj.halfHp} → +${inj.diff} → ${escapeHtml(inj.rate.tier)}`
-      : `Below degradation threshold (needs base ≥ ${inj.halfHp}; currently ${inj.effectiveBase})`;
+      ? `Degrades ${inj.rate.label} — ${escapeHtml(inj.rate.tier)} tier. Rate driven by base ${ordinal(inj.baseLevel)} Degree${inj.effectiveBase !== inj.baseLevel ? ` (effective ${ordinal(inj.effectiveBase)} after modifiers)` : ''} vs half-HP ${inj.halfHp} (diff +${inj.diff})`
+      : `Stable — below degradation threshold (needs base ≥ ${inj.halfHp}; currently ${inj.effectiveBase})`;
 
     let html = '<div class="injury-card-body">';
 
@@ -1108,6 +1184,14 @@ export function createCombatSection(ctx) {
     renderAll();
   }
 
+  // Toggle whether a hit-location group (in the Injuries section) shows its
+  // contained injuries. UI-only — doesn't persist to Firestore.
+  function toggleInjuryLocation(trackKey) {
+    if (openInjuryLocations.has(trackKey)) openInjuryLocations.delete(trackKey);
+    else openInjuryLocations.add(trackKey);
+    renderAll();
+  }
+
   function newInjuryId() {
     return 'inj_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   }
@@ -1151,7 +1235,10 @@ export function createCombatSection(ctx) {
     charData.injuries.push(inj);
     // Auto-expand so the player can continue editing without an extra click.
     expandedInjuries.add(inj.id);
+    // And make sure the section AND the target location group are both open,
+    // so the new injury is actually visible without extra clicks.
     injuriesOpen = true;
+    openInjuryLocations.add(location);
     await saveCharacter(ctx.getCharId(), { injuries: charData.injuries });
     renderAll();
     // Re-focus the name field so rapid sequential adds are smooth.
@@ -1295,7 +1382,7 @@ export function createCombatSection(ctx) {
     powerPoolXpDelta,
     toggleEditMode, addModifier, updateModifier, deleteModifier,
     // Injuries / Traumas
-    toggleInjurySection, toggleInjuryExpand,
+    toggleInjurySection, toggleInjuryExpand, toggleInjuryLocation,
     quickAddInjury, removeInjury, updateInjuryField,
     addInjuryMod, updateInjuryMod, deleteInjuryMod,
     addTrauma, removeTrauma, updateTraumaField
