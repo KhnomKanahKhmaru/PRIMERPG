@@ -646,5 +646,108 @@ export function computeDerivedStats(character, ruleset) {
     };
   }
 
-  return { stats, locations, errors, vars, body, power };
+  // ─── INJURIES ───
+  //
+  // Injuries are free-floating wounds with their own base severity, location,
+  // and degradation rate. The degradation RATE is driven by the injury's
+  // baseLevel (the level it was recorded at) relative to half the character's
+  // HP — heal/worsen modifiers affect current severity but NOT the rate.
+  //
+  // Two distinct modifier lists per injury:
+  //   - levelModifiers:       adjust the current severity (what the player/GM
+  //                           cares about mechanically right now)
+  //   - degradationModifiers: shift the baseLevel as used for the RATE lookup
+  //                           (bandages slowing degradation, traumas speeding
+  //                           it up, etc.)
+  //
+  // Traumas are narrative tags with a System text field; GMs apply the
+  // described mechanical effect manually via degradation modifiers.
+  //
+  // HP for the "half your HP" comparison is the derived HP stat (e.g. STR+SIZE).
+  // Falls back to 0 if the ruleset has no HP derived stat.
+  const injuriesIn = Array.isArray(character.injuries) ? character.injuries : [];
+  const hpEntry = stats.get('HP');
+  const hpTotal = (hpEntry && typeof hpEntry.value === 'number') ? hpEntry.value : 0;
+  const halfHp = Math.floor(hpTotal / 2);
+
+  const injuries = injuriesIn.map(inj => {
+    const baseLevel = Number.isFinite(inj.baseLevel) ? inj.baseLevel : 0;
+
+    const levelMods = Array.isArray(inj.levelModifiers) ? inj.levelModifiers : [];
+    const levelModTotal = levelMods.reduce((a, m) => a + (parseInt(m.value) || 0), 0);
+    const currentLevel = Math.max(0, baseLevel + levelModTotal);
+
+    const degMods = Array.isArray(inj.degradationModifiers) ? inj.degradationModifiers : [];
+    const degModTotal = degMods.reduce((a, m) => a + (parseInt(m.value) || 0), 0);
+
+    // Effective base for rate lookup. Can't go below 0.
+    const effectiveBase = Math.max(0, baseLevel + degModTotal);
+
+    // Degradation only kicks in once the injury is >= halfHP.
+    const diff = effectiveBase - halfHp;
+    const rate = (hpTotal > 0 && diff >= 0) ? lookupDegradationRate(diff) : null;
+
+    const traumas = Array.isArray(inj.traumas) ? inj.traumas : [];
+
+    return {
+      id: inj.id || ('inj_missing_' + Math.random().toString(36).slice(2, 8)),
+      name: typeof inj.name === 'string' ? inj.name : '',
+      description: typeof inj.description === 'string' ? inj.description : '',
+      baseLevel,
+      currentLevel,
+      levelModifiers: levelMods,
+      degradationModifiers: degMods,
+      effectiveBase,
+      location: typeof inj.location === 'string' ? inj.location : 'torso',
+      halfHp,
+      hpTotal,
+      diff,          // effective base minus half-HP (negative = no degradation)
+      rate,          // { seconds, label, tier } or null
+      traumas
+    };
+  });
+
+  return { stats, locations, errors, vars, body, power, injuries };
 }
+
+// ─── DEGRADATION TABLE ───
+//
+// Maps "difference above half-HP" to a rate. Each row is an exact integer
+// difference. For differences beyond the table, clamp to the highest row
+// (Every Second); for differences below 0 no degradation occurs.
+//
+// Tier names follow PRIME's severity scale (Minor → Mythical); they're
+// included so the UI can color/label injuries by severity band.
+const DEGRADATION_RATES = [
+  { diff: 0,  seconds: 86400, label: '24 Hours',        tier: 'Minor'      },
+  { diff: 1,  seconds: 57600, label: '16 Hours',        tier: 'Minor'      },
+  { diff: 2,  seconds: 28800, label: '8 Hours',         tier: 'Minor'      },
+  { diff: 3,  seconds: 21600, label: '6 Hours',         tier: 'Moderate'   },
+  { diff: 4,  seconds: 14400, label: '4 Hours',         tier: 'Moderate'   },
+  { diff: 5,  seconds: 7200,  label: '2 Hours',         tier: 'Moderate'   },
+  { diff: 6,  seconds: 3600,  label: '1 Hour',          tier: 'Major'      },
+  { diff: 7,  seconds: 2400,  label: '40 Minutes',      tier: 'Major'      },
+  { diff: 8,  seconds: 1200,  label: '20 Minutes',      tier: 'Major'      },
+  { diff: 9,  seconds: 600,   label: '10 Minutes',      tier: 'Massive'    },
+  { diff: 10, seconds: 360,   label: '6 Minutes',       tier: 'Massive'    },
+  { diff: 11, seconds: 120,   label: '2 Minutes',       tier: 'Massive'    },
+  { diff: 12, seconds: 60,    label: 'Every Minute',    tier: 'Monumental' },
+  { diff: 13, seconds: 45,    label: 'Every 45 Seconds', tier: 'Monumental' },
+  { diff: 14, seconds: 30,    label: 'Every 30 Seconds', tier: 'Monumental' },
+  { diff: 15, seconds: 18,    label: 'Every 18 Seconds', tier: 'Mega'       },
+  { diff: 16, seconds: 12,    label: 'Every 12 Seconds', tier: 'Mega'       },
+  { diff: 17, seconds: 6,     label: 'Every 6 Seconds',  tier: 'Mega'       },
+  { diff: 18, seconds: 4,     label: 'Every 4 Seconds',  tier: 'Mythical'   },
+  { diff: 19, seconds: 2,     label: 'Every 2 Seconds',  tier: 'Mythical'   },
+  { diff: 20, seconds: 1,     label: 'Every Second',     tier: 'Mythical'   }
+];
+
+export function lookupDegradationRate(diff) {
+  if (diff < 0) return null;
+  if (diff >= DEGRADATION_RATES.length) return DEGRADATION_RATES[DEGRADATION_RATES.length - 1];
+  return DEGRADATION_RATES[diff];
+}
+
+// Tiers in order, so UI code can map a level number to a severity tier for
+// trauma level dropdowns and color coding.
+export const TRAUMA_TIERS = ['Minor', 'Moderate', 'Major', 'Massive', 'Monumental', 'Mega', 'Mythical'];
