@@ -378,16 +378,30 @@
     .ds-card-desc { font-size: 11px; color: #666; line-height: 1.5; margin-top: 6px; font-style: italic; }
 
     /* Hit locations */
+    .combat-section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #1a1a1a; }
+    .combat-section-head .combat-section-title { margin-bottom: 0; padding-bottom: 0; border-bottom: none; flex: 1; }
+    .hl-edit-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #888; font-family: 'Open Sans', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 4px 12px; border-radius: 3px; cursor: pointer; }
+    .hl-edit-btn:hover { background: #222; border-color: #3f3f3f; color: #ccc; }
+    .hl-edit-btn.active { background: #2a2a2a; border-color: #555; color: #e0e0e0; }
+
     .hl-list { display: flex; flex-direction: column; gap: 6px; }
     .hl-row {
       display: grid;
-      grid-template-columns: 120px 1fr auto;
+      grid-template-columns: 110px 120px 1fr auto;
       gap: 14px;
       align-items: center;
       background: #111;
       border: 1px solid #1f1f1f;
       border-radius: 4px;
       padding: 10px 14px;
+    }
+    .hl-status-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #555;
+      text-align: right;
     }
     .hl-name { font-size: 13px; font-weight: 600; color: #ccc; }
     .hl-bar-wrap { display: flex; align-items: center; gap: 10px; }
@@ -404,15 +418,34 @@
     .hl-dmg-input { width: 52px; text-align: center; background: #0a0a0a; border: 1px solid #2a2a2a; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; font-weight: 600; padding: 4px; border-radius: 3px; outline: none; }
     .hl-dmg-input:focus { border-color: #444; }
 
-    /* Per-location name color tint based on damage phase (status label itself
-       was removed; the Body section shows global status). */
+    /* Per-location damage state — color the status label and name */
+    .hl-status-disabled .hl-status-label       { color: #c89a5a; }
     .hl-status-disabled .hl-name               { color: #c89a5a; }
+    .hl-status-destroyed .hl-status-label      { color: #c87777; }
     .hl-status-destroyed .hl-name              { color: #c87777; }
     .hl-status-destroyed                       { opacity: 0.92; }
+    .hl-status-definitelyDestroyed .hl-status-label { color: #8a3a3a; font-style: italic; }
     .hl-status-definitelyDestroyed .hl-name    { color: #8a3a3a; text-decoration: line-through; }
     .hl-status-definitelyDestroyed             { opacity: 0.72; }
     .hl-row-error { background: #1a0d0d; border-color: #4a1a1a; }
-    .hl-error { color: #c87777; font-size: 11px; font-style: italic; grid-column: 2 / 4; }
+    .hl-error { color: #c87777; font-size: 11px; font-style: italic; grid-column: 2 / 5; }
+
+    /* Modifier editor panel (shown inline under a location or Body in edit mode) */
+    .hl-mod-panel { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 4px; padding: 10px 14px; margin: -2px 0 8px 14px; }
+    .mod-panel-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+    .mod-base { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #888; }
+    .mod-panel-hint { font-size: 10px; color: #555; font-style: italic; }
+    .mod-empty { font-size: 11px; color: #444; font-style: italic; padding: 4px 0 8px; }
+    .mod-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+    .mod-item { display: flex; align-items: center; gap: 8px; }
+    .mod-name-input { flex: 1; background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 8px; border-radius: 3px; outline: none; }
+    .mod-val-input { width: 54px; text-align: center; background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px; border-radius: 3px; outline: none; }
+    .mod-name-input:focus, .mod-val-input:focus { border-color: #444; }
+    .mod-delete { color: #555; cursor: pointer; font-size: 14px; padding: 0 4px; line-height: 1; user-select: none; }
+    .mod-delete:hover { color: #c84b4b; }
+    .mod-add-row { display: flex; align-items: center; gap: 8px; padding-top: 8px; border-top: 1px solid #1a1a1a; }
+    .mod-add-btn { background: #1a1a1a; border: 1px solid #333; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 5px 12px; border-radius: 3px; cursor: pointer; }
+    .mod-add-btn:hover { background: #222; border-color: #555; color: #ccc; }
 
     /* Body pool block — segmented green→black bar + status */
     .body-total { margin-top: 14px; padding: 12px 14px; background: #0e0e0e; border: 1px solid #222; border-radius: 4px; display: flex; flex-direction: column; gap: 10px; }
@@ -861,6 +894,10 @@
     setHitLocationDmg:    (trackKey, val)   => combat.setHitLocationDmg(trackKey, val),
     tickPowerPool:        (delta) => combat.tickPowerPool(delta),
     setPowerPool:         (val)   => combat.setPowerPool(val),
+    toggleHlModifierEdit: () => combat.toggleEditMode(),
+    addHlMod:             (target)           => combat.addModifier(target),
+    updateHlMod:          (target, i, field, val) => combat.updateModifier(target, i, field, val),
+    deleteHlMod:          (target, i)        => combat.deleteModifier(target, i),
     // Sheet tab switcher (Overview / Combat folder tabs)
     switchSheetTab:       (which) => {
       document.querySelectorAll('.sheet-tab').forEach(t => t.classList.remove('active'));
