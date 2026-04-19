@@ -275,25 +275,25 @@ window.RULESET_DEFAULTS = {
     xpPerPoint: [0, 5, 10, 15, 25, 40, 60, 90, 130, 180, 240],
     maxPurchasable: 20,
 
-    // Sparse lookup: each entry maps a range of POWMOD values to a multiplier.
-    // The POW_MULTIPLIER variable is set from the first matching entry.
+    // Flat lookup: one entry per POWMOD value. The POW_MULTIPLIER variable
+    // is set from the entry whose `powmod` matches. If the character's POWMOD
+    // falls outside the table's range, char-derived.js clamps to the nearest
+    // endpoint (so impossibly high POWMOD still gets the highest multiplier).
     //
-    // Default shape: very low POWMOD (−5..−1) all bottom out at ×0.5. Then
-    // POWMOD 0 = ×1, 1 = ×1.5, and from 2 upward the multiplier equals
-    // POWMOD (×2, ×3, …, ×10). This is a linear-past-a-threshold curve.
+    // Default curve: POWMOD -1 → ×0.5, 0 → ×1, 1 → ×1.5, then linear from 2.
     powMultiplier: [
-      { powmodMin: -5, powmodMax: -1, value: 0.5 },
-      { powmodMin: 0,  powmodMax: 0,  value: 1   },
-      { powmodMin: 1,  powmodMax: 1,  value: 1.5 },
-      { powmodMin: 2,  powmodMax: 2,  value: 2   },
-      { powmodMin: 3,  powmodMax: 3,  value: 3   },
-      { powmodMin: 4,  powmodMax: 4,  value: 4   },
-      { powmodMin: 5,  powmodMax: 5,  value: 5   },
-      { powmodMin: 6,  powmodMax: 6,  value: 6   },
-      { powmodMin: 7,  powmodMax: 7,  value: 7   },
-      { powmodMin: 8,  powmodMax: 8,  value: 8   },
-      { powmodMin: 9,  powmodMax: 9,  value: 9   },
-      { powmodMin: 10, powmodMax: 10, value: 10  }
+      { powmod: -1, value: 0.5 },
+      { powmod:  0, value: 1   },
+      { powmod:  1, value: 1.5 },
+      { powmod:  2, value: 2   },
+      { powmod:  3, value: 3   },
+      { powmod:  4, value: 4   },
+      { powmod:  5, value: 5   },
+      { powmod:  6, value: 6   },
+      { powmod:  7, value: 7   },
+      { powmod:  8, value: 8   },
+      { powmod:  9, value: 9   },
+      { powmod: 10, value: 10  }
     ]
   }
 };
@@ -487,29 +487,51 @@ window.normalizeRuleset = function(rs) {
         : d.powerPool.xpPerPoint.slice(),
       maxPurchasable: Number.isInteger(src.maxPurchasable) && src.maxPurchasable >= 0
         ? src.maxPurchasable : d.powerPool.maxPurchasable,
-      powMultiplier: Array.isArray(src.powMultiplier) && src.powMultiplier.length > 0
-        ? src.powMultiplier
-            .map(e => {
-              if (!e || typeof e !== 'object') return null;
-              // Accept both current (powmodMin/powmodMax) and legacy (powMin/powMax)
-              // field names. Legacy rulesets were indexed by raw POW; if we detect
-              // legacy fields, pass them through as POWMOD values — the numbers
-              // themselves may need re-thinking by the GM, but formulas still work
-              // (we just look them up against POWMOD instead).
-              const minRaw = Number.isFinite(e.powmodMin) ? e.powmodMin
-                           : Number.isFinite(e.powMin)    ? e.powMin    : null;
-              const maxRaw = Number.isFinite(e.powmodMax) ? e.powmodMax
-                           : Number.isFinite(e.powMax)    ? e.powMax    : minRaw;
-              const value  = Number.isFinite(e.value) ? e.value : null;
-              if (minRaw === null || value === null) return null;
-              return {
-                powmodMin: minRaw,
-                powmodMax: maxRaw === null ? minRaw : maxRaw,
-                value
-              };
-            })
-            .filter(Boolean)
-        : JSON.parse(JSON.stringify(d.powerPool.powMultiplier))
+      powMultiplier: (() => {
+        // Target shape: flat list, one entry per POWMOD value. Expand any
+        // legacy range-based entries into per-POWMOD rows.
+        //
+        // Accepts three input shapes:
+        //   1. Current: { powmod, value }
+        //   2. Previous range-based: { powmodMin, powmodMax, value }
+        //   3. Legacy (pre-POWMOD): { powMin, powMax, value } — treated as
+        //      POWMOD values (numbers may need reinterpretation by the GM)
+        //
+        // The default table (POWMOD -1..10) is always merged in to fill any
+        // gaps; user-supplied entries win on conflict.
+        const defaultRows = JSON.parse(JSON.stringify(d.powerPool.powMultiplier));
+        const byPowmod = new Map();
+        defaultRows.forEach(r => byPowmod.set(r.powmod, r.value));
+
+        if (Array.isArray(src.powMultiplier)) {
+          src.powMultiplier.forEach(e => {
+            if (!e || typeof e !== 'object') return;
+            const value = Number.isFinite(e.value) ? e.value : null;
+            if (value === null) return;
+
+            // Flat format takes precedence.
+            if (Number.isFinite(e.powmod)) {
+              byPowmod.set(e.powmod, value);
+              return;
+            }
+
+            // Range format — expand to one entry per integer in [min..max].
+            const minRaw = Number.isFinite(e.powmodMin) ? e.powmodMin
+                         : Number.isFinite(e.powMin)    ? e.powMin    : null;
+            const maxRaw = Number.isFinite(e.powmodMax) ? e.powmodMax
+                         : Number.isFinite(e.powMax)    ? e.powMax    : minRaw;
+            if (minRaw === null) return;
+            const lo = Math.floor(minRaw);
+            const hi = Math.floor(maxRaw === null ? minRaw : maxRaw);
+            for (let k = lo; k <= hi; k++) byPowmod.set(k, value);
+          });
+        }
+
+        // Emit sorted by POWMOD for a stable, predictable table order.
+        return Array.from(byPowmod.entries())
+          .sort((a, b) => a[0] - b[0])
+          .map(([powmod, value]) => ({ powmod, value }));
+      })()
     };
   }
 
