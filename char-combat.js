@@ -45,7 +45,7 @@ export function createCombatSection(ctx) {
     let html = '';
     html += renderDerivedStatsSection(result, ruleset);
     html += renderHitLocationsSection(result);
-    html += renderPowerPoolSection(ruleset, charData);
+    html += renderPowerSection(result, ruleset, charData);
     container.innerHTML = html || '<div class="combat-empty">No combat data configured in this ruleset.</div>';
   }
 
@@ -56,10 +56,13 @@ export function createCombatSection(ctx) {
 
     // Bucket stats by group code. Stats with an invalid group fall into an
     // "orphan" bucket shown at the end.
+    // POWER is intentionally excluded from the grid — it has its own
+    // dedicated section with a resource bar + color picker + spend controls.
     const buckets = new Map();
     groups.forEach(g => buckets.set(g.code, []));
     const orphans = [];
     result.stats.forEach((entry) => {
+      if (entry.def.code === 'POWER') return;  // has its own section
       const g = entry.def.group;
       if (buckets.has(g)) buckets.get(g).push(entry);
       else orphans.push(entry);
@@ -392,15 +395,107 @@ export function createCombatSection(ctx) {
     return html;
   }
 
-  // ─── POWER POOL ───
+  // ─── POWER (RESOURCE BAR) + POWER POOL (PURCHASE) ───
+  //
+  // Combined section. Two parts:
+  //   1. POWER resource bar — spendable resource, segmented (cap 10), scales
+  //      with max. Player picks main color; depletion is always black.
+  //   2. Power Pool — the XP-purchased stat that scales POWER via the formula.
 
-  function renderPowerPoolSection(ruleset, charData) {
+  function renderPowerSection(result, ruleset, charData) {
     const pp = ruleset.powerPool;
     if (!pp || !pp.enabled) return '';
 
     const canEdit = ctx.getCanEdit();
+
+    let html = '<div class="combat-section">';
+    html += `<div class="combat-section-title">${escapeHtml(pp.name || 'Power Pool')}</div>`;
+    if (pp.description) {
+      html += `<div class="pp-desc">${escapeHtml(pp.description)}</div>`;
+    }
+
+    // POWER resource bar (if POWER derived stat is configured)
+    if (result.power) {
+      html += renderPowerBar(result.power, canEdit);
+    }
+
+    // Power Pool purchase controls
+    html += renderPowerPoolPurchase(pp, charData, canEdit);
+
+    html += '</div>';
+    return html;
+  }
+
+  // The segmented POWER resource bar. Always at most 10 segments; if max > 10
+  // each segment represents multiple points. Depletion fills from the right.
+  function renderPowerBar(power, canEdit) {
+    const { max, current, color } = power;
+
+    // Cap to 10 segments. Each segment represents max/segCount points.
+    // For max=5 → 5 segs, max=30 → 10 segs of 3 each, max=100 → 10 segs of 10.
+    const MAX_SEGS = 10;
+    const segCount = Math.max(1, Math.min(MAX_SEGS, max));
+    const perSegment = max / segCount;
+
+    // How many segments are depleted? Depletion is right-to-left.
+    // Remaining = current. Filled segs = ceil(current / perSegment) so a
+    // partially-depleted segment still appears filled until it empties.
+    // Guard: if current === max, all filled; if current === 0, all depleted.
+    let filledSegs;
+    if (current >= max) filledSegs = segCount;
+    else if (current <= 0) filledSegs = 0;
+    else filledSegs = Math.ceil(current / perSegment);
+
+    // Render each segment. Filled = player color, depleted = black.
+    let segHtml = '';
+    for (let i = 1; i <= segCount; i++) {
+      // Fill from LEFT — leftmost segCount-filled+1 through leftmost are filled.
+      // i.e. the first `filledSegs` segments (from left) are filled.
+      const segColor = i <= filledSegs ? color : '#0f0a0a';
+      segHtml += `<span class="power-seg" style="background:${escapeHtml(segColor)}"></span>`;
+    }
+
+    // Per-segment hint (shows only when max > 10, to explain the compression).
+    const segHint = max > MAX_SEGS
+      ? `<span class="power-seghint">(1 segment = ${fmt(perSegment)})</span>`
+      : '';
+
+    // Spend/refill controls. Similar pattern to hit-location damage buttons.
+    const controls = canEdit
+      ? `<div class="power-controls">
+          <button class="power-btn" onclick="tickPower(-1)" ${current <= 0 ? 'disabled' : ''} title="Spend 1">−</button>
+          <input type="number" class="power-input" value="${current}" min="0" max="${max}"
+                 onchange="setPower(this.value)">
+          <button class="power-btn" onclick="tickPower(1)" ${current >= max ? 'disabled' : ''} title="Refill 1">+</button>
+        </div>`
+      : '';
+
+    // Color picker: native input, opens system picker. Tiny swatch inline.
+    const colorPicker = canEdit
+      ? `<label class="power-color-picker" title="Change bar color">
+          <input type="color" value="${escapeHtml(color)}" onchange="setPowerColor(this.value)">
+          <span class="power-color-swatch" style="background:${escapeHtml(color)}"></span>
+        </label>`
+      : '';
+
+    return `
+      <div class="power-block">
+        <div class="power-top-row">
+          <span class="power-label">POWER</span>
+          <span class="power-value">${fmt(current)} / ${fmt(max)}</span>
+          ${segHint}
+          ${colorPicker}
+        </div>
+        <div class="power-bar-bg">${segHtml}</div>
+        ${controls}
+      </div>`;
+  }
+
+  // The Power Pool XP-purchase UI (its own stat; separate from POWER resource).
+  function renderPowerPoolPurchase(pp, charData, canEdit) {
     const level = (typeof charData.powerPool === 'number') ? charData.powerPool : 0;
     const max = pp.maxPurchasable || 10;
+    const ruleset = ctx.getRuleset();
     const currentCost = powerPoolXpCost(level, ruleset);
     const nextLevelCost = level < max ? powerPoolXpCost(level + 1, ruleset) : null;
     const incrementCost = nextLevelCost !== null ? (nextLevelCost - currentCost) : null;
@@ -409,14 +504,8 @@ export function createCombatSection(ctx) {
       ? `${pp.costPerPoint || 0} XP per point`
       : 'Custom per-level table';
 
-    let html = '<div class="combat-section">';
-    html += `<div class="combat-section-title">${escapeHtml(pp.name || 'Power Pool')}</div>`;
-    if (pp.description) {
-      html += `<div class="pp-desc">${escapeHtml(pp.description)}</div>`;
-    }
-
-    html += `<div class="pp-row">`;
-    html += `<div class="pp-label">Level</div>`;
+    let html = '<div class="pp-row">';
+    html += `<div class="pp-label">Power Pool</div>`;
     if (canEdit) {
       html += `<div class="pp-controls">
         <button class="pp-btn" onclick="tickPowerPool(-1)" ${level <= 0 ? 'disabled' : ''}>−</button>
@@ -434,9 +523,7 @@ export function createCombatSection(ctx) {
     }
     html += `</div>`;
     html += `</div>`;
-
     html += `<div class="pp-rate-note">${escapeHtml(modeText)} · Max ${max}</div>`;
-    html += '</div>';
     return html;
   }
 
@@ -462,6 +549,10 @@ export function createCombatSection(ctx) {
     renderAll();
   }
 
+  // Power Pool is the XP-purchased STAT. Changes here re-scale POWER (the
+  // resource) via the formula, which could increase or decrease max. Note:
+  // we do NOT refill powerCurrent when Power Pool goes up — the player keeps
+  // what they had. When max drops (rare), derived.js clamps current on read.
   async function tickPowerPool(delta) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
@@ -486,6 +577,51 @@ export function createCombatSection(ctx) {
     charData.powerPool = parsed;
     await saveCharacter(ctx.getCharId(), { powerPool: parsed });
     await ctx.saveXpSpent();
+    renderAll();
+  }
+
+  // ─── POWER RESOURCE HANDLERS ───
+  // POWER current is stored as charData.powerCurrent. It's clamped to [0, max]
+  // based on the derived max from the formula.
+
+  async function tickPower(delta) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    // Recompute to get current max. Not the cheapest — a future perf pass
+    // could pass the already-computed result into handlers.
+    const ruleset = ctx.getRuleset();
+    const result = computeDerivedStats(charData, ruleset);
+    if (!result.power) return;
+    const max = result.power.max;
+    const cur = result.power.current;
+    const next = Math.max(0, Math.min(max, cur + delta));
+    if (next === cur) return;
+    charData.powerCurrent = next;
+    await saveCharacter(ctx.getCharId(), { powerCurrent: next });
+    renderAll();
+  }
+
+  async function setPower(val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const ruleset = ctx.getRuleset();
+    const result = computeDerivedStats(charData, ruleset);
+    if (!result.power) return;
+    const max = result.power.max;
+    const parsed = Math.max(0, Math.min(max, parseInt(val) || 0));
+    charData.powerCurrent = parsed;
+    await saveCharacter(ctx.getCharId(), { powerCurrent: parsed });
+    renderAll();
+  }
+
+  async function setPowerColor(color) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    // Basic sanity: only accept hex-ish strings. Native color picker always
+    // gives us #rrggbb, so this is mostly paranoia.
+    if (typeof color !== 'string' || !/^#[0-9a-fA-F]{3,8}$/.test(color.trim())) return;
+    charData.powerColor = color.trim();
+    await saveCharacter(ctx.getCharId(), { powerColor: charData.powerColor });
     renderAll();
   }
 
@@ -586,6 +722,7 @@ export function createCombatSection(ctx) {
     renderAll,
     tickHitLocationDmg, setHitLocationDmg,
     tickPowerPool, setPowerPool,
+    tickPower, setPower, setPowerColor,
     powerPoolXpDelta,
     toggleEditMode, addModifier, updateModifier, deleteModifier
   };
