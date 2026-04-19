@@ -319,6 +319,35 @@
       font-family: 'Consolas', 'Courier New', monospace;
       font-style: italic;
     }
+    /* Active / Passive pill toggle in the tile header. Two mutually
+       exclusive buttons that look like a segmented control. */
+    .rc-mode {
+      display: inline-flex;
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 14px;
+      padding: 2px;
+      gap: 0;
+    }
+    .rc-mode-btn {
+      border: none;
+      background: transparent;
+      color: #666;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      padding: 3px 12px;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .rc-mode-btn.active {
+      background: #2a2a2a;
+      color: #e0e0e0;
+    }
+    .rc-mode-btn:hover:not(.active) { color: #aaa; }
     .rc-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -377,10 +406,30 @@
       padding-top: 8px;
       border-top: 1px solid #1a1a1a;
     }
+    /* Output block — side-by-side dice pool + expected result on wide
+       screens, stacking on narrow. Both blocks share height. */
+    .rc-output-pair {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .rc-output-pair > * {
+      flex: 1 1 220px;
+      min-width: 0;
+    }
+    .rc-big-label,
+    .rc-expected .rc-big-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: #888;
+    }
     .rc-big {
       display: flex;
-      align-items: baseline;
-      gap: 14px;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
       background: transparent;
       border: 1px solid #1a1a1a;
       border-radius: 4px;
@@ -391,6 +440,15 @@
       transition: background 0.1s, border-color 0.1s;
     }
     .rc-big:hover { background: #111; border-color: #2a2a2a; }
+    /* Passive mode tints the big button border so the roll mode is
+       visible even if the header's pill toggle scrolls out of view. */
+    .rc-big-passive { border-color: #2a3a4a; }
+    .rc-big-passive:hover { border-color: #3a4a5a; }
+    .rc-big-main {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+    }
     .rc-big-num {
       font-family: 'Consolas', 'Courier New', monospace;
       font-size: 28px;
@@ -414,6 +472,34 @@
       color: #777;
       font-family: 'Consolas', 'Courier New', monospace;
       letter-spacing: .04em;
+    }
+
+    /* Expected result — sibling of .rc-big. Shows the 70% central result
+       interval computed analytically from the dice-success distribution. */
+    .rc-expected {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      background: transparent;
+      border: 1px solid #1a1a1a;
+      border-radius: 4px;
+      padding: 10px 14px;
+      font-family: 'Open Sans', sans-serif;
+    }
+    .rc-expected-mean {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 28px;
+      font-weight: 700;
+      color: #c8e0a8;       /* cool green — reads as "expected / likely" */
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+    .rc-expected-range {
+      font-size: 11px;
+      color: #888;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: .02em;
     }
     .rc-breakdown {
       display: flex;
@@ -2086,6 +2172,7 @@
     rollCalcSetMitigation:   (v)   => combat.rollCalcSetMitigation(v),
     rollCalcSetReduction:    (v)   => combat.rollCalcSetReduction(v),
     rollCalcToggle:          ()    => combat.rollCalcToggle(),
+    rollCalcSetPassive:      (f)   => combat.rollCalcSetPassive(f),
     // Pain / Stress (percentile modifiers feeding Strain)
     togglePainPanel:      () => combat.togglePainPanel(),
     addPainMod:           () => combat.addPainMod(),
