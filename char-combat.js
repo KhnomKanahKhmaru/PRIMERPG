@@ -56,6 +56,11 @@ export function createCombatSection(ctx) {
     // actually roll?" scratch pad you reach for mid-turn. Sits ahead of
     // Movement so it's the first thing visible when you swap to Combat.
     html += renderRollCalcTile(result, ruleset, charData);
+    // Strain summary right below — it's the biggest single factor affecting
+    // the Roll Calculator, so seeing them side-by-side (top of tab) is the
+    // most useful at-a-glance pairing. The detailed Pain/Stress editors
+    // still live inline in their Health and Sanity sections below.
+    html += renderStrainTile(result.pain, result.stress, result.strain);
     // Movement below — speed, agility, reflex. Fast-lookup info you need
     // during play, positioned ahead of the more detailed health UI.
     html += renderDerivedStatsSection(result, ruleset, { includeGroups: ['movement'] });
