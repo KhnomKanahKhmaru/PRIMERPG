@@ -202,7 +202,10 @@ window.RULESET_DEFAULTS = {
       formula: 'DEX * 2.5',
       trackDamage: false,
       keepDecimals: true,     // 2.5 * DEX naturally fractional
-      unit: 'ft/sec'
+      unit: 'ft/sec',
+      // Strain reduces movement values linearly — a character at 25% Strain
+      // moves at 75% of their base speed. Shown inline as "10 − 2.5 ft/sec".
+      strainReducesValue: true
     },
     {
       code: 'SPDUP',
@@ -212,7 +215,8 @@ window.RULESET_DEFAULTS = {
       formula: 'STR * 1',
       trackDamage: false,
       keepDecimals: false,
-      unit: 'ft'
+      unit: 'ft',
+      strainReducesValue: true
     },
     {
       code: 'AGL',
@@ -493,6 +497,12 @@ window.normalizeRuleset = function(rs) {
           // to false so new stats are treated as active (Strain applies) —
           // only explicitly-marked passive stats skip it.
           passiveRoll: s.passiveRoll === true,
+          // Strain reduces the displayed VALUE of this stat instead of the
+          // dice pool — used for movement-style stats where the value isn't
+          // rolled but still suffers when the character is hurt/stressed.
+          // Mutually coherent with passiveRoll: a stat with passiveRoll=true
+          // is strain-immune, so strainReducesValue has no effect on it.
+          strainReducesValue: s.strainReducesValue === true,
           trackDamage: s.trackDamage === true,
           keepDecimals: s.keepDecimals === true,
           unit: (typeof s.unit === 'string') ? s.unit : ''
@@ -552,6 +562,14 @@ window.normalizeRuleset = function(rs) {
         const defaultStat = d.derivedStats.find(ds => ds.code === s.code);
         if (defaultStat && defaultStat.passiveRoll === true) {
           s.passiveRoll = true;
+        }
+      }
+      // Same one-way backfill for strainReducesValue — if the default says
+      // true but the saved stat is still unset/false, inherit the default.
+      if (s.strainReducesValue !== true) {
+        const defaultStat = d.derivedStats.find(ds => ds.code === s.code);
+        if (defaultStat && defaultStat.strainReducesValue === true) {
+          s.strainReducesValue = true;
         }
       }
     });
