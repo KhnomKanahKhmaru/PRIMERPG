@@ -904,11 +904,13 @@ export function createCombatSection(ctx) {
       segHtml += `<span class="hl-seg" style="background:${color}"></span>`;
     }
 
-    // Status label classes. "dead" dominates styling; unconscious/paralyzed share
-    // a muted amber look.
+    // Status label styling. Priority matches the statusLabel tiers computed
+    // in char-derived.js — Destroyed and Dead share the death styling (both
+    // read as "body.dead" since destroyed is a stronger form of dead).
+    // Incapacitated joins Unconscious/Paralyzed under the "impaired" tone.
     let statusClass = 'body-status';
     if (body.dead) statusClass += ' body-status-dead';
-    else if (body.unconscious || body.paralyzed) statusClass += ' body-status-impaired';
+    else if (body.incapacitated || body.unconscious || body.paralyzed) statusClass += ' body-status-impaired';
     else statusClass += ' body-status-alive';
 
     const rowClass = 'body-total' + (body.dead ? ' body-total-dead' : '');
