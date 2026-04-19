@@ -100,14 +100,12 @@ export function createCombatSection(ctx) {
       tiles.push(renderPowerTile(power));
     }
 
-    // STRAIN tile — single number card with labeled Pain/Stress breakdown.
-    // Placed AFTER the three resource pools so it sits on its own row
-    // (or wraps naturally next to Movement), reflecting that Strain is a
-    // derived summary of Pain + Stress rather than a raw resource.
-    const strain = result.strain;
-    if (strain) {
-      tiles.push(renderStrainTile(result.pain, result.stress, strain));
-    }
+    // MOVEMENT + STRAIN tile — full-width bottom row. Movement stats
+    // occupy the left; Strain summary (big %, Pain/Stress breakdown) is
+    // right-aligned in the same tile since both reflect "current physical
+    // readiness" and belong next to each other. See renderMovementTile.
+    const movementHtml = renderMovementTile(result, ruleset);
+    if (movementHtml) tiles.push(movementHtml);
 
     // MOVEMENT tile — spans full width below the others. Shows each stat
     // with its unit and (for strain-affected ones) the red-italic reduction.
@@ -203,38 +201,6 @@ export function createCombatSection(ctx) {
     return html;
   }
 
-  function renderStrainTile(pain, stress, strain) {
-    const pct = strain.percent;
-    // Severity palette — tints the big number to match the Combat tab
-    // Pain/Stress pill colors so the same visual language carries over.
-    let pctColor;
-    if (pct <= 0)      pctColor = '#666';
-    else if (pct < 50) pctColor = '#a0c080';
-    else if (pct < 75) pctColor = '#d8a860';
-    else               pctColor = '#e07878';
-    const painPct   = (pain && pain.finalPercent) || 0;
-    const stressPct = (stress && stress.finalPercent) || 0;
-    // Each breakdown line — labeled so the player immediately knows which
-    // component comes from physical pain vs mental stress.
-    return `
-      <div class="state-tile">
-        <div class="state-tile-head">
-          <span class="state-tile-label">Strain</span>
-        </div>
-        <div class="state-strain-big" style="color:${pctColor}">${pct}%</div>
-        <div class="state-strain-rows">
-          <div class="state-strain-row">
-            <span class="state-strain-k">Pain</span>
-            <span class="state-strain-v">${painPct}%</span>
-          </div>
-          <div class="state-strain-row">
-            <span class="state-strain-k">Stress</span>
-            <span class="state-strain-v">${stressPct}%</span>
-          </div>
-        </div>
-      </div>`;
-  }
-
   function renderPowerTile(power) {
     // Always renders — even if max is 0 (new character / power pool not
     // yet purchased). Shows a full empty bar so the tile is always present
@@ -303,10 +269,47 @@ export function createCombatSection(ctx) {
 
     return `
       <div class="state-tile state-tile-movement">
-        <div class="state-tile-head">
-          <span class="state-tile-label">Movement</span>
+        <div class="state-movement-layout">
+          <div class="state-movement-left">
+            <div class="state-tile-head">
+              <span class="state-tile-label">Movement</span>
+            </div>
+            <div class="state-movement-row">${items}</div>
+          </div>
+          ${renderStrainInline(result.pain, result.stress, result.strain)}
         </div>
-        <div class="state-movement-row">${items}</div>
+      </div>`;
+  }
+
+  // Compact strain summary embedded in the right side of the Movement tile.
+  // Same palette + breakdown as the old standalone tile, just packed into
+  // a narrower column with a left divider instead of a top divider.
+  function renderStrainInline(pain, stress, strain) {
+    if (!strain) return '';
+    const pct = strain.percent;
+    let pctColor;
+    if (pct <= 0)      pctColor = '#666';
+    else if (pct < 50) pctColor = '#a0c080';
+    else if (pct < 75) pctColor = '#d8a860';
+    else               pctColor = '#e07878';
+    const painPct   = (pain && pain.finalPercent) || 0;
+    const stressPct = (stress && stress.finalPercent) || 0;
+    return `
+      <div class="state-movement-strain">
+        <div class="state-tile-head">
+          <span class="state-tile-label">Strain</span>
+        </div>
+        <div class="state-strain-big" style="color:${pctColor}">${pct}%</div>
+        <div class="state-strain-rows">
+          <div class="state-strain-row">
+            <span class="state-strain-k">Pain</span>
+            <span class="state-strain-v">${painPct}%</span>
+          </div>
+          <div class="state-strain-row">
+            <span class="state-strain-k">Stress</span>
+            <span class="state-strain-v">${stressPct}%</span>
+          </div>
+        </div>
       </div>`;
   }
 
