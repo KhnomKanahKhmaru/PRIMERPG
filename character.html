@@ -484,6 +484,133 @@
        since it carries more weight visually as the "overall status" indicator. */
     .body-bar-bg { height: 14px; background: #0a0a0a; border: 1px solid #222; border-radius: 2px; overflow: hidden; display: flex; gap: 1px; padding: 1px; }
 
+    /* ─── SANITY ─── */
+    .san-section { }
+    .san-top-row {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 6px;
+    }
+    .san-label {
+      font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+      color: #888;
+    }
+    .san-nums {
+      font-size: 18px; font-weight: 700; color: #e8e8e8;
+      font-variant-numeric: tabular-nums;
+    }
+    .san-slash { color: #555; }
+    .san-max { color: #888; font-weight: 500; font-size: 14px; }
+    .san-status-pill {
+      font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+      padding: 3px 10px; border-radius: 10px;
+      margin-left: auto;
+      border: 1px solid;
+    }
+    .san-status-healthy  { color: #a6c89a; background: #1a2218; border-color: #3a4a34; }
+    .san-status-inShock  { color: #d6b860; background: #231f10; border-color: #5a4a22; }
+    .san-status-insane   { color: #e07878; background: #2a1312; border-color: #6a2a28; }
+    .san-status-broken   { color: #ff4a4a; background: #2a0a0a; border-color: #7a1010; }
+
+    .san-penalty {
+      font-size: 11px; color: #a08060; font-style: italic;
+      margin-bottom: 10px;
+      padding: 6px 10px; background: #0a0a0a;
+      border-left: 2px solid #5a4a22;
+    }
+
+    /* Segmented bar */
+    .san-bar {
+      height: 14px; background: #0a0a0a;
+      border: 1px solid #222; border-radius: 2px;
+      overflow: hidden; display: flex; gap: 1px; padding: 1px;
+      margin-bottom: 10px;
+    }
+    .san-seg { flex: 1; min-width: 2px; border-radius: 1px; }
+
+    /* Controls row */
+    .san-controls {
+      display: flex; align-items: center; gap: 6px;
+    }
+    .san-dmg-input {
+      background: #111; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 13px; font-weight: 700;
+      padding: 5px 8px; border-radius: 3px; outline: none;
+      width: 70px; text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+    .san-dmg-input:focus { border-color: #444; }
+    .san-controls-ro .san-current-ro {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 13px; color: #aaa;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Breaking Point reference panel */
+    .san-breakpoint {
+      margin-top: 14px;
+      padding: 12px 14px;
+      background: #140808;
+      border: 1px solid #4a1a1a;
+      border-radius: 4px;
+    }
+    .san-breakpoint-title {
+      font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+      color: #ff6a6a;
+      margin-bottom: 6px;
+    }
+    .san-breakpoint-intro {
+      font-size: 11px; color: #b08080; font-style: italic;
+      margin-bottom: 10px; line-height: 1.5;
+    }
+    .san-breakpoint-table {
+      display: flex; flex-direction: column; gap: 3px;
+    }
+    .san-bp-row {
+      display: grid;
+      grid-template-columns: 50px 150px 1fr;
+      gap: 10px;
+      padding: 6px 10px;
+      font-size: 11px;
+      border-radius: 3px;
+      background: #0a0505;
+      border: 1px solid #1a0a0a;
+      align-items: baseline;
+    }
+    .san-bp-roll {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 13px; font-weight: 700;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+    .san-bp-name {
+      font-weight: 700; letter-spacing: .04em;
+    }
+    .san-bp-desc { color: #888; line-height: 1.4; }
+    .san-bp-tier-best    { border-color: #3a5a3a; }
+    .san-bp-tier-best    .san-bp-roll { color: #a6c89a; }
+    .san-bp-tier-best    .san-bp-name { color: #a6c89a; }
+    .san-bp-tier-good    { border-color: #4a5a2a; }
+    .san-bp-tier-good    .san-bp-roll { color: #c8c06a; }
+    .san-bp-tier-good    .san-bp-name { color: #c8c06a; }
+    .san-bp-tier-neutral { border-color: #3a3a3a; }
+    .san-bp-tier-neutral .san-bp-roll { color: #aaa; }
+    .san-bp-tier-neutral .san-bp-name { color: #aaa; }
+    .san-bp-tier-bad     { border-color: #5a3a1a; }
+    .san-bp-tier-bad     .san-bp-roll { color: #d89860; }
+    .san-bp-tier-bad     .san-bp-name { color: #d89860; }
+    .san-bp-tier-worst   { border-color: #6a2a2a; }
+    .san-bp-tier-worst   .san-bp-roll { color: #e07878; }
+    .san-bp-tier-worst   .san-bp-name { color: #e07878; }
+    .san-bp-tier-fatal   { border-color: #7a1010; background: #1a0505; }
+    .san-bp-tier-fatal   .san-bp-roll { color: #ff2a2a; }
+    .san-bp-tier-fatal   .san-bp-name { color: #ff2a2a; }
+
+    @media (max-width: 600px) {
+      .san-bp-row { grid-template-columns: 40px 1fr; }
+      .san-bp-desc { grid-column: 1 / -1; padding-left: 50px; }
+    }
+
     /* Power Pool */
     .pp-desc { font-size: 12px; color: #888; line-height: 1.6; margin-bottom: 12px; font-style: italic; }
     .pp-row { display: flex; align-items: center; gap: 16px; padding: 12px 14px; background: #111; border: 1px solid #1f1f1f; border-radius: 4px; flex-wrap: wrap; }
@@ -1237,6 +1364,13 @@
     setPowerColor:        (color) => combat.setPowerColor(color),
     setPowerName:         (name)  => combat.setPowerName(name),
     toggleHlModifierEdit: () => combat.toggleEditMode(),
+    // SAN handlers
+    tickSanDmg:           (delta) => combat.tickSanDmg(delta),
+    setSanCurrent:        (val) => combat.setSanCurrent(val),
+    toggleSanModifierEdit: () => combat.toggleSanModifierEdit(),
+    addSanMod:            () => combat.addSanMod(),
+    updateSanMod:         (idx, field, val) => combat.updateSanMod(idx, field, val),
+    deleteSanMod:         (idx) => combat.deleteSanMod(idx),
     addHlMod:             (target)           => combat.addModifier(target),
     updateHlMod:          (target, i, field, val) => combat.updateModifier(target, i, field, val),
     deleteHlMod:          (target, i)        => combat.deleteModifier(target, i),
