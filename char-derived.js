@@ -688,7 +688,8 @@ export function computeDerivedStats(character, ruleset) {
   //
   // HP for the "half your HP" comparison is the derived HP stat (e.g. STR+SIZE).
   // Falls back to 0 if the ruleset has no HP derived stat.
-  const injuriesIn = Array.isArray(character.injuries) ? character.injuries : [];
+  // (injuriesIn was already declared earlier — it's the same array we use for
+  // pre-computing per-location damage before the hit-location loop.)
   const hpEntry = stats.get('HP');
   const hpTotal = (hpEntry && typeof hpEntry.value === 'number') ? hpEntry.value : 0;
   const halfHp = Math.floor(hpTotal / 2);
