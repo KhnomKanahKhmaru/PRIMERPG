@@ -957,20 +957,26 @@ export function computeDerivedStats(character, ruleset) {
     };
   });
 
-  // ─── PAIN / STRESS / STRAIN ───
+  // ─── PAIN / STRESS / OTHER / PENALTY ───
   //
   // Pain: percent of Body you're missing (bodyDamage / bodyMax × 100).
   // Stress: percent of SAN range you've lost (sanDamage / (sanMax × 3) × 100).
   //   SAN denominator is 3× because SAN ranges from +max down to -2*max, so
   //   the total damageable range is 3× the displayed max.
-  // Strain: Pain + Stress, capped at 100.
+  // Other: player-entered modifiers for everything that isn't damage —
+  //   Exposure, Encumbrance, drugged, bound, etc. Sum of otherModifiers
+  //   values (each ±integer%). No implicit base percent.
+  // Penalty: total drag on capabilities. Sum of Pain + Stress + Other,
+  //   clamped to [0, 100].
   //
-  // All three support percentile MODIFIERS (charData.painModifiers /
-  // sanModifiers arrays of {name, value}) that stack additively onto the
-  // base percentage. Final values clamp to [0, 100].
+  // Pain and Stress also support internal MODIFIERS (charData.painModifiers /
+  // stressModifiers arrays of {name, value}) that stack additively onto
+  // the base percentage of that component. Final per-component values
+  // clamp to [0, 100] before rolling up into Penalty.
   //
-  // Strain reduces the dice count on any stat whose def.passiveRoll isn't
-  // true — applied in the stats loop's post-pass below.
+  // Penalty reduces the dice count on any stat whose def.passiveRoll isn't
+  // true — applied in the stats loop's post-pass below. Also reduces
+  // displayed values for stats with def.penaltyReducesValue (e.g. SPD).
   let pain = null;
   if (body && body.max > 0) {
     const rawPct = (body.damage / body.max) * 100;
@@ -992,45 +998,77 @@ export function computeDerivedStats(character, ruleset) {
     stress = { basePercent: basePct, modifiers: mods, modTotal, finalPercent: finalPct };
   }
 
+  // "Other" Penalty — user-managed list of named +/- percentile entries
+  // for Exposure, Encumbrance, and anything else that should drag on
+  // capabilities without being Stress or Pain. Values can be negative
+  // to model buffs that offset existing penalty (an adrenaline shot
+  // briefly cancels exhaustion, say).
+  //
+  // Unlike Pain and Stress, Other has no "base percent" — every bit of
+  // it comes from named modifiers. If the modifiers list is empty, the
+  // component contributes nothing. The total is NOT clamped to [0, 100]
+  // here (the roll-up into Penalty clamps the full sum instead) so that
+  // negative Others can fully offset Pain/Stress.
+  const otherMods = Array.isArray(character.otherModifiers) ? character.otherModifiers : [];
+  const otherTotal = otherMods.reduce((a, m) => a + (parseInt(m && m.value) || 0), 0);
+  const other = { modifiers: otherMods, modTotal: otherTotal, finalPercent: otherTotal };
+
   const painPct = pain ? pain.finalPercent : 0;
   const stressPct = stress ? stress.finalPercent : 0;
-  const strainPct = Math.max(0, Math.min(100, painPct + stressPct));
-  const strain = { painPercent: painPct, stressPercent: stressPct, percent: strainPct };
+  const otherPct = other.finalPercent;
+  const penaltyPct = Math.max(0, Math.min(100, painPct + stressPct + otherPct));
+  const penalty = {
+    painPercent:   painPct,
+    stressPercent: stressPct,
+    otherPercent:  otherPct,
+    percent:       penaltyPct
+  };
+  // Back-compat alias — older code reads `strain` with `.percent`. Removed
+  // in the next cleanup turn once all readers have been updated.
+  const strain = { painPercent: painPct, stressPercent: stressPct, percent: penaltyPct };
 
-  // Post-pass: for each stat entry, compute strain-adjusted dice count.
-  // Passive rolls are exempt (HP/SAN resistance rolls don't suffer Strain).
+  // Post-pass: for each stat entry, compute Penalty-adjusted dice count.
+  // Passive rolls are exempt (HP/SAN resistance rolls don't suffer Penalty).
   stats.forEach(entry => {
     const def = entry.def;
     const baseDice = (entry.value != null && Number.isFinite(entry.value))
       ? Math.floor(entry.value) : 0;
     const diceModTotal = entry.diceModTotal || 0;
-    const poolBeforeStrain = Math.max(0, baseDice + diceModTotal);
+    const poolBeforePenalty = Math.max(0, baseDice + diceModTotal);
 
     const isPassive = def.passiveRoll === true;
-    const strainPenalty = isPassive
+    const penaltyDice = isPassive
       ? 0
-      : Math.floor(poolBeforeStrain * strainPct / 100);
-    const finalDice = Math.max(0, poolBeforeStrain - strainPenalty);
+      : Math.floor(poolBeforePenalty * penaltyPct / 100);
+    const finalDice = Math.max(0, poolBeforePenalty - penaltyDice);
 
-    // Value reduction — for stats like SPD/SPDUP where Strain cuts the
-    // displayed value rather than the dice pool. Computed from the raw
-    // stat value (not floored) so fractional movement reads naturally
-    // (e.g. 10 ft/sec × 25% strain = 2.5 ft/sec reduction).
-    let strainValueReduction = 0;
-    if (def.strainReducesValue === true && !isPassive
+    // Value reduction — for stats like SPD/SPDUP where Penalty cuts the
+    // displayed value rather than the dice pool. `penaltyReducesValue`
+    // is the new def flag; the old `strainReducesValue` still works as
+    // a fallback for unmigrated rulesets.
+    const reducesValue = def.penaltyReducesValue === true || def.strainReducesValue === true;
+    let penaltyValueReduction = 0;
+    if (reducesValue && !isPassive
         && entry.value != null && Number.isFinite(entry.value)) {
-      strainValueReduction = entry.value * strainPct / 100;
+      penaltyValueReduction = entry.value * penaltyPct / 100;
     }
 
     entry.isPassive = isPassive;
-    entry.strainPenalty = strainPenalty;
     entry.finalDice = finalDice;
-    entry.poolBeforeStrain = poolBeforeStrain;
-    entry.strainPercent = strainPct;
-    entry.strainValueReduction = strainValueReduction;
+    entry.penaltyDice = penaltyDice;
+    entry.penaltyPercent = penaltyPct;
+    entry.penaltyValueReduction = penaltyValueReduction;
+    entry.poolBeforePenalty = poolBeforePenalty;
+
+    // Back-compat aliases for any reader that still uses the strain*
+    // names. Removed after the UI rewrite lands.
+    entry.strainPenalty = penaltyDice;
+    entry.strainPercent = penaltyPct;
+    entry.strainValueReduction = penaltyValueReduction;
+    entry.poolBeforeStrain = poolBeforePenalty;
   });
 
-  return { stats, locations, errors, vars, body, power, san, injuries, pain, stress, strain };
+  return { stats, locations, errors, vars, body, power, san, injuries, pain, stress, other, penalty, strain };
 }
 
 // ─── DEGRADATION TABLE ───
