@@ -1,3238 +1,2623 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PRIME RPG — Character</title>
-  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <script src="nav.js"></script>
-  <script src="ruleset-defaults.js"></script>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #0a0a0a; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 14px; min-height: 100vh; }
-    .page { padding-top: 104px; padding-left: 24px; padding-right: 24px; padding-bottom: 60px; max-width: 1200px; margin: 0 auto; }
-    .empty { color: #444; font-size: 13px; text-align: center; padding: 60px 0; }
-    .char-card { display: flex; align-items: stretch; border: 1px solid #222; border-radius: 6px; overflow: hidden; min-height: 320px; }
-    .char-picture { width: 220px; flex-shrink: 0; border-right: 1px solid #222; background: #0e0e0e; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; min-height: 320px; }
-    .char-picture img { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; }
-    .char-picture-placeholder { color: #333; font-size: 12px; text-align: center; padding: 16px; z-index: 1; }
-    .char-picture input[type=file] { display: none; }
-    .pic-uploading { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; font-size: 12px; color: #aaa; z-index: 2; }
-    .char-bio-col { flex: 1; padding: 20px 24px; border-right: 1px solid #222; display: flex; flex-direction: column; }
-    .char-header { display: flex; align-items: flex-start; gap: 20px; margin-bottom: 16px; }
-    .char-header-left { flex: 1; }
-    .char-name { font-size: 28px; font-weight: 700; color: #e0e0e0; margin-bottom: 4px; }
-    .char-archetype { font-size: 15px; font-weight: 500; color: #666; }
-    .char-quip-box { width: 280px; flex-shrink: 0; border: 1px solid #222; border-radius: 4px; padding: 16px; font-size: 13px; font-style: italic; color: #555; background: #0e0e0e; min-height: 80px; cursor: pointer; display: flex; align-items: center; justify-content: center; text-align: center; }
-    .char-quip-box.has-quip { color: #aaa; }
-    .section-title { font-size: 18px; font-weight: 600; color: #aaa; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #1a1a1a; display: flex; align-items: center; gap: 10px; }
-    .edit-btn { font-size: 11px; color: #555; cursor: pointer; padding: 2px 8px; border: 1px solid #333; border-radius: 3px; font-weight: 400; }
-    .edit-btn:hover { color: #aaa; border-color: #555; }
-    .bio-prose { font-size: 13px; color: #888; line-height: 1.9; }
-    .bio-prose b { color: #ccc; font-weight: 600; }
-    .bio-prose i { color: #888; font-style: italic; }
-    .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
-    .field label { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #555; }
-    .field input, .field textarea, .field select { background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 13px; padding: 7px 10px; border-radius: 4px; outline: none; width: 100%; }
-    .field input:focus, .field textarea:focus, .field select:focus { border-color: #444; }
-    .field textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
-    .field select option { background: #111; }
-    .btn-row { display: flex; gap: 8px; margin-top: 14px; align-items: center; }
-    .save-btn { background: #1a1a1a; border: 1px solid #333; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 16px; border-radius: 4px; cursor: pointer; }
-    .save-btn:hover { background: #222; border-color: #555; }
-    .save-msg { font-size: 11px; color: #66ff99; }
-    .char-etc-col { width: 220px; flex-shrink: 0; padding: 20px 16px; background: #0e0e0e; }
-    .etc-title { font-size: 14px; font-weight: 700; color: #666; margin-bottom: 12px; }
-    .etc-content { font-size: 12px; color: #555; line-height: 1.7; min-height: 200px; cursor: pointer; white-space: pre-wrap; }
-    .etc-content:hover { color: #777; }
-    .mental-card { display: flex; align-items: stretch; border: 1px solid #222; border-radius: 6px; min-height: 200px; margin-top: 16px; }
-    .mental-col { flex: 1; padding: 16px; border-right: 1px solid #222; display: flex; flex-direction: column; }
-    .mental-col:last-child { border-right: none; }
-    .mental-col-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #1a1a1a; }
-    .mental-col-title { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #555; flex: 1; }
-    .add-entry-btn { background: transparent; border: 1px solid #222; color: #555; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 12px; border-radius: 3px; cursor: pointer; margin-top: 10px; display: none; }
-    .add-entry-btn:hover { color: #aaa; border-color: #444; }
-    .severity-select { background: #1a1a1a; border: 1px solid #333; color: #888; font-family: 'Open Sans', sans-serif; font-size: 10px; padding: 2px 4px; border-radius: 3px; outline: none; cursor: pointer; }
-    .severity-select option { background: #111; }
-    .obligation-entry, .disorder-entry { background: #111; border: 1px solid #1a1a1a; border-radius: 4px; padding: 10px; margin-bottom: 8px; font-size: 12px; color: #888; line-height: 1.9; position: relative; }
-    .entry-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 11px; font-weight: 600; color: #777; }
-    .entry-header-type { color: #666; }
-    .entry-delete { position: absolute; top: 6px; right: 8px; font-size: 14px; color: #333; cursor: pointer; }
-    .entry-delete:hover { color: #c84b4b; }
-    .entry-input { background: transparent; border: none; border-bottom: 1px solid #333; color: #ccc; font-family: 'Open Sans', sans-serif; font-size: 12px; outline: none; width: 100%; padding: 2px 0; }
-    .entry-input:focus { border-bottom-color: #666; }
-    .entry-text { color: #ccc; font-weight: 500; }
-    .moral-cards { display: flex; flex-direction: column; gap: 6px; }
-    .moral-card-item { background: #111; border: 1px solid #222; border-radius: 4px; padding: 10px 12px; width: 100%; }
-    .moral-card-top { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
-    .moral-card-name { font-size: 14px; font-weight: 600; color: #ccc; }
-    .moral-empty { color: #333; font-size: 12px; }
-    .moral-group { margin-bottom: 14px; }
-    .moral-group-title { font-size: 10px; color: #444; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 6px; }
-    .moral-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-    .moral-chip { font-size: 11px; padding: 3px 10px; border-radius: 3px; border: 1px solid #222; background: #111; color: #555; cursor: pointer; user-select: none; }
-    .moral-chip.selected { background: #1a1a1a; border-color: #444; color: #ccc; }
-    .moral-chip:hover { border-color: #444; color: #aaa; }
-    .stats-card { display: flex; align-items: stretch; border: 1px solid #222; border-radius: 6px; margin-top: 16px; min-height: 300px; }
-    .stats-col { width: 300px; flex-shrink: 0; border-right: 1px solid #222; background: #0a0a0a; padding: 16px; }
-    .stats-col-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #1a1a1a; }
-    .stats-col-title { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #555; flex: 1; }
-    .stat-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; position: relative; }
-    .stat-icon-wrap { position: relative; width: 36px; flex-shrink: 0; }
-    .stat-icon { width: 36px; height: 36px; border-radius: 4px; overflow: hidden; background: #151515; border: 1px solid #252525; cursor: default; display: flex; align-items: center; justify-content: center; }
-    .stat-icon svg { width: 34px; height: 34px; }
-    .stat-tooltip { display: none; position: absolute; left: 44px; top: 0; background: #1e1e1e; border: 1px solid #444; border-radius: 4px; padding: 7px 10px; font-size: 12px; color: #ccc; width: 200px; z-index: 200; pointer-events: none; white-space: normal; line-height: 1.5; }
-    .stat-icon-wrap:hover .stat-tooltip { display: block; }
-    .stat-info { flex: 1; min-width: 0; }
-    .stat-label { font-size: 12px; font-weight: 500; color: #666; }
-    .stat-label .abbr { color: #aaa; font-weight: 700; }
-    .stat-level-label { font-size: 11px; font-style: italic; color: #666; margin-top: 2px; }
-    .stat-value-area { display: flex; flex-direction: column; align-items: center; gap: 2px; flex-shrink: 0; }
-    .stat-value-wrap { position: relative; display: inline-flex; align-items: flex-start; }
-    .stat-total-display { font-size: 20px; font-weight: 700; color: #e0e0e0; }
-    .stat-mod-exponent { font-size: 10px; font-weight: 600; color: #555; margin-left: 2px; line-height: 1; align-self: flex-start; margin-top: 1px; }
-    .stat-mod-badge { background: #1a1a1a; border: 1px solid #333; color: #888; font-size: 9px; padding: 1px 5px; border-radius: 3px; white-space: nowrap; text-align: center; }
-    .stat-input-row { display: flex; align-items: center; gap: 3px; }
-    .stat-mod-row { display: flex; align-items: center; gap: 4px; margin-top: 3px; }
-    .stat-adj-btn { background: transparent; border: 1px solid #333; color: #666; font-size: 13px; width: 20px; height: 20px; border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; font-family: 'Open Sans', sans-serif; line-height: 1; }
-    .stat-adj-btn:hover { color: #ccc; border-color: #666; }
-    .stat-base-input { width: 44px; background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 14px; font-weight: 700; text-align: center; padding: 3px; border-radius: 4px; outline: none; }
-    .stat-base-input:focus { border-color: #444; }
-    .stat-size-select { width: 90px; background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 3px 4px; border-radius: 4px; outline: none; }
-    .stat-pm-btn { font-size: 11px; color: #444; background: transparent; border: 1px solid #222; border-radius: 3px; padding: 2px 6px; cursor: pointer; flex-shrink: 0; font-family: 'Open Sans', sans-serif; margin-top: 2px; }
-    .stat-pm-btn:hover { color: #aaa; border-color: #444; }
-    .stat-mod-panel { background: #111; border: 1px solid #1a1a1a; border-radius: 4px; padding: 8px; margin-bottom: 8px; }
-    .mod-item { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 11px; color: #888; }
-    .mod-item-name { flex: 1; }
-    .mod-item-val { color: #aaa; font-weight: 600; min-width: 30px; text-align: right; }
-    .mod-delete { color: #333; cursor: pointer; font-size: 13px; }
-    .mod-delete:hover { color: #c84b4b; }
-    .mod-add-row { display: flex; gap: 4px; margin-top: 6px; }
-    .mod-add-row input[type=text] { flex: 1; background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 3px 6px; border-radius: 3px; outline: none; }
-    .mod-add-row input[type=number] { width: 44px; background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 3px 4px; border-radius: 3px; outline: none; text-align: center; }
-    .mod-add-btn { background: #1a1a1a; border: 1px solid #333; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 3px 8px; border-radius: 3px; cursor: pointer; }
-    .mod-add-btn:hover { border-color: #555; }
-    .skills-col { flex: 1; padding: 16px; overflow: visible; }
-    .skills-section { margin-bottom: 16px; }
-    .skills-section-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-    .skills-section-title { font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: #555; flex: 1; padding-bottom: 4px; border-bottom: 1px solid #1a1a1a; }
-    .skills-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
-    .skill-item { position: relative; display: flex; align-items: center; gap: 4px; background: #111; border: 1px solid #1a1a1a; border-radius: 3px; padding: 6px 8px; min-height: 44px; box-sizing: border-box; min-width: 0; overflow: hidden; }
-    .skill-name { font-size: 11px; color: #ccc; font-weight: 500; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
-    .skill-val-display { font-size: 13px; color: #e0e0e0; font-weight: 700; min-width: 18px; text-align: right; }
-    .skill-input { width: 36px; background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; text-align: center; padding: 1px 2px; border-radius: 2px; outline: none; }
-    .skill-tooltip { display: none; position: absolute; bottom: 100%; left: 0; background: #1e1e1e; border: 1px solid #444; border-radius: 4px; padding: 7px 10px; font-size: 12px; color: #ccc; width: 200px; z-index: 1000; pointer-events: none; white-space: normal; line-height: 1.5; margin-bottom: 4px; }
-    .skill-item:hover .skill-tooltip { display: block; }
-    .skill-add-row { display: flex; gap: 6px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
-    .skill-add-input { background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 8px; border-radius: 3px; outline: none; }
-    .skill-add-input:focus { border-color: #444; }
-    .skill-add-select { background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 6px; border-radius: 3px; outline: none; }
-    .skill-add-btn { background: #1a1a1a; border: 1px solid #333; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 10px; border-radius: 3px; cursor: pointer; }
-    .skill-add-btn:hover { border-color: #555; }
-    .sec-skill-under { font-size: 9px; color: #666; font-style: italic; white-space: nowrap; }
-    .char-power-bar { display: flex; align-items: center; gap: 16px; margin-top: 6px; margin-bottom: 4px; flex-wrap: wrap; }
-    .power-pill { display: flex; align-items: center; gap: 6px; }
-    .power-pill .pill-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #444; }
-    .power-pill .pill-val { font-size: 13px; font-weight: 600; color: #aaa; }
-    .power-pill .pill-sub { font-size: 11px; color: #555; }
-    .power-select { background: #111; border: 1px solid #222; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 12px; font-weight: 600; padding: 2px 6px; border-radius: 4px; outline: none; cursor: pointer; }
-    .power-select option { background: #111; }
-    .power-num-input { width: 52px; background: #111; border: 1px solid #222; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 13px; font-weight: 600; text-align: center; padding: 2px 4px; border-radius: 4px; outline: none; }
-    .power-num-input:focus { border-color: #444; }
-    .power-sep { color: #333; font-size: 13px; }
-
-    /* ═══ THE STATE OF THINGS (overview dashboard) ═══ */
-    /* Outer container uses the same visual rhythm as the Advantages block
-       so the overview page reads as a consistent stack of cards. */
-    .state-of-things {
-      margin-top: 24px;
-      padding: 18px 20px;
-      border: 1px solid #1a1a1a;
-      border-radius: 6px;
-      background: #0d0d0d;
-    }
-    .state-title {
-      font-size: 12px; font-weight: 600; letter-spacing: .08em;
-      text-transform: uppercase; color: #aaa;
-      margin-bottom: 14px; padding-bottom: 8px;
-      border-bottom: 1px solid #1a1a1a;
-    }
-    .state-empty { color: #444; font-size: 12px; font-style: italic; text-align: center; padding: 20px 0; }
-
-    /* Flex grid of tiles. Each tile is self-sizing; wraps cleanly on
-       narrow screens. Two tiles fit per row at normal desktop width,
-       four at wide, single column under ~500px. */
-    .state-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 12px;
-    }
-    .state-tile {
-      padding: 12px 14px;
-      background: #0a0a0a;
-      border: 1px solid #1a1a1a;
-      border-radius: 4px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .state-tile-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      gap: 10px;
-    }
-    .state-tile-label {
-      font-size: 10px; font-weight: 700; letter-spacing: .14em;
-      text-transform: uppercase; color: #888;
-    }
-    .state-tile-nums {
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-size: 13px;
-      font-weight: 600;
-      color: #ccc;
-      font-variant-numeric: tabular-nums;
-    }
-    .state-tile-nums .sep { color: #444; margin: 0 2px; }
-    .state-tile-nums .max { color: #666; }
-
-    /* Status pill — colored by severity to match Combat tab tiers. */
-    .state-tile-status {
-      display: inline-block;
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: .1em;
-      text-transform: uppercase;
-      padding: 2px 8px;
-      border-radius: 10px;
-      align-self: flex-start;
-    }
-    .state-tile-status.s-healthy  { background: #1a2a1a; color: #8cc080; border: 1px solid #2a4a2a; }
-    .state-tile-status.s-injured  { background: #2a2410; color: #d8c060; border: 1px solid #4a3d20; }
-    .state-tile-status.s-disabled { background: #2a1a10; color: #d89060; border: 1px solid #4a2d20; }
-    .state-tile-status.s-dead     { background: #2a0d0d; color: #e06060; border: 1px solid #6a2a2a; }
-    .state-tile-status.s-shock    { background: #2a2410; color: #d8c060; border: 1px solid #4a3d20; }
-    .state-tile-status.s-insane   { background: #2a1a10; color: #d89060; border: 1px solid #4a2d20; }
-    .state-tile-status.s-broken   { background: #2a0d0d; color: #e06060; border: 1px solid #6a2a2a; }
-
-    /* Segmented bar — re-uses visual language from HP/SAN bars in combat tab
-       but with slightly smaller segments for the overview density. */
-    .state-bar {
-      display: flex;
-      gap: 1px;
-      height: 10px;
-      border-radius: 2px;
-      overflow: hidden;
-      background: #0f0f0f;
-    }
-    .state-bar-seg {
-      flex: 1;
-      min-width: 2px;
-      transition: background 0.2s;
-    }
-    /* Shared progress-bar primitive used by the Power tile (and any
-       future resource-pool tile). Previously misnamed state-strain-*; the
-       Penalty tile has its own layout and doesn't use a bar. */
-    .state-progress-bar {
-      position: relative;
-      height: 10px;
-      background: #111;
-      border-radius: 2px;
-      overflow: hidden;
-    }
-    .state-progress-fill {
-      position: absolute;
-      top: 0; left: 0; bottom: 0;
-      transition: width 0.3s, background 0.2s;
-    }
-
-    /* Wide tile — full-width inside the state grid. Used by Movement,
-       Roll Calc, and Penalty in the bottom stack. */
-    .state-tile-wide { grid-column: 1 / -1; }
-
-    /* ── Penalty tile (replaces Strain) ── */
-    /* Identical layout to the old Strain tile, plus an inline Others
-       editor (CRUD for player-named ±% modifiers). Uses a parallel
-       naming so both can coexist during the transition. */
-    .state-tile-penalty .state-tile-head {
-      display: flex;
-      align-items: baseline;
-      gap: 16px;
-    }
-    .state-penalty-big {
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-size: 28px;
-      font-weight: 700;
-      line-height: 1;
-      font-variant-numeric: tabular-nums;
-      align-self: flex-start;
-    }
-    .state-penalty-rows-inline {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px 28px;
-      padding-top: 4px;
-      border-top: 1px solid #1a1a1a;
-    }
-    .state-penalty-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      font-size: 12px;
-      min-width: 120px;
-    }
-    .state-penalty-k {
-      font-weight: 600;
-      letter-spacing: .05em;
-      color: #aaa;
-      margin-right: 10px;
-    }
-    .state-penalty-v {
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-weight: 600;
-      color: #ccc;
-      font-variant-numeric: tabular-nums;
-    }
-    /* Others editor — inline CRUD for player-named ±% modifiers.
-       Below the breakdown rows, visually separated by a top border.
-       Each row is a grid: name input (flex) | number input | % unit | × delete. */
-    .state-penalty-others {
-      margin-top: 10px;
-      padding-top: 10px;
-      border-top: 1px solid #1a1a1a;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .state-penalty-others-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      font-size: 11px;
-      margin-bottom: 2px;
-    }
-    .state-penalty-others-title {
-      font-weight: 600;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-      color: #888;
-    }
-    .state-penalty-others-total {
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-weight: 600;
-      color: #aaa;
-      font-variant-numeric: tabular-nums;
-    }
-    .state-penalty-others-empty {
-      font-size: 11px;
-      color: #666;
-      font-style: italic;
-      line-height: 1.45;
-      padding: 4px 2px 2px;
-    }
-    .state-penalty-other-row {
-      display: grid;
-      grid-template-columns: 1fr 60px auto auto;
-      gap: 6px;
-      align-items: center;
-    }
-    .state-penalty-other-name,
-    .state-penalty-other-val {
-      background: #0a0a0a;
-      border: 1px solid #222;
-      color: #e0e0e0;
-      font-family: 'Open Sans', sans-serif;
-      font-size: 12px;
-      padding: 5px 8px;
-      border-radius: 3px;
-      outline: none;
-      width: 100%;
-    }
-    .state-penalty-other-val {
-      font-family: 'Consolas', 'Courier New', monospace;
-      text-align: right;
-      font-variant-numeric: tabular-nums;
-    }
-    .state-penalty-other-name:focus,
-    .state-penalty-other-val:focus {
-      border-color: #444;
-    }
-    .state-penalty-other-unit {
-      font-size: 11px;
-      color: #888;
-      padding-right: 2px;
-    }
-    .state-penalty-other-del {
-      color: #555;
-      font-size: 16px;
-      cursor: pointer;
-      width: 18px;
-      text-align: center;
-      line-height: 1;
-      user-select: none;
-    }
-    .state-penalty-other-del:hover {
-      color: #c84b4b;
-    }
-    .state-penalty-other-del-ph {
-      width: 18px;
-    }
-    .state-penalty-other-add-row {
-      padding-top: 2px;
-    }
-    .state-penalty-other-add-btn {
-      background: transparent;
-      border: 1px dashed #2a2a2a;
-      color: #888;
-      font-family: 'Open Sans', sans-serif;
-      font-size: 11px;
-      font-weight: 500;
-      padding: 5px 12px;
-      border-radius: 3px;
-      cursor: pointer;
-      letter-spacing: .04em;
-      width: 100%;
-      transition: all .1s;
-    }
-    .state-penalty-other-add-btn:hover {
-      background: #111;
-      color: #ccc;
-      border-color: #3a3a3a;
-      border-style: solid;
-    }
-
-    /* ── Roll Calculator ── */
-    .state-tile-rollcalc { gap: 14px; }
-    .state-tile-rollcalc .state-tile-head {
-      display: flex;
-      align-items: baseline;
-      gap: 12px;
-    }
-    .rc-hint {
-      font-size: 10px;
-      color: #666;
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-style: italic;
-    }
-    /* Active / Passive pill toggle in the tile header. Two mutually
-       exclusive buttons that look like a segmented control. */
-    .rc-mode {
-      display: inline-flex;
-      background: #111;
-      border: 1px solid #222;
-      border-radius: 14px;
-      padding: 2px;
-      gap: 0;
-    }
-    .rc-mode-btn {
-      border: none;
-      background: transparent;
-      color: #666;
-      font-family: 'Open Sans', sans-serif;
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: .1em;
-      text-transform: uppercase;
-      padding: 3px 12px;
-      border-radius: 12px;
-      cursor: pointer;
-      transition: background 0.15s, color 0.15s;
-    }
-    .rc-mode-btn.active {
-      background: #2a2a2a;
-      color: #e0e0e0;
-    }
-    .rc-mode-btn:hover:not(.active) { color: #aaa; }
-    .rc-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-      gap: 10px 14px;
-    }
-    .rc-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-    .rc-label {
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: .12em;
-      text-transform: uppercase;
-      color: #888;
-    }
-    .rc-field-row { display: flex; gap: 6px; min-width: 0; }
-    .rc-select {
-      flex: 1;
-      min-width: 0;
-      background: #111;
-      border: 1px solid #222;
-      color: #ccc;
-      font-family: 'Open Sans', sans-serif;
-      font-size: 12px;
-      padding: 4px 6px;
-      border-radius: 3px;
-      outline: none;
-    }
-    .rc-select:hover, .rc-select:focus { border-color: #444; }
-    .rc-select optgroup { color: #888; }
-    .rc-select option { color: #ccc; background: #111; }
-    .rc-num {
-      width: 64px;
-      background: #111;
-      border: 1px solid #222;
-      color: #ccc;
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-size: 13px;
-      font-weight: 600;
-      text-align: center;
-      padding: 4px 4px;
-      border-radius: 3px;
-      outline: none;
-      font-variant-numeric: tabular-nums;
-    }
-    .rc-num:hover, .rc-num:focus { border-color: #444; }
-    /* Hide spinner on number inputs — visual noise; tabindex still works. */
-    .rc-num::-webkit-outer-spin-button,
-    .rc-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-    .rc-num[type=number] { -moz-appearance: textfield; }
-    .rc-field-row .rc-num { flex: 0 0 auto; width: 60px; }
-
-    /* Output block — big number summary + breakdown details below. */
-    .rc-output {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      padding-top: 8px;
-      border-top: 1px solid #1a1a1a;
-    }
-    /* Output block — side-by-side dice pool + expected result on wide
-       screens, stacking on narrow. Both blocks share height. */
-    .rc-output-pair {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-    .rc-output-pair > * {
-      flex: 1 1 220px;
-      min-width: 0;
-    }
-    .rc-big-label,
-    .rc-expected .rc-big-label {
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: .12em;
-      text-transform: uppercase;
-      color: #888;
-    }
-    .rc-big {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 4px;
-      background: transparent;
-      border: 1px solid #1a1a1a;
-      border-radius: 4px;
-      padding: 10px 14px;
-      cursor: pointer;
-      text-align: left;
-      font-family: 'Open Sans', sans-serif;
-      transition: background 0.1s, border-color 0.1s;
-    }
-    .rc-big:hover { background: #111; border-color: #2a2a2a; }
-    /* Passive mode tints the big button border so the roll mode is
-       visible even if the header's pill toggle scrolls out of view. */
-    .rc-big-passive { border-color: #2a3a4a; }
-    .rc-big-passive:hover { border-color: #3a4a5a; }
-    .rc-big-main {
-      display: flex;
-      align-items: baseline;
-      gap: 10px;
-    }
-    .rc-big-num {
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-size: 28px;
-      font-weight: 700;
-      color: #e0e0e0;
-      font-variant-numeric: tabular-nums;
-      line-height: 1;
-    }
-    /* Pre-strain view tints dim — lets the player know they're looking
-       at raw pool, not the real dice they'll roll. */
-    .rc-big-num.rc-raw { color: #888; }
-    .rc-big-mod {
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-size: 18px;
-      font-weight: 700;
-      color: #c8a868;
-      font-variant-numeric: tabular-nums;
-    }
-    .rc-big-diff {
-      font-size: 11px;
-      color: #777;
-      font-family: 'Consolas', 'Courier New', monospace;
-      letter-spacing: .04em;
-    }
-
-    /* Expected result — sibling of .rc-big. Shows the 70% central result
-       interval computed analytically from the dice-success distribution. */
-    .rc-expected {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      background: transparent;
-      border: 1px solid #1a1a1a;
-      border-radius: 4px;
-      padding: 10px 14px;
-      font-family: 'Open Sans', sans-serif;
-    }
-    .rc-expected-mean {
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-size: 28px;
-      font-weight: 700;
-      color: #c8e0a8;       /* cool green — reads as "expected / likely" */
-      font-variant-numeric: tabular-nums;
-      line-height: 1;
-    }
-    .rc-expected-range {
-      font-size: 11px;
-      color: #888;
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-variant-numeric: tabular-nums;
-      letter-spacing: .02em;
-    }
-    .rc-breakdown {
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-      font-size: 11px;
-      color: #aaa;
-      font-family: 'Open Sans', sans-serif;
-    }
-    .rc-line {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      padding: 2px 4px;
-    }
-    .rc-k { color: #888; font-weight: 600; }
-    .rc-v {
-      color: #ccc;
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-variant-numeric: tabular-nums;
-      text-align: right;
-    }
-    .rc-v b { color: #e0e0e0; font-weight: 700; }
-    .rc-dim { color: #666; font-size: 10px; }
-
-    /* Movement stat row inside the Movement tile — simple wrapping flex. */
-    .state-movement-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 16px 28px;
-    }
-    .state-movement-item {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      min-width: 80px;
-    }
-    .state-movement-item .mi-label {
-      font-size: 10px; font-weight: 700; letter-spacing: .12em;
-      text-transform: uppercase; color: #888;
-    }
-    .state-movement-item .mi-val {
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-size: 15px;
-      font-weight: 600;
-      color: #d0d0d0;
-      font-variant-numeric: tabular-nums;
-    }
-    .state-movement-item .mi-unit {
-      font-size: 11px;
-      color: #666;
-      font-weight: 400;
-      margin-left: 2px;
-    }
-    /* The red-italic annotation when movement is strain-reduced — same
-       visual language as the Combat tab cards for consistency. */
-    .state-movement-item .mi-penalty {
-      color: #e07878;
-      font-style: italic;
-      font-size: 13px;
-      font-weight: 600;
-      margin-left: 4px;
-    }
-    /* Clickable variant — toggle between "10 − 2.5" and "7.5" inline.
-       Uses the same .penalty-collapsed class convention as the Combat tab
-       Dice/Stat cards so the same togglePenaltyValueDisplay() handler
-       flips both views in sync. */
-    .state-movement-item.clickable {
-      cursor: pointer;
-      -webkit-user-select: none;
-         -moz-user-select: none;
-              user-select: none;
-      border-radius: 3px;
-      padding: 2px 6px;
-      margin: -2px -6px;
-      transition: background 0.1s;
-    }
-    .state-movement-item.clickable:hover { background: rgba(255,255,255,0.04); }
-    .state-movement-item .mi-expanded,
-    .state-movement-item .mi-effective { display: inline; }
-    .state-movement-item.penalty-collapsed .mi-expanded { display: none; }
-    .state-movement-item:not(.penalty-collapsed) .mi-effective { display: none; }
-    /* Collapsed value takes the same red italic as the reduction — signals
-       this number has been modified by Strain. */
-    .state-movement-item .mi-effective {
-      color: #e07878;
-      font-style: italic;
-      font-weight: 600;
-    }
-
-    /* ═══ ADVANTAGES / DISADVANTAGES ═══ */
-    /* Row wrapper: two blocks side-by-side on wide screens, stacked on narrow */
-    .ad-row { display: flex; gap: 14px; margin-top: 24px; align-items: flex-start; }
-    .ad-row > .ad-block { flex: 1; min-width: 0; margin-top: 0; }
-    @media (max-width: 900px) {
-      .ad-row { flex-direction: column; }
-    }
-    .ad-block { padding: 18px 20px; border: 1px solid #1a1a1a; border-radius: 6px; background: #0d0d0d; }
-    .ad-block-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid #1a1a1a; }
-    .ad-block-title { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #aaa; flex: 1; }
-    .ad-add-btn { background: #1a1a1a; border: 1px solid #333; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 500; padding: 5px 12px; border-radius: 4px; cursor: pointer; }
-    .ad-add-btn:hover { background: #222; border-color: #555; color: #ccc; }
-
-    .ad-empty { color: #444; font-size: 12px; font-style: italic; text-align: center; padding: 20px 0; }
-
-    .ad-cat-group { margin-bottom: 18px; }
-    .ad-cat-group:last-child { margin-bottom: 0; }
-    .ad-cat-title { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #666; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px dashed #1e1e1e; }
-    .ad-cards { display: flex; flex-direction: column; gap: 8px; }
-
-    /* Individual card */
-    .ad-card { background: #111; border: 1px solid #1f1f1f; border-radius: 4px; padding: 10px 12px; position: relative; }
-    .ad-card-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
-    .ad-card-xp { font-size: 13px; font-weight: 700; letter-spacing: .02em; padding: 2px 8px; border-radius: 3px; font-variant-numeric: tabular-nums; flex-shrink: 0; background: #1a1a1a; color: #ccc; border: 1px solid #2a2a2a; }
-    .ad-card-xp-adv { }
-    .ad-card-xp-dis { }
-    .ad-card-tier { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; padding: 2px 7px; border: 1px solid #2a2a2a; border-radius: 3px; flex-shrink: 0; }
-    .ad-card-name { font-size: 14px; font-weight: 600; color: #e0e0e0; flex: 1; min-width: 0; }
-    .ad-card-custom { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #888; padding: 2px 6px; border: 1px dashed #333; border-radius: 3px; flex-shrink: 0; }
-    .ad-card-delete { color: #444; font-size: 18px; cursor: pointer; padding: 0 4px; line-height: 1; flex-shrink: 0; user-select: none; }
-    .ad-card-delete:hover { color: #c84b4b; }
-    .ad-card-desc { font-size: 12px; font-style: italic; color: #9a9a9a; line-height: 1.5; margin-bottom: 4px; }
-    .ad-card-system { font-size: 12px; color: #bbb; line-height: 1.5; padding-top: 4px; border-top: 1px solid #1a1a1a; }
-
-    /* Add form */
-    .ad-add-form-container { margin-top: 12px; }
-    .ad-form { background: #0a0a0a; border: 1px solid #2a2a2a; border-radius: 5px; padding: 14px 16px; }
-    .ad-form-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-    .ad-form-title { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #ccc; flex: 1; }
-    .ad-form-mode-switch { font-size: 11px; color: #888; cursor: pointer; user-select: none; }
-    .ad-form-mode-switch:hover { color: #ccc; text-decoration: underline; }
-
-    .ad-form-search { width: 100%; background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 7px 10px; border-radius: 3px; outline: none; margin-bottom: 8px; }
-    .ad-form-search:focus { border-color: #444; }
-
-    .ad-form-select { width: 100%; background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px; border-radius: 3px; outline: none; margin-bottom: 10px; }
-    .ad-form-select:focus { border-color: #444; }
-    .ad-form-select option { padding: 3px 6px; }
-    .ad-form-select optgroup { color: #888; font-style: italic; font-weight: 600; }
-
-    .ad-form-preview { background: #111; border: 1px solid #1a1a1a; border-radius: 3px; padding: 10px 12px; margin-bottom: 10px; }
-
-    .ad-form-empty { color: #666; font-size: 12px; font-style: italic; padding: 14px 0; text-align: center; }
-
-    .ad-form-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
-    .ad-form-field label { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; }
-    .ad-form-field input, .ad-form-field select, .ad-form-field textarea {
-      background: #111; border: 1px solid #222; color: #e0e0e0;
-      font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 9px;
-      border-radius: 3px; outline: none; width: 100%;
-    }
-    .ad-form-field input:focus, .ad-form-field select:focus, .ad-form-field textarea:focus { border-color: #444; }
-    .ad-form-field textarea { resize: vertical; line-height: 1.4; font-family: 'Open Sans', sans-serif; }
-    .ad-form-row { display: flex; gap: 10px; }
-    .ad-form-row .ad-form-field { flex: 1; }
-
-    .ad-form-actions { display: flex; gap: 8px; margin-top: 6px; }
-    .ad-form-btn { background: #1a1a1a; border: 1px solid #333; color: #ccc; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 14px; border-radius: 4px; cursor: pointer; }
-    .ad-form-btn:hover:not(:disabled) { background: #222; border-color: #555; }
-    .ad-form-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .ad-form-btn-primary { background: #222; border-color: #555; color: #e0e0e0; }
-    .ad-form-btn-primary:hover:not(:disabled) { background: #2a2a2a; border-color: #777; }
-
-    /* ═══ SITUATIONS ═══ */
-    .sit-block { margin-top: 14px; padding: 18px 20px; border: 1px solid #1a1a1a; border-radius: 6px; background: #0d0d0d; }
-    .sit-block-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid #1a1a1a; }
-    .sit-block-title { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #aaa; flex: 1; }
-    .sit-add-btn { background: #1a1a1a; border: 1px solid #333; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 500; padding: 5px 12px; border-radius: 4px; cursor: pointer; }
-    .sit-add-btn:hover { background: #222; border-color: #555; color: #ccc; }
-
-    .sit-empty { color: #444; font-size: 12px; font-style: italic; text-align: center; padding: 20px 0; }
-
-    .sit-list { display: flex; flex-direction: column; gap: 10px; }
-
-    /* Individual card */
-    .sit-card { background: #111; border: 1px solid #1f1f1f; border-radius: 4px; padding: 12px 14px; position: relative; transition: border-color 0.15s; }
-    .sit-card-paused { background: #0e0e0e; border-color: #2a2a2a; }
-    .sit-card-expired { background: #0e0e0e; border-color: #333; }
-    .sit-card-hidden { border-style: dashed; opacity: 0.82; }
-    .sit-card-gm-face { border-color: #3a3a3a; background: #0e0e0e; }
-
-    .sit-card-top { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
-    .sit-clock { font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #ccc; background: #1a1a1a; border: 1px solid #2a2a2a; padding: 3px 10px; border-radius: 3px; font-variant-numeric: tabular-nums; flex-shrink: 0; }
-    .sit-card-expired .sit-clock { background: #1a1a1a; color: #999; text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 12px; font-style: italic; border-color: #333; }
-    .sit-card-paused:not(.sit-card-expired) .sit-clock { background: #1a1a1a; color: #888; }
-
-    .sit-badges { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
-    .sit-badge { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; padding: 2px 6px; border-radius: 2px; background: #1a1a1a; color: #888; border: 1px solid #2a2a2a; }
-    .sit-badge-hidden  { }
-    .sit-badge-paused  { }
-    .sit-badge-expired { }
-
-    .sit-card-name { font-size: 15px; font-weight: 600; color: #e8e8e8; margin-bottom: 4px; }
-    .sit-card-body { font-size: 12px; color: #bbb; line-height: 1.55; }
-    .sit-card-gm-face .sit-card-body { color: #ccc; }
-
-    .sit-assigned { font-size: 10px; color: #555; margin-top: 8px; font-style: italic; letter-spacing: .02em; }
-
-    /* GM controls */
-    .sit-gm-controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid #1e1e1e; }
-    .sit-ctrl-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 10px; border-radius: 3px; cursor: pointer; }
-    .sit-ctrl-btn:hover { background: #222; border-color: #3f3f3f; color: #ddd; }
-    .sit-ctrl-primary { background: #222; border-color: #555; color: #e0e0e0; }
-    .sit-ctrl-primary:hover { background: #2a2a2a; border-color: #777; }
-    .sit-ctrl-danger { color: #c87777; border-color: #3a1a1a; }
-    .sit-ctrl-danger:hover { background: #1f1313; border-color: #5a2a2a; color: #e09999; }
-    .sit-flip-btn { background: #1a1a1a; border-color: #3a3a3a; color: #ccc; }
-    .sit-flip-btn:hover { background: #222; border-color: #555; color: #e0e0e0; }
-
-    .sit-clock-ticker { display: flex; align-items: center; gap: 4px; }
-    .sit-tick-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 14px; font-weight: 700; width: 26px; height: 26px; padding: 0; border-radius: 3px; cursor: pointer; line-height: 1; }
-    .sit-tick-btn:hover { background: #222; border-color: #3f3f3f; color: #fff; }
-    .sit-clock-input { width: 56px; text-align: center; background: #0a0a0a; border: 1px solid #2a2a2a; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 13px; font-weight: 600; padding: 4px 6px; border-radius: 3px; outline: none; }
-    .sit-clock-input:focus { border-color: #444; }
-    .sit-clock-input:disabled { opacity: 0.4; cursor: not-allowed; }
-
-    /* Edit form (per-card and new) */
-    .sit-card-editing { background: #0c0c0c; border-color: #3a3a3a; }
-    .sit-edit-form { display: flex; flex-direction: column; gap: 10px; }
-    .sit-edit-header { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #ccc; margin-bottom: 4px; }
-    .sit-edit-row { display: flex; gap: 10px; flex-wrap: wrap; }
-    .sit-edit-field { display: flex; flex-direction: column; gap: 4px; }
-    .sit-edit-field label { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; }
-    .sit-edit-sublabel { color: #555; font-weight: 400; text-transform: none; letter-spacing: 0; }
-    .sit-edit-field input, .sit-edit-field textarea {
-      background: #111; border: 1px solid #222; color: #e0e0e0;
-      font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 9px;
-      border-radius: 3px; outline: none; width: 100%;
-    }
-    .sit-edit-field input:focus, .sit-edit-field textarea:focus { border-color: #444; }
-    .sit-edit-field textarea { resize: vertical; line-height: 1.5; font-family: 'Open Sans', sans-serif; min-height: 44px; }
-    .sit-edit-actions { display: flex; gap: 8px; margin-top: 4px; }
-
-    /* ═══ FOLDER TABS (Overview / Combat) ═══ */
-    /*
-     * The sheet is split into tabs. The tabs themselves stick out on the
-     * LEFT side of the body like manila-folder tabs. Visually, the active
-     * tab's right edge overlaps the body border so the tab "merges" with
-     * the panel, creating the folder look.
-     *
-     * On narrow viewports (<760px wide) the tabs flip to top-horizontal
-     * so mobile users don't lose screen space to side tabs.
-     */
-    .sheet-wrap { position: relative; display: flex; align-items: flex-start; gap: 0; margin-top: 8px; }
-    .sheet-tabs { display: flex; flex-direction: column; gap: 4px; padding-top: 16px; flex-shrink: 0; }
-    .sheet-tab {
-      /* Tab body: slight negative right-margin to push into the panel border */
-      background: #0a0a0a;
-      border: 1px solid #222;
-      border-right: none;
-      border-radius: 6px 0 0 6px;
-      padding: 14px 14px 14px 18px;
-      min-width: 48px;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: .14em;
-      text-transform: uppercase;
-      color: #666;
-      cursor: pointer;
-      user-select: none;
-      /* Vertical orientation: rotate text 180deg so it reads bottom-to-top
-         like a book spine. Flip the writing mode to avoid upside-down text. */
-      writing-mode: vertical-rl;
-      transform: rotate(180deg);
-      transition: background 0.12s, color 0.12s, border-color 0.12s;
-      margin-right: -1px;
-      position: relative;
-      z-index: 1;
-    }
-    .sheet-tab:hover { background: #111; color: #aaa; border-color: #333; }
-    .sheet-tab.active {
-      background: #0d0d0d;
-      border-color: #333;
-      color: #e0e0e0;
-      z-index: 3;  /* sit above the panel border so they visually merge */
-    }
-
-    .sheet-body {
-      flex: 1;
-      min-width: 0;
-      border: 1px solid #333;
-      border-radius: 0 6px 6px 6px;
-      background: #0a0a0a;
-      padding: 20px 24px;
-      position: relative;
-      z-index: 2;
-    }
-    .sheet-panel { display: none; }
-    .sheet-panel.active { display: block; }
-
-    @media (max-width: 760px) {
-      /* On narrow viewports, flip to horizontal top tabs — folder-edge effect
-         is cute but steals too much width on phones. */
-      .sheet-wrap { flex-direction: column; }
-      .sheet-tabs { flex-direction: row; padding-top: 0; padding-bottom: 0; margin-bottom: -1px; }
-      .sheet-tab {
-        writing-mode: horizontal-tb;
-        transform: none;
-        border-radius: 6px 6px 0 0;
-        border-right: 1px solid #222;
-        border-bottom: none;
-        margin-right: 0;
-        margin-bottom: -1px;
-        min-width: auto;
-        padding: 10px 18px;
-      }
-      .sheet-body { border-radius: 0 6px 6px 6px; }
-    }
-
-    /* ═══ COMBAT TAB ═══ */
-    .combat-empty { color: #444; font-size: 13px; font-style: italic; text-align: center; padding: 40px 0; }
-
-    .combat-section { border: 1px solid #1a1a1a; border-radius: 6px; padding: 16px 20px; margin-bottom: 14px; background: #0d0d0d; }
-    .combat-section:last-child { margin-bottom: 0; }
-    .combat-section-title { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #aaa; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #1a1a1a; }
-
-    /* Derived stat cards */
-    .ds-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
-    .ds-card { background: #111; border: 1px solid #1f1f1f; border-radius: 4px; padding: 10px 12px; position: relative; }
-    .ds-card-name { font-size: 10px; font-weight: 700; letter-spacing: .06em; color: #888; text-transform: uppercase; margin-bottom: 6px; padding-right: 36px; }
-    /* Roll-modifier badge — shown top-right. Read-only: signed static number
-       (e.g. +STRMOD) that's added to the TOTAL of a roll's dice sum. Hover
-       tooltip explains what it is. Not editable here — separate "dice mod"
-       system handles bonus DICE (see .ds-card-dicepill below). */
-    .ds-card-rollmod {
-      position: absolute;
-      top: 8px;
-      right: 10px;
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-size: 13px;
-      font-weight: 700;
-      font-variant-numeric: tabular-nums;
-      color: #d0c080;
-      background: #1a1810;
-      border: 1px solid #3a3420;
-      border-radius: 4px;
-      padding: 2px 8px;
-      line-height: 1.1;
-      letter-spacing: 0;
-      cursor: help;
-    }
-
-    /* Dice-mod pill — below the value. Clickable in edit mode. Shows net
-       bonus dice from abilities ("+2d"), or a prompt to add the first one.
-       When the card's panel is open, the pill is highlighted. */
-    .ds-card-dicepill {
-      display: inline-block;
-      margin: 4px 0 2px;
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-size: 11px;
-      font-weight: 700;
-      font-variant-numeric: tabular-nums;
-      letter-spacing: 0;
-      padding: 3px 10px;
-      border-radius: 10px;
-      cursor: pointer;
-      transition: all 0.15s;
-      background: transparent;
-      font-family: 'Consolas', 'Courier New', monospace;
-    }
-    .ds-card-dicepill.has-mods {
-      background: #10222a;
-      border: 1px solid #1d4050;
-      color: #6ec0e0;
-    }
-    .ds-card-dicepill.has-mods:hover { background: #163244; border-color: #2e5a70; color: #92d0ea; }
-    .ds-card-dicepill.empty {
-      background: transparent;
-      border: 1px dashed #2a2a2a;
-      color: #555;
-      font-weight: 500;
-      font-family: 'Open Sans', sans-serif;
-      font-size: 10px;
-      letter-spacing: .04em;
-    }
-    .ds-card-dicepill.empty:hover { border-style: solid; border-color: #555; color: #aaa; background: #141414; }
-    .ds-card-dicepill.open {
-      background: #1d4050 !important;
-      border-color: #4a7a95 !important;
-      color: #a8e0f0 !important;
-    }
-    .ds-card-dicepill.readonly { cursor: help; }
-
-    /* Panel summary — shows total dice the player actually rolls. */
-    .ds-dicemod-summary {
-      display: flex; align-items: baseline; gap: 6px;
-      padding: 6px 10px;
-      background: #10222a;
-      border: 1px solid #1d4050;
-      border-radius: 3px;
-      font-size: 11px;
-    }
-    .ds-dm-summary-label {
-      color: #888;
-      font-size: 9px;
-      text-transform: uppercase;
-      letter-spacing: .08em;
-      font-weight: 700;
-    }
-    .ds-dm-summary-value {
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-size: 14px;
-      font-weight: 700;
-      color: #92d0ea;
-      font-variant-numeric: tabular-nums;
-    }
-    .ds-dm-summary-breakdown {
-      color: #6a8a98;
-      font-size: 10px;
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-variant-numeric: tabular-nums;
-    }
-    .ds-dm-passive-note {
-      color: #4a7a4a;
-      font-style: italic;
-      font-family: 'Open Sans', sans-serif;
-    }
-
-    /* ─── PAIN / STRESS / STRAIN ─── */
-    /* Shared pill block — appears in both Health (Pain) and Sanity (Stress)
-       sections. Click the head row to expand an editor for percentile
-       modifiers that adjust the base %. Left-edge color reflects severity. */
-    .strain-block {
-      margin: 12px 0;
-    }
-    .strain-head {
-      display: flex;
-      align-items: baseline;
-      gap: 14px;
-      width: 100%;
-      padding: 10px 14px;
-      background: #0e0e0e;
-      border: 1px solid #222;
-      border-left: 3px solid #2a2a2a;
-      border-radius: 4px;
-      cursor: pointer;
-      text-align: left;
-      font-family: 'Open Sans', sans-serif;
-      transition: background 0.15s, border-color 0.15s;
-    }
-    button.strain-head:hover { background: #141414; }
-    .strain-head.strain-zero  { border-left-color: #2a3a2a; }
-    .strain-head.strain-light { border-left-color: #6a8a4a; }
-    .strain-head.strain-heavy { border-left-color: #c88a3a; }
-    .strain-head.strain-crit  { border-left-color: #c85a3a; }
-    .strain-head.open {
-      background: #141414;
-      border-bottom-left-radius: 0;
-      border-bottom-right-radius: 0;
-    }
-    .strain-label {
-      font-size: 11px; font-weight: 700; letter-spacing: .12em;
-      text-transform: uppercase; color: #aaa;
-      min-width: 60px;
-    }
-    .strain-percent {
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-size: 18px; font-weight: 700;
-      font-variant-numeric: tabular-nums;
-      color: #e0e0e0;
-    }
-    .strain-head.strain-zero  .strain-percent { color: #666; }
-    .strain-head.strain-light .strain-percent { color: #a0c080; }
-    .strain-head.strain-heavy .strain-percent { color: #d8a860; }
-    .strain-head.strain-crit  .strain-percent { color: #e07878; }
-    .strain-breakdown {
-      font-size: 10px;
-      color: #666;
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-variant-numeric: tabular-nums;
-      flex: 1;
-    }
-
-    /* Expanded panel below the head row */
-    .strain-panel {
-      padding: 10px 14px 12px;
-      background: #0a0a0a;
-      border: 1px solid #222;
-      border-top: none;
-      border-radius: 0 0 4px 4px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .strain-panel-base {
-      font-size: 11px;
-      color: #888;
-      font-style: italic;
-      padding: 4px 8px;
-      background: #111;
-      border-radius: 3px;
-    }
-    .strain-panel-total {
-      font-size: 11px;
-      color: #888;
-      font-weight: 600;
-      padding-top: 8px;
-      border-top: 1px solid #1a1a1a;
-    }
-    /* The '%' suffix after the value input in a strain mod row */
-    .mod-unit {
-      font-size: 11px;
-      color: #666;
-      font-family: 'Consolas', 'Courier New', monospace;
-      margin-left: -4px;
-    }
-
-    /* Expanded roll-modifier panel inside the card */
-    .ds-card.rollmod-open { border-color: #3a3018; }
-    .ds-rollmod-panel {
-      margin-top: 10px;
-      padding: 10px 0 2px;
-      border-top: 1px solid #2a2418;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      min-width: 0;
-    }
-    /* Force inputs and flex rows inside the narrow card panel to respect
-       the card's width. Without min-width:0, inputs refuse to shrink below
-       their default `size` attribute — which pushes the × button visually
-       past the card's right edge and lets the neighbor card cover it. */
-    .ds-rollmod-panel .mod-item { min-width: 0; }
-    .ds-rollmod-panel .mod-name-input { min-width: 0; flex: 1 1 0; }
-    .ds-rollmod-panel .mod-val-input { width: 48px; flex: 0 0 48px; }
-    .ds-rollmod-panel .mod-delete { flex: 0 0 auto; }
-    .ds-rollmod-base {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 10px;
-      color: #888;
-    }
-    .ds-rm-base-label {
-      text-transform: uppercase;
-      letter-spacing: .08em;
-      font-weight: 700;
-      color: #666;
-    }
-    .ds-rm-base-value {
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-size: 12px;
-      font-weight: 700;
-      color: #aaa;
-      font-variant-numeric: tabular-nums;
-    }
-    .ds-card-code { font-family: 'Consolas', 'Courier New', monospace; font-size: 9px; color: #555; font-weight: 400; letter-spacing: 0; }
-    .ds-card-formula { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #666; font-weight: 500; letter-spacing: 0; margin-bottom: 4px; }
-    .ds-card-value { font-size: 24px; font-weight: 700; color: #e8e8e8; font-variant-numeric: tabular-nums; line-height: 1.1; }
-    /* Strain value toggle — clickable wrapper around two alternate
-       displays: the full breakdown ("10 − 2.5") and the pre-computed
-       effective value ("7.5"). Card class 'strain-collapsed' flips which
-       one is visible. Cursor signals the value is clickable. */
-    .ds-card-penalty-toggle {
-      cursor: pointer;
-      -webkit-user-select: none;
-         -moz-user-select: none;
-              user-select: none;
-      border-radius: 3px;
-      padding: 0 2px;
-      margin: 0 -2px;
-      transition: background 0.1s;
-    }
-    .ds-card-penalty-toggle:hover { background: rgba(255,255,255,0.04); }
-    /* Both spans render inline by default; CSS below hides whichever one
-       is inactive for the current card state. */
-    .ds-card-penalty-expanded,
-    .ds-card-penalty-effective { display: inline; }
-    .ds-card.penalty-collapsed .ds-card-penalty-expanded { display: none; }
-    .ds-card:not(.penalty-collapsed) .ds-card-penalty-effective { display: none; }
-    /* The "− 2.5" part of the expanded view — red italic emphasis. */
-    .ds-card-penalty-reduction {
-      color: #e07878;
-      font-style: italic;
-      font-size: 17px;
-      font-weight: 600;
-      font-variant-numeric: tabular-nums;
-      margin-left: 2px;
-    }
-    /* The collapsed "7.5" effective value — tinted red italic so the
-       player sees it's a strain-reduced number, not the base stat. */
-    .ds-card-penalty-effective {
-      color: #e07878;
-      font-style: italic;
-      font-variant-numeric: tabular-nums;
-    }
-    .ds-card-error { color: #c87777; font-size: 14px; }
-    .ds-card-unit { font-size: 11px; font-weight: 500; color: #666; margin-left: 3px; }
-
-    /* Speed conversions — opt-in per stat def via showSpeedConversions.
-       Small ⇅ caret button next to the value toggles an inline panel
-       with time/unit conversions (3s, 6s, /min, /hr, mph, km/h, m/s).
-       The panel math uses the EFFECTIVE (post-Penalty) value — what the
-       character can actually move right now — not the base. */
-    .ds-card-conv-toggle {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 22px;
-      height: 22px;
-      margin-left: 6px;
-      padding: 0;
-      background: transparent;
-      border: 1px solid #2a2a2a;
-      border-radius: 3px;
-      color: #888;
-      font-family: 'Open Sans', sans-serif;
-      font-size: 14px;
-      line-height: 1;
-      cursor: pointer;
-      transition: all .1s;
-      vertical-align: middle;
-      -webkit-user-select: none;
-         -moz-user-select: none;
-              user-select: none;
-    }
-    .ds-card-conv-toggle:hover {
-      background: #1a1a1a;
-      border-color: #3a3a3a;
-      color: #ccc;
-    }
-    .ds-card-conv-toggle.open {
-      background: #1a1a1a;
-      color: #e0e0e0;
-      border-color: #3a3a3a;
-    }
-
-    .ds-card-conv-panel {
-      margin-top: 8px;
-      padding: 10px 12px;
-      background: #0a0a0a;
-      border: 1px solid #1a1a1a;
-      border-radius: 3px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    /* Context line — makes the Penalty linkage explicit. "Using effective
-       7.5 ft/sec (base 10 − 25% Penalty)". Dim by default; effective
-       value itself is brighter so it reads as the source of the math. */
-    .ds-conv-ctx {
-      font-size: 10px;
-      line-height: 1.3;
-      color: #777;
-    }
-    .ds-conv-ctx-k {
-      font-weight: 600;
-      letter-spacing: .05em;
-      text-transform: uppercase;
-      color: #666;
-      margin-right: 4px;
-    }
-    .ds-conv-ctx-v {
-      color: #e0b870;
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-weight: 600;
-      font-variant-numeric: tabular-nums;
-    }
-    .ds-conv-ctx-sub {
-      color: #555;
-      font-style: italic;
-    }
-    /* Picker row — dropdown on the left, "=" separator, result on the
-       right. On narrow widths it wraps to two lines; the equals stays
-       with the result for readability. */
-    .ds-conv-picker {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: baseline;
-      gap: 8px 10px;
-    }
-    .ds-conv-select {
-      background: #111;
-      border: 1px solid #2a2a2a;
-      color: #e0e0e0;
-      font-family: 'Open Sans', sans-serif;
-      font-size: 12px;
-      padding: 5px 8px;
-      border-radius: 3px;
-      outline: none;
-      flex: 1;
-      min-width: 180px;
-      cursor: pointer;
-    }
-    .ds-conv-select:focus {
-      border-color: #444;
-    }
-    .ds-conv-select option {
-      background: #111;
-      color: #e0e0e0;
-    }
-    .ds-conv-eq {
-      color: #555;
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-size: 14px;
-      font-weight: 600;
-    }
-    .ds-conv-result {
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-size: 16px;
-      font-weight: 700;
-      color: #e0e0e0;
-      font-variant-numeric: tabular-nums;
-      letter-spacing: .02em;
-    }
-    .ds-conv-u {
-      font-family: 'Open Sans', sans-serif;
-      font-size: 10px;
-      font-weight: 500;
-      color: #666;
-      margin-left: 2px;
-    }
-    .ds-conv-sub {
-      font-family: 'Open Sans', sans-serif;
-      font-size: 10px;
-      color: #888;
-      font-weight: 400;
-      margin-left: 4px;
-      font-variant-numeric: tabular-nums;
-    }
-    .ds-card-desc { font-size: 11px; color: #666; line-height: 1.5; margin-top: 6px; font-style: italic; }
-
-    /* Hit locations */
-    .combat-section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #1a1a1a; }
-    .combat-section-head .combat-section-title { margin-bottom: 0; padding-bottom: 0; border-bottom: none; flex: 1; }
-
-    /* Sub-section header inside a combat section (e.g. "Hit Locations" inside "Health").
-       Smaller than the main title; acts as a divider between the cards grid and
-       the locations list below it. */
-    .combat-subsection-head {
-      display: flex; align-items: center; gap: 10px;
-      margin: 16px 0 10px;
-      padding-bottom: 6px;
-      border-bottom: 1px solid #1a1a1a;
-    }
-    .combat-subsection-title {
-      font-size: 10px; font-weight: 700;
-      letter-spacing: .14em; text-transform: uppercase;
-      color: #666;
-      flex: 1;
-    }
-
-    /* Health cards at the top of the Health section. Slightly tighter grid
-       than the default derived-stats grid so HP/FORT/etc. read as a compact
-       overview strip above the detailed hit location rows. */
-    .health-cards { margin-bottom: 4px; }
-
-    .hl-edit-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #888; font-family: 'Open Sans', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 4px 12px; border-radius: 3px; cursor: pointer; }
-    .hl-edit-btn:hover { background: #222; border-color: #3f3f3f; color: #ccc; }
-    .hl-edit-btn.active { background: #2a2a2a; border-color: #555; color: #e0e0e0; }
-
-    .hl-list { display: flex; flex-direction: column; gap: 6px; }
-    .hl-row {
-      display: grid;
-      grid-template-columns: 110px 120px 1fr auto;
-      gap: 14px;
-      align-items: center;
-      background: #111;
-      border: 1px solid #1f1f1f;
-      border-radius: 4px;
-      padding: 10px 14px;
-    }
-    .hl-status-label {
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-      color: #555;
-      text-align: right;
-    }
-    .hl-name { font-size: 13px; font-weight: 600; color: #ccc; }
-    .hl-bar-wrap { display: flex; align-items: center; gap: 10px; }
-    .hl-bar-bg { flex: 1; height: 12px; background: #0a0a0a; border: 1px solid #222; border-radius: 2px; overflow: hidden; display: flex; gap: 1px; padding: 1px; }
-    /* Segmented HP bar — one <span> per HP point. Colors set inline per-segment
-       based on damage phase. Segments have a tiny gap so they read as distinct
-       blocks. flex:1 + min-width:0 lets tiny segments on high-HP bars still
-       render cleanly without overflowing. */
-    .hl-seg { flex: 1 1 0; min-width: 2px; height: 100%; border-radius: 1px; transition: background-color 0.2s ease; }
-    .hl-bar-label { font-size: 11px; font-weight: 600; color: #aaa; font-variant-numeric: tabular-nums; min-width: 56px; text-align: right; }
-    .hl-controls { display: flex; align-items: center; gap: 4px; }
-    .hl-dmg-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 14px; font-weight: 700; width: 26px; height: 26px; padding: 0; border-radius: 3px; cursor: pointer; line-height: 1; }
-    .hl-dmg-btn:hover { background: #222; border-color: #3f3f3f; color: #fff; }
-    .hl-dmg-input { width: 52px; text-align: center; background: #0a0a0a; border: 1px solid #2a2a2a; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; font-weight: 600; padding: 4px; border-radius: 3px; outline: none; }
-    .hl-dmg-input:focus { border-color: #444; }
-
-    /* Per-location damage state — color the status label and name */
-    .hl-status-disabled .hl-status-label       { color: #c89a5a; }
-    .hl-status-disabled .hl-name               { color: #c89a5a; }
-    .hl-status-destroyed .hl-status-label      { color: #c87777; }
-    .hl-status-destroyed .hl-name              { color: #c87777; }
-    .hl-status-destroyed                       { opacity: 0.92; }
-    .hl-status-definitelyDestroyed .hl-status-label { color: #8a3a3a; font-style: italic; }
-    .hl-status-definitelyDestroyed .hl-name    { color: #8a3a3a; text-decoration: line-through; }
-    .hl-status-definitelyDestroyed             { opacity: 0.72; }
-    .hl-row-error { background: #1a0d0d; border-color: #4a1a1a; }
-    .hl-error { color: #c87777; font-size: 11px; font-style: italic; grid-column: 2 / 5; }
-
-    /* Modifier editor panel (shown inline under a location or Body in edit mode) */
-    .hl-mod-panel { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 4px; padding: 10px 14px; margin: -2px 0 8px 14px; }
-    .mod-panel-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
-    .mod-base { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #888; }
-    .mod-panel-hint { font-size: 10px; color: #555; font-style: italic; }
-    .mod-empty { font-size: 11px; color: #444; font-style: italic; padding: 4px 0 8px; }
-    .mod-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
-    .mod-item { display: flex; align-items: center; gap: 8px; }
-    .mod-name-input { flex: 1; background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 8px; border-radius: 3px; outline: none; }
-    .mod-val-input { width: 54px; text-align: center; background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px; border-radius: 3px; outline: none; }
-    .mod-name-input:focus, .mod-val-input:focus { border-color: #444; }
-    .mod-delete { color: #555; cursor: pointer; font-size: 14px; padding: 0 4px; line-height: 1; user-select: none; }
-    .mod-delete:hover { color: #c84b4b; }
-    .mod-add-row { display: flex; align-items: center; gap: 8px; padding-top: 8px; border-top: 1px solid #1a1a1a; }
-    .mod-add-btn { background: #1a1a1a; border: 1px solid #333; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 5px 12px; border-radius: 3px; cursor: pointer; }
-    .mod-add-btn:hover { background: #222; border-color: #555; color: #ccc; }
-
-    /* Body pool block — segmented green→black bar + status */
-    .body-total { margin-top: 14px; padding: 12px 14px; background: #0e0e0e; border: 1px solid #222; border-radius: 4px; display: flex; flex-direction: column; gap: 10px; }
-    .body-top-row { display: flex; align-items: center; gap: 14px; }
-    .body-label { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #888; }
-    .body-value { font-size: 16px; font-weight: 700; color: #e0e0e0; font-variant-numeric: tabular-nums; flex: 1; }
-    .body-status { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-    .body-status-alive     { color: #7a9a7a; }
-    .body-status-impaired  { color: #c89a5a; }
-    .body-status-dead      { color: #c87777; }
-    .body-total-dead { border-color: #4a1a1a; background: #140808; }
-    .body-total-dead .body-value { color: #c87777; }
-    /* Body segmented bar: same visual treatment as hit-location bars, taller
-       since it carries more weight visually as the "overall status" indicator. */
-    .body-bar-bg { height: 14px; background: #0a0a0a; border: 1px solid #222; border-radius: 2px; overflow: hidden; display: flex; gap: 1px; padding: 1px; }
-
-    /* ─── SANITY ─── */
-    .san-section { }
-    .san-card-wrap { margin-bottom: 14px; }
-    .san-top-row {
-      display: flex; align-items: center; gap: 12px;
-      margin-bottom: 6px;
-    }
-    .san-label {
-      font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
-      color: #888;
-    }
-    .san-nums {
-      font-size: 18px; font-weight: 700; color: #e8e8e8;
-      font-variant-numeric: tabular-nums;
-    }
-    .san-slash { color: #555; }
-    .san-max { color: #888; font-weight: 500; font-size: 14px; }
-    .san-status-pill {
-      font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
-      padding: 3px 10px; border-radius: 10px;
-      margin-left: auto;
-      border: 1px solid;
-    }
-    .san-status-healthy  { color: #a0c0e0; background: #101826; border-color: #304058; }
-    .san-status-inShock  { color: #d6b860; background: #231f10; border-color: #5a4a22; }
-    .san-status-insane   { color: #e0a460; background: #251810; border-color: #6a4a22; }
-    .san-status-broken   { color: #ff4a4a; background: #2a0a0a; border-color: #7a1010; }
-
-    .san-penalty {
-      font-size: 11px; color: #a08060; font-style: italic;
-      margin-bottom: 10px;
-      padding: 6px 10px; background: #0a0a0a;
-      border-left: 2px solid #5a4a22;
-    }
-
-    /* Segmented bar */
-    .san-bar {
-      height: 14px; background: #0a0a0a;
-      border: 1px solid #222; border-radius: 2px;
-      overflow: hidden; display: flex; gap: 1px; padding: 1px;
-      margin-bottom: 10px;
-    }
-    .san-seg { flex: 1; min-width: 2px; border-radius: 1px; }
-
-    /* Controls row */
-    .san-controls {
-      display: flex; align-items: center; gap: 6px;
-    }
-    .san-dmg-input {
-      background: #111; border: 1px solid #222; color: #e0e0e0;
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-size: 13px; font-weight: 700;
-      padding: 5px 8px; border-radius: 3px; outline: none;
-      width: 70px; text-align: center;
-      font-variant-numeric: tabular-nums;
-    }
-    .san-dmg-input:focus { border-color: #444; }
-    .san-controls-ro .san-current-ro {
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-size: 13px; color: #aaa;
-      font-variant-numeric: tabular-nums;
-    }
-
-    /* Breaking Point reference panel */
-    .san-breakpoint {
-      margin-top: 14px;
-      padding: 12px 14px;
-      background: #140808;
-      border: 1px solid #4a1a1a;
-      border-radius: 4px;
-    }
-    .san-breakpoint-title {
-      font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
-      color: #ff6a6a;
-      margin-bottom: 6px;
-    }
-    .san-breakpoint-intro {
-      font-size: 11px; color: #b08080; font-style: italic;
-      margin-bottom: 10px; line-height: 1.5;
-    }
-    .san-breakpoint-table {
-      display: flex; flex-direction: column; gap: 3px;
-    }
-    .san-bp-row {
-      display: grid;
-      grid-template-columns: 50px 150px 1fr;
-      gap: 10px;
-      padding: 6px 10px;
-      font-size: 11px;
-      border-radius: 3px;
-      background: #0a0505;
-      border: 1px solid #1a0a0a;
-      align-items: baseline;
-    }
-    .san-bp-roll {
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-size: 13px; font-weight: 700;
-      text-align: center;
-      font-variant-numeric: tabular-nums;
-    }
-    .san-bp-name {
-      font-weight: 700; letter-spacing: .04em;
-    }
-    .san-bp-desc { color: #888; line-height: 1.4; }
-    .san-bp-tier-best    { border-color: #3a5a3a; }
-    .san-bp-tier-best    .san-bp-roll { color: #a6c89a; }
-    .san-bp-tier-best    .san-bp-name { color: #a6c89a; }
-    .san-bp-tier-good    { border-color: #4a5a2a; }
-    .san-bp-tier-good    .san-bp-roll { color: #c8c06a; }
-    .san-bp-tier-good    .san-bp-name { color: #c8c06a; }
-    .san-bp-tier-neutral { border-color: #3a3a3a; }
-    .san-bp-tier-neutral .san-bp-roll { color: #aaa; }
-    .san-bp-tier-neutral .san-bp-name { color: #aaa; }
-    .san-bp-tier-bad     { border-color: #5a3a1a; }
-    .san-bp-tier-bad     .san-bp-roll { color: #d89860; }
-    .san-bp-tier-bad     .san-bp-name { color: #d89860; }
-    .san-bp-tier-worst   { border-color: #6a2a2a; }
-    .san-bp-tier-worst   .san-bp-roll { color: #e07878; }
-    .san-bp-tier-worst   .san-bp-name { color: #e07878; }
-    .san-bp-tier-fatal   { border-color: #7a1010; background: #1a0505; }
-    .san-bp-tier-fatal   .san-bp-roll { color: #ff2a2a; }
-    .san-bp-tier-fatal   .san-bp-name { color: #ff2a2a; }
-
-    @media (max-width: 600px) {
-      .san-bp-row { grid-template-columns: 40px 1fr; }
-      .san-bp-desc { grid-column: 1 / -1; padding-left: 50px; }
-    }
-
-    /* Power Pool */
-    .pp-desc { font-size: 12px; color: #888; line-height: 1.6; margin-bottom: 12px; font-style: italic; }
-    .pp-row { display: flex; align-items: center; gap: 16px; padding: 12px 14px; background: #111; border: 1px solid #1f1f1f; border-radius: 4px; flex-wrap: wrap; }
-    .pp-label { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #888; }
-    .pp-value { font-size: 22px; font-weight: 700; color: #e8e8e8; font-variant-numeric: tabular-nums; }
-    .pp-controls { display: flex; align-items: center; gap: 4px; }
-    .pp-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 16px; font-weight: 700; width: 30px; height: 30px; padding: 0; border-radius: 3px; cursor: pointer; line-height: 1; }
-    .pp-btn:hover:not(:disabled) { background: #222; border-color: #3f3f3f; color: #fff; }
-    .pp-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-    .pp-input { width: 60px; text-align: center; background: #0a0a0a; border: 1px solid #2a2a2a; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 16px; font-weight: 700; padding: 4px; border-radius: 3px; outline: none; }
-    .pp-input:focus { border-color: #444; }
-    .pp-cost { display: flex; flex-direction: column; gap: 2px; margin-left: auto; text-align: right; }
-    .pp-cost-total { font-size: 12px; font-weight: 600; color: #aaa; font-variant-numeric: tabular-nums; }
-    .pp-cost-next { font-size: 11px; color: #666; font-variant-numeric: tabular-nums; }
-    .pp-rate-note { font-size: 11px; color: #555; margin-top: 8px; font-style: italic; }
-
-    /* POWER resource bar — a spendable energy pool. Segmented; up to 10 segs
-       that scale as max grows. Player picks the fill color; depletion is black.
-       Sits in its own block within the Power Pool section, just above the
-       purchase row. */
-    .power-block { background: #111; border: 1px solid #1f1f1f; border-radius: 4px; padding: 12px 14px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 8px; }
-    .power-top-row { display: flex; align-items: center; gap: 12px; }
-    .power-label { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #888; }
-    /* Editable-looking label input. Transparent by default so it reads as a
-       label; picks up a subtle border when focused to hint it's editable.
-       Width auto-sizes via field-sizing (modern browsers) or a max-width cap. */
-    .power-name-input {
-      font-family: 'Open Sans', sans-serif;
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: .12em;
-      text-transform: uppercase;
-      color: #888;
-      background: transparent;
-      border: 1px solid transparent;
-      padding: 3px 6px;
-      border-radius: 3px;
-      outline: none;
-      min-width: 50px;
-      max-width: 220px;
-      width: auto;
-      cursor: text;
-      transition: border-color 0.15s, background 0.15s;
-    }
-    .power-name-input:hover { border-color: #2a2a2a; background: #0a0a0a; }
-    .power-name-input:focus { border-color: #444; background: #0a0a0a; color: #ccc; }
-    .power-name-input::placeholder { color: #444; }
-    .power-value { font-size: 18px; font-weight: 700; color: #e8e8e8; font-variant-numeric: tabular-nums; }
-    .power-seghint { font-size: 10px; color: #555; font-style: italic; margin-left: auto; }
-
-    /* Color picker — tiny swatch that triggers the native color input */
-    .power-color-picker { position: relative; display: inline-flex; align-items: center; cursor: pointer; margin-left: auto; }
-    .power-color-picker:has(+ .power-seghint) { margin-left: 0; }
-    .power-seghint + .power-color-picker { margin-left: 0; }
-    .power-color-picker input[type="color"] { position: absolute; opacity: 0; width: 100%; height: 100%; cursor: pointer; top: 0; left: 0; }
-    .power-color-swatch { display: inline-block; width: 18px; height: 18px; border-radius: 3px; border: 1px solid #333; transition: transform 0.15s; }
-    .power-color-picker:hover .power-color-swatch { transform: scale(1.1); border-color: #555; }
-
-    /* The bar itself. Taller than HP bars since it's THE spotlight resource. */
-    .power-bar-bg { height: 18px; background: #0a0a0a; border: 1px solid #222; border-radius: 3px; display: flex; gap: 2px; padding: 2px; }
-    .power-seg { flex: 1 1 0; min-width: 4px; height: 100%; border-radius: 2px; transition: background-color 0.2s ease; }
-
-    /* Spend/refill controls; mirrors hit location damage controls */
-    .power-controls { display: flex; align-items: center; gap: 6px; }
-    .power-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 16px; font-weight: 700; width: 30px; height: 30px; padding: 0; border-radius: 3px; cursor: pointer; line-height: 1; }
-    .power-btn:hover:not(:disabled) { background: #222; border-color: #3f3f3f; color: #fff; }
-    .power-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-    .power-input { width: 60px; text-align: center; background: #0a0a0a; border: 1px solid #2a2a2a; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 14px; font-weight: 700; padding: 6px; border-radius: 3px; outline: none; }
-    .power-input:focus { border-color: #444; }
-    /* ─── INJURIES ─── */
-    .injury-section { margin-top: 14px; }
-    .injury-head {
-      display: flex; align-items: center; gap: 10px;
-      padding: 10px 14px;
-      background: #0e0e0e; border: 1px solid #222; border-radius: 4px;
-      cursor: pointer; user-select: none;
-      transition: background 0.15s;
-    }
-    .injury-head:hover { background: #141414; }
-    .injury-head-caret { color: #666; font-size: 10px; width: 10px; }
-    .injury-head-title { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #aaa; flex: 1; }
-    .injury-head-count { font-size: 11px; color: #666; font-variant-numeric: tabular-nums; }
-    .injury-add-btn { background: #1a1a1a; border: 1px solid #333; color: #ccc; font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 600; padding: 6px 14px; border-radius: 3px; cursor: pointer; white-space: nowrap; }
-    .injury-add-btn:hover { background: #222; border-color: #555; }
-    .injury-empty { font-size: 11px; color: #555; font-style: italic; padding: 8px 14px; }
-
-    /* Quick-add form: name + degree + Add on one row, location chips below */
-    .injury-quickadd-row {
-      display: grid;
-      grid-template-columns: 1fr 60px auto;
-      gap: 8px;
-      align-items: center;
-      padding: 10px 0 6px;
-    }
-    .qadd-inj-name, .qadd-inj-level {
-      background: #111; border: 1px solid #222; color: #e0e0e0;
-      font-family: 'Open Sans', sans-serif; font-size: 12px;
-      padding: 6px 10px; border-radius: 3px; outline: none;
-      box-sizing: border-box; width: 100%;
-    }
-    .qadd-inj-level { text-align: center; }
-    .qadd-inj-name:focus, .qadd-inj-level:focus { border-color: #444; }
-    @media (max-width: 600px) {
-      .injury-quickadd-row { grid-template-columns: 1fr; }
-    }
-
-    /* Location chip row for multi-select quickadd (AoE support) */
-    .injury-quickadd-locs {
-      display: flex; flex-wrap: wrap; gap: 6px;
-      align-items: center;
-      padding: 0 0 12px;
-    }
-    .injury-quickadd-locs-label {
-      font-size: 9px; font-weight: 700; letter-spacing: .1em;
-      text-transform: uppercase; color: #666;
-      margin-right: 4px;
-    }
-    .injury-loc-chip {
-      background: #0e0e0e;
-      border: 1px solid #2a2a2a;
-      color: #888;
-      font-family: 'Open Sans', sans-serif;
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: .04em;
-      padding: 4px 10px;
-      border-radius: 12px;
-      cursor: pointer;
-      transition: background 0.15s, color 0.15s, border-color 0.15s;
-      white-space: nowrap;
-    }
-    .injury-loc-chip:hover { background: #181818; color: #bbb; border-color: #3a3a3a; }
-    .injury-loc-chip.on {
-      background: #1e2a1e;
-      border-color: #4a6a4a;
-      color: #b8d0b0;
-    }
-    .injury-loc-chip.on:hover { background: #223322; }
-    .injury-loc-chip-all {
-      margin-right: 2px;
-      font-weight: 700;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-    }
-
-    /* "Hit Locations" divider text between the quick-add and the groups */
-    .injury-divider {
-      font-size: 9px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
-      color: #555;
-      padding: 10px 0 4px;
-      border-bottom: 1px solid #1a1a1a;
-      margin-bottom: 6px;
-    }
-
-    /* Location group (collapsible sub-header per hit location) */
-    .injury-loc-groups { display: flex; flex-direction: column; gap: 6px; }
-    .injury-loc-group { background: transparent; }
-    .injury-loc-head {
-      display: flex; align-items: center; gap: 8px;
-      padding: 6px 10px;
-      background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 3px;
-      cursor: pointer; user-select: none;
-      transition: background 0.15s;
-    }
-    .injury-loc-head:hover { background: #111; }
-    .injury-loc-caret { color: #666; font-size: 10px; width: 10px; }
-    .injury-loc-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #b8b8b8; flex: 1; }
-    .injury-loc-count { font-size: 10px; color: #666; font-variant-numeric: tabular-nums; }
-    .injury-loc-group.open .injury-loc-head { margin-bottom: 4px; }
-
-    /* Injury list (inside a location group) */
-    .injury-list { display: flex; flex-direction: column; gap: 4px; padding-left: 14px; border-left: 1px solid #1a1a1a; margin-left: 8px; }
-
-    .injury-card {
-      background: #0d0d0d; border: 1px solid #1f1f1f; border-radius: 4px;
-      overflow: hidden;
-    }
-    .injury-card-head {
-      display: flex; align-items: center; gap: 10px;
-      padding: 9px 12px;
-      cursor: pointer; user-select: none;
-      transition: background 0.15s;
-      flex-wrap: wrap;
-    }
-    .injury-card-head:hover { background: #141414; }
-    .injury-caret { color: #666; font-size: 10px; flex: 0 0 10px; }
-    .injury-name { font-size: 13px; font-weight: 600; color: #e0e0e0; min-width: 80px; flex: 1 1 120px; }
-
-    .injury-degree {
-      font-size: 11px; font-weight: 700;
-      color: #d8d8d8;
-      font-variant-numeric: tabular-nums;
-      letter-spacing: .02em;
-      white-space: nowrap;
-    }
-    .injury-base-note { color: #666; font-weight: 400; font-size: 10px; }
-
-    /* Inline +/- quickmod controls on the injury header. Small, unobtrusive.
-       Clicks stop propagating so they don't toggle the card's expand. */
-    .injury-quickmod { display: inline-flex; gap: 2px; }
-    .injury-qm-btn {
-      background: #141414; border: 1px solid #2a2a2a; color: #aaa;
-      font-family: 'Open Sans', sans-serif; font-size: 12px; font-weight: 700;
-      width: 22px; height: 22px; padding: 0;
-      border-radius: 3px; cursor: pointer; line-height: 1;
-    }
-    .injury-qm-btn:hover { background: #1f1f1f; border-color: #444; color: #fff; }
-    .injury-qm-btn:active { background: #2a2a2a; }
-
-    /* × delete button on the injury card header — far right, subtle by
-       default, red accent on hover so accidental clicks are visible. */
-    .injury-quickdelete {
-      margin-left: auto;
-      background: transparent;
-      border: 1px solid transparent;
-      color: #555;
-      font-family: 'Open Sans', sans-serif;
-      font-size: 16px;
-      font-weight: 700;
-      width: 22px; height: 22px; padding: 0;
-      border-radius: 3px; cursor: pointer; line-height: 1;
-      transition: background 0.15s, color 0.15s, border-color 0.15s;
-    }
-    .injury-quickdelete:hover {
-      background: #2a0a0a;
-      border-color: #6a2a2a;
-      color: #e06060;
-    }
-
-    /* Location shown as a visible pill on the injury card header */
-    .injury-loc-pill {
-      font-size: 10px; font-weight: 600; letter-spacing: .06em;
-      text-transform: uppercase;
-      color: #c8c8c8;
-      background: #1e1e24;
-      border: 1px solid #333;
-      padding: 3px 9px;
-      border-radius: 10px;
-      white-space: nowrap;
-    }
-
-    .injury-rate { font-size: 10px; color: #aaa; font-variant-numeric: tabular-nums; white-space: nowrap; }
-    .injury-norate { color: #556; font-style: italic; }
-
-    /* Trauma badges next to the injury header — colored by tier */
-    .injury-trauma-badges { display: inline-flex; flex-wrap: wrap; gap: 4px; }
-    .trauma-badge {
-      font-size: 10px; font-weight: 600;
-      padding: 2px 8px;
-      border-radius: 10px;
-      border: 1px solid;
-      white-space: nowrap;
-      cursor: help;
-    }
-    .trauma-badge.tt-minor      { background: #1a2218; border-color: #3a4a34; color: #a6c89a; }
-    .trauma-badge.tt-moderate   { background: #231f10; border-color: #5a4a22; color: #d6b860; }
-    .trauma-badge.tt-major      { background: #2a1e12; border-color: #604028; color: #d89860; }
-    .trauma-badge.tt-massive    { background: #2a1312; border-color: #6a2a28; color: #e07878; }
-    .trauma-badge.tt-monumental { background: #2a1010; border-color: #7a1a1a; color: #e55a5a; }
-    .trauma-badge.tt-mega       { background: #1e0808; border-color: #8a1010; color: #ff4a4a; }
-    .trauma-badge.tt-mythical   { background: #0a0505; border-color: #b00000; color: #ff2222; }
-
-    /* Severity color accents on the left edge of the injury card */
-    .injury-card.severity-none       { border-left: 3px solid #2a2a2a; }
-    .injury-card.severity-minor      { border-left: 3px solid #6a8a4a; }
-    .injury-card.severity-moderate   { border-left: 3px solid #b8a040; }
-    .injury-card.severity-major      { border-left: 3px solid #c88a3a; }
-    .injury-card.severity-massive    { border-left: 3px solid #c85a3a; }
-    .injury-card.severity-monumental { border-left: 3px solid #a82a2a; }
-    .injury-card.severity-mega       { border-left: 3px solid #7a1a1a; }
-    .injury-card.severity-mythical   { border-left: 3px solid #441010; }
-
-    .injury-card-body {
-      padding: 12px 14px;
-      background: #0a0a0a;
-      border-top: 1px solid #1a1a1a;
-      display: flex; flex-direction: column; gap: 12px;
-    }
-    .injury-fields { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; }
-    .injury-field { display: flex; flex-direction: column; gap: 4px; }
-    .injury-field span { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #666; }
-    .injury-field input, .injury-field select, .injury-field textarea,
-    .trauma-field input, .trauma-field textarea, .trauma-name-input, .trauma-tier-select {
-      background: #111; border: 1px solid #222; color: #e0e0e0;
-      font-family: 'Open Sans', sans-serif; font-size: 12px;
-      padding: 5px 8px; border-radius: 3px; outline: none;
-      width: 100%; box-sizing: border-box;
-    }
-    .injury-field input:focus, .injury-field select:focus, .injury-field textarea:focus,
-    .trauma-field input:focus, .trauma-field textarea:focus,
-    .trauma-name-input:focus, .trauma-tier-select:focus { border-color: #444; }
-    .injury-field textarea, .trauma-field textarea { resize: vertical; min-height: 36px; font-family: inherit; }
-    .injury-field-desc { margin-top: 4px; }
-    .injury-fields-ro { font-size: 12px; color: #aaa; display: flex; flex-direction: column; gap: 4px; }
-    .injury-fields-ro .ro-label { color: #666; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; margin-right: 6px; }
-    .injury-desc-ro { color: #888; font-style: italic; margin-top: 2px; }
-
-    .injury-rate-info { font-size: 11px; color: #888; font-style: italic; padding: 6px 10px; background: #111; border-radius: 3px; }
-
-    .injury-mod-block { background: #080808; border: 1px solid #1a1a1a; border-radius: 3px; padding: 10px 12px; }
-    .injury-mod-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
-    .injury-mod-title { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #aaa; }
-    .injury-mod-hint { font-size: 10px; color: #555; font-style: italic; }
-
-    /* Traumas (the full editor block in an expanded injury card) */
-    .trauma-block { background: #080808; border: 1px solid #1a1a1a; border-radius: 3px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
-    .trauma-head { display: flex; align-items: baseline; gap: 10px; }
-    .trauma-title { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #aaa; flex: 1; }
-    .trauma-count { font-size: 10px; color: #666; }
-    .trauma-empty { font-size: 11px; color: #555; font-style: italic; }
-    .trauma-list { display: flex; flex-direction: column; gap: 8px; }
-    .trauma-card { background: #0e0e0e; border: 1px solid #222; border-radius: 3px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
-    .trauma-card.editing { gap: 8px; }
-    .trauma-card-head { display: flex; align-items: center; gap: 8px; }
-    .trauma-tier { font-size: 10px; color: #888; font-weight: 600; letter-spacing: .04em; }
-    .trauma-name { font-size: 12px; font-weight: 600; color: #ccc; }
-    .trauma-tier-select { width: 110px; }
-    .trauma-name-input { flex: 1; }
-    .trauma-field { display: flex; flex-direction: column; gap: 3px; }
-    .trauma-field span { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #666; }
-    .trauma-desc { font-size: 11px; color: #888; font-style: italic; }
-    .trauma-system { font-size: 11px; color: #b8a068; }
-    .trauma-sys-label { color: #666; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; font-size: 9px; margin-right: 4px; }
-    .trauma-add-row { display: flex; }
-    .trauma-add-btn { background: #111; border: 1px solid #2a2a2a; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 10px; padding: 5px 12px; border-radius: 3px; cursor: pointer; }
-    .trauma-add-btn:hover { background: #1a1a1a; border-color: #444; color: #ccc; }
-
-    .injury-delete-row { display: flex; justify-content: flex-end; padding-top: 4px; border-top: 1px solid #1a1a1a; }
-    .injury-delete-btn { background: transparent; border: 1px solid #3a1a1a; color: #8a3a3a; font-family: 'Open Sans', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 4px 10px; border-radius: 3px; cursor: pointer; }
-    .injury-delete-btn:hover { background: #2a0a0a; border-color: #6a2a2a; color: #c85a5a; }
-
-    /* ═══ INVENTORY TAB ═══
-     * Body slots render as collapsible sections. Containers inside a
-     * slot render as cards that expand to show their contents. Nested
-     * containers indent 16px per depth level.
-     * Overflow state (too much volume, dimensions exceed container)
-     * surfaces as a red pill with tooltip detail — GM adjudicates.
-     */
-    .inv-empty { font-size: 13px; color: #666; padding: 24px; text-align: center; }
-
-    /* Slot section container */
-    .inv-slot-section { border: 1px solid #1a1a1a; border-radius: 4px; margin-bottom: 8px; background: #0d0d0d; overflow: hidden; }
-    .inv-slot-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; user-select: none; background: #111; border-bottom: 1px solid #1a1a1a; }
-    .inv-slot-section.collapsed .inv-slot-head { border-bottom: none; }
-    .inv-slot-head:hover { background: #161616; }
-    .inv-slot-caret { font-size: 10px; color: #666; width: 10px; display: inline-block; }
-    .inv-slot-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #ccc; flex: 1; }
-    .inv-slot-meta { font-size: 11px; color: #666; font-variant-numeric: tabular-nums; }
-    .inv-slot-stowed { border-color: #222; background: #0a0a0a; }
-    .inv-slot-stowed .inv-slot-head { background: #0e0e0e; }
-    .inv-slot-body { padding: 8px 10px; }
-    .inv-empty-row { font-size: 11px; color: #555; font-style: italic; padding: 6px 8px; }
-    .inv-slot-actions { display: flex; gap: 6px; padding: 6px 8px 2px; }
-
-    /* Entry rows (container or item) */
-    .inv-entry { margin-bottom: 3px; }
-    .inv-entry-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: #111; border: 1px solid #1a1a1a; border-radius: 3px; cursor: pointer; user-select: none; transition: border-color .1s, background .1s; }
-    .inv-entry-head:hover { background: #161616; border-color: #2a2a2a; }
-    .inv-entry.open > .inv-entry-head { border-color: #3a3a3a; background: #151515; }
-    .inv-entry-head-item { cursor: default; }
-    .inv-entry-head-item:hover { background: #111; border-color: #1a1a1a; }
-    .inv-entry-caret { font-size: 10px; color: #666; width: 10px; display: inline-block; }
-    .inv-entry-icon { font-size: 11px; color: #666; width: 12px; text-align: center; }
-    .inv-entry-name { font-size: 12px; font-weight: 500; color: #e0e0e0; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .inv-entry-dims { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #777; font-variant-numeric: tabular-nums; white-space: nowrap; }
-    .inv-entry-capacity { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #888; font-variant-numeric: tabular-nums; white-space: nowrap; cursor: help; }
-    .inv-entry-weight { font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; color: #aaa; font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 500; }
-    .inv-entry-qty { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
-    .inv-qty-val { font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; color: #aaa; font-variant-numeric: tabular-nums; min-width: 24px; text-align: center; }
-    .inv-qty-btn { background: #0a0a0a; border: 1px solid #222; color: #888; font-family: 'Open Sans', sans-serif; font-size: 12px; width: 20px; height: 20px; border-radius: 3px; cursor: pointer; line-height: 1; padding: 0; }
-    .inv-qty-btn:hover:not(:disabled) { background: #1a1a1a; border-color: #444; color: #ccc; }
-    .inv-qty-btn:disabled { opacity: 0.3; cursor: default; }
-
-    /* Overflow pill — red warning */
-    .inv-overflow-pill { background: #2a0d0d; border: 1px solid #6a2020; color: #d88; font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 2px 8px; border-radius: 3px; white-space: nowrap; cursor: help; }
-
-    /* Remove button on each row */
-    .inv-row-btn { background: transparent; border: none; color: #555; font-size: 16px; cursor: pointer; padding: 0 6px; line-height: 1; }
-    .inv-row-btn:hover { color: #c84b4b; }
-    .inv-row-btn-danger:hover { color: #c84b4b; }
-    .inv-row-btn-edit { font-size: 13px; color: #666; }
-    .inv-row-btn-edit:hover { color: #e0b060; }
-
-    /* ═══ INLINE ENTRY EDIT PANEL ═══
-     * Expands inline below a container/item row when the ✎ is clicked.
-     * Reuses the same field + dims-row layout as the custom-def form in
-     * the picker modal. Tinted amber-ish so the editing state stands
-     * out visually from normal browse. */
-    .inv-entry.editing { background: #141004; border: 1px solid #3a2c10; border-radius: 4px; }
-    .inv-edit-panel { background: #0d0a02; border: 1px solid #2a2010; border-radius: 4px; padding: 12px 14px; margin: 4px 16px 10px; }
-    .inv-edit-panel-title { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #caa060; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #2a2010; }
-    .inv-edit-panel-hint { font-weight: 400; letter-spacing: 0; text-transform: none; color: #776040; margin-left: 6px; font-style: italic; }
-    .inv-edit-panel .inv-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
-    .inv-edit-panel .inv-field label { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; }
-    .inv-edit-panel .inv-field input, .inv-edit-panel .inv-field textarea {
-      background: #0a0a0a; border: 1px solid #222; color: #e0e0e0;
-      font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 9px;
-      border-radius: 3px; outline: none; width: 100%;
-    }
-    .inv-edit-panel .inv-field input:focus, .inv-edit-panel .inv-field textarea:focus { border-color: #5a4820; }
-    .inv-edit-panel .inv-field textarea { resize: vertical; min-height: 44px; line-height: 1.5; }
-    .inv-edit-panel .inv-dims-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-    .inv-edit-panel .inv-dims-row input { text-align: center; font-family: 'Consolas', 'Courier New', monospace; }
-    .inv-edit-panel .inv-pair-row { display: grid; grid-template-columns: 140px 1fr; gap: 14px; }
-    .inv-edit-panel .inv-container-block { border: 1px dashed #2a2010; border-radius: 4px; padding: 10px 12px; margin-top: 6px; background: #0a0802; }
-    .inv-edit-panel .inv-container-block-title { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #caa060; margin-bottom: 8px; }
-    .inv-edit-panel-actions { display: flex; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #2a2010; }
-
-    /* Entry body (container contents) */
-    .inv-entry-body { padding: 4px 0 4px 8px; border-left: 2px solid #1a1a1a; margin-left: 14px; margin-top: 2px; }
-    .inv-entry-actions { display: flex; gap: 6px; padding: 4px 0; }
-
-    /* Entry states */
-    .inv-entry-container > .inv-entry-head { border-color: #222; }
-    .inv-entry-item > .inv-entry-head { background: #0d0d0d; }
-    .inv-entry-missing { background: #1a0d0d; border: 1px dashed #6a2020; border-radius: 3px; padding: 6px 10px; display: flex; align-items: center; gap: 10px; }
-    .inv-entry-missing .inv-entry-name { color: #c88; font-style: italic; font-size: 11px; }
-
-    /* Add buttons */
-    .inv-add-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #ccc; font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 500; padding: 5px 12px; border-radius: 3px; cursor: pointer; }
-    .inv-add-btn:hover { background: #222; border-color: #3a3a3a; }
-    .inv-add-btn-ghost { background: transparent; color: #888; }
-    .inv-add-btn-ghost:hover { color: #ccc; background: #151515; }
-    .inv-add-btn-sm { font-size: 10px; padding: 3px 10px; }
-    /* Promote-to-catalogue button — amber to match the edit panel theme
-     * and visually distinguish from the normal Save. Pushed to the
-     * right of the actions row via margin-left:auto so it visually
-     * reads as a secondary/separate action from Save & Cancel. */
-    .inv-add-btn-promote { background: #1a1406; border-color: #2a2010; color: #caa060; margin-left: auto; }
-    .inv-add-btn-promote:hover { background: #241a08; border-color: #3a2c10; color: #e0b870; }
-
-    /* Modal for Add Container / Add Item */
-    .inv-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 20px; }
-    .inv-modal { background: #111; border: 1px solid #2a2a2a; border-radius: 6px; max-width: 600px; width: 100%; max-height: 80vh; display: flex; flex-direction: column; overflow: hidden; }
-    .inv-modal-head { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid #1a1a1a; background: #161616; }
-    .inv-modal-title { font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #ccc; flex: 1; }
-    .inv-modal-sub { font-size: 11px; color: #888; }
-    .inv-modal-close { background: transparent; border: none; color: #666; font-size: 22px; cursor: pointer; line-height: 1; padding: 0 4px; }
-    .inv-modal-close:hover { color: #ccc; }
-    .inv-modal-body { padding: 8px; overflow-y: auto; flex: 1; }
-    .inv-modal-empty { font-size: 12px; color: #666; padding: 24px; text-align: center; font-style: italic; }
-    .inv-modal-opt { padding: 10px 14px; border: 1px solid transparent; border-radius: 3px; cursor: pointer; margin-bottom: 3px; transition: all .1s; }
-    .inv-modal-opt:hover { background: #1a1a1a; border-color: #333; }
-    .inv-modal-opt-name { font-size: 13px; font-weight: 500; color: #e0e0e0; margin-bottom: 3px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .inv-modal-cat { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #777; background: #0a0a0a; border: 1px solid #222; padding: 1px 6px; border-radius: 2px; }
-    .inv-modal-dual { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #8a8; background: #0a1a0a; border: 1px solid #2a4a2a; padding: 1px 6px; border-radius: 2px; }
-    .inv-modal-opt-meta { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #888; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
-    .inv-modal-opt-desc { font-size: 11px; color: #888; line-height: 1.5; }
-
-    /* Picker modal section labels — split options into Personal
-     * Catalogue (character-scoped) and Ruleset Catalogue (shared).
-     * Small muted headers above each group. First one has no top
-     * border; subsequent ones do to separate sections visually. */
-    .inv-modal-section-label { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #888; padding: 10px 14px 6px; border-top: 1px solid #1a1a1a; margin-top: 4px; display: flex; align-items: center; gap: 8px; cursor: help; }
-    .inv-modal-section-label:first-child { border-top: none; margin-top: 0; padding-top: 4px; }
-    .inv-modal-section-count { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #666; font-weight: 500; letter-spacing: 0; }
-
-    /* ── Groups layer ──
-     * On-Person wraps the body-slot sections. Custom groups (Stowed,
-     * Vehicle, Stash, etc.) live as siblings. Each group is a top-level
-     * collapsible with a header, contents, and action buttons. */
-    .inv-group { margin-bottom: 10px; border: 1px solid #1a1a1a; border-radius: 5px; background: #0a0a0a; overflow: hidden; }
-    .inv-group-onperson { border-color: #2a2a2a; }
-    .inv-group-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; user-select: none; background: #131313; border-bottom: 1px solid #1a1a1a; }
-    .inv-group.collapsed .inv-group-head { border-bottom: none; }
-    .inv-group-head:hover { background: #181818; }
-    .inv-group-caret { font-size: 11px; color: #888; width: 10px; display: inline-block; }
-    .inv-group-label { font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #e0e0e0; flex: 1; }
-    .inv-group-onperson .inv-group-label { color: #cfe3f6; }
-    .inv-group-meta { font-size: 11px; color: #888; font-variant-numeric: tabular-nums; margin-right: 6px; }
-    .inv-group-btn { background: transparent; border: 1px solid #222; color: #777; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 2px 8px; border-radius: 3px; cursor: pointer; }
-    .inv-group-btn:hover { color: #ccc; border-color: #444; }
-    .inv-group-btn-danger:hover { color: #c84b4b; border-color: #6a2020; }
-    .inv-group-body { padding: 10px 12px 12px; }
-    .inv-group-desc { font-size: 12px; color: #999; line-height: 1.55; padding: 6px 10px 10px; margin: -4px 0 8px; border-bottom: 1px solid #1a1a1a; white-space: pre-wrap; font-style: italic; }
-    .inv-group-actions { display: flex; gap: 6px; padding: 6px 2px 2px; flex-wrap: wrap; }
-
-    /* Subgroups — nested groups living inside another group's contents.
-     * Slightly tinted background, thinner header, smaller label. Indent
-     * is applied inline via style="margin-left: Npx". */
-    .inv-group-sub { background: #0d0d0d; margin-bottom: 6px; border-color: #1f1f1f; }
-    .inv-group-sub > .inv-group-head { padding: 6px 12px; background: #0f0f0f; }
-    .inv-group-sub > .inv-group-head:hover { background: #141414; }
-    .inv-group-sub > .inv-group-head .inv-group-label { font-size: 11px; letter-spacing: .08em; color: #c8c8c8; }
-    .inv-group-sub > .inv-group-body { padding: 8px 10px 10px; }
-
-    /* Add-group button at the bottom of the tab */
-    .inv-add-group-row { display: flex; align-items: center; gap: 12px; margin: 16px 0 4px; padding: 8px 4px; }
-    .inv-add-group-hint { font-size: 11px; color: #666; font-style: italic; }
-
-    /* "custom" pill — shown on character-local defs in the picker modal */
-    .inv-modal-custom { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #c8a; background: #1a0a1a; border: 1px solid #3a2a3a; padding: 1px 6px; border-radius: 2px; }
-
-    /* Picker row: flex header so the × delete button sits on the right */
-    .inv-modal-opt-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 3px; }
-    .inv-modal-opt-delete { background: transparent; border: 1px solid #3a1a1a; color: #8a3a3a; font-family: 'Open Sans', sans-serif; font-size: 14px; width: 22px; height: 22px; border-radius: 3px; cursor: pointer; padding: 0; line-height: 1; flex-shrink: 0; }
-    .inv-modal-opt-delete:hover { background: #2a0a0a; border-color: #6a2a2a; color: #c85a5a; }
-
-    /* Item description panel — shown when the row is clicked open */
-    .inv-entry-name-clickable { cursor: pointer; }
-    .inv-entry-name-clickable:hover { color: #fff; }
-    .inv-entry-info-caret { font-size: 9px; color: #666; margin-left: 6px; }
-    .inv-entry-info { background: #0d0d0d; border: 1px solid #1a1a1a; border-top: none; border-radius: 0 0 3px 3px; padding: 8px 12px; margin-top: -1px; font-size: 12px; color: #bbb; line-height: 1.55; }
-    .inv-entry-info-desc { white-space: pre-wrap; }
-    .inv-entry-info-notes { margin-top: 6px; padding-top: 6px; border-top: 1px solid #1a1a1a; color: #999; white-space: pre-wrap; }
-    .inv-entry-info-label { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #777; margin-right: 4px; }
-
-    /* Custom-def form inside the modal — same field shape as edit-ruleset */
-    .inv-custom-form .inv-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
-    .inv-custom-form .inv-field label { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; }
-    .inv-custom-form .inv-field input, .inv-custom-form .inv-field textarea {
-      background: #0a0a0a; border: 1px solid #222; color: #e0e0e0;
-      font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 10px;
-      border-radius: 3px; outline: none; width: 100%;
-    }
-    .inv-custom-form .inv-field input:focus, .inv-custom-form .inv-field textarea:focus { border-color: #444; }
-    .inv-custom-form .inv-field textarea { resize: vertical; min-height: 44px; line-height: 1.5; }
-    .inv-custom-form .inv-dims-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-    .inv-custom-form .inv-dims-row input { text-align: center; font-family: 'Consolas', 'Courier New', monospace; }
-    .inv-custom-form .inv-toggle-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-    .inv-custom-form .inv-toggle { display: inline-block; cursor: pointer; user-select: none; padding: 5px 12px; border: 1px solid #222; border-radius: 3px; background: #0a0a0a; color: #555; font-size: 11px; font-weight: 500; }
-    .inv-custom-form .inv-toggle:hover { border-color: #444; color: #888; }
-    .inv-custom-form .inv-toggle.on { background: #1f2c3a; border-color: #3a5878; color: #cfe3f6; }
-    .inv-custom-form .inv-toggle-hint { font-size: 11px; color: #666; }
-    .inv-custom-form .inv-container-block { border: 1px dashed #2a2a2a; border-radius: 4px; padding: 10px 12px; margin-top: 6px; background: #0c0c0c; }
-    .inv-custom-form .inv-container-block-title { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #888; margin-bottom: 8px; }
-    .inv-modal-actions { display: flex; gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #1a1a1a; }
-    .inv-modal-custom-row { display: flex; align-items: center; gap: 10px; padding: 10px 4px 2px; margin-top: 8px; border-top: 1px solid #1a1a1a; }
-    .inv-modal-custom-hint { font-size: 10px; color: #666; font-style: italic; }
-
-    /* ═══ INVENTORY / CATALOG VIEW TOGGLE ═══
-     * Top-right header bar inside the Inventory tab. Two buttons, only
-     * one active. Same visual language as the sheet's top-level tabs so
-     * it reads as "sub-tab". Manage Catalogue button sits on the right. */
-    .inv-view-toggle { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid #1a1a1a; flex-wrap: wrap; }
-    .inv-view-toggle-left { display: flex; gap: 4px; }
-    .inv-view-btn { background: transparent; border: 1px solid #1a1a1a; color: #888; font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 500; padding: 6px 16px; border-radius: 3px; cursor: pointer; letter-spacing: .04em; text-transform: uppercase; }
-    .inv-view-btn:hover { background: #111; color: #ccc; border-color: #2a2a2a; }
-    .inv-view-btn.on { background: #1a1a1a; color: #e0e0e0; border-color: #3a3a3a; cursor: default; }
-
-    .inv-manage-btn { background: transparent; border: 1px solid #2a2010; color: #caa060; font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 500; padding: 6px 14px; border-radius: 3px; cursor: pointer; letter-spacing: .04em; transition: all .1s; }
-    .inv-manage-btn:hover { background: #1a1406; border-color: #3a2c10; color: #e0b870; }
-
-    /* ═══ MANAGE PERSONAL CATALOGUE MODAL ═══
-     * Wider than the picker modals since cards have full edit forms.
-     * Cards are collapsible with a head row (name + dims + weight +
-     * delete) and an expanded body (full edit form). */
-    .inv-modal-manage { max-width: 720px; }
-    .inv-manage-card { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 4px; margin-bottom: 6px; overflow: hidden; transition: border-color .1s; }
-    .inv-manage-card:hover { border-color: #2a2a2a; }
-    .inv-manage-card.open { border-color: #3a2c10; background: #0d0a02; }
-    .inv-manage-card-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; user-select: none; }
-    .inv-manage-card.open .inv-manage-card-head { border-bottom: 1px solid #2a2010; }
-    .inv-manage-card-caret { font-size: 10px; color: #888; width: 10px; display: inline-block; }
-    .inv-manage-card-name { flex: 1; font-size: 13px; font-weight: 500; color: #e0e0e0; display: flex; align-items: center; gap: 8px; }
-    .inv-manage-card-name.empty { color: #555; font-style: italic; }
-    .inv-manage-card-dims { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #777; font-variant-numeric: tabular-nums; }
-    .inv-manage-card-weight { font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; color: #aaa; font-variant-numeric: tabular-nums; font-weight: 500; }
-
-    .inv-manage-card-body { padding: 12px 14px; background: #0a0802; }
-    .inv-manage-card-body .inv-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
-    .inv-manage-card-body .inv-field label { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; }
-    .inv-manage-card-body .inv-field input, .inv-manage-card-body .inv-field textarea {
-      background: #0a0a0a; border: 1px solid #222; color: #e0e0e0;
-      font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 9px;
-      border-radius: 3px; outline: none; width: 100%;
-    }
-    .inv-manage-card-body .inv-field input:focus, .inv-manage-card-body .inv-field textarea:focus { border-color: #5a4820; }
-    .inv-manage-card-body .inv-field textarea { resize: vertical; min-height: 44px; line-height: 1.5; }
-    .inv-manage-card-body .inv-dims-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-    .inv-manage-card-body .inv-dims-row input { text-align: center; font-family: 'Consolas', 'Courier New', monospace; }
-    .inv-manage-card-body .inv-pair-row { display: grid; grid-template-columns: 140px 1fr; gap: 14px; }
-    .inv-manage-card-body .inv-container-block { border: 1px dashed #2a2010; border-radius: 4px; padding: 10px 12px; margin-top: 6px; background: #050401; }
-    .inv-manage-card-body .inv-container-block-title { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #caa060; margin-bottom: 8px; }
-    .inv-manage-card-body .inv-toggle-row { display: flex; align-items: center; gap: 10px; margin: 4px 0 10px; }
-    .inv-manage-card-body .inv-toggle { background: #0a0a0a; border: 1px solid #222; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 10px; border-radius: 3px; cursor: pointer; user-select: none; }
-    .inv-manage-card-body .inv-toggle.on { background: #1a2010; border-color: #3a4820; color: #cfe3a6; }
-    .inv-manage-card-body .inv-toggle-hint { font-size: 10px; color: #666; font-style: italic; }
-
-    .inv-manage-add-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 4px 4px; margin-top: 14px; border-top: 1px solid #1a1a1a; }
-    .inv-manage-add-hint { font-size: 10px; color: #666; font-style: italic; flex: 1; min-width: 180px; }
-
-    /* Empty state shown when the personal catalogue has no defs yet. */
-    .inv-cat-mgr-empty { font-size: 12px; color: #888; line-height: 1.55; padding: 24px 20px; text-align: center; font-style: italic; }
-
-    /* Section labels inside the manager — "Containers" and "Items"
-     * split the rows into groups so the modal doesn't read as a
-     * single undifferentiated pile. Count pill on the right. */
-    .inv-cat-mgr-section-label { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #caa060; padding: 12px 4px 6px; margin-top: 6px; border-top: 1px solid #2a2010; display: flex; align-items: center; gap: 8px; }
-    .inv-cat-mgr-section-label:first-child { border-top: none; margin-top: 0; padding-top: 4px; }
-    .inv-cat-mgr-section-count { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #776040; font-weight: 500; letter-spacing: 0; }
-
-    /* Pills in the row head — container (green) and "on sheet"
-     * reference counter (muted amber). */
-    .inv-cat-mgr-container-pill { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #8a8; background: #0a1a0a; border: 1px solid #2a4a2a; padding: 1px 6px; border-radius: 2px; flex-shrink: 0; }
-    .inv-cat-mgr-ref-pill { font-size: 9px; font-weight: 500; color: #caa060; background: #0d0a02; border: 1px solid #2a2010; padding: 1px 6px; border-radius: 2px; flex-shrink: 0; cursor: help; font-family: 'Consolas', 'Courier New', monospace; letter-spacing: 0; text-transform: none; }
-
-    /* Inline "new def" form rendered at the top of the manager when
-     * the user clicks + New Container / + New Item. Similar visual
-     * language to the card-body editor but with a distinct header
-     * so the user knows this is a create flow, not an edit. */
-    .inv-cat-mgr-new-form { background: #0d0a02; border: 1px solid #3a2c10; border-radius: 4px; padding: 14px; margin-bottom: 14px; }
-    .inv-cat-mgr-new-title { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #caa060; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #2a2010; }
-    .inv-cat-mgr-new-form .inv-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
-    .inv-cat-mgr-new-form .inv-field label { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; }
-    .inv-cat-mgr-new-form .inv-field input, .inv-cat-mgr-new-form .inv-field textarea {
-      background: #0a0a0a; border: 1px solid #222; color: #e0e0e0;
-      font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 9px;
-      border-radius: 3px; outline: none; width: 100%;
-    }
-    .inv-cat-mgr-new-form .inv-field input:focus, .inv-cat-mgr-new-form .inv-field textarea:focus { border-color: #5a4820; }
-    .inv-cat-mgr-new-form .inv-field textarea { resize: vertical; min-height: 44px; line-height: 1.5; }
-    .inv-cat-mgr-new-form .inv-dims-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-    .inv-cat-mgr-new-form .inv-dims-row input { text-align: center; font-family: 'Consolas', 'Courier New', monospace; }
-    .inv-cat-mgr-new-form .inv-pair-row { display: grid; grid-template-columns: 140px 1fr; gap: 14px; }
-    .inv-cat-mgr-new-form .inv-container-block { border: 1px dashed #2a2010; border-radius: 4px; padding: 10px 12px; margin-top: 6px; background: #050401; }
-    .inv-cat-mgr-new-form .inv-container-block-title { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #caa060; margin-bottom: 8px; }
-    .inv-cat-mgr-new-form .inv-toggle-row { display: flex; align-items: center; gap: 10px; margin: 4px 0 10px; }
-    .inv-cat-mgr-new-form .inv-toggle { background: #0a0a0a; border: 1px solid #222; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 10px; border-radius: 3px; cursor: pointer; user-select: none; }
-    .inv-cat-mgr-new-form .inv-toggle.on { background: #1a2010; border-color: #3a4820; color: #cfe3a6; }
-    .inv-cat-mgr-new-form .inv-toggle-hint { font-size: 10px; color: #666; font-style: italic; }
-
-    /* ═══ CATALOG VIEW ═══
-     * Read-only tree of the ruleset's items grouped by category. Each
-     * category is collapsible; each item expands for detail. Visual
-     * language intentionally distinct from the inventory view so it
-     * reads as "this is browse, not manage." */
-    .cat-view-header { padding: 0 4px 14px; margin-bottom: 8px; border-bottom: 1px solid #1a1a1a; }
-    .cat-view-title { font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #cfe3f6; margin-bottom: 4px; }
-    .cat-view-sub { font-size: 11px; color: #777; line-height: 1.4; }
-
-    .cat-view-section { margin-bottom: 4px; }
-    .cat-view-section-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: #0e0e0e; border: 1px solid #1a1a1a; border-radius: 3px; cursor: pointer; user-select: none; transition: border-color .1s; }
-    .cat-view-section-head:hover { background: #131313; border-color: #2a2a2a; }
-    .cat-view-section-head.empty { opacity: 0.6; }
-    .cat-view-caret { font-size: 10px; color: #888; width: 10px; display: inline-block; }
-    .cat-view-name { flex: 1; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #ccc; }
-    .cat-view-count { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #777; font-variant-numeric: tabular-nums; }
-
-    /* "Custom" pseudo-section gets a subtle violet tint to mark it as
-     * character-local rather than ruleset-defined. */
-    .cat-view-section-custom .cat-view-section-head { border-color: #2a1a2a; background: #120a12; }
-    .cat-view-section-custom .cat-view-name { color: #c8a; }
-    .cat-view-custom-badge { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #a8c; background: #1a0a1a; border: 1px solid #3a2a3a; padding: 1px 6px; border-radius: 2px; }
-
-    .cat-view-desc { font-size: 11px; color: #888; line-height: 1.55; padding: 6px 10px 8px; font-style: italic; }
-    .cat-view-empty-row { font-size: 11px; color: #555; font-style: italic; padding: 4px 10px; }
-
-    /* Item rows */
-    .cat-view-item { margin: 3px 0 3px 18px; }
-    .cat-view-item-caret { font-size: 10px; color: #666; width: 10px; display: inline-block; }
-    .cat-view-item-name { flex: 1; font-size: 12px; font-weight: 500; color: #e0e0e0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .cat-view-container-pill { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #6a9; background: #0a1a0a; border: 1px solid #2a4a2a; padding: 1px 6px; border-radius: 2px; flex-shrink: 0; }
-    .cat-view-item-custom { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #a8c; background: #1a0a1a; border: 1px solid #3a2a3a; padding: 1px 6px; border-radius: 2px; flex-shrink: 0; }
-    .cat-view-item-dims { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #777; font-variant-numeric: tabular-nums; white-space: nowrap; flex-shrink: 0; }
-    .cat-view-item-weight { font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; color: #aaa; font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 500; flex-shrink: 0; }
-
-    /* Detail panel (shown when item is expanded) */
-    .cat-view-item-detail { background: #0a0a0a; border: 1px solid #1a1a1a; border-top: none; border-radius: 0 0 3px 3px; padding: 10px 14px; margin-top: -1px; }
-    .cat-view-item-desc { font-size: 12px; color: #ccc; line-height: 1.55; white-space: pre-wrap; margin-bottom: 8px; }
-    .cat-view-item-cap, .cat-view-item-slot, .cat-view-item-legacy { font-size: 11px; color: #888; line-height: 1.5; margin: 3px 0; }
-    .cat-view-item-cap-label { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #777; margin-right: 6px; }
-    .cat-view-item-cap-val { font-family: 'Consolas', 'Courier New', monospace; font-variant-numeric: tabular-nums; color: #aaa; }
-    .cat-view-item-cap-val b { color: #e0e0e0; font-weight: 700; }
-
-    /* ═══ Catalog "+ Add" split button ═══
-     * Sits on the right of each item row. Left half is the quick-add;
-     * right half is a ▾ that opens the target dropdown. The row header
-     * uses flex; cat-view-item-main takes remaining width and the split
-     * button is fixed at the end. */
-    .cat-view-item-head { display: flex; align-items: center; gap: 0; }
-    .cat-view-item-main { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; padding: 5px 10px; background: #0d0d0d; border: 1px solid #1a1a1a; border-radius: 3px 0 0 3px; border-right: none; transition: border-color .1s, background .1s; }
-    .cat-view-item.expandable .cat-view-item-main { cursor: pointer; }
-    .cat-view-item.expandable .cat-view-item-main:hover { background: #131313; border-color: #2a2a2a; }
-    .cat-view-item.open > .cat-view-item-head > .cat-view-item-main { border-color: #3a3a3a; background: #151515; }
-
-    /* Split-button container */
-    .cat-view-add-split { display: flex; flex-shrink: 0; border: 1px solid #1a1a1a; border-radius: 0 3px 3px 0; overflow: hidden; background: #0d0d0d; }
-    .cat-view-add-btn { background: transparent; border: none; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 500; padding: 5px 10px; cursor: pointer; letter-spacing: .02em; transition: background .1s, color .1s; }
-    .cat-view-add-btn:hover { background: #1a2a1a; color: #cfe3cf; }
-    .cat-view-add-drop { background: transparent; border: none; border-left: 1px solid #1a1a1a; color: #777; font-family: 'Open Sans', sans-serif; font-size: 11px; width: 24px; padding: 0; cursor: pointer; transition: background .1s, color .1s; }
-    .cat-view-add-drop:hover { background: #1a1a1a; color: #ccc; }
-    .cat-view-add-drop.open { background: #1a1a1a; color: #e0e0e0; }
-
-    /* Add-target dropdown menu — renders inline in the row's DOM, but
-     * visually sits as a floating panel below. Uses margin-top offset
-     * to sit flush with the button. Max-height + overflow so a ruleset
-     * with many containers doesn't push the whole catalog around. */
-    .cat-view-add-menu { background: #111; border: 1px solid #2a2a2a; border-radius: 3px; padding: 6px 0; margin: 2px 0 8px auto; max-width: 340px; max-height: 360px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.6); }
-    .cat-view-add-menu-label { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #666; padding: 4px 12px 8px; border-bottom: 1px solid #1a1a1a; }
-    .cat-view-add-menu-section { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; padding: 8px 12px 4px; }
-    .cat-view-add-menu-opt { font-size: 12px; color: #ccc; padding: 6px 14px; cursor: pointer; transition: background .08s, color .08s; }
-    .cat-view-add-menu-opt:hover { background: #1a2a1a; color: #fff; }
-    .cat-view-add-menu-opt-new { color: #8a9; font-style: italic; }
-    .cat-view-add-menu-opt-new:hover { background: #0a1a0a; color: #cfe3cf; }
-    .cat-view-add-menu-divider { height: 1px; background: #1a1a1a; margin: 6px 0; }
-
-    /* Toast confirmation for catalog adds */
-    .inv-add-toast { background: #0f2418; border: 1px solid #2a4a2a; color: #cfe3cf; font-size: 11px; font-weight: 500; padding: 8px 14px; border-radius: 4px; margin-bottom: 10px; animation: inv-toast-fade 3s ease-out forwards; }
-    @keyframes inv-toast-fade {
-      0%   { opacity: 0; transform: translateY(-4px); }
-      8%   { opacity: 1; transform: translateY(0); }
-      80%  { opacity: 1; }
-      100% { opacity: 0; }
-    }
-
-  </style>
-</head>
-<body>
-<script>injectNav();</script>
-
-<div class="page">
-  <div id="loading" class="empty">
-    <div id="loading-text">Loading...</div>
-    <!-- Diagnostic log — only shown if something stalls. The script writes
-         step markers here so we can see exactly which point broke if the
-         normal loading never completes. Hidden by default; revealed after
-         3s if loading still shows. -->
-    <div id="loading-diag" style="display:none;margin-top:20px;text-align:left;font-family:'Consolas',monospace;font-size:11px;color:#888;background:#0a0a0a;border:1px solid #222;padding:10px;border-radius:4px;max-width:600px;margin-left:auto;margin-right:auto;max-height:400px;overflow-y:auto"></div>
-  </div>
-  <script>
-    // Diagnostic step logger — records every phase of the load so we can
-    // see where it stalls even if no exception is thrown. Reveals itself
-    // 3 seconds in if the loading screen is still visible.
-    window.__loadDiag = [];
-    window.__logStep = function(msg) {
-      const ts = Date.now();
-      window.__loadDiag.push({ ts, msg });
-      try {
-        const el = document.getElementById('loading-diag');
-        if (el) {
-          const line = document.createElement('div');
-          line.textContent = '• ' + msg;
-          el.appendChild(line);
-        }
-        if (console && console.log) console.log('[load] ' + msg);
-      } catch (e) {}
-    };
-    setTimeout(function() {
-      const loadingEl = document.getElementById('loading');
-      const diagEl = document.getElementById('loading-diag');
-      if (loadingEl && loadingEl.style.display !== 'none' && diagEl) {
-        diagEl.style.display = 'block';
-        const hint = document.createElement('div');
-        hint.style.cssText = 'margin-top:10px;padding-top:10px;border-top:1px solid #333;color:#888';
-        hint.innerHTML = 'Loading is taking longer than expected. Steps reached above. If the list is empty, the script did not start — likely a module import error. Press <kbd>F12</kbd> and check the Console tab for details.';
-        diagEl.appendChild(hint);
-      }
-    }, 3000);
-    window.__logStep('HTML parsed, pre-module script ran');
-    window.__logStep('window.RULESET_DEFAULTS: ' + (window.RULESET_DEFAULTS ? 'loaded' : 'MISSING'));
-    window.__logStep('window.normalizeRuleset: ' + (typeof window.normalizeRuleset === 'function' ? 'loaded' : 'MISSING'));
-  </script>
-  <div id="char-content" style="display:none">
-
-    <div class="sheet-wrap">
-      <div class="sheet-tabs">
-        <div class="sheet-tab active" id="sheet-tab-overview" onclick="switchSheetTab('overview')">Overview</div>
-        <div class="sheet-tab"        id="sheet-tab-combat"   onclick="switchSheetTab('combat')">Combat</div>
-        <div class="sheet-tab"        id="sheet-tab-inventory" onclick="switchSheetTab('inventory')">Inventory</div>
-      </div>
-
-      <div class="sheet-body">
-
-        <!-- ═══════════════ OVERVIEW PANEL ═══════════════ -->
-        <div class="sheet-panel active" id="panel-overview">
-
-    <div class="char-card">
-      <div class="char-picture" id="picture-slot" onclick="triggerPicUpload()">
-        <div class="char-picture-placeholder" id="pic-placeholder">Click to add picture</div>
-        <img id="char-img" style="display:none">
-        <input type="file" id="pic-input" accept="image/*" onchange="handlePicChange(event)">
-      </div>
-      <div class="char-bio-col">
-        <div class="char-header">
-          <div class="char-header-left">
-            <div class="char-name" id="char-name"></div>
-            <div class="char-archetype" id="char-archetype"></div>
-            <div class="char-power-bar" id="char-power-bar"></div>
-          </div>
-          <div class="char-quip-box" id="char-quip" onclick="editQuip()"></div>
-        </div>
-        <div class="section-title">Profile <span id="bio-edit-btn" class="edit-btn" style="display:none" onclick="editBio()">Edit</span></div>
-        <div id="bio-view"><div class="bio-prose" id="bio-prose"></div></div>
-        <div id="bio-edit" style="display:none">
-          <div class="field"><label>Name</label><input type="text" id="e-name" oninput="updatePreview()"></div>
-          <div class="field"><label>Sex</label><input type="text" id="e-sex" oninput="updatePreview()"></div>
-          <div class="field"><label>Age</label><input type="text" id="e-age" oninput="updatePreview()"></div>
-          <div class="field"><label>Ethnicity</label><input type="text" id="e-ethnicity" oninput="updatePreview()"></div>
-          <div class="field"><label>Paradigm</label><input type="text" id="e-paradigm" oninput="updatePreview()"></div>
-          <div class="field"><label>Archetype</label><input type="text" id="e-archetype" oninput="updatePreview()"></div>
-          <div class="field"><label>Residence</label><input type="text" id="e-residence" oninput="updatePreview()"></div>
-          <div class="field"><label>World (Playgroup)</label><select id="e-playgroup" onchange="updatePreview()"><option value="">None — not in active play</option></select></div>
-          <div class="field"><label>Appearance</label><textarea id="e-appearance" oninput="updatePreview()"></textarea></div>
-          <div class="btn-row">
-            <button class="save-btn" onclick="saveBio()">Save</button>
-            <button class="save-btn" onclick="cancelBio()" style="border-color:#333;color:#888">Cancel</button>
-            <span class="save-msg" id="bio-msg"></span>
-          </div>
-        </div>
-      </div>
-      <div class="char-etc-col">
-        <div class="etc-title">Notes</div>
-        <div class="etc-content" id="etc-content" onclick="editEtc()">—</div>
-        <textarea id="etc-edit" style="display:none;width:100%;background:#111;border:1px solid #222;color:#e0e0e0;font-family:'Open Sans',sans-serif;font-size:12px;padding:8px;border-radius:4px;outline:none;resize:vertical;min-height:200px;line-height:1.6"></textarea>
-        <div id="etc-btn-row" style="display:none;margin-top:8px">
-          <button class="save-btn" onclick="saveEtc()" style="font-size:11px;padding:4px 12px">Save</button>
-          <button class="save-btn" onclick="cancelEtc()" style="font-size:11px;padding:4px 12px;margin-left:6px;border-color:#333;color:#888">Cancel</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="mental-card">
-      <div class="mental-col">
-        <div class="mental-col-header">
-          <div class="mental-col-title" style="position:relative;cursor:default" onmouseenter="document.getElementById('mo-tip').style.display='block'" onmouseleave="document.getElementById('mo-tip').style.display='none'">Moral Obligations
-            <div id="mo-tip" style="display:none;position:absolute;left:0;top:100%;margin-top:6px;background:#1a1a1a;border:1px solid #333;border-radius:4px;padding:10px 12px;font-size:11px;color:#aaa;width:320px;z-index:1000;line-height:1.6;font-weight:400;letter-spacing:0;text-transform:none">
-              <p style="margin-bottom:8px">When you roll poorly on a Mental Health Check you must allocate a number of Break Points equal to 6 − Result. You may choose to allocate some of these to taking on a Moral Obligation, rather than the alternatives.</p>
-              <p style="margin-bottom:8px">A Moral Obligation's requirements depend on its scale; a Minor Obligation is 1 Break Point, while a Mythical Obligation is 7. Your GM must approve of your chosen Obligation; your Obligation must be intuitive to its originating Mental Health Check.</p>
-              <p style="margin-bottom:8px">Each Obligation you have results in +1 Difficulty to any and all Mental Health Checks you make, until the Obligation is resolved or abandoned.</p>
-              <p>If you choose to abandon an Obligation, you must reroll the original Mental Health Check at +1 Difficulty, and allocate a number of Break Points as normal, with an additional amount equal to what was spent on the abandoned Obligation.</p>
-            </div>
-          </div>
-          <span class="edit-btn" id="obligations-edit-btn" style="display:none" onclick="editObligations()">Edit</span>
-        </div>
-        <div id="obligations-view"></div>
-        <div id="obligations-edit-mode" style="display:none">
-          <div id="obligations-list"></div>
-          <button class="add-entry-btn" id="add-obligation-btn" onclick="addObligation()">+ Add</button>
-          <div style="margin-top:10px"><button class="save-btn" onclick="doneObligations()" style="font-size:11px;padding:4px 14px">Done</button></div>
-        </div>
-      </div>
-      <div class="mental-col">
-        <div class="mental-col-header">
-          <div class="mental-col-title" style="position:relative;cursor:default" onmouseenter="document.getElementById('morals-tip').style.display='block'" onmouseleave="document.getElementById('morals-tip').style.display='none'">Morals
-            <div id="morals-tip" style="display:none;position:absolute;left:0;top:100%;margin-top:6px;background:#1a1a1a;border:1px solid #333;border-radius:4px;padding:10px 12px;font-size:11px;color:#aaa;width:340px;z-index:1000;line-height:1.6;font-weight:400;letter-spacing:0;text-transform:none">
-              <p style="margin-bottom:8px">Morals are one-word concepts which encompass broad ethical value-and-belief systems; they intentionally lack descriptions as their one-words should be enough. If there is reasonable debate over what is, or isn't pertinent to a Moral, then it likely is pertinent.</p>
-              <p style="margin-bottom:8px">When you violate, compromise, or otherwise are met with situations that go against your Morals, you must make a Mental Health Check with +/− Difficulty dependent on the scale of the infraction. Minor infractions are at −2, Moderate −1, Major +0 and so on so-forth.</p>
-              <p style="margin-bottom:8px">After your Mental Health Check you must allocate a number of "Break Points" equal to 6 − Result to your choice/combination of Moral Obligations, Short-term Trauma, Long-term Trauma, or through an immediate Breakdown.</p>
-              <p style="margin-bottom:8px">Alternatively if you affirm/fulfill your Morals, you may make a Mental Health Check to recover SAN instead; the amount of SAN recovered is equal to Result.</p>
-              <p style="margin-bottom:8px">Morals are scaled based on how important / integral they are to you; Minor Morals are rolled at −2, Moderate at −1, Major at +0, Massive at +1, so-on so-forth. The inverse is true for Moral Affirmations.</p>
-              <p>When you create your Character, you must allocate "10 Moral points" in Morals, with a Minor Moral being worth 1, a Moderate Moral 2, and so-on so-forth, based on how important each Moral is to your Character; there is no limit to the amount of Morals you may take, so long as you meet your spending limit for Moral Points.</p>
-            </div>
-          </div>
-          <span class="edit-btn" id="morals-edit-btn" style="display:none" onclick="editMorals()">Edit</span>
-        </div>
-        <div id="morals-view"><div class="moral-cards" id="moral-cards-display"></div></div>
-        <div id="morals-edit-mode" style="display:none">
-          <div id="morals-by-ruleset"></div>
-          <div style="margin-top:10px"><button class="save-btn" onclick="doneMorals()" style="font-size:11px;padding:4px 14px">Done</button></div>
-        </div>
-      </div>
-      <div class="mental-col">
-        <div class="mental-col-header">
-          <div class="mental-col-title" style="position:relative;cursor:default" onmouseenter="document.getElementById('mc-tip').style.display='block'" onmouseleave="document.getElementById('mc-tip').style.display='none'">Mental Conditions
-            <div id="mc-tip" style="display:none;position:absolute;left:0;top:100%;margin-top:6px;background:#1a1a1a;border:1px solid #333;border-radius:4px;padding:10px 12px;font-size:11px;color:#aaa;width:340px;z-index:1000;line-height:1.6;font-weight:400;letter-spacing:0;text-transform:none">
-              <p style="margin-bottom:8px">Mental Conditions are conditions, disorders, and traumas pertinent to one's mental state; these can be anything from phobias, to compulsions, to full-blown personality disorders, and so-on so-forth.</p>
-              <p style="margin-bottom:8px">Mental Conditions are defined by "what I have", "which means", "and if triggered I might"; a Mental Condition's trigger is intuitive to what the Mental Condition is, and what it means for you.</p>
-              <p style="margin-bottom:8px">When you fail a Mental Health Check you may choose to allocate Break Points to developing a Mental Condition; Minor is 1, Moderate is 2, so-on so-forth.</p>
-              <p style="margin-bottom:8px">When a trigger has been met for a Mental Condition, you roll a Mental Health Check with +Difficulty based on the scale of the trigger; −1 for Minor triggers, +0 for Moderate, etc. The Difficulty is also affected by the scale of your Mental Condition; −1 for Minor, +0 for Moderate, etc.</p>
-              <p>Based on your roll, you must allocate 6 − Result points to your selection of SAN loss, and/or a breakdown based on your "if triggered" with severity based on allocated points; 1 point is a minor breakdown, 2 points is moderate, 3 is major, etc.</p>
-            </div>
-          </div>
-          <span class="edit-btn" id="disorders-edit-btn" style="display:none" onclick="editDisorders()">Edit</span>
-        </div>
-        <div id="disorders-view"></div>
-        <div id="disorders-edit-mode" style="display:none">
-          <div id="disorders-list"></div>
-          <button class="add-entry-btn" id="add-disorder-btn" onclick="addDisorder()">+ Add</button>
-          <div style="margin-top:10px"><button class="save-btn" onclick="doneDisorders()" style="font-size:11px;padding:4px 14px">Done</button></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="stats-card">
-      <div class="stats-col">
-        <div class="stats-col-header">
-          <div class="stats-col-title">Stats</div>
-          <span class="edit-btn" id="stats-edit-btn" style="display:none" onclick="toggleStatsEdit()">Edit</span>
-        </div>
-        <div id="stats-list"></div>
-      </div>
-      <div class="skills-col">
-        <div class="skills-section">
-          <div class="skills-section-header">
-            <div class="skills-section-title">Primary Skills</div>
-            <span class="edit-btn" id="skills-edit-btn" style="display:none" onclick="toggleSkillsEdit()">Edit</span>
-          </div>
-          <div class="skills-grid" id="primary-skills-grid"></div>
-        </div>
-        <div class="skills-section">
-          <div class="skills-section-header"><div class="skills-section-title">Secondary Skills</div></div>
-          <div class="skills-grid" id="secondary-skills-list"></div>
-          <div class="skill-add-row" id="sec-skill-add-row" style="display:none">
-            <input type="text" class="skill-add-input" id="sec-skill-name" placeholder="Skill name">
-            <select class="skill-add-select" id="sec-skill-under"></select>
-            <button class="skill-add-btn" onclick="addSecondarySkill()">Add</button>
-          </div>
-        </div>
-        <div class="skills-section">
-          <div class="skills-section-header"><div class="skills-section-title">Specialty Skills</div></div>
-          <div class="skills-grid" id="specialty-skills-list"></div>
-          <div class="skill-add-row" id="spec-skill-add-row" style="display:none">
-            <input type="text" class="skill-add-input" id="spec-skill-name" placeholder="Skill name">
-            <select class="skill-add-select" id="spec-skill-under"></select>
-            <button class="skill-add-btn" onclick="addSpecialtySkill()">Add</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══ THE STATE OF THINGS ═══ -->
-    <!-- Simplified read-only dashboard sitting between the stats/skills area
-         and Advantages. Renders bars + status labels for Body, Sanity,
-         Strain, Power Pool, and Movement, pulling live data from the
-         same computeDerivedStats path the Combat tab uses. Purely a
-         display — no controls here. All editing still happens in the
-         Combat tab. -->
-    <div class="state-of-things" id="state-of-things">
-      <div class="state-title">The State of Things</div>
-      <div class="state-body" id="state-body"><div class="state-empty">Loading…</div></div>
-    </div>
-
-    <!-- ═══ ADVANTAGES & DISADVANTAGES ═══ -->
-    <div class="ad-row">
-      <div class="ad-block">
-        <div class="ad-block-header">
-          <div class="ad-block-title">Advantages</div>
-          <button class="ad-add-btn" id="adv-add-btn" style="display:none" onclick="openAdForm('adv')">+ Add Advantage</button>
-        </div>
-        <div id="adv-list"></div>
-        <div class="ad-add-form-container" id="adv-add-form"></div>
-      </div>
-
-      <div class="ad-block">
-        <div class="ad-block-header">
-          <div class="ad-block-title">Disadvantages</div>
-          <button class="ad-add-btn" id="dis-add-btn" style="display:none" onclick="openAdForm('dis')">+ Add Disadvantage</button>
-        </div>
-        <div id="dis-list"></div>
-        <div class="ad-add-form-container" id="dis-add-form"></div>
-      </div>
-    </div>
-
-    <!-- ═══ SITUATIONS ═══ -->
-    <div class="sit-block">
-      <div class="sit-block-header">
-        <div class="sit-block-title">Situations</div>
-        <button class="sit-add-btn" id="situations-add-btn" style="display:none" onclick="openNewSituation()">+ Add Situation</button>
-      </div>
-      <div class="sit-list" id="situations-list"></div>
-      <div id="situations-add-form"></div>
-    </div>
-
-        </div><!-- /panel-overview -->
-
-        <!-- ═══════════════ COMBAT PANEL ═══════════════ -->
-        <div class="sheet-panel" id="panel-combat">
-          <div id="combat-content"></div>
-        </div><!-- /panel-combat -->
-
-        <!-- ═══════════════ INVENTORY PANEL ═══════════════ -->
-        <div class="sheet-panel" id="panel-inventory">
-          <div id="inventory-content"></div>
-        </div><!-- /panel-inventory -->
-
-      </div><!-- /sheet-body -->
-    </div><!-- /sheet-wrap -->
-
-    <div id="danger-zone" style="display:none;margin-top:32px;padding:16px 20px;border:1px solid #3a1a1a;border-radius:6px;background:#140808">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
-        <div>
-          <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#a33;margin-bottom:4px">Danger Zone</div>
-          <div style="font-size:12px;color:#777">Permanently delete this character. This cannot be undone.</div>
-        </div>
-        <button onclick="deleteCharacter()" style="background:#2a0d0d;border:1px solid #6a2020;color:#d88;font-family:'Open Sans',sans-serif;font-size:12px;font-weight:600;padding:8px 18px;border-radius:4px;cursor:pointer">Delete Character</button>
-      </div>
-    </div>
-
-  </div>
-</div>
-
-<script type="module">
-  // Step marker at the very top — if the user sees this in their diagnostic
-  // list, we know the module script parsed and started executing. If they
-  // DON'T see it, an import failed and the browser never ran the module.
-  if (window.__logStep) window.__logStep('module script started');
-
-  // All Firebase I/O lives in char-firestore.js. We pull in just what's
-  // still needed here — the main load flow uses onAuthStateChanged and
-  // a few query helpers; bio/mental/etc. modules import their own.
-  import {
-    auth, db, onAuthStateChanged, signOut,
-    loadCharacter, saveCharacter, deleteCharacter as deleteCharacterDoc,
-    loadUser, loadUserPlaygroups,
-    loadBasicSet, loadPlaygroupRulesets,
-    resolveActiveRuleset, loadMembershipRole
-  } from './char-firestore.js';
-
-  // Only the pieces character.html itself still uses. Most game data
-  // now comes from the active ruleset via ctx.getRuleset(); the modules
-  // import char-constants directly for anything else they need.
-  import {
-    SKILL_LABELS, FALLBACK_SKILLS
-  } from './char-constants.js';
-
-  // Section render modules. These are factories — we pass a context with
-  // getters for the live state, and they return a bundle of bound handlers.
-  import { createMentalSection } from './char-mental.js';
-  import { createXpBar } from './char-xp.js';
-  import { createSkillsSection } from './char-skills.js';
-  import { createStatsSection } from './char-stats.js';
-  import { createBioSection } from './char-bio.js';
-  import { createAdvantagesSection } from './char-advantages.js';
-  import { createSituationsSection } from './char-situations.js';
-  import { createCombatSection } from './char-combat.js';
-  import { createInventorySection } from './char-inventory.js';
-
-  // All imports resolved — module body executes from here.
-  if (window.__logStep) window.__logStep('all modules imported');
-
-  // Inline event handlers in dynamically-generated markup call these by
-  // name. They're ruleset-aware wrappers that read tables from the
-  // currently-loaded ruleset — redefining these on window keeps the
-  // inline oninput handlers short and self-contained. These go away
-  // once we migrate to event delegation.
-  window.skillLabelAt = function(v) {
-    const i = Math.min(SKILL_LABELS.length - 1, Math.max(0, v));
-    return SKILL_LABELS[i] || '';
-  };
-  window.skillLevelText = function(v) {
-    return window.skillLabelAt(parseInt(v) || 0);
-  };
-  window.skillXpLabel = function(val, type) {
-    const rs = activeRuleset || {};
-    const v = Math.max(0, parseInt(val) || 0);
-    const table = type === 'p' ? (rs.primarySkillXp   || [])
-                : type === 's' ? (rs.secondarySkillXp || [])
-                               : (rs.specialtySkillXp || []);
-    return (table[v] || 0) + 'xp';
-  };
-
-  // Legacy global — older oninput handlers reference this directly.
-  window.SKILL_LABELS_GLOBAL = SKILL_LABELS;
-
-  const params = new URLSearchParams(window.location.search);
-  const charId = params.get('id');
-  if (!charId) window.location.href = 'home.html';
-
-  let charData = {}, canEdit = false, userPlaygroups = [], loaded = false;
-  let availableRulesets = [], primarySkillDefs = [];
-  let statsEditMode = false, skillsEditMode = false;
-
-  // Situations-specific state. isGM is true if the logged-in user is
-  // Leader or Administrator of the character's current playgroup. Gives
-  // them access to Situation editing, flipping, and hidden-card visibility.
-  let isGM = false;
-  let myUid = null;
-  let myUsername = '';
-
-  // The ruleset that governs this character — resolved once during load.
-  // Always a fully-normalized ruleset object (no nulls anywhere). Section
-  // modules read from this via ctx.getRuleset().
-  let activeRuleset = null;
-
-  // Build a context for section modules. The getters always fetch the
-  // current state — safe even though charData gets reassigned once during
-  // initial load.
-  const sectionCtx = {
-    getCharData: () => charData,
-    getCanEdit: () => canEdit,
-    getCharId: () => charId,
-    getAvailableRulesets: () => availableRulesets,
-    getPrimarySkillDefs: () => primarySkillDefs,
-    getUserPlaygroups: () => userPlaygroups,
-    getSkillsEditMode: () => skillsEditMode,
-    setSkillsEditMode: (v) => { skillsEditMode = v; },
-    getStatsEditMode: () => statsEditMode,
-    setStatsEditMode: (v) => { statsEditMode = v; },
-    // saveXpSpent is defined later in this file but modules only call it
-    // at runtime (never module-load time), so the forward reference is safe.
-    saveXpSpent: () => saveXpSpent(),
-    // Bio section needs access to xpBar to refresh the power bar alongside
-    // its own renders. Returned via getter so the reference is always fresh.
-    getXpBar: () => xpBar,
-    // Active ruleset — every module reads stat caps, skill caps, XP tables,
-    // power levels, etc. through this getter so a ruleset swap flows through
-    // without needing to re-instantiate modules.
-    getRuleset: () => activeRuleset,
-
-    // Situations-specific: exposes GM status + current user identity so
-    // new Situations can be stamped with who created them.
-    getIsGM: () => isGM,
-    getMyUid: () => myUid,
-    getMyUsername: () => myUsername,
-  };
-
-  const mental = createMentalSection(sectionCtx);
-  const xpBar = createXpBar(sectionCtx);
-  const skills = createSkillsSection(sectionCtx);
-  const stats = createStatsSection(sectionCtx);
-  const bio = createBioSection(sectionCtx);
-  const advantages = createAdvantagesSection(sectionCtx);
-  const situations = createSituationsSection(sectionCtx);
-  const combat = createCombatSection(sectionCtx);
-  const inventory = createInventorySection(sectionCtx);
-
-  // Expose section handlers on window so inline onclick handlers in the
-  // HTML (and in dynamically-generated markup) can reach them. These go
-  // away once we migrate to event delegation.
-  Object.assign(window, {
-    // Morals
-    updateMoralSeverity: mental.updateMoralSeverity,
-    addCustomMoral: mental.addCustomMoral,
-    removeMoralByIndex: mental.removeMoralByIndex,
-    toggleMoral: mental.toggleMoral,
-    editMorals: mental.editMorals,
-    doneMorals: mental.doneMorals,
-    // Obligations
-    addObligation: mental.addObligation,
-    saveObligation: mental.saveObligation,
-    deleteObligation: mental.deleteObligation,
-    editObligations: mental.editObligations,
-    doneObligations: mental.doneObligations,
-    // Conditions
-    addDisorder: mental.addDisorder,
-    saveDisorder: mental.saveDisorder,
-    deleteDisorder: mental.deleteDisorder,
-    editDisorders: mental.editDisorders,
-    doneDisorders: mental.doneDisorders,
-    rerenderDisorderHeader: mental.rerenderDisorderHeader,
-    // XP bar
-    savePowerField: xpBar.savePowerField,
-    // Skills
-    toggleSkillsEdit: skills.toggleSkillsEdit,
-    saveSkill: skills.saveSkill,
-    addSecondarySkill: skills.addSecondarySkill,
-    saveSecSkill: skills.saveSecSkill,
-    renameSecSkill: skills.renameSecSkill,
-    deleteSecSkill: skills.deleteSecSkill,
-    addSpecialtySkill: skills.addSpecialtySkill,
-    saveSpecSkill: skills.saveSpecSkill,
-    renameSpecSkill: skills.renameSpecSkill,
-    deleteSpecSkill: skills.deleteSpecSkill,
-    // Stats
-    toggleStatsEdit: stats.toggleStatsEdit,
-    toggleModPanel: stats.toggleModPanel,
-    onStatInput: stats.onStatInput,
-    adjustStat: stats.adjustStat,
-    saveStatBase: stats.saveStatBase,
-    addModifier: stats.addModifier,
-    deleteModifier: stats.deleteModifier,
-    // Bio
-    editBio: bio.editBio,
-    cancelBio: bio.cancelBio,
-    updatePreview: bio.updatePreview,
-    saveBio: bio.saveBio,
-    editQuip: bio.editQuip,
-    editEtc: bio.editEtc,
-    cancelEtc: bio.cancelEtc,
-    saveEtc: bio.saveEtc,
-    triggerPicUpload: bio.triggerPicUpload,
-    handlePicChange: bio.handlePicChange,
-    // Advantages / Disadvantages
-    openAdForm:           (side) => advantages.openAddForm(side),
-    closeAdForm:          (side) => advantages.closeAddForm(side),
-    setAdFormMode:        (side, mode) => advantages.setFormMode(side, mode),
-    updateAdFormSearch:   (side, val) => advantages.updateSearch(side, val),
-    updateAdFormCatalog:  (side, name) => advantages.updateCatalog(side, name),
-    updateAdFormCustom:   (side, field, value) => advantages.updateCustom(side, field, value),
-    commitAdFormCatalog:  (side) => advantages.commitCatalog(side),
-    commitAdFormCustom:   (side) => advantages.commitCustom(side),
-    removeAdEntry:        (side, i) => advantages.removeEntry(side, i),
-    // Situations
-    openNewSituation:     () => situations.openAddForm(),
-    closeNewSituation:    () => situations.closeAddForm(),
-    commitNewSituation:   () => situations.commitNew(),
-    flipSituation:        (id) => situations.flip(id),
-    tickSituation:        (id, delta) => situations.tick(id, delta),
-    setSituationClock:    (id, val) => situations.setClock(id, val),
-    togglePauseSituation: (id) => situations.togglePause(id),
-    toggleHideSituation:  (id) => situations.toggleHide(id),
-    deleteSituation:      (id) => situations.remove(id),
-    startEditSituation:   (id) => situations.startEdit(id),
-    cancelEditSituation:  (id) => situations.cancelEdit(id),
-    saveEditSituation:    (id) => situations.saveEdit(id),
-    // Combat tab
-    tickHitLocationDmg:   (trackKey, delta) => combat.tickHitLocationDmg(trackKey, delta),
-    setHitLocationDmg:    (trackKey, val)   => combat.setHitLocationDmg(trackKey, val),
-    tickPowerPool:        (delta) => combat.tickPowerPool(delta),
-    setPowerPool:         (val)   => combat.setPowerPool(val),
-    tickPower:            (delta) => combat.tickPower(delta),
-    setPower:             (val)   => combat.setPower(val),
-    setPowerColor:        (color) => combat.setPowerColor(color),
-    setPowerName:         (name)  => combat.setPowerName(name),
-    toggleHlModifierEdit: () => combat.toggleEditMode(),
-    // SAN handlers
-    tickSanDmg:           (delta) => combat.tickSanDmg(delta),
-    setSanCurrent:        (val) => combat.setSanCurrent(val),
-    toggleSanModifierEdit: () => combat.toggleSanModifierEdit(),
-    addSanMod:            () => combat.addSanMod(),
-    updateSanMod:         (idx, field, val) => combat.updateSanMod(idx, field, val),
-    deleteSanMod:         (idx) => combat.deleteSanMod(idx),
-    // SAN Damages handlers
-    toggleSanDamagesSection: () => combat.toggleSanDamagesSection(),
-    toggleSanDamageExpand:   (id) => combat.toggleSanDamageExpand(id),
-    quickAddSanDamage:       () => combat.quickAddSanDamage(),
-    removeSanDamage:         (id) => combat.removeSanDamage(id),
-    updateSanDamageField:    (id, field, val) => combat.updateSanDamageField(id, field, val),
-    tickSanDamageQuickmod:   (id, delta) => combat.tickSanDamageQuickmod(id, delta),
-    addSanDamageMod:         (id) => combat.addSanDamageMod(id),
-    updateSanDamageMod:      (id, idx, field, val) => combat.updateSanDamageMod(id, idx, field, val),
-    deleteSanDamageMod:      (id, idx) => combat.deleteSanDamageMod(id, idx),
-    // Card dice modifiers
-    toggleDiceModPanel:   (code) => combat.toggleDiceModPanel(code),
-    addDiceMod:           (code) => combat.addDiceMod(code),
-    updateDiceMod:        (code, idx, field, val) => combat.updateDiceMod(code, idx, field, val),
-    deleteDiceMod:        (code, idx) => combat.deleteDiceMod(code, idx),
-    // Strain value-display toggle
-    togglePenaltyValueDisplay: (code) => combat.togglePenaltyValueDisplay(code),
-    toggleSpeedConversions:    (code) => combat.toggleSpeedConversions(code),
-    setSpeedConversionChoice:  (code, choice) => combat.setSpeedConversionChoice(code, choice),
-    // Roll Calculator
-    rollCalcSetStat:         (key) => combat.rollCalcSetStat(key),
-    rollCalcSetSkill:        (key) => combat.rollCalcSetSkill(key),
-    rollCalcSetStatValue:    (v)   => combat.rollCalcSetStatValue(v),
-    rollCalcSetSkillValue:   (v)   => combat.rollCalcSetSkillValue(v),
-    rollCalcSetStatmod:      (v)   => combat.rollCalcSetStatmod(v),
-    rollCalcSetDifficulty:   (v)   => combat.rollCalcSetDifficulty(v),
-    rollCalcSetMitigation:   (v)   => combat.rollCalcSetMitigation(v),
-    rollCalcSetReduction:    (v)   => combat.rollCalcSetReduction(v),
-    rollCalcToggle:          ()    => combat.rollCalcToggle(),
-    rollCalcSetPassive:      (f)   => combat.rollCalcSetPassive(f),
-    // Pain / Stress (percentile modifiers feeding Pain% and Stress%
-    // components of the aggregate Penalty)
-    togglePainPanel:      () => combat.togglePainPanel(),
-    addPainMod:           () => combat.addPainMod(),
-    updatePainMod:        (idx, field, val) => combat.updatePainMod(idx, field, val),
-    deletePainMod:        (idx) => combat.deletePainMod(idx),
-    toggleStressPanel:    () => combat.toggleStressPanel(),
-    addStressMod:         () => combat.addStressMod(),
-    updateStressMod:      (idx, field, val) => combat.updateStressMod(idx, field, val),
-    deleteStressMod:      (idx) => combat.deleteStressMod(idx),
-    // Other modifiers — free-form ±% entries (Exposure, Encumbrance, etc)
-    // that feed Penalty directly. Edited inline on the Penalty card.
-    addOtherModifier:     () => combat.addOtherMod(),
-    updateOtherModifier:  (idx, field, val) => combat.updateOtherMod(idx, field, val),
-    deleteOtherModifier:  (idx) => combat.deleteOtherMod(idx),
-    addHlMod:             (target)           => combat.addModifier(target),
-    updateHlMod:          (target, i, field, val) => combat.updateModifier(target, i, field, val),
-    deleteHlMod:          (target, i)        => combat.deleteModifier(target, i),
-    // Injuries / Traumas
-    toggleInjurySection:  () => combat.toggleInjurySection(),
-    toggleInjuryExpand:   (id) => combat.toggleInjuryExpand(id),
-    toggleInjuryLocation: (trackKey) => combat.toggleInjuryLocation(trackKey),
-    quickAddInjury:       () => combat.quickAddInjury(),
-    toggleQuickAddLocation: (trackKey) => combat.toggleQuickAddLocation(trackKey),
-    toggleQuickAddAllLocations: () => combat.toggleQuickAddAllLocations(),
-    removeInjury:         (id) => combat.removeInjury(id),
-    updateInjuryField:    (id, field, val) => combat.updateInjuryField(id, field, val),
-    tickInjuryQuickmod:   (id, delta) => combat.tickInjuryQuickmod(id, delta),
-    addInjuryMod:         (injId, kind) => combat.addInjuryMod(injId, kind),
-    updateInjuryMod:      (injId, kind, i, field, val) => combat.updateInjuryMod(injId, kind, i, field, val),
-    deleteInjuryMod:      (injId, kind, i) => combat.deleteInjuryMod(injId, kind, i),
-    addTrauma:            (injId) => combat.addTrauma(injId),
-    removeTrauma:         (injId, i) => combat.removeTrauma(injId, i),
-    updateTraumaField:    (injId, i, field, val) => combat.updateTraumaField(injId, i, field, val),
-    // Inventory tab
-    invToggleSlot:           (code)               => inventory.toggleSlot(code),
-    invToggleEntry:          (id)                 => inventory.toggleEntry(id),
-    invToggleItemInfo:       (id)                 => inventory.toggleItemInfo(id),
-    invToggleGroupCollapse:  (id)                 => inventory.toggleGroupCollapse(id),
-    invAddGroup:             ()                   => inventory.addGroup(),
-    invAddSubgroup:          (parentId)            => inventory.addSubgroup(parentId),
-    invRenameGroup:          (id)                 => inventory.renameGroup(id),
-    invDeleteGroup:          (id)                 => inventory.deleteGroup(id),
-    invUpdateGroupDraft:     (field, value)       => inventory.updateGroupDraft(field, value),
-    invSaveGroup:            ()                   => inventory.saveGroup(),
-    invOpenAddContainer:     (target, kind)       => inventory.openAddContainer(target, kind),
-    invOpenAddItem:          (target, kind)       => inventory.openAddItem(target, kind),
-    invCloseModal:           (ev)                 => { if (!ev || ev.target === ev.currentTarget) inventory.closeModal(); },
-    invPickContainerDef:     (kind, defId)        => inventory.pickContainerDef(kind, defId),
-    invPickItemDef:          (kind, defId)        => inventory.pickItemDef(kind, defId),
-    invOpenCustomForm:       (customKind)         => inventory.openCustomForm(customKind),
-    invCancelCustomForm:     ()                   => inventory.cancelCustomForm(),
-    invUpdateCustomDraft:    (field, value)       => inventory.updateCustomDraft(field, value),
-    invSaveCustomDef:        ()                   => inventory.saveCustomDef(),
-    invDeleteCustomDef:      (kind, defId)        => inventory.deleteCustomDef(kind, defId),
-    invSetViewMode:          (mode)               => inventory.setViewMode(mode),
-    invToggleCatalogCat:     (id)                 => inventory.toggleCatalogCat(id),
-    invToggleCatalogItem:    (id)                 => inventory.toggleCatalogItem(id),
-    invCatalogToggleAddMenu: (id)                 => inventory.catalogToggleAddMenu(id),
-    invCatalogQuickAdd:      (id)                 => inventory.catalogQuickAdd(id),
-    invCatalogAddTo:         (itemId, kind, tid)  => inventory.catalogAddTo(itemId, kind, tid),
-    invCatalogAddToNewGroup: (id)                 => inventory.catalogAddToNewGroup(id),
-    invOpenEntryEdit:        (id)                 => inventory.openEntryEdit(id),
-    invUpdateEditDraft:      (field, value)       => inventory.updateEditDraft(field, value),
-    invSaveEntryEdit:        ()                   => inventory.saveEntryEdit(),
-    invCancelEntryEdit:      ()                   => inventory.cancelEntryEdit(),
-    invPromoteEntryToCatalogue: ()                => inventory.promoteEntryToCatalogue(),
-    invOpenManageCatalog:    ()                   => inventory.openManageCatalog(),
-    invCatMgrClose:          ()                   => inventory.catMgrClose(),
-    invCatMgrCloseIfBackdrop:(ev)                 => inventory.catMgrCloseIfBackdrop(ev),
-    invCatMgrToggleRow:      (id)                 => inventory.catMgrToggleRow(id),
-    invCatMgrCollapseRow:    (id)                 => inventory.catMgrCollapseRow(id),
-    invCatMgrDraft:          (id, field, value)   => inventory.catMgrDraft(id, field, value),
-    invCatMgrSaveEdit:       (kind, id)           => inventory.catMgrSaveEdit(kind, id),
-    invCatMgrDelete:         (kind, id)           => inventory.catMgrDelete(kind, id),
-    invCatMgrStartNew:       (kind)               => inventory.catMgrStartNew(kind),
-    invCatMgrCancelNew:      ()                   => inventory.catMgrCancelNew(),
-    invCatMgrNewDraft:       (field, value)       => inventory.catMgrNewDraft(field, value),
-    invCatMgrSaveNew:        ()                   => inventory.catMgrSaveNew(),
-    invTickQty:              (id, delta)          => inventory.tickQty(id, delta),
-    invRemoveEntry:          (id)                 => inventory.removeEntry(id),
-    // Sheet tab switcher (Overview / Combat / Inventory folder tabs)
-    switchSheetTab:       (which) => {
-      document.querySelectorAll('.sheet-tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.sheet-panel').forEach(p => p.classList.remove('active'));
-      const tab = document.getElementById('sheet-tab-' + which);
-      const panel = document.getElementById('panel-' + which);
-      if (tab) tab.classList.add('active');
-      if (panel) panel.classList.add('active');
-      // Re-render on open so state changes elsewhere flow through.
-      if (which === 'combat') combat.renderAll();
-      if (which === 'inventory') inventory.renderAll();
-    },
+// char-combat.js
+// Renders the Combat tab on the character sheet:
+//   - Derived stats (HP, SPD, AGL, Reflex, etc.) grouped by category
+//   - Hit locations with damage trackers
+//   - Power Pool purchase UI
+//
+// Values auto-recompute on every render via char-derived.js. Recomputing
+// is cheap (<1ms) so no caching; simpler and always current.
+
+import { saveCharacter } from './char-firestore.js';
+import { computeDerivedStats, powerPoolXpCost, TRAUMA_TIERS } from './char-derived.js';
+import { createRollCalc } from './char-rollcalc.js';
+import { createPowerSection } from './char-power.js';
+import { createOverviewSection } from './char-overview.js';
+
+export function createCombatSection(ctx) {
+  // ctx shape:
+  //   getCharData()  -> live charData
+  //   getCanEdit()   -> boolean (character owner)
+  //   getCharId()    -> string
+  //   getRuleset()   -> active ruleset
+  //   saveXpSpent()  -> async; recomputes total XP after Power Pool change
+
+  // ─── FORMATTING ───
+  // Tidy number display. Integers show as-is. Decimals round to 2dp and
+  // strip trailing zeros (0.141421 -> 0.14; 5.0 -> 5; 2.5 -> 2.5).
+  function fmt(n) {
+    if (n === null || n === undefined || Number.isNaN(n)) return '—';
+    if (!Number.isFinite(n)) return '—';
+    if (Number.isInteger(n)) return String(n);
+    return parseFloat(n.toFixed(2)).toString();
+  }
+
+  // ─── MAIN RENDER ───
+
+  function renderAll() {
+    const container = document.getElementById('combat-content');
+    const ruleset = ctx.getRuleset();
+    const charData = ctx.getCharData();
+
+    // Always try to update the Overview's State-of-Things tile. It lives
+    // on a different tab but reads the same computed state — we refresh it
+    // on every Combat renderAll so the two views never drift.
+    if (ruleset) {
+      const result = computeDerivedStats(charData, ruleset);
+      overview.renderState(result, ruleset);
+    }
+
+    if (!container) return;
+    if (!ruleset) {
+      container.innerHTML = '<div class="combat-empty">No ruleset loaded.</div>';
+      return;
+    }
+
+    const result = computeDerivedStats(charData, ruleset);
+
+    let html = '';
+    // Roll Calculator at the very top — the quick "how many dice will I
+    // actually roll?" scratch pad you reach for mid-turn. Sits ahead of
+    // Movement so it's the first thing visible when you swap to Combat.
+    html += rollcalc.renderTile(result, ruleset, charData);
+    // Penalty card right below — it's the biggest single factor affecting
+    // the Roll Calculator, so seeing them side-by-side (top of tab) is the
+    // most useful at-a-glance pairing. The detailed Pain/Stress editors
+    // still live inline in their Health and Sanity sections below;
+    // Others editor lives right inside this card.
+    const otherMods = Array.isArray(charData.otherModifiers) ? charData.otherModifiers : [];
+    html += overview.renderPenaltyTile(result.pain, result.stress, result.penalty, otherMods, ctx.getCanEdit());
+    // Movement below — speed, agility, reflex. Fast-lookup info you need
+    // during play, positioned ahead of the more detailed health UI.
+    html += renderDerivedStatsSection(result, ruleset, { includeGroups: ['movement'] });
+    // Health section — HP/FORT cards + hit locations + Body + injuries.
+    html += renderHitLocationsSection(result);
+    // Sanity section — mental health pool, placed between physical and power.
+    html += renderSanSection(result);
+    // All other derived stat groups (mental, etc.) render below.
+    html += renderDerivedStatsSection(result, ruleset, { excludeGroups: ['movement'] });
+    // Power last (its own complex section with resource bar).
+    html += power.renderSection(result, ruleset, charData);
+    container.innerHTML = html || '<div class="combat-empty">No combat data configured in this ruleset.</div>';
+  }
+
+  // ─── STATE OF THINGS (overview dashboard) ───
+  // Extracted to char-overview.js. The module renders Body / Sanity /
+  // Power / Movement / Strain tiles into the Overview tab's #state-body
+  // host. We also re-use its renderPenaltyTile inline on the Combat tab.
+  //
+  // We inject getCollapsedPenaltyValues so Movement tile can read the
+  // same collapse state as the Combat-tab stat cards without owning it.
+  const overview = createOverviewSection({
+    getCollapsedPenaltyValues: () => collapsedPenaltyValues,
+    getCharData: ctx.getCharData,
+    getCanEdit:  ctx.getCanEdit,
+    escapeHtml,
+    fmt
   });
 
-  // ─── DEBUG HOOKS ───
-  // Expose live references so issues can be diagnosed from the browser console.
-  // Safe to keep — these are read-only windows into the current state, they
-  // don't grant any capabilities the user doesn't already have via the UI.
-  // Usage examples:
-  //   window.__prime.charData                // full character data
-  //   window.__prime.ruleset                 // active ruleset
-  //   window.__prime.dumpPower()             // diagnose POWER computation
-  window.__prime = {
-    get charData() { return charData; },
-    get ruleset()  { return activeRuleset; },
-    get canEdit()  { return canEdit; },
-    dumpPower() {
-      if (!activeRuleset) { console.log('No ruleset loaded'); return; }
-      const statMods = activeRuleset.statMods || [];
-      const pow = (charData.stats && typeof charData.stats.pow === 'number') ? charData.stats.pow : null;
-      const powmod = pow !== null ? statMods[pow] : null;
-      const pp = charData.powerPool || 0;
-      const mult = activeRuleset.powerPool && activeRuleset.powerPool.powMultiplier;
-      const entry = Array.isArray(mult)
-        ? mult.find(e => powmod !== null && e.powmod === powmod)
-        : null;
-      const multiplier = entry ? entry.value : 1;
-      const expected = pp * multiplier;
-      console.log('─── POWER diagnostic ───');
-      console.log('  charData.stats.pow    :', pow);
-      console.log('  statMods[pow] (POWMOD):', powmod);
-      console.log('  charData.powerPool    :', pp);
-      console.log('  multiplier table rows :', mult);
-      console.log('  matched entry         :', entry);
-      console.log('  POW_MULTIPLIER        :', multiplier);
-      console.log('  Expected POWER (max)  :', expected);
-      console.log('  Stored powerCurrent   :', charData.powerCurrent);
-      const powerDef = (activeRuleset.derivedStats || []).find(s => s.code === 'POWER');
-      console.log('  POWER formula         :', powerDef ? powerDef.formula : '(no POWER stat defined)');
-    }
-  };
 
-  // calcTotalXp sums XP spent across stats and skills. Reads all cost
-  // tables from the active ruleset. Called by saveXpSpent after any
-  // stat or skill edit.
-  //
-  // SIZE doesn't contribute to XP — size-changing is a narrative cost
-  // paid elsewhere.
-  function calcTotalXp() {
-    if (!activeRuleset) return 0;
-    let xp = 0;
-    const statXpTable = activeRuleset.statXp || [];
-    const primXp      = activeRuleset.primarySkillXp   || [];
-    const secXp       = activeRuleset.secondarySkillXp || [];
-    const specXp      = activeRuleset.specialtySkillXp || [];
+  // ─── ROLL CALCULATOR ───
+  // Extracted to char-rollcalc.js. We get a module instance with all its
+  // own state, render, and handlers. Combat.js's renderAll() calls
+  // rollcalc.renderTile(result, ruleset, charData) to stitch the tile
+  // into the combat tab; the module handles its own internal repaints
+  // when the user interacts with its inputs.
+  const rollcalc = createRollCalc({
+    getRuleset:  ctx.getRuleset,
+    getCharData: ctx.getCharData,
+    computeDerivedStats,
+    escapeHtml,
+    fmt
+  });
 
-    // Stat bases. Iterate the ruleset's stat list (no SIZE).
-    const rulesetStats = activeRuleset.stats || [];
-    rulesetStats.forEach(statDef => {
-      const key = (statDef.code || '').toLowerCase();
-      const v = (charData.stats && charData.stats[key] !== undefined)
-        ? charData.stats[key] : 2;
-      xp += (statXpTable[v] || 0);
+  // ─── POWER SECTION ───
+  // Extracted to char-power.js. Resource bar + Power Pool purchase UI plus
+  // all the tick/set handlers. We inject a `rerender` that points to our
+  // renderAll, so power actions re-paint the whole Combat tab the way they
+  // did when they lived inline.
+  const power = createPowerSection({
+    getCharId:   ctx.getCharId,
+    getCharData: ctx.getCharData,
+    getCanEdit:  ctx.getCanEdit,
+    getRuleset:  ctx.getRuleset,
+    saveXpSpent: ctx.saveXpSpent,
+    rerender:    () => renderAll(),
+    saveCharacter,
+    computeDerivedStats,
+    powerPoolXpCost,
+    escapeHtml,
+    fmt
+  });
+
+
+  // ─── DERIVED STATS ───
+
+  function renderDerivedStatsSection(result, ruleset, opts) {
+    opts = opts || {};
+    const includeGroups = Array.isArray(opts.includeGroups) ? new Set(opts.includeGroups) : null;
+    const excludeGroups = new Set(Array.isArray(opts.excludeGroups) ? opts.excludeGroups : []);
+    const groups = ruleset.derivedStatGroups || [];
+
+    // Bucket stats by group code. Stats with an invalid group fall into an
+    // "orphan" bucket shown at the end.
+    // Exclusions:
+    //   - POWER → rendered in its own section (resource bar + controls)
+    //   - 'health' group → rendered inside the Health section (cards above
+    //     Hit Locations list)
+    //   - Any group listed in opts.excludeGroups
+    //   - If opts.includeGroups is set, ONLY those groups render here
+    const buckets = new Map();
+    groups.forEach(g => buckets.set(g.code, []));
+    const orphans = [];
+    result.stats.forEach((entry) => {
+      if (entry.def.code === 'POWER') return;
+      if (entry.def.code === 'SAN') return;        // rendered in its own section
+      if (entry.def.group === 'health') return;
+      const g = entry.def.group;
+      if (includeGroups && !includeGroups.has(g)) return;
+      if (excludeGroups.has(g)) return;
+      if (buckets.has(g)) buckets.get(g).push(entry);
+      else orphans.push(entry);
     });
 
-    // Primary skills.
-    const pr = (charData.skills && charData.skills.primary) || {};
-    primarySkillDefs.forEach(s => { xp += (primXp[pr[s.name] || 0] || 0); });
+    const anyStats = Array.from(buckets.values()).some(arr => arr.length > 0) || orphans.length > 0;
+    if (!anyStats) return '';
 
-    // Secondary & specialty skills.
-    ((charData.skills && charData.skills.secondary) || []).forEach(s => {
-      xp += (secXp[s.value || 0] || 0);
+    let html = '';
+    groups.forEach(g => {
+      const stats = buckets.get(g.code) || [];
+      if (stats.length === 0) return;
+      html += `<div class="combat-section">`;
+      html += `<div class="combat-section-title">${escapeHtml(g.label)}</div>`;
+      html += `<div class="ds-grid">`;
+      stats.forEach(entry => { html += renderDsCard(entry); });
+      html += `</div></div>`;
     });
-    ((charData.skills && charData.skills.specialty) || []).forEach(s => {
-      xp += (specXp[s.value || 0] || 0);
-    });
-
-    // Advantages add to spent XP; Disadvantages subtract (grant XP).
-    xp += advantages.totalXpDelta();
-
-    // Power Pool is purchased with XP.
-    xp += combat.powerPoolXpDelta();
-
-    return xp;
-  }
-  async function saveXpSpent() {
-    const v = calcTotalXp();
-    charData.xpSpent = v;
-    await saveCharacter(charId, { xpSpent: v });
-    xpBar.renderPowerBar();
-    // Derived stats depend on base stats; re-render so hit points, speed,
-    // reflex, etc. update when the user edits their STR/DEX/etc.
-    combat.renderAll();
+    if (orphans.length > 0) {
+      html += `<div class="combat-section">`;
+      html += `<div class="combat-section-title">Other</div>`;
+      html += `<div class="ds-grid">`;
+      orphans.forEach(entry => { html += renderDsCard(entry); });
+      html += `</div></div>`;
+    }
+    return html;
   }
 
-  // Silent auto-clamp: enforce the active ruleset's caps on the character's
-  // stat and skill values. Runs once during load, before anything renders.
-  // Persists any changes so the saved data stays in sync with what's shown.
-  //
-  // Stat caps use statMax (absolute ceiling — modifiers can push *total*
-  // higher via statModifiers, but the base value is bounded here).
-  // Size uses the highest tier level defined by the ruleset.
-  // Skills use skillMax uniformly across primary/secondary/specialty.
-  async function clampCharacterToRuleset() {
-    if (!activeRuleset) return;
-    const updates = {};
+  // UI-only state: which cards currently have their dice-mod panel expanded.
+  // Set of stat codes. Not persisted across reloads.
+  const expandedDiceMods = new Set();
+  // Tracks which stat cards have their strain-reduced value COLLAPSED —
+  // i.e. showing just the final effective number ("7.5 ft/sec") rather
+  // than the full breakdown ("10 − 2.5 ft/sec"). Per-stat toggle, lives
+  // in memory only (resets on full re-render, persists across in-place
+  // toggles via pure CSS class swap, no render needed).
+  const collapsedPenaltyValues = new Set();
 
-    const statMax = activeRuleset.statMax || 20;
-    const sizeTiers = (activeRuleset.size && activeRuleset.size.tiers) || [];
-    const sizeMax = sizeTiers.length
-      ? Math.max(...sizeTiers.map(t => t.level || 0))
-      : 30;
-    const skillMax = activeRuleset.skillMax || 10;
+  // Speed conversion panel expanded state. Per-stat code. The panel
+  // shows a single chosen conversion (3s / 6s / min / hr / mph / km/h
+  // / m/s) computed from the card's effective (post-Penalty) value.
+  // Opt-in per stat def via def.showSpeedConversions. Session-only,
+  // resets on full re-render.
+  const expandedSpeedConversions = new Set();
 
-    // ── STATS ──
-    if (charData.stats) {
-      for (const key of Object.keys(charData.stats)) {
-        const cap = key === 'size' ? sizeMax : statMax;
-        const cur = charData.stats[key];
-        if (typeof cur === 'number' && cur > cap) {
-          charData.stats[key] = cap;
-          updates[`stats.${key}`] = cap;
-        }
-      }
-    }
+  // Per-stat selection of WHICH conversion to show in the panel.
+  // Map<statCode, conversionKey>. Defaults to '6s' when a stat's
+  // panel is opened for the first time — in PRIME a combat round is
+  // 6 seconds, so that's the most immediately useful number. Valid
+  // keys match renderSpeedConversionsPanel: '3s','6s','1min','1hr',
+  // 'mph','kmh','mps'.
+  const speedConversionChoice = new Map();
 
-    // ── PRIMARY SKILLS ──
-    if (charData.skills && charData.skills.primary) {
-      let primaryChanged = false;
-      for (const name of Object.keys(charData.skills.primary)) {
-        if (charData.skills.primary[name] > skillMax) {
-          charData.skills.primary[name] = skillMax;
-          primaryChanged = true;
-        }
-      }
-      if (primaryChanged) updates['skills.primary'] = charData.skills.primary;
-    }
-
-    // ── SECONDARY SKILLS ──
-    if (charData.skills && Array.isArray(charData.skills.secondary)) {
-      let secondaryChanged = false;
-      charData.skills.secondary.forEach(s => {
-        if ((s.value || 0) > skillMax) { s.value = skillMax; secondaryChanged = true; }
-      });
-      if (secondaryChanged) updates['skills.secondary'] = charData.skills.secondary;
-    }
-
-    // ── SPECIALTY SKILLS ──
-    if (charData.skills && Array.isArray(charData.skills.specialty)) {
-      let specialtyChanged = false;
-      charData.skills.specialty.forEach(s => {
-        if ((s.value || 0) > skillMax) { s.value = skillMax; specialtyChanged = true; }
-      });
-      if (specialtyChanged) updates['skills.specialty'] = charData.skills.specialty;
-    }
-
-    // ── ADVANTAGES / DISADVANTAGES ──
-    // Clamp any tier index outside the 0..6 range. This guards against old
-    // data that used a different tier count. (The normalizer already does this
-    // for ruleset catalog entries; here we just apply it to character picks.)
-    ['advantages', 'disadvantages'].forEach(key => {
-      if (!Array.isArray(charData[key])) return;
-      let changed = false;
-      charData[key].forEach(e => {
-        if (!Number.isInteger(e.tier) || e.tier < 0 || e.tier > 6) {
-          e.tier = Math.max(0, Math.min(6, e.tier || 0));
-          changed = true;
-        }
-      });
-      if (changed) updates[key] = charData[key];
-    });
-
-    // Only hit the database if something actually changed.
-    if (Object.keys(updates).length > 0) {
-      await saveCharacter(charId, updates);
-    }
+  // Toggle handler for the strain-value display. CSS-driven: flips a class
+  // on the card(s) with this stat code, so both display variants live in
+  // the DOM and we swap visibility without running renderAll. That avoids
+  // losing focus/scroll and makes the click feel instant.
+  function togglePenaltyValueDisplay(code) {
+    if (!code) return;
+    if (collapsedPenaltyValues.has(code)) collapsedPenaltyValues.delete(code);
+    else collapsedPenaltyValues.add(code);
+    // Flip the class on BOTH the Combat-tab card and the Overview movement
+    // item. They share data-code, so one selector catches both views —
+    // click in either place, both views update in sync without a render.
+    const targets = document.querySelectorAll(
+      `.ds-card[data-code="${CSS.escape(code)}"], .state-movement-item[data-code="${CSS.escape(code)}"]`
+    );
+    targets.forEach(el => el.classList.toggle('penalty-collapsed'));
   }
 
-  async function loadMentalSection() {
-    availableRulesets = [];
-    const basic = await loadBasicSet();
-    if (basic) availableRulesets.push({ name: 'Basic Set', morals: basic.morals || [] });
-    if (charData.playgroupId) {
-      const pgRulesets = await loadPlaygroupRulesets(charData.playgroupId);
-      pgRulesets.forEach(r => availableRulesets.push({ name: r.name, morals: r.morals || [] }));
-    }
-    mental.renderMoralsView();
-    mental.renderObligationsView();
-    mental.renderDisordersView();
-    if (canEdit) {
-      document.getElementById('morals-edit-btn').style.display = 'inline';
-      document.getElementById('obligations-edit-btn').style.display = 'inline';
-      document.getElementById('disorders-edit-btn').style.display = 'inline';
-    }
+  // Toggle the speed-conversions panel for a specific stat. Triggers a
+  // full re-render since the panel's presence changes card height and
+  // the contents depend on current state. Called from the caret button
+  // rendered inside renderDsCard for stats with def.showSpeedConversions.
+  function toggleSpeedConversions(code) {
+    if (!code) return;
+    if (expandedSpeedConversions.has(code)) expandedSpeedConversions.delete(code);
+    else expandedSpeedConversions.add(code);
+    renderAll();
   }
 
-  // ── MAIN LOAD FLOW ──
-  // Called once Firebase auth resolves. Pulls the character, figures out
-  // permissions, loads related playgroups and the Basic Set, then kicks
-  // off all the section renderers.
-  if (window.__logStep) window.__logStep('registering onAuthStateChanged listener');
-  onAuthStateChanged(auth, async function(user) {
-    if (window.__logStep) window.__logStep('auth callback fired: user=' + (user ? user.uid.slice(0,8) : 'null') + ' verified=' + (user ? user.emailVerified : 'n/a'));
-    if (!user || !user.emailVerified) {
-      if (window.__logStep) window.__logStep('EARLY EXIT: no user or email not verified');
-      return;
-    }
-    if (loaded) {
-      if (window.__logStep) window.__logStep('EARLY EXIT: already loaded');
-      return;
-    }
-    loaded = true;
+  // Change which conversion is displayed in the panel for a given stat.
+  // Full re-render so the displayed result swaps to the new unit. The
+  // panel reads the CURRENT effective (post-Penalty) value each render
+  // so penalty changes propagate automatically.
+  function setSpeedConversionChoice(code, choice) {
+    if (!code) return;
+    const valid = new Set(['3s','6s','1min','1hr','mph','kmh','mps']);
+    if (!valid.has(choice)) return;
+    speedConversionChoice.set(code, choice);
+    renderAll();
+  }
 
-    // Wrap the whole load flow so silent promise rejections don't leave the
-    // loading spinner stuck forever. Any throw → visible error on the page
-    // + full stack in the console, which is far better than infinite hang.
-    try {
+  function renderDsCard(entry) {
+    const { def, value, error, rollModifier, diceMods, diceModTotal } = entry;
+    const canEdit = ctx.getCanEdit();
+    const display = error ? 'ERR' : fmt(value);
+    const unit = def.unit ? ` <span class="ds-card-unit">${escapeHtml(def.unit)}</span>` : '';
 
-    // Stash logged-in user's identity for Situations "assigned by" tracking
-    // and any future feature that needs to know who's viewing.
-    myUid = user.uid;
-
-    // Populate the nav's username + alerts dropdown.
-    if (window.__logStep) window.__logStep('loading user doc');
-    const userData = await loadUser(user.uid);
-    if (userData) {
-      setNavUsername(userData.username);
-      myUsername = userData.username || '';
-    }
-    initAlerts(db, user.uid);
-
-    // Load the character. Bounce back to home if it's missing.
-    if (window.__logStep) window.__logStep('loading character doc: ' + charId);
-    const char = await loadCharacter(charId);
-    if (!char) { window.location.href = 'home.html'; return; }
-    charData = char;
-    canEdit = charData.uid === user.uid;
-    if (window.__logStep) window.__logStep('character loaded, canEdit=' + canEdit);
-
-    // GM check: Leader or Administrator of this character's playgroup.
-    // Character owners get GM powers on their own sheet too, so a solo
-    // character (no playgroup) still gets Situation-editing rights.
-    if (charData.playgroupId) {
-      if (window.__logStep) window.__logStep('checking GM role for playgroup: ' + charData.playgroupId);
-      const role = await loadMembershipRole(user.uid, charData.playgroupId);
-      isGM = role === 'Leader' || role === 'Administrator';
+    // Inline strain value reduction — for movement-style stats flagged as
+    // penaltyReducesValue. Two display modes baked into the markup at once:
+    //
+    //   EXPANDED (default):  "10 − 2.5 ft/sec"   ← base and reduction both shown
+    //   COLLAPSED:           "7.5 ft/sec"        ← pre-computed effective value
+    //
+    // The card has a 'penalty-collapsed' class if the player clicked to
+    // collapse; CSS hides whichever span is inactive. Click anywhere on
+    // the value toggles the class in-place (no re-render). Both spans
+    // carry their own tooltip explaining the other mode.
+    let valueBody;
+    const valReduction = entry.penaltyValueReduction || 0;
+    const hasPenaltyDisplay = valReduction > 0 && Number.isFinite(value) && !error;
+    if (hasPenaltyDisplay) {
+      const effective = Math.max(0, value - valReduction);
+      const reductionStr = fmt(valReduction);
+      const effectiveStr = fmt(effective);
+      const baseStr = fmt(value);
+      const pct = entry.penaltyPercent || 0;
+      const expandedTip = `Penalty reduces this value by ${reductionStr} (${pct}% of base ${baseStr}). Effective: ${effectiveStr}${def.unit ? ' ' + def.unit : ''}. Click to show effective only.`;
+      const collapsedTip = `Effective ${effectiveStr}${def.unit ? ' ' + def.unit : ''} — base ${baseStr} reduced by ${reductionStr} (${pct}% Penalty). Click to show breakdown.`;
+      valueBody = `<span class="ds-card-penalty-toggle" onclick="togglePenaltyValueDisplay('${escapeHtml(def.code)}')">` +
+          `<span class="ds-card-penalty-expanded" title="${escapeHtml(expandedTip)}">${baseStr} <span class="ds-card-penalty-reduction">− ${reductionStr}</span></span>` +
+          `<span class="ds-card-penalty-effective" title="${escapeHtml(collapsedTip)}">${effectiveStr}</span>` +
+        `</span>`;
     } else {
-      isGM = canEdit;
+      valueBody = display;
     }
 
-    // Resolve the ruleset that governs this character — playgroup's
-    // attached ruleset, else Basic Set, else defaults. Always returns a
-    // fully-normalized ruleset object.
-    if (window.__logStep) window.__logStep('resolving active ruleset');
-    activeRuleset = await resolveActiveRuleset(charData);
-    if (window.__logStep) window.__logStep('ruleset resolved: ' + (activeRuleset.name || '(unnamed)') + ' derivedStats=' + (activeRuleset.derivedStats ? activeRuleset.derivedStats.length : 'MISSING'));
+    const errTitle = error ? ` title="${escapeHtml(error)}"` : '';
+    const codeBadge = def.code && def.code !== def.name
+      ? ` <span class="ds-card-code">${escapeHtml(def.code)}</span>`
+      : '';
+    const rawFormula = (def.formula || '').trim();
+    const isIdentityFormula = rawFormula.toUpperCase() === def.code;
+    const formulaBadge = (rawFormula && !isIdentityFormula)
+      ? `<div class="ds-card-formula">${escapeHtml(rawFormula.replace(/\s+/g, ' '))}</div>`
+      : '';
 
-    // Silently clamp any stat/skill values that exceed the ruleset's caps.
-    // This can happen if the ruleset was swapped or had its caps lowered
-    // after the character was built. Persists the clamped values so future
-    // loads don't need to re-clamp.
-    if (window.__logStep) window.__logStep('clamping character to ruleset');
-    await clampCharacterToRuleset();
+    // Top-right STATIC mod badge — read-only. Shows the rollModifier value
+    // (e.g. STRMOD for Health). Added to the total of a roll's summed dice.
+    //   roll = sum of (value)D10 + rollModifier
+    // This is separate from dice mods, which add bonus DICE to the pool.
+    let rollBadge = '';
+    if (Number.isFinite(rollModifier)) {
+      const sign = rollModifier > 0 ? '+' : (rollModifier < 0 ? '−' : '±');
+      const absNum = Math.abs(rollModifier);
+      const tip = def.rollModifier
+        ? `Static roll modifier: ${def.rollModifier} — added to the roll total`
+        : 'Static roll modifier — added to the roll total';
+      rollBadge = `<div class="ds-card-rollmod" title="${escapeHtml(tip)}">${sign}${absNum}</div>`;
+    }
 
-    // Load all playgroups this user is in — used by the bio's
-    // "attach to playgroup" dropdown in edit mode.
-    if (window.__logStep) window.__logStep('loading user playgroups');
-    userPlaygroups = await loadUserPlaygroups(user.uid);
-
-    // Primary skills come from the active ruleset. If the ruleset has
-    // none defined (unusual), fall back to the bundled FALLBACK_SKILLS.
-    primarySkillDefs = (activeRuleset.primarySkills && activeRuleset.primarySkills.length > 0)
-      ? activeRuleset.primarySkills
-      : FALLBACK_SKILLS;
-
-    // Everything's loaded — swap loading screen for the sheet.
-    if (window.__logStep) window.__logStep('hiding loading, showing content');
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('char-content').style.display = 'block';
-
-    // Render every section. Each wrapped individually so a single broken
-    // section doesn't prevent the rest from showing.
-    const safeRender = async (label, fn) => {
-      if (window.__logStep) window.__logStep('rendering ' + label);
-      try { await fn(); }
-      catch (e) {
-        console.error('[' + label + '] render failed:', e);
-        if (window.__logStep) window.__logStep(label + ' FAILED: ' + e.message);
-        const marker = document.createElement('div');
-        marker.style.cssText = 'padding:12px;margin:8px 0;background:#2a0d0d;border:1px solid #6a2a2a;color:#e08080;font-size:12px;border-radius:4px';
-        marker.textContent = label + ' section failed to render: ' + (e.message || e) + ' (see console for full stack)';
-        document.getElementById('char-content').appendChild(marker);
+    // Bottom-area DICE MOD pill — editable. Shows the FINAL dice count the
+    // player actually rolls, factoring in dice modifiers AND Strain penalty
+    // (for active rolls). Click to expand an editor with the full breakdown.
+    //
+    // When the pool == base dice (no mods AND no strain penalty), nothing
+    // to show in view-only mode — keeps clean cards. Edit mode still shows
+    // the "+ Dice Mod" pill so players can add mods.
+    const hasDiceMods = Array.isArray(diceMods) && diceMods.length > 0;
+    const isPassive = entry.isPassive === true;
+    const penaltyDice = entry.penaltyDice || 0;
+    const finalDice = Number.isFinite(entry.finalDice)
+      ? entry.finalDice
+      : (Number.isFinite(value) ? value : 0);
+    const baseDice = Number.isFinite(value) ? value : 0;
+    const dicePoolDiffersFromBase = finalDice !== baseDice;
+    const openPanel = expandedDiceMods.has(def.code);
+    let dicePill = '';
+    if (canEdit || hasDiceMods || dicePoolDiffersFromBase) {
+      let pillLabel;
+      let pillClass;
+      if (dicePoolDiffersFromBase || hasDiceMods) {
+        pillLabel = `${finalDice}d`;
+        pillClass = ' has-mods';
+      } else {
+        pillLabel = '+ Dice Mod';
+        pillClass = ' empty';
       }
-    };
-    await safeRender('Bio',        () => bio.renderBio());
-    await safeRender('Mental',     () => loadMentalSection());
-    await safeRender('Stats',      () => stats.buildStatsSection());
-    await safeRender('Skills',     () => skills.buildSkillsSection());
-    await safeRender('Advantages', () => advantages.renderAll());
-    await safeRender('Situations', () => situations.renderAll());
-    await safeRender('Combat',     () => combat.renderAll());
-    await safeRender('Inventory',  () => inventory.renderAll());
-
-    // Owner-only UI elements.
-    if (canEdit) {
-      document.getElementById('bio-edit-btn').style.display = 'inline';
-      document.getElementById('stats-edit-btn').style.display = 'inline';
-      document.getElementById('danger-zone').style.display = 'block';
+      const tipParts = [];
+      tipParts.push(`Rolling ${finalDice}d (base ${baseDice})`);
+      if (hasDiceMods) {
+        const sign = diceModTotal >= 0 ? '+' : '−';
+        tipParts.push(`${sign}${Math.abs(diceModTotal)}d bonus`);
+      }
+      if (penaltyDice > 0) {
+        tipParts.push(`−${penaltyDice}d Penalty`);
+      } else if (isPassive) {
+        tipParts.push('passive — Penalty does not apply');
+      }
+      if (canEdit) tipParts.push('Click to edit');
+      const pillTip = tipParts.join(' · ');
+      dicePill = canEdit
+        ? `<button class="ds-card-dicepill${openPanel ? ' open' : ''}${pillClass}"
+                  onclick="toggleDiceModPanel('${escapeHtml(def.code)}')"
+                  title="${escapeHtml(pillTip)}"
+                  type="button">${pillLabel}</button>`
+        : `<span class="ds-card-dicepill has-mods readonly" title="${escapeHtml(pillTip)}">${pillLabel}</span>`;
     }
 
-    if (window.__logStep) window.__logStep('load complete');
+    // Expanded panel content (dice modifier editor).
+    let panelHtml = '';
+    if (openPanel && canEdit) {
+      panelHtml = renderDiceModPanel(def.code, value, diceMods, diceModTotal, {
+        isPassive,
+        penaltyDice,
+        finalDice,
+        penaltyPercent: entry.penaltyPercent || 0
+      });
+    }
 
-    } catch (err) {
-      // Final catch: anything in the pre-render flow blew up. Surface to the
-      // user + console so they can tell us what broke instead of staring at
-      // a loading spinner that never resolves.
-      console.error('[character load] Fatal error:', err);
-      if (window.__logStep) window.__logStep('FATAL: ' + (err && err.message ? err.message : String(err)));
-      const loadingEl = document.getElementById('loading');
-      if (loadingEl) {
-        loadingEl.style.color = '#e08080';
-        const textEl = document.getElementById('loading-text');
-        if (textEl) textEl.innerHTML = '<strong>Failed to load character.</strong>';
-        const diagEl = document.getElementById('loading-diag');
-        if (diagEl) {
-          diagEl.style.display = 'block';
-          const errBlock = document.createElement('div');
-          errBlock.style.cssText = 'margin-top:10px;padding:10px;background:#2a0d0d;border:1px solid #6a2a2a;color:#e08080;border-radius:3px;white-space:pre-wrap';
-          errBlock.textContent = err && err.stack ? err.stack : String(err);
-          diagEl.appendChild(errBlock);
-          const retry = document.createElement('button');
-          retry.textContent = 'Retry';
-          retry.style.cssText = 'margin-top:10px;padding:6px 14px;background:#1a1a1a;border:1px solid #333;color:#ccc;border-radius:3px;cursor:pointer';
-          retry.onclick = () => location.reload();
-          diagEl.appendChild(retry);
+    const collapsedClass = hasPenaltyDisplay && collapsedPenaltyValues.has(def.code)
+      ? ' penalty-collapsed'
+      : '';
+
+    // Speed conversions — opt-in via def.showSpeedConversions. Shows a
+    // small ⇅ caret button next to the value that toggles an inline
+    // panel with a dropdown + result for a single chosen conversion
+    // (3s / 6s / 1min / 1hr / mph / km/h / m/s). The math uses the
+    // EFFECTIVE (post-Penalty) value; the panel displays the effective
+    // value and Penalty % explicitly so the link is visible.
+    let speedToggle = '';
+    let speedPanelHtml = '';
+    if (def.showSpeedConversions === true && Number.isFinite(value) && !error) {
+      const isOpen = expandedSpeedConversions.has(def.code);
+      const effective = hasPenaltyDisplay ? Math.max(0, value - valReduction) : value;
+      const penaltyPct = entry.penaltyPercent || 0;
+      const tip = isOpen
+        ? `Hide speed conversions for ${def.name}.`
+        : `Show a speed conversion (3s / 6s / min / hr / mph / km·h / m·s). Uses the current effective value (post-Penalty).`;
+      speedToggle = `<button class="ds-card-conv-toggle${isOpen ? ' open' : ''}"
+            onclick="toggleSpeedConversions('${escapeHtml(def.code)}')"
+            title="${escapeHtml(tip)}"
+            type="button">⇅</button>`;
+      if (isOpen) {
+        const choice = speedConversionChoice.get(def.code) || '6s';
+        speedPanelHtml = renderSpeedConversionsPanel(def, value, effective, penaltyPct, choice);
+      }
+    }
+
+    return `
+      <div class="ds-card${openPanel ? ' rollmod-open' : ''}${collapsedClass}" data-code="${escapeHtml(def.code)}"${errTitle}>
+        ${rollBadge}
+        <div class="ds-card-name">${escapeHtml(def.name)}${codeBadge}</div>
+        ${formulaBadge}
+        <div class="ds-card-value${error ? ' ds-card-error' : ''}">${valueBody}${unit}${speedToggle}</div>
+        ${dicePill}
+        ${def.description ? `<div class="ds-card-desc">${escapeHtml(def.description)}</div>` : ''}
+        ${speedPanelHtml}
+        ${panelHtml}
+      </div>`;
+  }
+
+  // Render the speed-conversions panel for a stat card. Dropdown lets
+  // the player pick one of seven conversions; the result displays
+  // alongside. The result follows the SAME click-to-toggle convention
+  // as the main stat value — wrapped in the `ds-card-penalty-toggle`
+  // classes so clicking either one flips the whole card's
+  // `.penalty-collapsed` state. That keeps the main value and the
+  // conversion result in sync without any extra handler wiring.
+  //
+  // Inputs:
+  //   def        — stat def (for name / unit labels)
+  //   baseValue  — pre-Penalty value
+  //   effective  — post-Penalty value
+  //   penaltyPct — current Penalty %
+  //   choice     — selected conversion key
+  //
+  // The panel value is treated as feet per second. SPDUP is also
+  // ft/sec-equivalent because it's added to SPD (see the default
+  // stat's description).
+  function renderSpeedConversionsPanel(def, baseValue, effective, penaltyPct, choice) {
+    const b = Number.isFinite(baseValue) ? baseValue : 0;
+    const e = Number.isFinite(effective) ? effective : 0;
+    const reduction = Math.max(0, b - e);
+
+    // All seven conversions — each computed for base, effective, and
+    // reduction so we can render the base−reduction breakdown when
+    // Penalty is active. Multiplier is the same number for base and
+    // effective; the RESULT differs because the input differs.
+    const order = ['3s','6s','1min','1hr','mph','kmh','mps'];
+    const units = {
+      '3s':   { label: '3 seconds',    unit: 'ft',   mult: 3 },
+      '6s':   { label: '6 seconds',    unit: 'ft',   mult: 6 },
+      '1min': { label: 'per minute',   unit: 'ft',   mult: 60 },
+      '1hr':  { label: 'per hour',     unit: 'ft',   mult: 3600 },
+      'mph':  { label: 'miles/hour',   unit: 'mph',  mult: 3600 / 5280 },
+      'kmh':  { label: 'km/hour',      unit: 'km/h', mult: 0.3048 * 3.6 },
+      'mps':  { label: 'meters/sec',   unit: 'm/s',  mult: 0.3048 }
+    };
+    const sel = units[choice] || units['6s'];
+
+    // Formatting rules for the result value.
+    const fmtN = (n, unit) => {
+      if (!Number.isFinite(n)) return '0';
+      // ft distances: comma-thousands for big, integer for medium,
+      // one decimal for small.
+      if (unit === 'ft') {
+        if (n >= 1000) return Math.round(n).toLocaleString('en-US');
+        if (n >= 100)  return Math.round(n).toString();
+        return (Math.round(n * 10) / 10).toString();
+      }
+      // Speed units: always 1 decimal
+      return (Math.round(n * 10) / 10).toString();
+    };
+
+    // Per-choice computed values.
+    const resultEff  = e * sel.mult;
+    const resultBase = b * sel.mult;
+    const resultRed  = reduction * sel.mult;
+
+    // Secondary /hr-in-miles label for long distances.
+    const hrInMilesEff  = (choice === '1hr' && resultEff  >= 5280)
+      ? ` <span class="ds-conv-sub">(${fmtN(resultEff  / 5280, 'mph')} mi)</span>` : '';
+    const hrInMilesBase = (choice === '1hr' && resultBase >= 5280)
+      ? ` <span class="ds-conv-sub">(${fmtN(resultBase / 5280, 'mph')} mi)</span>` : '';
+
+    // The result block — when Penalty is active, wrap in the same
+    // `ds-card-penalty-toggle` structure as the main value. Clicking
+    // either view flips the card's `.penalty-collapsed` class, which
+    // CSS uses to swap the visible span. When there's no Penalty,
+    // render a single value (no toggle needed).
+    const hasPenalty = penaltyPct > 0 && reduction > 0;
+    let resultHtml;
+    if (hasPenalty) {
+      const expandedTip = `Base ${fmtN(resultBase, sel.unit)} reduced by ${fmtN(resultRed, sel.unit)} (${penaltyPct}% Penalty). Effective: ${fmtN(resultEff, sel.unit)} ${sel.unit}. Click to show effective only.`;
+      const collapsedTip = `Effective ${fmtN(resultEff, sel.unit)} ${sel.unit} — base ${fmtN(resultBase, sel.unit)} reduced by ${fmtN(resultRed, sel.unit)} (${penaltyPct}% Penalty). Click to show breakdown.`;
+      resultHtml =
+        `<span class="ds-card-penalty-toggle ds-conv-result-wrap" onclick="togglePenaltyValueDisplay('${escapeHtml(def.code)}')">` +
+          `<span class="ds-card-penalty-expanded ds-conv-result" title="${escapeHtml(expandedTip)}">` +
+            `${fmtN(resultBase, sel.unit)} ` +
+            `<span class="ds-card-penalty-reduction">− ${fmtN(resultRed, sel.unit)}</span> ` +
+            `<span class="ds-conv-u">${escapeHtml(sel.unit)}</span>${hrInMilesBase}` +
+          `</span>` +
+          `<span class="ds-card-penalty-effective ds-conv-result" title="${escapeHtml(collapsedTip)}">` +
+            `${fmtN(resultEff, sel.unit)} <span class="ds-conv-u">${escapeHtml(sel.unit)}</span>${hrInMilesEff}` +
+          `</span>` +
+        `</span>`;
+    } else {
+      resultHtml = `<span class="ds-conv-result">${fmtN(resultEff, sel.unit)} <span class="ds-conv-u">${escapeHtml(sel.unit)}</span>${hrInMilesEff}</span>`;
+    }
+
+    // Context line showing which value the math uses. Kept even when
+    // the result itself shows the breakdown, because it communicates
+    // the per-second source value that all the multipliers come from.
+    const unitTxt = def.unit || 'ft/sec';
+    const baseFmt = fmtN(b, 'ft');
+    const effFmt  = fmtN(e, 'ft');
+    let ctxLine;
+    if (hasPenalty) {
+      ctxLine = `<span class="ds-conv-ctx-k">Using effective</span> <span class="ds-conv-ctx-v">${effFmt} ${escapeHtml(unitTxt)}</span><span class="ds-conv-ctx-sub"> (base ${baseFmt} − ${penaltyPct}% Penalty)</span>`;
+    } else {
+      ctxLine = `<span class="ds-conv-ctx-k">Using</span> <span class="ds-conv-ctx-v">${effFmt} ${escapeHtml(unitTxt)}</span><span class="ds-conv-ctx-sub"> (no Penalty applied)</span>`;
+    }
+
+    // Dropdown options — labels include a quick preview of the EFFECTIVE
+    // result so a skim of the menu answers all seven at once.
+    const optionsHtml = order.map(key => {
+      const u = units[key];
+      const previewVal = e * u.mult;
+      const preview = `${fmtN(previewVal, u.unit)} ${u.unit}`;
+      return `<option value="${key}"${key === choice ? ' selected' : ''}>${u.label} — ${preview}</option>`;
+    }).join('');
+
+    return `<div class="ds-card-conv-panel" aria-label="Speed conversions">
+      <div class="ds-conv-ctx">${ctxLine}</div>
+      <div class="ds-conv-picker">
+        <select class="ds-conv-select" onchange="setSpeedConversionChoice('${escapeHtml(def.code)}', this.value)">
+          ${optionsHtml}
+        </select>
+        <span class="ds-conv-eq">=</span>
+        ${resultHtml}
+      </div>
+    </div>`;
+  }
+
+  // Dice modifier editor panel — lives inside an expanded card. Shows the
+  // total dice the player rolls (base + all mods − strain) at the top, then
+  // the list of mods with name/value/delete, then an add button.
+  function renderDiceModPanel(code, baseValue, diceMods, diceModTotal, penaltyInfo) {
+    const mods = Array.isArray(diceMods) ? diceMods : [];
+    const base = Number.isFinite(baseValue) ? baseValue : 0;
+    const modTotal = diceModTotal || 0;
+    const si = penaltyInfo || { isPassive: false, penaltyDice: 0, finalDice: base + modTotal, penaltyPercent: 0 };
+
+    let html = '<div class="ds-rollmod-panel">';
+
+    // Summary line: the final dice count with a compact breakdown.
+    //   "Rolling 12d   = 10 base + 2 bonus"
+    //   "Rolling 8d    = 10 base + 2 bonus − 4 strain (50%)"
+    //   "Rolling 10d   = 10 base  (passive — strain doesn't apply)"
+    const breakdownParts = [`${base} base`];
+    if (modTotal !== 0) breakdownParts.push(`${modTotal >= 0 ? '+' : '−'} ${Math.abs(modTotal)} bonus`);
+    if (si.penaltyDice > 0) breakdownParts.push(`− ${si.penaltyDice} penalty (${si.penaltyPercent}%)`);
+    const passiveNote = si.isPassive && si.penaltyPercent > 0
+      ? '<span class="ds-dm-passive-note"> · passive roll · Penalty does not apply</span>'
+      : '';
+    html += `<div class="ds-dicemod-summary">
+      <span class="ds-dm-summary-label">Rolling</span>
+      <span class="ds-dm-summary-value">${si.finalDice}d</span>
+      <span class="ds-dm-summary-breakdown">= ${breakdownParts.join(' ')}${passiveNote}</span>
+    </div>`;
+
+    if (mods.length === 0) {
+      html += '<div class="mod-empty">No dice modifiers. Add bonus dice from abilities or traits.</div>';
+    } else {
+      html += '<div class="mod-list">';
+      mods.forEach((mod, idx) => {
+        html += `<div class="mod-item">
+          <input type="text" class="mod-name-input" value="${escapeHtml(mod.name || '')}" placeholder="e.g. Brawny Trait"
+                 onchange="updateDiceMod('${escapeHtml(code)}',${idx},'name',this.value)">
+          <input type="number" class="mod-val-input" value="${mod.value || 0}" step="1"
+                 onchange="updateDiceMod('${escapeHtml(code)}',${idx},'value',this.value)"
+                 title="Bonus dice (negative = penalty dice)">
+          <span class="mod-delete" onclick="deleteDiceMod('${escapeHtml(code)}',${idx})" title="Delete">×</span>
+        </div>`;
+      });
+      html += '</div>';
+    }
+    html += `<div class="mod-add-row"><button class="mod-add-btn" onclick="addDiceMod('${escapeHtml(code)}')">+ Add dice mod</button></div>`;
+    html += '</div>';
+    return html;
+  }
+
+  // ─── DICE MOD HANDLERS ───
+
+  function toggleDiceModPanel(code) {
+    if (expandedDiceMods.has(code)) expandedDiceMods.delete(code);
+    else expandedDiceMods.add(code);
+    renderAll();
+  }
+
+  async function addDiceMod(code) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!charData.diceModifiers || typeof charData.diceModifiers !== 'object') {
+      charData.diceModifiers = {};
+    }
+    if (!Array.isArray(charData.diceModifiers[code])) charData.diceModifiers[code] = [];
+    charData.diceModifiers[code].push({ name: '', value: 1 });
+    expandedDiceMods.add(code);
+    await saveCharacter(ctx.getCharId(), { diceModifiers: charData.diceModifiers });
+    renderAll();
+  }
+
+  async function updateDiceMod(code, idx, field, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const list = charData.diceModifiers && charData.diceModifiers[code];
+    if (!Array.isArray(list) || !list[idx]) return;
+    if (field === 'name') list[idx].name = typeof val === 'string' ? val : '';
+    else if (field === 'value') list[idx].value = parseInt(val) || 0;
+    await saveCharacter(ctx.getCharId(), { diceModifiers: charData.diceModifiers });
+    renderAll();
+  }
+
+  async function deleteDiceMod(code, idx) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const list = charData.diceModifiers && charData.diceModifiers[code];
+    if (!Array.isArray(list) || !list[idx]) return;
+    list.splice(idx, 1);
+    if (list.length === 0) delete charData.diceModifiers[code];
+    await saveCharacter(ctx.getCharId(), { diceModifiers: charData.diceModifiers });
+    renderAll();
+  }
+
+  // ─── PAIN / STRESS ───
+  //
+  // Pain is % of Body missing. Stress is % of SAN range used up (with 3×
+  // denominator to account for SAN's negative range). Strain = Pain + Stress
+  // and is used to reduce dice pools on active rolls.
+  //
+  // Both show as clickable pills with the same interaction pattern as Dice
+  // Mod pills: click to expand an inline editor with percentile modifiers.
+
+  const expandedPainPanel = { open: false };
+  const expandedStressPanel = { open: false };
+
+  function renderPainPill(result) {
+    const pain = result.pain;
+    if (!pain) return '';
+    const canEdit = ctx.getCanEdit();
+    const penalty = result.penalty || { percent: 0 };
+    return renderStrainPill({
+      id: 'pain',
+      label: 'Pain',
+      data: pain,
+      penalty,
+      expanded: expandedPainPanel.open,
+      canEdit,
+      toggleFn: 'togglePainPanel',
+      addFn: 'addPainMod',
+      updateFn: 'updatePainMod',
+      deleteFn: 'deletePainMod',
+      baseDescription: `${pain.basePercent}% base = ${(result.body && result.body.damage) || 0} / ${(result.body && result.body.max) || 0} Body missing`
+    });
+  }
+
+  function renderStressPill(result) {
+    const stress = result.stress;
+    if (!stress) return '';
+    const canEdit = ctx.getCanEdit();
+    const penalty = result.penalty || { percent: 0 };
+    const sanMax = (result.san && result.san.max) || 0;
+    return renderStrainPill({
+      id: 'stress',
+      label: 'Stress',
+      data: stress,
+      penalty,
+      expanded: expandedStressPanel.open,
+      canEdit,
+      toggleFn: 'toggleStressPanel',
+      addFn: 'addStressMod',
+      updateFn: 'updateStressMod',
+      deleteFn: 'deleteStressMod',
+      baseDescription: `${stress.basePercent}% base = ${(result.san && result.san.damage) || 0} / ${sanMax * 3} SAN range lost`
+    });
+  }
+
+  // Shared renderer for Pain and Stress — same layout, different data/handlers.
+  function renderStrainPill(opts) {
+    const {
+      id, label, data, penalty, expanded, canEdit,
+      toggleFn, addFn, updateFn, deleteFn, baseDescription
+    } = opts;
+
+    const mods = Array.isArray(data.modifiers) ? data.modifiers : [];
+    const finalPct = data.finalPercent;
+    const pillClass = finalPct === 0 ? ' strain-zero' : (finalPct >= 75 ? ' strain-crit' : (finalPct >= 50 ? ' strain-heavy' : ' strain-light'));
+
+    let html = `<div class="strain-block">`;
+    // Header row: always visible. Click toggles the panel (if editable).
+    const tipParts = [baseDescription];
+    if (mods.length > 0) {
+      const sign = data.modTotal >= 0 ? '+' : '−';
+      tipParts.push(`${sign}${Math.abs(data.modTotal)}% from modifiers`);
+    }
+    tipParts.push(`Penalty total: ${penalty.percent}%`);
+    if (canEdit) tipParts.push('Click to edit modifiers');
+    const tip = tipParts.join(' · ');
+
+    const openClass = expanded ? ' open' : '';
+    const headTag = canEdit ? 'button' : 'div';
+    const headAttrs = canEdit
+      ? `type="button" onclick="${toggleFn}()"`
+      : '';
+    html += `<${headTag} class="strain-head${openClass}${pillClass}" ${headAttrs} title="${escapeHtml(tip)}">
+      <span class="strain-label">${escapeHtml(label)}</span>
+      <span class="strain-percent">${finalPct}%</span>
+      <span class="strain-breakdown">${data.basePercent}% base${data.modTotal !== 0 ? ` ${data.modTotal > 0 ? '+' : '−'} ${Math.abs(data.modTotal)}%` : ''}</span>
+    </${headTag}>`;
+
+    if (expanded && canEdit) {
+      html += '<div class="strain-panel">';
+      html += `<div class="strain-panel-base">Base: ${data.basePercent}% (computed from ${label === 'Pain' ? 'Body damage' : 'SAN damage'})</div>`;
+      if (mods.length === 0) {
+        html += '<div class="mod-empty">No modifiers. Add percentile adjustments (e.g. "Adrenaline: −10%" or "Fatigue: +15%").</div>';
+      } else {
+        html += '<div class="mod-list">';
+        mods.forEach((mod, idx) => {
+          html += `<div class="mod-item">
+            <input type="text" class="mod-name-input" value="${escapeHtml(mod.name || '')}" placeholder="e.g. Adrenaline Surge"
+                   onchange="${updateFn}(${idx},'name',this.value)">
+            <input type="number" class="mod-val-input" value="${mod.value || 0}" step="1"
+                   onchange="${updateFn}(${idx},'value',this.value)"
+                   title="Percentile modifier (signed)">
+            <span class="mod-unit">%</span>
+            <span class="mod-delete" onclick="${deleteFn}(${idx})" title="Delete">×</span>
+          </div>`;
+        });
+        html += '</div>';
+      }
+      html += `<div class="mod-add-row"><button class="mod-add-btn" onclick="${addFn}()">+ Add modifier</button></div>`;
+      html += `<div class="strain-panel-total">Total: ${finalPct}% → contributes to Penalty (${penalty.percent}% overall)</div>`;
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function togglePainPanel() {
+    expandedPainPanel.open = !expandedPainPanel.open;
+    renderAll();
+  }
+  function toggleStressPanel() {
+    expandedStressPanel.open = !expandedStressPanel.open;
+    renderAll();
+  }
+
+  async function addPainMod() {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.painModifiers)) charData.painModifiers = [];
+    charData.painModifiers.push({ name: '', value: 0 });
+    expandedPainPanel.open = true;
+    await saveCharacter(ctx.getCharId(), { painModifiers: charData.painModifiers });
+    renderAll();
+  }
+  async function updatePainMod(idx, field, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.painModifiers) || !charData.painModifiers[idx]) return;
+    if (field === 'name') charData.painModifiers[idx].name = typeof val === 'string' ? val : '';
+    else if (field === 'value') charData.painModifiers[idx].value = parseInt(val) || 0;
+    await saveCharacter(ctx.getCharId(), { painModifiers: charData.painModifiers });
+    renderAll();
+  }
+  async function deletePainMod(idx) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.painModifiers) || !charData.painModifiers[idx]) return;
+    charData.painModifiers.splice(idx, 1);
+    await saveCharacter(ctx.getCharId(), { painModifiers: charData.painModifiers });
+    renderAll();
+  }
+
+  async function addStressMod() {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.stressModifiers)) charData.stressModifiers = [];
+    charData.stressModifiers.push({ name: '', value: 0 });
+    expandedStressPanel.open = true;
+    await saveCharacter(ctx.getCharId(), { stressModifiers: charData.stressModifiers });
+    renderAll();
+  }
+  async function updateStressMod(idx, field, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.stressModifiers) || !charData.stressModifiers[idx]) return;
+    if (field === 'name') charData.stressModifiers[idx].name = typeof val === 'string' ? val : '';
+    else if (field === 'value') charData.stressModifiers[idx].value = parseInt(val) || 0;
+    await saveCharacter(ctx.getCharId(), { stressModifiers: charData.stressModifiers });
+    renderAll();
+  }
+  async function deleteStressMod(idx) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.stressModifiers) || !charData.stressModifiers[idx]) return;
+    charData.stressModifiers.splice(idx, 1);
+    await saveCharacter(ctx.getCharId(), { stressModifiers: charData.stressModifiers });
+    renderAll();
+  }
+
+  // ─── OTHER MODIFIERS (part of Penalty) ───
+  //
+  // Named ±% entries that contribute to Penalty alongside Pain and Stress.
+  // Examples: Exposure, Encumbrance, drugged, restrained, sleep-deprived.
+  // Values can be negative to model buffs that offset existing Penalty.
+  // Editor lives inline in the Penalty card; these handlers are bound to
+  // window by the combat.html glue.
+
+  async function addOtherMod() {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.otherModifiers)) charData.otherModifiers = [];
+    charData.otherModifiers.push({ name: '', value: 0 });
+    await saveCharacter(ctx.getCharId(), { otherModifiers: charData.otherModifiers });
+    renderAll();
+  }
+  async function updateOtherMod(idx, field, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.otherModifiers) || !charData.otherModifiers[idx]) return;
+    if (field === 'name') charData.otherModifiers[idx].name = typeof val === 'string' ? val : '';
+    else if (field === 'value') charData.otherModifiers[idx].value = parseInt(val) || 0;
+    await saveCharacter(ctx.getCharId(), { otherModifiers: charData.otherModifiers });
+    renderAll();
+  }
+  async function deleteOtherMod(idx) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.otherModifiers) || !charData.otherModifiers[idx]) return;
+    charData.otherModifiers.splice(idx, 1);
+    await saveCharacter(ctx.getCharId(), { otherModifiers: charData.otherModifiers });
+    renderAll();
+  }
+
+  // ─── HIT LOCATIONS ───
+
+  // UI-only state: whether we're in "edit modifiers" mode for the Hit Locations
+  // section. Not persisted; resets on page reload.
+  let editModifiersMode = false;
+
+  function renderHitLocationsSection(result) {
+    if (!result.locations || result.locations.length === 0) return '';
+    const body = result.body || { max: 0, current: 0, dead: false, statusLabel: 'Alive', modifiers: [] };
+    const canEdit = ctx.getCanEdit();
+    const ruleset = ctx.getRuleset();
+
+    let html = '<div class="combat-section">';
+    // Section-level title is "Health" now. This section houses:
+    //   - Health derived stat cards (HP, FORT, anything else in the 'health' group)
+    //   - Hit Locations list (with its own sub-header + Edit Modifiers button)
+    //   - Body bar
+    //   - Injuries manager
+    html += '<div class="combat-section-title">Health</div>';
+
+    // Cards from the 'health' derived stat group, rendered at the top of the
+    // section as an overview strip. These are ALSO filtered OUT of the normal
+    // derived stats grid (renderDerivedStatsSection) so they don't appear twice.
+    const healthStats = [];
+    result.stats.forEach(entry => {
+      if (entry.def.group === 'health') healthStats.push(entry);
+    });
+    if (healthStats.length > 0) {
+      html += '<div class="ds-grid health-cards">';
+      healthStats.forEach(entry => { html += renderDsCard(entry); });
+      html += '</div>';
+    }
+
+    // "Hit Locations" sub-header with the Edit Modifiers button. Acts as the
+    // divider between the cards overview and the location bars below.
+    html += '<div class="combat-subsection-head">';
+    html += '<div class="combat-subsection-title">Hit Locations</div>';
+    if (canEdit) {
+      html += `<button class="hl-edit-btn${editModifiersMode ? ' active' : ''}" onclick="toggleHlModifierEdit()">` +
+              `${editModifiersMode ? 'Done' : 'Edit Modifiers'}</button>`;
+    }
+    html += '</div>';
+
+    html += '<div class="hl-list">';
+    result.locations.forEach(loc => { html += renderHlRow(loc, body); });
+    html += '</div>';
+
+    // Body total goes at the bottom, summarizing the overall state after
+    // you've read through the individual locations above.
+    html += renderBodyBlock(body);
+
+    // Pain indicator — percent of Body missing, editable modifiers. Sits
+    // between Body (which shows physical damage) and Injuries (detailed
+    // wound list), conceptually linking "how hurt you are" to "what hurts".
+    html += renderPainPill(result);
+
+    // Injuries manager — a collapsible list of wounds with degradation tracking.
+    html += renderInjuriesSection(result);
+
+    html += '</div>';
+    return html;
+  }
+
+  function renderHlRow(loc, body) {
+    const { def, trackKey, maxHP, baseMaxHP, currentDamage, status, error, index, modifiers } = loc;
+    const canEdit = ctx.getCanEdit();
+
+    // Display name. Paired limbs (count=2, like Arms/Legs) get Right/Left
+    // labels: instance 1 = Right, 2 = Left. Anything with higher count
+    // falls back to a numeric "(N)" suffix.
+    const displayName = getLocationDisplayName(def, index);
+
+    if (error || maxHP === null) {
+      return `<div class="hl-row hl-row-error" title="${escapeHtml(error || 'Formula error')}">
+        <div class="hl-status-label"></div>
+        <div class="hl-name">${escapeHtml(displayName)}</div>
+        <div class="hl-error">Formula error</div>
+      </div>`;
+    }
+
+    const remaining = maxHP - currentDamage;
+    // Damage cap: Def.Destroyed threshold is reached at damage=3*maxHP. Allow
+    // damage up to 4*maxHP as the "entire bar black from Body depletion" state,
+    // but realistically Body will hit 0 long before that in most fights.
+    const damageCap = Math.max(maxHP * 4, 10);
+
+    const segmentsHtml = renderHpSegments(maxHP, currentDamage, status, body);
+
+    // Left-side status label. "Healthy" as a blank cell (kept for grid alignment).
+    const statusLabels = {
+      healthy: '',
+      disabled: 'Disabled',
+      destroyed: 'Destroyed',
+      definitelyDestroyed: 'Definitively Destroyed'
+    };
+    const statusText = statusLabels[status] || '';
+
+    const controls = canEdit
+      ? `<div class="hl-controls">
+          <button class="hl-dmg-btn" onclick="tickHitLocationDmg('${trackKey}',1)" title="Take 1 HP damage">−</button>
+          <input type="number" class="hl-dmg-input" value="${remaining}" min="${-damageCap}" max="${maxHP}"
+                 onchange="setHitLocationDmg('${trackKey}',this.value)"
+                 title="Current HP (type to set directly)">
+          <button class="hl-dmg-btn" onclick="tickHitLocationDmg('${trackKey}',-1)" title="Heal 1 HP">+</button>
+        </div>`
+      : '';
+
+    // Main row always rendered.
+    let html = `
+      <div class="hl-row hl-status-${status}">
+        <div class="hl-status-label">${escapeHtml(statusText)}</div>
+        <div class="hl-name">${escapeHtml(displayName)}</div>
+        <div class="hl-bar-wrap">
+          <div class="hl-bar-bg">${segmentsHtml}</div>
+          <div class="hl-bar-label">${remaining} / ${maxHP}</div>
+        </div>
+        ${controls}
+      </div>`;
+
+    // Inline modifier editor, only when in edit mode.
+    if (editModifiersMode && canEdit) {
+      html += renderModifierEditor(trackKey, modifiers || [], baseMaxHP);
+    }
+    return html;
+  }
+
+  // Display name for a location instance. Single-count locations (Head, Torso)
+  // use just the def name. Paired locations (count=2) like Arms and Legs get
+  // "Right" and "Left" labels — convention: instance 1 is Right, instance 2
+  // is Left (matches how most character sheets read). Anything with count>2
+  // falls back to a numeric suffix since there's no natural naming.
+  function getLocationDisplayName(def, index) {
+    const count = def.count || 1;
+    if (count === 1) return def.name;
+    if (count === 2) {
+      const side = index === 1 ? 'Right' : 'Left';
+      return `${side} ${def.name}`;
+    }
+    return `${def.name} (${index})`;
+  }
+
+  // Modifier editor rendered directly below a hit location row (or Body block).
+  // Shows the base value, a list of current modifiers (name + value + delete),
+  // and an add row.
+  //
+  // target: trackKey for hit locations (e.g. "head", "arm-1"), or "body" for Body.
+  // mods: array of { name, value }
+  // baseMaxHP: the formula-computed value BEFORE modifiers. For Body, this is
+  //   the sum of location base maxHPs; but we pass it from the caller.
+  function renderModifierEditor(target, mods, baseValue) {
+    const isBody = target === 'body';
+    const listRows = mods.length === 0
+      ? '<div class="mod-empty">No modifiers.</div>'
+      : mods.map((m, i) => {
+          const safeName = escapeHtml(m.name || '');
+          return `<div class="mod-item">
+            <input type="text" class="mod-name-input" value="${safeName}"
+                   placeholder="Modifier name"
+                   onchange="updateHlMod('${target}',${i},'name',this.value)">
+            <input type="number" class="mod-val-input" value="${parseInt(m.value) || 0}"
+                   onchange="updateHlMod('${target}',${i},'value',this.value)">
+            <span class="mod-delete" onclick="deleteHlMod('${target}',${i})">×</span>
+          </div>`;
+        }).join('');
+
+    return `
+      <div class="hl-mod-panel">
+        <div class="mod-panel-head">
+          <span class="mod-base">Base ${baseValue != null ? baseValue : '—'}</span>
+          <span class="mod-panel-hint">modifiers stack onto max</span>
+        </div>
+        <div class="mod-list">${listRows}</div>
+        <div class="mod-add-row">
+          <input type="text" class="mod-name-input" id="mod-add-name-${target}" placeholder="Modifier name">
+          <input type="number" class="mod-val-input" id="mod-add-val-${target}" placeholder="±" value="0">
+          <button class="mod-add-btn" onclick="addHlMod('${target}')">Add</button>
+        </div>
+      </div>`;
+  }
+
+  // Build the segmented HP bar. One <span> per HP point. Segments deteriorate
+  // right-to-left.
+  //
+  // Phases 1–3 work purely off location damage:
+  //   1. Healthy → Disabled (damage 0..maxHP): green → yellow from the right
+  //   2. Disabled → Destroyed (damage maxHP..2*maxHP): yellow → red from right
+  //   3. Destroyed → Def. Destroyed (damage 2*maxHP..3*maxHP): red → deep red
+  //
+  // Phase 4 (past Def. Destroyed, location is deep-red+) instead displays the
+  // shared Body pool's state. Each segment in Phase 4 represents
+  // `bodyMax / maxHP` points of Body damage. When Body hits 0, every
+  // Def.Destroyed location shows a fully black bar. This means all Def.Destroyed
+  // limbs visually track the Body pool in sync — that's intentional, since Body
+  // is global.
+  function renderHpSegments(maxHP, damage, status, body) {
+    if (maxHP <= 0) return '';
+
+    const COLORS = {
+      green:    '#4a7a4a',
+      yellow:   '#bdb247',
+      red:      '#a63a3a',
+      deepRed:  '#5a1818',
+      black:    '#0f0a0a'
+    };
+
+    // Phase 4 (location is Def.Destroyed): the limb has no HP of its own
+    // anymore — it's gone — so its bar stops tracking per-limb damage and
+    // instead becomes a live readout of the shared Body pool. Uses the
+    // same 4-state palette as the Body bar itself:
+    //
+    //   Body = +max (undamaged)   → green
+    //   Body = 0    (Incapacitated) → yellow
+    //   Body = -max (Dead)         → red
+    //   past -max + all Def.Destroyed (Destroyed) → near-black
+    //
+    // Same gating as the Body bar: black only shows when body.destroyed is
+    // true (which requires all limbs Def.Destroyed). Otherwise, a single
+    // limb's degradation pushing Body past 2·max would wrongly turn the
+    // bar black even though the character isn't totally annihilated.
+    //
+    // The limb's bar is scaled to its own `maxHP` segment count regardless
+    // of Body's size — each segment represents body.max/maxHP points of
+    // Body damage, computed the same right-to-left `base` way.
+    if (status === 'definitelyDestroyed' && body && body.max > 0) {
+      const BODY_COLORS = {
+        green:     COLORS.green,
+        yellow:    COLORS.yellow,
+        red:       COLORS.red,
+        // Use the limb's `black` tone (matches Body bar's destroyed color)
+        // rather than limb's `deepRed`, since we want "completely gone"
+        // here, not "just very injured".
+        destroyed: COLORS.black
+      };
+      const hpPerSeg = body.max / maxHP;
+      let html = '';
+      for (let i = 1; i <= maxHP; i++) {
+        const rightDistance = maxHP - i + 1;
+        const base = (rightDistance - 1) * hpPerSeg;
+        let color;
+        if      (body.destroyed && body.damage > 2 * body.max + base) color = BODY_COLORS.destroyed;
+        else if (body.damage >     body.max + base) color = BODY_COLORS.red;
+        else if (body.damage >                base) color = BODY_COLORS.yellow;
+        else                                        color = BODY_COLORS.green;
+        html += `<span class="hl-seg" style="background:${color}"></span>`;
+      }
+      return html;
+    }
+
+    // Phases 1–3: determined purely by location damage.
+    //
+    // For each segment i (1..maxHP), compute how far from the RIGHT it is
+    // (rightDistance). A segment "sees" the first rightDistance HP of damage.
+    // If total damage >= a threshold tied to rightDistance, the segment has
+    // transitioned to the corresponding phase color.
+    let html = '';
+    for (let i = 1; i <= maxHP; i++) {
+      const rightDistance = maxHP - i + 1;
+      let color;
+      if      (damage >= 2 * maxHP + rightDistance) color = COLORS.deepRed;
+      else if (damage >= 1 * maxHP + rightDistance) color = COLORS.red;
+      else if (damage >=              rightDistance) color = COLORS.yellow;
+      else                                           color = COLORS.green;
+      html += `<span class="hl-seg" style="background:${color}"></span>`;
+    }
+    return html;
+  }
+
+  // Body section — segmented green→black bar + status label.
+  // Segments represent Body pool in 1-HP increments (one seg per max Body point).
+  // On enormous Body totals this gets many segments; that's fine — they scale
+  // down via flex and stay visually coherent.
+  function renderBodyBlock(body) {
+    if (!body || body.max <= 0) return '';
+    const canEdit = ctx.getCanEdit();
+
+    // Cap segment count for visual sanity on very high Body totals.
+    // Characters with Body > 80 get scaled to 80 segments (each = Body/80 points).
+    // Below 80, use 1 seg per point.
+    const SEG_CAP = 80;
+    const segCount = Math.min(body.max, SEG_CAP);
+
+    // Color progression — same scheme as the Overview Body tile so the two
+    // views stay visually in sync:
+    //
+    //   current = +max  (damage = 0)        → fully green      (Healthy)
+    //   current = 0     (damage = maxHP)    → fully yellow     (Incapacitated:
+    //                                           Unconscious and Paralyzed)
+    //   current = -max  (damage = 2·maxHP)  → fully red        (Dead)
+    //   past -max + all limbs Def.Destroyed → near-black       (Destroyed;
+    //                                           character fully annihilated)
+    //
+    // The "destroyed" black state is gated on body.destroyed — a Body past
+    // 2·max alone isn't enough, because single-limb degradation (bleeding,
+    // exsanguination) can drive Body down without the whole character being
+    // gone. body.destroyed additionally requires all limbs to be Def.Destroyed.
+    //
+    // Per segment, `base` is how much damage has already chewed through
+    // segments to the right of it. Rightmost segments transition first.
+    const COLORS = { green: '#4a7a4a', yellow: '#bdb247', red: '#8a3030', destroyed: '#0f0a0a' };
+    const hpPerSeg = body.max / segCount;
+    let segHtml = '';
+    for (let i = 1; i <= segCount; i++) {
+      const rightDistance = segCount - i + 1;
+      const base = (rightDistance - 1) * hpPerSeg;
+      let color;
+      if      (body.destroyed && body.damage > 2 * body.max + base) color = COLORS.destroyed;
+      else if (body.damage >     body.max + base) color = COLORS.red;
+      else if (body.damage >                base) color = COLORS.yellow;
+      else                                        color = COLORS.green;
+      segHtml += `<span class="hl-seg" style="background:${color}"></span>`;
+    }
+
+    // Status label styling. Priority matches the statusLabel tiers computed
+    // in char-derived.js — Destroyed and Dead share the death styling (both
+    // read as "body.dead" since destroyed is a stronger form of dead).
+    // Incapacitated joins Unconscious/Paralyzed under the "impaired" tone.
+    let statusClass = 'body-status';
+    if (body.dead) statusClass += ' body-status-dead';
+    else if (body.incapacitated || body.unconscious || body.paralyzed) statusClass += ' body-status-impaired';
+    else statusClass += ' body-status-alive';
+
+    const rowClass = 'body-total' + (body.dead ? ' body-total-dead' : '');
+
+    // Body base for modifier editor = total max MINUS any body-specific mods
+    // (those are added on top). So base = max - sum(body modifiers).
+    const bodyModTotal = (body.modifiers || []).reduce((acc, m) => acc + (parseInt(m.value) || 0), 0);
+    const bodyBase = body.max - bodyModTotal;
+
+    let html = `
+      <div class="${rowClass}">
+        <div class="body-top-row">
+          <span class="body-label">Body</span>
+          <span class="body-value">${body.current} / ${body.max}</span>
+          <span class="${statusClass}">${escapeHtml(body.statusLabel)}</span>
+        </div>
+        <div class="body-bar-bg">${segHtml}</div>
+      </div>`;
+
+    if (editModifiersMode && canEdit) {
+      html += renderModifierEditor('body', body.modifiers || [], bodyBase);
+    }
+    return html;
+  }
+
+  // ─── INJURIES ───
+  //
+  // Collapsible manager under the Body bar. Injuries are grouped by hit
+  // location (collapsible sub-groups), so you can see "Torso (2)" at a glance
+  // and expand to see the injuries there. Each individual injury is ALSO
+  // collapsible within its location group for full detail editing.
+  //
+  // UI-only state: which injury cards are expanded, and which location groups
+  // are open. Not persisted — resets each page load. Location groups with
+  // injuries default to expanded; locations you explicitly collapse stay
+  // collapsed for the session.
+  const expandedInjuries = new Set();
+  const openInjuryLocations = new Set();
+  let injuryLocationsInitialized = false;
+  // Whether the whole Injuries section is shown.
+  let injuriesOpen = false;
+  // Which locations are currently selected in the quick-add form. A Set of
+  // trackKeys. One or more can be selected (one = normal add; multi = AoE).
+  // Persists across renders within a session so rapid sequential adds to the
+  // same spots don't require reselecting. Auto-initialized to just 'torso'
+  // the first time the section renders with locations available.
+  const quickAddLocations = new Set();
+  let quickAddLocationsInitialized = false;
+
+  // Convert a non-negative integer to its English ordinal string.
+  //   ordinal(1) → "1st", ordinal(2) → "2nd", ordinal(3) → "3rd"
+  //   ordinal(11) → "11th", ordinal(21) → "21st", ordinal(42) → "42nd"
+  // Standard rule: "th" unless the last TWO digits are 11/12/13, in which
+  // case "th"; otherwise the last digit picks st/nd/rd for 1/2/3.
+  function ordinal(n) {
+    const abs = Math.abs(n);
+    const mod100 = abs % 100;
+    if (mod100 >= 11 && mod100 <= 13) return n + 'th';
+    const mod10 = abs % 10;
+    if (mod10 === 1) return n + 'st';
+    if (mod10 === 2) return n + 'nd';
+    if (mod10 === 3) return n + 'rd';
+    return n + 'th';
+  }
+
+  function renderInjuriesSection(result) {
+    const canEdit = ctx.getCanEdit();
+    const injuries = result.injuries || [];
+    const count = injuries.length;
+
+    // On first render (or first render after data loads), auto-open any
+    // location group that has injuries. User-driven toggles after that
+    // stick for the session.
+    if (!injuryLocationsInitialized) {
+      injuries.forEach(inj => openInjuryLocations.add(inj.location));
+      injuryLocationsInitialized = true;
+    }
+
+    let html = '<div class="injury-section">';
+    html += `<div class="injury-head" onclick="toggleInjurySection()">
+      <span class="injury-head-caret">${injuriesOpen ? '▾' : '▸'}</span>
+      <span class="injury-head-title">Injuries</span>
+      <span class="injury-head-count">${count}</span>
+    </div>`;
+
+    if (!injuriesOpen) { html += '</div>'; return html; }
+
+    // Quick-add inline form when the section is expanded.
+    if (canEdit) {
+      const locations = result.locations || [];
+
+      // Initialize the quick-add location selection to 'torso' (or first
+      // available) the first time we render. After that, respect whatever
+      // the user has toggled — they're likely still setting up the next AoE
+      // or single-target add.
+      if (!quickAddLocationsInitialized && locations.length > 0) {
+        const defaultLoc = locations.some(l => l.trackKey === 'torso')
+          ? 'torso'
+          : locations[0].trackKey;
+        quickAddLocations.add(defaultLoc);
+        quickAddLocationsInitialized = true;
+      }
+
+      // Top row: name + degree + Add button. Kept on one tidy line.
+      html += `<div class="injury-quickadd-row">
+        <input type="text" id="qadd-inj-name" class="qadd-inj-name" placeholder="Injury name"
+               onkeydown="if(event.key==='Enter')quickAddInjury()">
+        <input type="number" id="qadd-inj-level" class="qadd-inj-level" placeholder="Deg"
+               min="0" max="99" value="1"
+               onkeydown="if(event.key==='Enter')quickAddInjury()">
+        <button class="injury-add-btn" onclick="quickAddInjury()">Add</button>
+      </div>`;
+
+      // Second row: location chips. Multi-select. Torso default. "All" chip
+      // at the start toggles select-all. When multiple chips are selected,
+      // Add will create one injury per selected location (e.g. AoE attacks).
+      const allSelected = locations.length > 0
+        && locations.every(l => quickAddLocations.has(l.trackKey));
+      const chipHtml = locations.map(l => {
+        const label = getLocationDisplayName(l.def, l.index);
+        const on = quickAddLocations.has(l.trackKey);
+        return `<button class="injury-loc-chip${on ? ' on' : ''}"
+                        onclick="toggleQuickAddLocation('${escapeHtml(l.trackKey)}')"
+                        type="button">${escapeHtml(label)}</button>`;
+      }).join('');
+
+      html += `<div class="injury-quickadd-locs">
+        <span class="injury-quickadd-locs-label">Locations:</span>
+        <button class="injury-loc-chip injury-loc-chip-all${allSelected ? ' on' : ''}"
+                onclick="toggleQuickAddAllLocations()"
+                type="button">All</button>
+        ${chipHtml}
+      </div>`;
+    }
+
+    // "Hit Locations" divider + grouped list. Only locations that have
+    // injuries show as groups — empty ones stay out of the list to avoid
+    // clutter. Add via the quick-add form above.
+    html += '<div class="injury-divider">Hit Locations</div>';
+
+    if (count === 0) {
+      html += '<div class="injury-empty">No injuries recorded.</div>';
+    } else {
+      html += renderInjuryGroupsByLocation(injuries, result, canEdit);
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  function renderInjuryGroupsByLocation(injuries, result, canEdit) {
+    // Group injuries by trackKey, preserving the order hit locations appear
+    // in the ruleset (so Head first, then Torso, then Arms, then Legs, etc.).
+    const locations = result.locations || [];
+    const locationOrder = locations.map(l => l.trackKey);
+
+    const groups = new Map();
+    locationOrder.forEach(k => groups.set(k, []));
+    injuries.forEach(inj => {
+      const loc = inj.location || 'torso';
+      if (!groups.has(loc)) groups.set(loc, []);
+      groups.get(loc).push(inj);
+    });
+
+    let html = '<div class="injury-loc-groups">';
+    groups.forEach((groupInjuries, trackKey) => {
+      if (groupInjuries.length === 0) return;  // hide empty groups
+      const locLabel = locationLabel(trackKey, locations) || trackKey;
+      const open = openInjuryLocations.has(trackKey);
+      html += `<div class="injury-loc-group${open ? ' open' : ''}">`;
+      html += `<div class="injury-loc-head" onclick="toggleInjuryLocation('${escapeHtml(trackKey)}')">
+        <span class="injury-loc-caret">${open ? '▾' : '▸'}</span>
+        <span class="injury-loc-label">${escapeHtml(locLabel)}</span>
+        <span class="injury-loc-count">${groupInjuries.length}</span>
+      </div>`;
+      if (open) {
+        html += '<div class="injury-list">';
+        groupInjuries.forEach(inj => { html += renderInjuryCard(inj, canEdit, result); });
+        html += '</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  // A single injury card. Compact header when collapsed; full editor when open.
+  // Header layout (collapsed):
+  //   ▸ [Name]  [7th Degree]  [Torso pill]  [Degrades Every 6 Hours]  [trauma badges…]
+  function renderInjuryCard(inj, canEdit, result) {
+    const open = expandedInjuries.has(inj.id);
+    const locations = result.locations || [];
+    const locLabel = locationLabel(inj.location, locations) || inj.location;
+    const severity = severityClass(inj.diff);
+
+    // Degree text — ordinal. If modified, show "(from 7th)" in a tiny note.
+    let degreeText;
+    if (inj.currentLevel === inj.baseLevel) {
+      degreeText = `${ordinal(inj.currentLevel)} Degree`;
+    } else {
+      degreeText = `${ordinal(inj.currentLevel)} Degree <span class="injury-base-note">(base ${ordinal(inj.baseLevel)})</span>`;
+    }
+
+    // Rate text — "Degrades Every X" or "Stable" if below threshold.
+    const rateText = inj.rate
+      ? `Degrades ${escapeHtml(inj.rate.label)}`
+      : '<span class="injury-norate">Stable</span>';
+
+    // Trauma badges on the header — visible even when collapsed. Each badge
+    // is a small pill colored by the trauma's severity tier. Hover reveals
+    // description and system text via the native title attribute (simple
+    // tooltip; fancy custom tooltips can come later).
+    const traumaBadges = (inj.traumas || []).map(t => {
+      const tierSlug = (t.level || 'Minor').toLowerCase();
+      const tip = [
+        (t.level || 'Minor') + ' Trauma',
+        t.description || '',
+        t.system ? '⚙ ' + t.system : ''
+      ].filter(Boolean).join('\n');
+      return `<span class="trauma-badge tt-${tierSlug}" title="${escapeHtml(tip)}">${escapeHtml(t.name || '(unnamed)')}</span>`;
+    }).join('');
+
+    let html = `<div class="injury-card ${severity}${open ? ' open' : ''}">`;
+    html += `<div class="injury-card-head" onclick="toggleInjuryExpand('${inj.id}')">
+      <span class="injury-caret">${open ? '▾' : '▸'}</span>
+      <span class="injury-name">${escapeHtml(inj.name || '(unnamed)')}</span>
+      <span class="injury-degree">${degreeText}</span>
+      ${canEdit ? `<span class="injury-quickmod" onclick="event.stopPropagation()">
+        <button class="injury-qm-btn" onclick="event.stopPropagation();tickInjuryQuickmod('${inj.id}',-1)" title="Quickmod −1">−</button>
+        <button class="injury-qm-btn" onclick="event.stopPropagation();tickInjuryQuickmod('${inj.id}',1)" title="Quickmod +1">+</button>
+      </span>` : ''}
+      <span class="injury-loc-pill">${escapeHtml(locLabel)}</span>
+      <span class="injury-rate">${rateText}</span>
+      ${traumaBadges ? `<span class="injury-trauma-badges">${traumaBadges}</span>` : ''}
+      ${canEdit ? `<button class="injury-quickdelete" onclick="event.stopPropagation();removeInjury('${inj.id}')" title="Delete injury">×</button>` : ''}
+    </div>`;
+
+    if (open) {
+      html += renderInjuryBody(inj, canEdit, result);
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function renderInjuryBody(inj, canEdit, result) {
+    const locations = result.locations || [];
+
+    // Location options — dedupe by trackKey. Use the display name the hit
+    // location section uses (paired limbs get Right/Left labels).
+    const locOptions = locations.map(l => {
+      const displayName = getLocationDisplayName(l.def, l.index);
+      const selected = l.trackKey === inj.location ? 'selected' : '';
+      return `<option value="${escapeHtml(l.trackKey)}" ${selected}>${escapeHtml(displayName)}</option>`;
+    }).join('');
+
+    const rateExplain = inj.rate
+      ? `Degrades ${inj.rate.label} — ${escapeHtml(inj.rate.tier)} tier. Rate driven by base ${ordinal(inj.baseLevel)} Degree${inj.effectiveBase !== inj.baseLevel ? ` (effective ${ordinal(inj.effectiveBase)} after modifiers)` : ''} vs half-HP ${inj.halfHp} (diff +${inj.diff})`
+      : `Stable — below degradation threshold (needs base ≥ ${inj.halfHp}; currently ${inj.effectiveBase})`;
+
+    let html = '<div class="injury-card-body">';
+
+    // Top-row editable fields: name, base level, location.
+    if (canEdit) {
+      html += `<div class="injury-fields">
+        <label class="injury-field injury-field-name">
+          <span>Name</span>
+          <input type="text" value="${escapeHtml(inj.name)}" maxlength="60"
+                 onchange="updateInjuryField('${inj.id}','name',this.value)">
+        </label>
+        <label class="injury-field injury-field-level">
+          <span>Base Level</span>
+          <input type="number" value="${inj.baseLevel}" min="0" max="99"
+                 onchange="updateInjuryField('${inj.id}','baseLevel',this.value)">
+        </label>
+        <label class="injury-field injury-field-loc">
+          <span>Location</span>
+          <select onchange="updateInjuryField('${inj.id}','location',this.value)">${locOptions}</select>
+        </label>
+      </div>`;
+      html += `<label class="injury-field injury-field-desc">
+        <span>Description</span>
+        <textarea rows="2" maxlength="500"
+                  onchange="updateInjuryField('${inj.id}','description',this.value)"
+                  placeholder="Narrative details about this injury...">${escapeHtml(inj.description)}</textarea>
+      </label>`;
+    } else {
+      // Read-only view
+      html += `<div class="injury-fields-ro">
+        <div><span class="ro-label">Location:</span> ${escapeHtml(locationLabel(inj.location, locations) || inj.location)}</div>
+        <div><span class="ro-label">Base Level:</span> ${inj.baseLevel}</div>
+        ${inj.description ? `<div class="injury-desc-ro">${escapeHtml(inj.description)}</div>` : ''}
+      </div>`;
+    }
+
+    html += `<div class="injury-rate-info">${rateExplain}</div>`;
+
+    // Two separate modifier lists — level (adjusts current severity) and
+    // degradation (adjusts rate lookup only).
+    html += renderInjuryModList(inj.id, 'level', 'Level Modifiers',
+      'adjust current severity only', inj.levelModifiers, canEdit);
+    html += renderInjuryModList(inj.id, 'degradation', 'Degradation Modifiers',
+      'shift rate lookup — use for stabilization, destabilizing traumas, etc.',
+      inj.degradationModifiers, canEdit);
+
+    // Traumas sub-list
+    html += renderTraumaList(inj, canEdit);
+
+    if (canEdit) {
+      html += `<div class="injury-delete-row">
+        <button class="injury-delete-btn" onclick="removeInjury('${inj.id}')">Delete Injury</button>
+      </div>`;
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  function renderInjuryModList(injId, kind, title, hint, mods, canEdit) {
+    const arr = Array.isArray(mods) ? mods : [];
+    const rows = arr.length === 0
+      ? '<div class="mod-empty">No modifiers.</div>'
+      : arr.map((m, i) => `
+        <div class="mod-item">
+          <input type="text" class="mod-name-input" value="${escapeHtml(m.name || '')}"
+                 placeholder="Modifier name" ${canEdit ? '' : 'disabled'}
+                 onchange="updateInjuryMod('${injId}','${kind}',${i},'name',this.value)">
+          <input type="number" class="mod-val-input" value="${parseInt(m.value) || 0}"
+                 ${canEdit ? '' : 'disabled'}
+                 onchange="updateInjuryMod('${injId}','${kind}',${i},'value',this.value)">
+          ${canEdit ? `<span class="mod-delete" onclick="deleteInjuryMod('${injId}','${kind}',${i})">×</span>` : ''}
+        </div>`).join('');
+
+    const addRow = canEdit
+      ? `<div class="mod-add-row">
+          <input type="text" class="mod-name-input" id="inj-mod-name-${injId}-${kind}" placeholder="Name">
+          <input type="number" class="mod-val-input" id="inj-mod-val-${injId}-${kind}" placeholder="±" value="0">
+          <button class="mod-add-btn" onclick="addInjuryMod('${injId}','${kind}')">Add</button>
+        </div>`
+      : '';
+
+    return `
+      <div class="injury-mod-block">
+        <div class="injury-mod-head">
+          <span class="injury-mod-title">${escapeHtml(title)}</span>
+          <span class="injury-mod-hint">${escapeHtml(hint)}</span>
+        </div>
+        <div class="mod-list">${rows}</div>
+        ${addRow}
+      </div>`;
+  }
+
+  function renderTraumaList(inj, canEdit) {
+    const traumas = inj.traumas || [];
+    let html = '<div class="trauma-block">';
+    html += `<div class="trauma-head">
+      <span class="trauma-title">Traumas</span>
+      <span class="trauma-count">${traumas.length}</span>
+    </div>`;
+
+    if (traumas.length === 0) {
+      html += '<div class="trauma-empty">No traumas attached.</div>';
+    } else {
+      html += '<div class="trauma-list">';
+      traumas.forEach((t, i) => { html += renderTraumaCard(inj.id, t, i, canEdit); });
+      html += '</div>';
+    }
+
+    if (canEdit) {
+      html += `<div class="trauma-add-row">
+        <button class="trauma-add-btn" onclick="addTrauma('${inj.id}')">+ Add Trauma</button>
+      </div>`;
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  function renderTraumaCard(injId, trauma, idx, canEdit) {
+    const tierOpts = TRAUMA_TIERS.map(t =>
+      `<option value="${t}" ${trauma.level === t ? 'selected' : ''}>${t}</option>`
+    ).join('');
+
+    if (!canEdit) {
+      return `<div class="trauma-card">
+        <div class="trauma-card-head">
+          <span class="trauma-tier">(${escapeHtml(trauma.level || 'Minor')})</span>
+          <span class="trauma-name">${escapeHtml(trauma.name || '(unnamed)')}</span>
+        </div>
+        ${trauma.description ? `<div class="trauma-desc">${escapeHtml(trauma.description)}</div>` : ''}
+        ${trauma.system ? `<div class="trauma-system"><span class="trauma-sys-label">System:</span> ${escapeHtml(trauma.system)}</div>` : ''}
+      </div>`;
+    }
+
+    return `<div class="trauma-card editing">
+      <div class="trauma-card-head">
+        <select class="trauma-tier-select" onchange="updateTraumaField('${injId}',${idx},'level',this.value)">
+          ${tierOpts}
+        </select>
+        <input type="text" class="trauma-name-input" value="${escapeHtml(trauma.name || '')}"
+               placeholder="Trauma name" maxlength="60"
+               onchange="updateTraumaField('${injId}',${idx},'name',this.value)">
+        <span class="mod-delete" onclick="removeTrauma('${injId}',${idx})">×</span>
+      </div>
+      <label class="trauma-field">
+        <span>Description</span>
+        <textarea rows="2" maxlength="300"
+                  onchange="updateTraumaField('${injId}',${idx},'description',this.value)"
+                  placeholder="Flavor / what the trauma represents">${escapeHtml(trauma.description || '')}</textarea>
+      </label>
+      <label class="trauma-field">
+        <span>System</span>
+        <textarea rows="2" maxlength="500"
+                  onchange="updateTraumaField('${injId}',${idx},'system',this.value)"
+                  placeholder="Mechanical effect. GMs implement via degradation modifiers above.">${escapeHtml(trauma.system || '')}</textarea>
+      </label>
+    </div>`;
+  }
+
+  // Given a location trackKey, return its display name. Null if not found.
+  function locationLabel(trackKey, locations) {
+    const l = locations.find(x => x.trackKey === trackKey);
+    if (!l) return null;
+    return getLocationDisplayName(l.def, l.index);
+  }
+
+  // CSS class hint based on the injury's diff (effective base minus half-HP).
+  // Maps to severity tier coloring.
+  function severityClass(diff) {
+    if (diff < 0) return 'severity-none';
+    if (diff <= 2) return 'severity-minor';
+    if (diff <= 5) return 'severity-moderate';
+    if (diff <= 8) return 'severity-major';
+    if (diff <= 11) return 'severity-massive';
+    if (diff <= 14) return 'severity-monumental';
+    if (diff <= 17) return 'severity-mega';
+    return 'severity-mythical';
+  }
+
+  // ─── SAN (SANITY) SECTION ───
+  //
+  // Dedicated section for mental health. Placed between physical health and
+  // power. Damage is LINEAR (no FORT reduction) — this mirrors the spec that
+  // mental wounds stack directly.
+  //
+  // Visual bar: 4 phases, same palette as HP location bars.
+  //   Phase 1 (green→yellow): 0 damage → max damage      (Healthy → In Shock)
+  //   Phase 2 (yellow→red):   max → 2*max                (In Shock → Insane)
+  //   Phase 3 (red→deepRed):  2*max → 3*max              (Insane → Broken)
+  //   Phase 4 (deepRed→black): 3*max → 4*max+            (Broken, deepening)
+  //
+  // Breaking Point reference panel renders when status === 'broken' so the
+  // player has the roll outcomes right in front of them. Not auto-rolled —
+  // system narratively triggers the roll; the UI just tells you what the
+  // results mean.
+
+  let editSanModifiersMode = false;
+
+  function renderSanSection(result) {
+    const san = result.san;
+    if (!san) return '';  // ruleset doesn't define SAN — skip entirely
+    const canEdit = ctx.getCanEdit();
+
+    // Cap segment count so very high-SAN characters don't render a runaway
+    // row of micro-segments. Each segment represents max/segCount damage.
+    const SEG_CAP = 80;
+    const segCount = Math.min(Math.max(san.max, 1), SEG_CAP);
+
+    let html = '<div class="combat-section san-section">';
+
+    // Header with title + Edit Modifiers button (parallel to Hit Locations).
+    html += '<div class="combat-section-head">';
+    html += '<div class="combat-section-title">Sanity</div>';
+    if (canEdit) {
+      html += `<button class="hl-edit-btn${editSanModifiersMode ? ' active' : ''}" onclick="toggleSanModifierEdit()">` +
+              `${editSanModifiersMode ? 'Done' : 'Edit Modifiers'}</button>`;
+    }
+    html += '</div>';
+
+    // Sanity stat card at the top — shows name, code, formula, value, and
+    // description. Gives the player a clear reminder of what SAN is and
+    // what they roll for mental resistances.
+    const sanEntry = result.stats.get('SAN');
+    if (sanEntry) {
+      html += '<div class="ds-grid san-card-wrap">';
+      html += renderDsCard(sanEntry);
+      html += '</div>';
+    }
+
+    // Status line: SAN label, current/max, colored status pill.
+    const statusClass = 'san-status-' + san.status;
+    html += '<div class="san-top-row">';
+    html += '<span class="san-label">SAN</span>';
+    html += `<span class="san-nums"><span class="san-current">${san.current}</span><span class="san-slash"> / </span><span class="san-max">${san.max}</span></span>`;
+    html += `<span class="san-status-pill ${statusClass}">${escapeHtml(san.statusLabel)}</span>`;
+    html += '</div>';
+
+    // Penalty text — empty when Healthy, printed in italic otherwise.
+    if (san.penaltyText) {
+      html += `<div class="san-penalty">${escapeHtml(san.penaltyText)}</div>`;
+    }
+
+    // Segmented bar.
+    html += '<div class="san-bar">';
+    html += renderSanSegments(san.max, san.damage, segCount);
+    html += '</div>';
+
+    // Damage controls (input shows effective current; +/- tick damage).
+    if (canEdit) {
+      // Max theoretical damage we might want to represent — 4x max covers
+      // past-Broken state. Input clamp prevents absurd inputs.
+      const damageCap = Math.max(san.max * 5, 10);
+      html += `<div class="san-controls">
+        <button class="hl-dmg-btn" onclick="tickSanDmg(1)" title="Take 1 Mental Damage">−</button>
+        <input type="number" class="san-dmg-input" value="${san.current}" min="${-damageCap}" max="${san.max}"
+               onchange="setSanCurrent(this.value)"
+               title="Current SAN (type to set directly)">
+        <button class="hl-dmg-btn" onclick="tickSanDmg(-1)" title="Heal 1 SAN">+</button>
+      </div>`;
+    } else {
+      html += `<div class="san-controls san-controls-ro"><span class="san-current-ro">${san.current} / ${san.max}</span></div>`;
+    }
+
+    // Edit modifiers panel — same shape as Body modifier panel.
+    if (editSanModifiersMode && canEdit) {
+      html += renderSanModifierPanel(san);
+    }
+
+    // Stress indicator — percent of SAN's full range (max → -2×max) that's
+    // been used up. Editable percentile modifiers, parallels Pain pill in
+    // the Health section. Combines with Pain to form Strain, which reduces
+    // dice pools on non-passive active rolls.
+    html += renderStressPill(result);
+
+    // Damages manager — simplified Injuries for mental health. Renders below
+    // the bar and above the Breaking Point panel (if present). Players use
+    // this to record specific mental wounds (e.g. "Traumatic Memory 3rd Degree")
+    // that then feed back into the SAN damage pool.
+    html += renderSanDamagesSection(result);
+
+    // Breaking Point reference — shown whenever Broken. This is guidance,
+    // not automation. GM rolls d10 per PRIME rules and applies the result.
+    if (san.status === 'broken') {
+      html += renderBreakingPointPanel();
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  // UI-only state for Damages, mirroring the Injuries pattern.
+  const expandedSanDamages = new Set();
+  let sanDamagesOpen = false;
+
+  function renderSanDamagesSection(result) {
+    const san = result.san;
+    const damages = (san && san.damages) || [];
+    const canEdit = ctx.getCanEdit();
+
+    let html = '<div class="injury-section san-damages-section">';
+    html += `<div class="injury-head" onclick="toggleSanDamagesSection()">
+      <span class="injury-head-caret">${sanDamagesOpen ? '▾' : '▸'}</span>
+      <span class="injury-head-title">Damages</span>
+      <span class="injury-head-count">${damages.length}</span>
+    </div>`;
+
+    if (!sanDamagesOpen) { html += '</div>'; return html; }
+
+    // Quickadd form — just name + degree. No location, no AoE (SAN is one pool).
+    if (canEdit) {
+      html += `<div class="injury-quickadd-row san-qadd-row">
+        <input type="text" id="qadd-sandmg-name" class="qadd-inj-name" placeholder="Damage name"
+               onkeydown="if(event.key==='Enter')quickAddSanDamage()">
+        <input type="number" id="qadd-sandmg-level" class="qadd-inj-level" placeholder="Deg"
+               min="0" max="99" value="1"
+               onkeydown="if(event.key==='Enter')quickAddSanDamage()">
+        <button class="injury-add-btn" onclick="quickAddSanDamage()">Add</button>
+      </div>`;
+    }
+
+    if (damages.length === 0) {
+      html += '<div class="injury-empty">No damages recorded.</div>';
+    } else {
+      html += '<div class="injury-list">';
+      damages.forEach(d => { html += renderSanDamageCard(d, canEdit); });
+      html += '</div>';
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  // Single damage card. Compact header when collapsed, full editor when open.
+  // Header reads: [caret] [Name] [Nth Degree] [−][+] [×]
+  function renderSanDamageCard(dmg, canEdit) {
+    const open = expandedSanDamages.has(dmg.id);
+
+    let degreeText;
+    if (dmg.currentLevel === dmg.baseLevel) {
+      degreeText = `${ordinal(dmg.currentLevel)} Degree`;
+    } else {
+      degreeText = `${ordinal(dmg.currentLevel)} Degree <span class="injury-base-note">(base ${ordinal(dmg.baseLevel)})</span>`;
+    }
+
+    let html = `<div class="injury-card${open ? ' open' : ''}">`;
+    html += `<div class="injury-card-head" onclick="toggleSanDamageExpand('${dmg.id}')">
+      <span class="injury-caret">${open ? '▾' : '▸'}</span>
+      <span class="injury-name">${escapeHtml(dmg.name || '(unnamed)')}</span>
+      <span class="injury-degree">${degreeText}</span>
+      ${canEdit ? `<span class="injury-quickmod" onclick="event.stopPropagation()">
+        <button class="injury-qm-btn" onclick="event.stopPropagation();tickSanDamageQuickmod('${dmg.id}',-1)" title="Quickmod −1">−</button>
+        <button class="injury-qm-btn" onclick="event.stopPropagation();tickSanDamageQuickmod('${dmg.id}',1)" title="Quickmod +1">+</button>
+      </span>` : ''}
+      ${canEdit ? `<button class="injury-quickdelete" onclick="event.stopPropagation();removeSanDamage('${dmg.id}')" title="Delete damage">×</button>` : ''}
+    </div>`;
+
+    if (open) {
+      html += renderSanDamageBody(dmg, canEdit);
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function renderSanDamageBody(dmg, canEdit) {
+    let html = '<div class="injury-card-body">';
+
+    if (canEdit) {
+      html += `<div class="injury-fields">
+        <div class="injury-field">
+          <span>Name</span>
+          <input type="text" value="${escapeHtml(dmg.name || '')}" placeholder="Damage name"
+                 onchange="updateSanDamageField('${dmg.id}','name',this.value)">
+        </div>
+        <div class="injury-field">
+          <span>Base Degree</span>
+          <input type="number" value="${dmg.baseLevel}" min="0" max="99"
+                 onchange="updateSanDamageField('${dmg.id}','baseLevel',this.value)">
+        </div>
+      </div>
+      <div class="injury-field injury-field-desc">
+        <span>Description</span>
+        <textarea rows="2" placeholder="What caused this, what it feels like, etc."
+                  onchange="updateSanDamageField('${dmg.id}','description',this.value)">${escapeHtml(dmg.description || '')}</textarea>
+      </div>`;
+    } else {
+      html += `<div class="injury-fields-ro">
+        <div><span class="ro-label">Base</span>${ordinal(dmg.baseLevel)} Degree</div>
+        ${dmg.description ? `<div class="injury-desc-ro">${escapeHtml(dmg.description)}</div>` : ''}
+      </div>`;
+    }
+
+    // Level modifiers (parallels injury level modifiers — a list of named
+    // signed values that shift currentLevel).
+    const mods = Array.isArray(dmg.levelModifiers) ? dmg.levelModifiers : [];
+    html += '<div class="injury-mod-block">';
+    html += '<div class="injury-mod-head"><span class="injury-mod-title">Level Modifiers</span><span class="injury-mod-hint">Adjust current Degree (feeds SAN damage pool)</span></div>';
+    if (mods.length === 0) {
+      html += '<div class="mod-empty">No modifiers.</div>';
+    } else {
+      html += '<div class="mod-list">';
+      mods.forEach((mod, idx) => {
+        html += `<div class="mod-item">
+          <input type="text" class="mod-name-input" value="${escapeHtml(mod.name || '')}" placeholder="Modifier name"
+                 ${canEdit ? `onchange="updateSanDamageMod('${dmg.id}',${idx},'name',this.value)"` : 'readonly'}>
+          <input type="number" class="mod-val-input" value="${mod.value || 0}" step="1"
+                 ${canEdit ? `onchange="updateSanDamageMod('${dmg.id}',${idx},'value',this.value)"` : 'readonly'}>
+          ${canEdit ? `<span class="mod-delete" onclick="deleteSanDamageMod('${dmg.id}',${idx})" title="Delete modifier">×</span>` : ''}
+        </div>`;
+      });
+      html += '</div>';
+    }
+    if (canEdit) html += `<div class="mod-add-row"><button class="mod-add-btn" onclick="addSanDamageMod('${dmg.id}')">+ Add modifier</button></div>`;
+    html += '</div>';
+
+    if (canEdit) {
+      html += `<div class="injury-delete-row">
+        <button class="injury-delete-btn" onclick="removeSanDamage('${dmg.id}')">Delete Damage</button>
+      </div>`;
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  // Segment colors go: cool blue (healthy) → yellow (in shock) → orange
+  // (insane) → red (broken). Once damage hits the Broken threshold (3×max),
+  // every segment is fully red and stays red no matter how much further the
+  // damage goes — Broken is the narrative floor, not a waypoint to worse.
+  function renderSanSegments(sanMax, damage, segCount) {
+    if (sanMax <= 0 || segCount <= 0) return '';
+    const COLORS = {
+      blue:   '#4a6a9a',
+      yellow: '#bdb247',
+      orange: '#c87a3a',
+      red:    '#a63a3a'
+    };
+    const dmgPerSeg = sanMax / segCount;
+
+    let html = '';
+    for (let i = 1; i <= segCount; i++) {
+      // rightDistance = how far from the right edge (1 = rightmost). Damage
+      // eats the bar right-to-left.
+      const rightDistance = segCount - i + 1;
+      const base = (rightDistance - 1) * dmgPerSeg;
+
+      let color;
+      if (damage > 2 * sanMax + base) color = COLORS.red;
+      else if (damage > sanMax + base) color = COLORS.orange;
+      else if (damage > base) color = COLORS.yellow;
+      else color = COLORS.blue;
+
+      html += `<span class="san-seg" style="background:${color}"></span>`;
+    }
+    return html;
+  }
+
+  function renderSanModifierPanel(san) {
+    const mods = Array.isArray(san.modifiers) ? san.modifiers : [];
+    let html = '<div class="hl-mod-panel">';
+    html += '<div class="mod-panel-head"><span class="mod-base">SAN Modifiers</span><span class="mod-panel-hint">stack onto max</span></div>';
+    if (mods.length === 0) {
+      html += '<div class="mod-empty">No modifiers.</div>';
+    } else {
+      html += '<div class="mod-list">';
+      mods.forEach((mod, idx) => {
+        html += `<div class="mod-item">
+          <input type="text" class="mod-name-input" value="${escapeHtml(mod.name || '')}" placeholder="Modifier name"
+                 onchange="updateSanMod(${idx}, 'name', this.value)">
+          <input type="number" class="mod-val-input" value="${mod.value || 0}" step="1"
+                 onchange="updateSanMod(${idx}, 'value', this.value)">
+          <span class="mod-delete" onclick="deleteSanMod(${idx})" title="Delete modifier">×</span>
+        </div>`;
+      });
+      html += '</div>';
+    }
+    html += `<div class="mod-add-row">
+      <button class="mod-add-btn" onclick="addSanMod()">+ Add modifier</button>
+    </div>`;
+    html += '</div>';
+    return html;
+  }
+
+  function renderBreakingPointPanel() {
+    // Roll table is d10 (per PRIME convention). Results ordered high→low
+    // because you'd rather score 7 than -1.
+    return `<div class="san-breakpoint">
+      <div class="san-breakpoint-title">⚠ Breaking Point</div>
+      <div class="san-breakpoint-intro">Roll once when first Broken; reroll with each additional Mental Damage. You may take any lower-roll option if you roll higher.</div>
+      <div class="san-breakpoint-table">
+        <div class="san-bp-row san-bp-tier-best"><span class="san-bp-roll">7</span><span class="san-bp-name">Renewal</span><span class="san-bp-desc">Mental awakening — restore full SAN.</span></div>
+        <div class="san-bp-row san-bp-tier-good"><span class="san-bp-roll">5–6</span><span class="san-bp-name">Partial Recovery</span><span class="san-bp-desc">Recover ½ SAN.</span></div>
+        <div class="san-bp-row san-bp-tier-neutral"><span class="san-bp-roll">3–4</span><span class="san-bp-name">Steadied</span><span class="san-bp-desc">No negative effect (still reroll on further Mental Damage).</span></div>
+        <div class="san-bp-row san-bp-tier-bad"><span class="san-bp-roll">1–2</span><span class="san-bp-name">Psychotic Break</span><span class="san-bp-desc">In control but antagonistic — act against allies/mission.</span></div>
+        <div class="san-bp-row san-bp-tier-worst"><span class="san-bp-roll">0</span><span class="san-bp-name">Indefinitely Insane</span><span class="san-bp-desc">Uncontrollable, irrational, effectively a vegetable.</span></div>
+        <div class="san-bp-row san-bp-tier-fatal"><span class="san-bp-roll">−1</span><span class="san-bp-name">Immediately Suicidal</span><span class="san-bp-desc">Must end own life by most effective means; Indefinitely Insane for all other purposes.</span></div>
+      </div>
+    </div>`;
+  }
+
+  // ─── SAN HANDLERS ───
+
+  async function tickSanDmg(delta) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const cur = Math.max(0, Number.isFinite(charData.sanDamage) ? charData.sanDamage : 0);
+    const next = Math.max(0, cur + delta);
+    charData.sanDamage = next;
+    await saveCharacter(ctx.getCharId(), { sanDamage: next });
+    renderAll();
+  }
+
+  // Input shows CURRENT (max - total damage). Typing sets current.
+  // Manual damage (sanDamage) is the only thing we can edit directly here —
+  // structured damages' contribution is floor we can't dip below without
+  // editing them. If the typed current would require NEGATIVE manual damage,
+  // we clamp manual to 0.
+  async function setSanCurrent(val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const ruleset = ctx.getRuleset();
+    const result = computeDerivedStats(charData, ruleset);
+    if (!result.san) return;
+    const sanMax = result.san.max;
+    const damagesContribution = result.san.damagesContribution || 0;
+
+    const typed = parseInt(val);
+    if (!Number.isFinite(typed)) return;
+    const floorCurrent = -(sanMax * 5);
+    const clampedCurrent = Math.min(sanMax, Math.max(floorCurrent, typed));
+    const totalDesiredDamage = Math.max(0, sanMax - clampedCurrent);
+    // Manual portion = total - structured damages. Clamped at 0 since we can
+    // only control manual; going below requires editing the damages themselves.
+    const manual = Math.max(0, totalDesiredDamage - damagesContribution);
+
+    charData.sanDamage = manual;
+    await saveCharacter(ctx.getCharId(), { sanDamage: manual });
+    renderAll();
+  }
+
+  function toggleSanModifierEdit() {
+    if (!ctx.getCanEdit()) return;
+    editSanModifiersMode = !editSanModifiersMode;
+    renderAll();
+  }
+
+  async function addSanMod() {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.sanModifiers)) charData.sanModifiers = [];
+    charData.sanModifiers.push({ name: '', value: 0 });
+    await saveCharacter(ctx.getCharId(), { sanModifiers: charData.sanModifiers });
+    renderAll();
+  }
+
+  async function updateSanMod(idx, field, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.sanModifiers) || !charData.sanModifiers[idx]) return;
+    if (field === 'name') charData.sanModifiers[idx].name = typeof val === 'string' ? val : '';
+    else if (field === 'value') charData.sanModifiers[idx].value = parseInt(val) || 0;
+    await saveCharacter(ctx.getCharId(), { sanModifiers: charData.sanModifiers });
+    renderAll();
+  }
+
+  async function deleteSanMod(idx) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.sanModifiers) || !charData.sanModifiers[idx]) return;
+    charData.sanModifiers.splice(idx, 1);
+    await saveCharacter(ctx.getCharId(), { sanModifiers: charData.sanModifiers });
+    renderAll();
+  }
+
+  // ─── SAN DAMAGES ───
+  //
+  // Structured mental wounds. Parallel to injuries but simpler: no location,
+  // no traumas, no degradation. Each damage has a name, description, a
+  // baseLevel (Degree) and optional level modifiers.
+
+  function newSanDamageId() {
+    return 'sandmg_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+  }
+
+  function toggleSanDamagesSection() {
+    sanDamagesOpen = !sanDamagesOpen;
+    renderAll();
+  }
+
+  function toggleSanDamageExpand(id) {
+    if (expandedSanDamages.has(id)) expandedSanDamages.delete(id);
+    else expandedSanDamages.add(id);
+    renderAll();
+  }
+
+  async function quickAddSanDamage() {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.sanDamages)) charData.sanDamages = [];
+
+    const nameEl  = document.getElementById('qadd-sandmg-name');
+    const levelEl = document.getElementById('qadd-sandmg-level');
+
+    const name = nameEl ? (nameEl.value || '').trim() : '';
+    const baseLevel = levelEl ? Math.max(0, parseInt(levelEl.value) || 0) : 0;
+
+    const dmg = {
+      id: newSanDamageId(),
+      name,
+      description: '',
+      baseLevel,
+      levelModifiers: []
+    };
+    charData.sanDamages.push(dmg);
+    expandedSanDamages.add(dmg.id);
+    sanDamagesOpen = true;
+    await saveCharacter(ctx.getCharId(), { sanDamages: charData.sanDamages });
+    renderAll();
+    const freshNameEl = document.getElementById('qadd-sandmg-name');
+    if (freshNameEl) { freshNameEl.value = ''; freshNameEl.focus(); }
+  }
+
+  async function removeSanDamage(id) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.sanDamages)) return;
+    charData.sanDamages = charData.sanDamages.filter(d => d.id !== id);
+    expandedSanDamages.delete(id);
+    await saveCharacter(ctx.getCharId(), { sanDamages: charData.sanDamages });
+    renderAll();
+  }
+
+  async function updateSanDamageField(id, field, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const dmg = (charData.sanDamages || []).find(d => d.id === id);
+    if (!dmg) return;
+    if (field === 'baseLevel') {
+      dmg.baseLevel = Math.max(0, parseInt(val) || 0);
+    } else if (field === 'name' || field === 'description') {
+      dmg[field] = typeof val === 'string' ? val : '';
+    } else {
+      return;
+    }
+    await saveCharacter(ctx.getCharId(), { sanDamages: charData.sanDamages });
+    renderAll();
+  }
+
+  // Quickmod: +/- on collapsed header. Find-or-create a "Quickmod" level
+  // modifier, zero removes it. Same pattern as injuries.
+  async function tickSanDamageQuickmod(id, delta) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const dmg = (charData.sanDamages || []).find(d => d.id === id);
+    if (!dmg) return;
+    if (!Array.isArray(dmg.levelModifiers)) dmg.levelModifiers = [];
+
+    const QM_NAME = 'Quickmod';
+    const idx = dmg.levelModifiers.findIndex(m => m && m.name === QM_NAME);
+    if (idx === -1) {
+      if (delta !== 0) dmg.levelModifiers.push({ name: QM_NAME, value: delta });
+    } else {
+      const next = (parseInt(dmg.levelModifiers[idx].value) || 0) + delta;
+      if (next === 0) dmg.levelModifiers.splice(idx, 1);
+      else dmg.levelModifiers[idx].value = next;
+    }
+    await saveCharacter(ctx.getCharId(), { sanDamages: charData.sanDamages });
+    renderAll();
+  }
+
+  async function addSanDamageMod(id) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const dmg = (charData.sanDamages || []).find(d => d.id === id);
+    if (!dmg) return;
+    if (!Array.isArray(dmg.levelModifiers)) dmg.levelModifiers = [];
+    dmg.levelModifiers.push({ name: '', value: 0 });
+    await saveCharacter(ctx.getCharId(), { sanDamages: charData.sanDamages });
+    renderAll();
+  }
+
+  async function updateSanDamageMod(id, idx, field, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const dmg = (charData.sanDamages || []).find(d => d.id === id);
+    if (!dmg || !Array.isArray(dmg.levelModifiers) || !dmg.levelModifiers[idx]) return;
+    if (field === 'name') dmg.levelModifiers[idx].name = typeof val === 'string' ? val : '';
+    else if (field === 'value') dmg.levelModifiers[idx].value = parseInt(val) || 0;
+    await saveCharacter(ctx.getCharId(), { sanDamages: charData.sanDamages });
+    renderAll();
+  }
+
+  async function deleteSanDamageMod(id, idx) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const dmg = (charData.sanDamages || []).find(d => d.id === id);
+    if (!dmg || !Array.isArray(dmg.levelModifiers) || !dmg.levelModifiers[idx]) return;
+    dmg.levelModifiers.splice(idx, 1);
+    await saveCharacter(ctx.getCharId(), { sanDamages: charData.sanDamages });
+    renderAll();
+  }
+
+  // ─── POWER SECTION ───
+  // Rendered by char-power.js — see createPowerSection() wiring above.
+  // We just call power.renderSection(result, ruleset, charData) in the
+  // combat renderAll pipeline and stitch the returned HTML into place.
+
+  // ─── HANDLERS ───
+
+  async function tickHitLocationDmg(trackKey, delta) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!charData.hitLocationDamage) charData.hitLocationDamage = {};
+    // +/- only affects the manual damage pool. Injury damage is separate
+    // and controlled via the Injuries section. Trying to "heal below zero
+    // manual" would be weird UX; we clamp at 0 and let injuries still
+    // contribute whatever they contribute.
+    const cur = charData.hitLocationDamage[trackKey] || 0;
+    charData.hitLocationDamage[trackKey] = Math.max(0, cur + delta);
+    await saveCharacter(ctx.getCharId(), { hitLocationDamage: charData.hitLocationDamage });
+    renderAll();
+  }
+
+  async function setHitLocationDmg(trackKey, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!charData.hitLocationDamage) charData.hitLocationDamage = {};
+
+    // The input now shows CURRENT HP (remaining = maxHP - effective damage),
+    // so we need to convert that back to "desired effective damage" before
+    // solving for the manual damage value. Fetch maxHP from computed stats.
+    const ruleset = ctx.getRuleset();
+    const result = computeDerivedStats(charData, ruleset);
+    const locEntry = (result.locations || []).find(l => l.trackKey === trackKey);
+    if (!locEntry) return;
+    const maxHP = locEntry.maxHP || 0;
+
+    const typed = parseInt(val);
+    if (!Number.isFinite(typed)) return;
+    // Clamp current HP between a generous floor (for past-DefDestroyed states)
+    // and the location's maxHP (no overheal above max).
+    const floorCurrent = -(maxHP * 4);
+    const desiredCurrent = Math.min(maxHP, Math.max(floorCurrent, typed));
+    const desired = Math.max(0, maxHP - desiredCurrent);
+
+    // Given `desired` effective damage + existing injury instances at this
+    // location + current FORT, solve for the manual damage value M. See
+    // previous revision for the derivation; two cases:
+    //
+    //   Case B: M <= highest injury → manual is NOT the new highest.
+    //     M = FORT*(desired - I[0]) - (sum(I) - I[0])
+    //     Valid if M is in [0, I[0]]
+    //
+    //   Case A: M > highest injury → manual IS the new highest.
+    //     M = desired - sum(I)/FORT
+    //     Valid if M > I[0]
+    //
+    // Fallback clamp at 0 if desired is below the injury-only effective floor.
+    const injuries = Array.isArray(charData.injuries) ? charData.injuries : [];
+    const injInstances = injuries
+      .filter(inj => (inj.location || 'torso') === trackKey)
+      .map(inj => {
+        const base = Number.isFinite(inj.baseLevel) ? inj.baseLevel : 0;
+        const mods = Array.isArray(inj.levelModifiers) ? inj.levelModifiers : [];
+        const modTotal = mods.reduce((a, m) => a + (parseInt(m.value) || 0), 0);
+        return Math.max(0, base + modTotal);
+      })
+      .filter(lvl => lvl > 0)
+      .sort((a, b) => b - a);
+
+    const fort = (result.vars && result.vars.FORT) || 1;
+
+    let manual;
+    if (injInstances.length === 0) {
+      manual = desired;
+    } else {
+      const injHighest = injInstances[0];
+      const injSum = injInstances.reduce((s, v) => s + v, 0);
+      const othersSum = injSum - injHighest;
+
+      const mCaseB = fort * (desired - injHighest) - othersSum;
+      if (mCaseB >= 0 && mCaseB <= injHighest) {
+        manual = Math.max(0, Math.round(mCaseB));
+      } else {
+        const mCaseA = desired - injSum / fort;
+        if (mCaseA > injHighest) {
+          manual = Math.max(0, Math.round(mCaseA));
+        } else {
+          manual = 0;
         }
       }
     }
-  });
 
-  window.deleteCharacter = async function() {
-    if (!canEdit) return;
-    const name = charData.name || 'this character';
-    const confirm1 = prompt(`Type the character's name ("${name}") to confirm permanent deletion:`);
-    if (confirm1 === null) return;
-    if (confirm1.trim().toLowerCase() !== name.trim().toLowerCase()) {
-      alert('Name did not match. Deletion cancelled.');
+    charData.hitLocationDamage[trackKey] = manual;
+    await saveCharacter(ctx.getCharId(), { hitLocationDamage: charData.hitLocationDamage });
+    renderAll();
+  }
+
+  // ─── POWER HANDLERS ──────────────────────────────────────────────
+  // All Power Pool and POWER resource handlers live in char-power.js.
+  // The `power` module instance (created above) owns them. We re-export
+  // the same names at the bottom of this factory so character.html's
+  // existing window bindings keep working unchanged.
+
+
+  // ─── MODIFIER HANDLERS ───
+  // Modifiers apply to maxHP of a hit location, or to Body's max. Storage:
+  //   charData.hitLocationModifiers = { trackKey: [{name, value}, ...] }
+  //   charData.bodyModifiers        = [{name, value}, ...]
+  // Empty arrays are cleaned up on save to keep Firestore docs tidy.
+
+  function toggleEditMode() {
+    editModifiersMode = !editModifiersMode;
+    renderAll();
+  }
+
+  async function addModifier(target) {
+    if (!ctx.getCanEdit()) return;
+    const nameInput = document.getElementById('mod-add-name-' + target);
+    const valInput  = document.getElementById('mod-add-val-' + target);
+    if (!nameInput || !valInput) return;
+    const name = (nameInput.value || '').trim();
+    const value = parseInt(valInput.value) || 0;
+    if (!name) { nameInput.focus(); return; }
+
+    const charData = ctx.getCharData();
+    if (target === 'body') {
+      if (!Array.isArray(charData.bodyModifiers)) charData.bodyModifiers = [];
+      charData.bodyModifiers.push({ name, value });
+      await saveCharacter(ctx.getCharId(), { bodyModifiers: charData.bodyModifiers });
+    } else {
+      if (!charData.hitLocationModifiers) charData.hitLocationModifiers = {};
+      if (!Array.isArray(charData.hitLocationModifiers[target])) {
+        charData.hitLocationModifiers[target] = [];
+      }
+      charData.hitLocationModifiers[target].push({ name, value });
+      await saveCharacter(ctx.getCharId(), { hitLocationModifiers: charData.hitLocationModifiers });
+    }
+    renderAll();
+  }
+
+  async function updateModifier(target, i, field, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const arr = target === 'body'
+      ? charData.bodyModifiers
+      : (charData.hitLocationModifiers && charData.hitLocationModifiers[target]);
+    if (!Array.isArray(arr) || !arr[i]) return;
+    if (field === 'value') {
+      arr[i].value = parseInt(val) || 0;
+    } else {
+      arr[i][field] = val;
+    }
+    const payload = target === 'body'
+      ? { bodyModifiers: charData.bodyModifiers }
+      : { hitLocationModifiers: charData.hitLocationModifiers };
+    await saveCharacter(ctx.getCharId(), payload);
+    // Re-render so numeric changes propagate through maxHP / body totals / bar
+    // segments. A name-only change doesn't strictly need a re-render but we do
+    // one anyway for simplicity.
+    renderAll();
+  }
+
+  async function deleteModifier(target, i) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (target === 'body') {
+      if (!Array.isArray(charData.bodyModifiers)) return;
+      charData.bodyModifiers.splice(i, 1);
+      await saveCharacter(ctx.getCharId(), { bodyModifiers: charData.bodyModifiers });
+    } else {
+      const arr = charData.hitLocationModifiers && charData.hitLocationModifiers[target];
+      if (!Array.isArray(arr)) return;
+      arr.splice(i, 1);
+      await saveCharacter(ctx.getCharId(), { hitLocationModifiers: charData.hitLocationModifiers });
+    }
+    renderAll();
+  }
+
+  // ─── INJURY / TRAUMA HANDLERS ───
+  // Storage: charData.injuries = [{ id, name, description, baseLevel,
+  //   location, levelModifiers, degradationModifiers, traumas }]
+
+  function toggleInjurySection() {
+    injuriesOpen = !injuriesOpen;
+    // When closing, also collapse all individual cards so re-opening is clean.
+    if (!injuriesOpen) expandedInjuries.clear();
+    renderAll();
+  }
+
+  function toggleInjuryExpand(id) {
+    if (expandedInjuries.has(id)) expandedInjuries.delete(id);
+    else expandedInjuries.add(id);
+    renderAll();
+  }
+
+  // Toggle whether a hit-location group (in the Injuries section) shows its
+  // contained injuries. UI-only — doesn't persist to Firestore.
+  function toggleInjuryLocation(trackKey) {
+    if (openInjuryLocations.has(trackKey)) openInjuryLocations.delete(trackKey);
+    else openInjuryLocations.add(trackKey);
+    renderAll();
+  }
+
+  function newInjuryId() {
+    return 'inj_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+
+  function newTraumaId() {
+    return 'tr_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+
+  // Toggle a single location chip in the quick-add form.
+  function toggleQuickAddLocation(trackKey) {
+    if (quickAddLocations.has(trackKey)) quickAddLocations.delete(trackKey);
+    else quickAddLocations.add(trackKey);
+    // If we just cleared every selection, re-seed with the toggled key so
+    // there's always at least one selected. (Alternative: allow empty and
+    // disable the Add button; this is simpler.)
+    if (quickAddLocations.size === 0) quickAddLocations.add(trackKey);
+    renderAll();
+  }
+
+  // Toggle select-all. If every location is already selected, deselect all
+  // except the first (always keep at least one selected for Add to do anything).
+  function toggleQuickAddAllLocations() {
+    const charData = ctx.getCharData();
+    const ruleset = ctx.getRuleset();
+    const result = computeDerivedStats(charData, ruleset);
+    const locations = result.locations || [];
+    if (locations.length === 0) return;
+    const allOn = locations.every(l => quickAddLocations.has(l.trackKey));
+    if (allOn) {
+      quickAddLocations.clear();
+      quickAddLocations.add(locations[0].trackKey);
+    } else {
+      quickAddLocations.clear();
+      locations.forEach(l => quickAddLocations.add(l.trackKey));
+    }
+    renderAll();
+  }
+
+  // Create an injury for each selected location. One injury per location,
+  // all sharing the name/level/description. They get independent IDs,
+  // modifiers, and traumas — so healing, modifying, or deleting one doesn't
+  // touch the others. Useful for AoE damage (grenades, sweeping attacks,
+  // environmental hazards).
+  //
+  // After adding: fields reset (name clears, degree back to 1). Location
+  // selection is KEPT so rapid sequential adds to the same AoE pattern are
+  // fast. Focus returns to the name field.
+  async function quickAddInjury() {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.injuries)) charData.injuries = [];
+
+    const nameEl  = document.getElementById('qadd-inj-name');
+    const levelEl = document.getElementById('qadd-inj-level');
+
+    const name     = nameEl  ? (nameEl.value || '').trim() : '';
+    const baseLevel = levelEl ? Math.max(0, parseInt(levelEl.value) || 0) : 0;
+
+    // Snapshot the selected locations at the moment of add. If no locations
+    // are selected for some reason, default to torso so we never silently
+    // do nothing.
+    const targets = quickAddLocations.size > 0
+      ? Array.from(quickAddLocations)
+      : ['torso'];
+
+    targets.forEach(location => {
+      const inj = {
+        id: newInjuryId(),
+        name,
+        description: '',
+        baseLevel,
+        location,
+        levelModifiers: [],
+        degradationModifiers: [],
+        traumas: []
+      };
+      charData.injuries.push(inj);
+      // Auto-expand each new injury card so all created injuries are visible.
+      expandedInjuries.add(inj.id);
+      openInjuryLocations.add(location);
+    });
+
+    injuriesOpen = true;
+    await saveCharacter(ctx.getCharId(), { injuries: charData.injuries });
+    renderAll();
+    // Re-focus the name field so rapid sequential adds are smooth. Fields
+    // reset: name clears; level stays at whatever you typed (often you're
+    // applying the same level several times in a row).
+    const freshNameEl = document.getElementById('qadd-inj-name');
+    if (freshNameEl) { freshNameEl.value = ''; freshNameEl.focus(); }
+  }
+
+  async function removeInjury(id) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.injuries)) return;
+    charData.injuries = charData.injuries.filter(x => x.id !== id);
+    expandedInjuries.delete(id);
+    await saveCharacter(ctx.getCharId(), { injuries: charData.injuries });
+    renderAll();
+  }
+
+  async function updateInjuryField(id, field, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const inj = (charData.injuries || []).find(x => x.id === id);
+    if (!inj) return;
+    if (field === 'baseLevel') {
+      inj.baseLevel = Math.max(0, parseInt(val) || 0);
+    } else if (field === 'location' || field === 'name' || field === 'description') {
+      inj[field] = typeof val === 'string' ? val : '';
+    } else {
       return;
     }
-    try {
-      await deleteCharacterDoc(charId);
-      window.location.href = 'my-characters.html';
-    } catch (e) {
-      alert('Failed to delete: ' + e.message);
-    }
+    await saveCharacter(ctx.getCharId(), { injuries: charData.injuries });
+    renderAll();
   }
-  window.logout=async function(){await signOut(auth);window.location.href='index.html';}
-</script>
-</body>
-</html>
+
+  // Quickmod: a single-click +/- on the injury's collapsed header to adjust
+  // the current Degree without opening the card. Works by find-or-creating
+  // a level modifier named "Quickmod" on the injury.
+  //
+  // If the resulting value is 0, we remove the modifier entirely so the
+  // modifier list stays tidy — clicking + then − returns to baseline cleanly.
+  async function tickInjuryQuickmod(injId, delta) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const inj = (charData.injuries || []).find(x => x.id === injId);
+    if (!inj) return;
+    if (!Array.isArray(inj.levelModifiers)) inj.levelModifiers = [];
+
+    const QM_NAME = 'Quickmod';
+    let qmIdx = inj.levelModifiers.findIndex(m => m && m.name === QM_NAME);
+    if (qmIdx === -1) {
+      // Doesn't exist yet — create with the delta value.
+      if (delta !== 0) inj.levelModifiers.push({ name: QM_NAME, value: delta });
+    } else {
+      const cur = parseInt(inj.levelModifiers[qmIdx].value) || 0;
+      const next = cur + delta;
+      if (next === 0) {
+        // Remove to keep the modifier list clean when returning to baseline.
+        inj.levelModifiers.splice(qmIdx, 1);
+      } else {
+        inj.levelModifiers[qmIdx].value = next;
+      }
+    }
+    await saveCharacter(ctx.getCharId(), { injuries: charData.injuries });
+    renderAll();
+  }
+
+  // kind = 'level' | 'degradation' — which modifier list on the injury.
+  function injuryModListRef(inj, kind) {
+    if (kind === 'level') {
+      if (!Array.isArray(inj.levelModifiers)) inj.levelModifiers = [];
+      return inj.levelModifiers;
+    } else if (kind === 'degradation') {
+      if (!Array.isArray(inj.degradationModifiers)) inj.degradationModifiers = [];
+      return inj.degradationModifiers;
+    }
+    return null;
+  }
+
+  async function addInjuryMod(injId, kind) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const inj = (charData.injuries || []).find(x => x.id === injId);
+    if (!inj) return;
+    const nameEl = document.getElementById(`inj-mod-name-${injId}-${kind}`);
+    const valEl  = document.getElementById(`inj-mod-val-${injId}-${kind}`);
+    const name = nameEl ? (nameEl.value || '').trim() : '';
+    const value = valEl ? (parseInt(valEl.value) || 0) : 0;
+    if (!name) { if (nameEl) nameEl.focus(); return; }
+    const list = injuryModListRef(inj, kind);
+    if (!list) return;
+    list.push({ name, value });
+    await saveCharacter(ctx.getCharId(), { injuries: charData.injuries });
+    renderAll();
+  }
+
+  async function updateInjuryMod(injId, kind, i, field, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const inj = (charData.injuries || []).find(x => x.id === injId);
+    if (!inj) return;
+    const list = injuryModListRef(inj, kind);
+    if (!list || !list[i]) return;
+    if (field === 'value') list[i].value = parseInt(val) || 0;
+    else list[i][field] = val;
+    await saveCharacter(ctx.getCharId(), { injuries: charData.injuries });
+    renderAll();
+  }
+
+  async function deleteInjuryMod(injId, kind, i) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const inj = (charData.injuries || []).find(x => x.id === injId);
+    if (!inj) return;
+    const list = injuryModListRef(inj, kind);
+    if (!list) return;
+    list.splice(i, 1);
+    await saveCharacter(ctx.getCharId(), { injuries: charData.injuries });
+    renderAll();
+  }
+
+  async function addTrauma(injId) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const inj = (charData.injuries || []).find(x => x.id === injId);
+    if (!inj) return;
+    if (!Array.isArray(inj.traumas)) inj.traumas = [];
+    inj.traumas.push({
+      id: newTraumaId(),
+      name: '',
+      level: 'Minor',
+      description: '',
+      system: ''
+    });
+    await saveCharacter(ctx.getCharId(), { injuries: charData.injuries });
+    renderAll();
+  }
+
+  async function removeTrauma(injId, i) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const inj = (charData.injuries || []).find(x => x.id === injId);
+    if (!inj || !Array.isArray(inj.traumas)) return;
+    inj.traumas.splice(i, 1);
+    await saveCharacter(ctx.getCharId(), { injuries: charData.injuries });
+    renderAll();
+  }
+
+  async function updateTraumaField(injId, i, field, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const inj = (charData.injuries || []).find(x => x.id === injId);
+    if (!inj || !Array.isArray(inj.traumas) || !inj.traumas[i]) return;
+    inj.traumas[i][field] = typeof val === 'string' ? val : '';
+    await saveCharacter(ctx.getCharId(), { injuries: charData.injuries });
+    renderAll();
+  }
+
+  // ─── UTIL ───
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  return {
+    renderAll,
+    tickHitLocationDmg, setHitLocationDmg,
+    // Power — delegated to char-power.js module. Same proxy pattern as
+    // rollcalc: keep the original names so character.html's window bindings
+    // don't need to know about the module split.
+    tickPowerPool:    power.tickPowerPool,
+    setPowerPool:     power.setPowerPool,
+    tickPower:        power.tickPower,
+    setPower:         power.setPower,
+    setPowerColor:    power.setPowerColor,
+    setPowerName:     power.setPowerName,
+    powerPoolXpDelta: power.powerPoolXpDelta,
+    toggleEditMode, addModifier, updateModifier, deleteModifier,
+    // Injuries / Traumas
+    toggleInjurySection, toggleInjuryExpand, toggleInjuryLocation,
+    quickAddInjury, toggleQuickAddLocation, toggleQuickAddAllLocations,
+    removeInjury, updateInjuryField,
+    tickInjuryQuickmod,
+    addInjuryMod, updateInjuryMod, deleteInjuryMod,
+    addTrauma, removeTrauma, updateTraumaField,
+    // Sanity
+    tickSanDmg, setSanCurrent, toggleSanModifierEdit,
+    addSanMod, updateSanMod, deleteSanMod,
+    // Sanity Damages
+    toggleSanDamagesSection, toggleSanDamageExpand,
+    quickAddSanDamage, removeSanDamage, updateSanDamageField,
+    tickSanDamageQuickmod,
+    addSanDamageMod, updateSanDamageMod, deleteSanDamageMod,
+    // Card dice modifiers (player/GM-editable bonus dice for rolls)
+    toggleDiceModPanel, addDiceMod, updateDiceMod, deleteDiceMod,
+    // Strain value-display toggle (click to collapse "10 − 2.5" to "7.5")
+    togglePenaltyValueDisplay,
+    // Speed conversions panel toggle (⇅ caret on SPD/SPDUP cards)
+    toggleSpeedConversions,
+    setSpeedConversionChoice,
+    // Roll Calculator — delegated to char-rollcalc.js module. These are
+    // thin proxies so the existing window.rollCalc* wirings in
+    // character.html keep working without needing to know the module split.
+    rollCalcSetStat:       rollcalc.setStat,
+    rollCalcSetSkill:      rollcalc.setSkill,
+    rollCalcSetStatValue:  rollcalc.setStatValue,
+    rollCalcSetSkillValue: rollcalc.setSkillValue,
+    rollCalcSetStatmod:    rollcalc.setStatmod,
+    rollCalcSetDifficulty: rollcalc.setDifficulty,
+    rollCalcSetMitigation: rollcalc.setMitigation,
+    rollCalcSetReduction:  rollcalc.setReduction,
+    rollCalcToggle:        rollcalc.toggleShowRaw,
+    rollCalcSetPassive:    rollcalc.setPassive,
+    // Pain / Stress (percentile modifiers feeding Penalty via Pain and Stress components)
+    togglePainPanel, addPainMod, updatePainMod, deletePainMod,
+    toggleStressPanel, addStressMod, updateStressMod, deleteStressMod,
+    // Other modifiers (free-form ±% entries like Exposure, Encumbrance)
+    addOtherMod, updateOtherMod, deleteOtherMod
+  };
+}
