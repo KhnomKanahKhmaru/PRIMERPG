@@ -1656,6 +1656,91 @@
     .injury-delete-btn { background: transparent; border: 1px solid #3a1a1a; color: #8a3a3a; font-family: 'Open Sans', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 4px 10px; border-radius: 3px; cursor: pointer; }
     .injury-delete-btn:hover { background: #2a0a0a; border-color: #6a2a2a; color: #c85a5a; }
 
+    /* ═══ INVENTORY TAB ═══
+     * Body slots render as collapsible sections. Containers inside a
+     * slot render as cards that expand to show their contents. Nested
+     * containers indent 16px per depth level.
+     * Overflow state (too much volume, dimensions exceed container)
+     * surfaces as a red pill with tooltip detail — GM adjudicates.
+     */
+    .inv-empty { font-size: 13px; color: #666; padding: 24px; text-align: center; }
+
+    /* Slot section container */
+    .inv-slot-section { border: 1px solid #1a1a1a; border-radius: 4px; margin-bottom: 8px; background: #0d0d0d; overflow: hidden; }
+    .inv-slot-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; user-select: none; background: #111; border-bottom: 1px solid #1a1a1a; }
+    .inv-slot-section.collapsed .inv-slot-head { border-bottom: none; }
+    .inv-slot-head:hover { background: #161616; }
+    .inv-slot-caret { font-size: 10px; color: #666; width: 10px; display: inline-block; }
+    .inv-slot-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #ccc; flex: 1; }
+    .inv-slot-meta { font-size: 11px; color: #666; font-variant-numeric: tabular-nums; }
+    .inv-slot-stowed { border-color: #222; background: #0a0a0a; }
+    .inv-slot-stowed .inv-slot-head { background: #0e0e0e; }
+    .inv-slot-body { padding: 8px 10px; }
+    .inv-empty-row { font-size: 11px; color: #555; font-style: italic; padding: 6px 8px; }
+    .inv-slot-actions { display: flex; gap: 6px; padding: 6px 8px 2px; }
+
+    /* Entry rows (container or item) */
+    .inv-entry { margin-bottom: 3px; }
+    .inv-entry-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: #111; border: 1px solid #1a1a1a; border-radius: 3px; cursor: pointer; user-select: none; transition: border-color .1s, background .1s; }
+    .inv-entry-head:hover { background: #161616; border-color: #2a2a2a; }
+    .inv-entry.open > .inv-entry-head { border-color: #3a3a3a; background: #151515; }
+    .inv-entry-head-item { cursor: default; }
+    .inv-entry-head-item:hover { background: #111; border-color: #1a1a1a; }
+    .inv-entry-caret { font-size: 10px; color: #666; width: 10px; display: inline-block; }
+    .inv-entry-icon { font-size: 11px; color: #666; width: 12px; text-align: center; }
+    .inv-entry-name { font-size: 12px; font-weight: 500; color: #e0e0e0; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .inv-entry-dims { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #777; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .inv-entry-capacity { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #888; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .inv-entry-weight { font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; color: #aaa; font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 500; }
+    .inv-entry-qty { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+    .inv-qty-val { font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; color: #aaa; font-variant-numeric: tabular-nums; min-width: 24px; text-align: center; }
+    .inv-qty-btn { background: #0a0a0a; border: 1px solid #222; color: #888; font-family: 'Open Sans', sans-serif; font-size: 12px; width: 20px; height: 20px; border-radius: 3px; cursor: pointer; line-height: 1; padding: 0; }
+    .inv-qty-btn:hover:not(:disabled) { background: #1a1a1a; border-color: #444; color: #ccc; }
+    .inv-qty-btn:disabled { opacity: 0.3; cursor: default; }
+
+    /* Overflow pill — red warning */
+    .inv-overflow-pill { background: #2a0d0d; border: 1px solid #6a2020; color: #d88; font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 2px 8px; border-radius: 3px; white-space: nowrap; cursor: help; }
+
+    /* Remove button on each row */
+    .inv-row-btn { background: transparent; border: none; color: #555; font-size: 16px; cursor: pointer; padding: 0 6px; line-height: 1; }
+    .inv-row-btn:hover { color: #c84b4b; }
+    .inv-row-btn-danger:hover { color: #c84b4b; }
+
+    /* Entry body (container contents) */
+    .inv-entry-body { padding: 4px 0 4px 8px; border-left: 2px solid #1a1a1a; margin-left: 14px; margin-top: 2px; }
+    .inv-entry-actions { display: flex; gap: 6px; padding: 4px 0; }
+
+    /* Entry states */
+    .inv-entry-container > .inv-entry-head { border-color: #222; }
+    .inv-entry-item > .inv-entry-head { background: #0d0d0d; }
+    .inv-entry-missing { background: #1a0d0d; border: 1px dashed #6a2020; border-radius: 3px; padding: 6px 10px; display: flex; align-items: center; gap: 10px; }
+    .inv-entry-missing .inv-entry-name { color: #c88; font-style: italic; font-size: 11px; }
+
+    /* Add buttons */
+    .inv-add-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #ccc; font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 500; padding: 5px 12px; border-radius: 3px; cursor: pointer; }
+    .inv-add-btn:hover { background: #222; border-color: #3a3a3a; }
+    .inv-add-btn-ghost { background: transparent; color: #888; }
+    .inv-add-btn-ghost:hover { color: #ccc; background: #151515; }
+    .inv-add-btn-sm { font-size: 10px; padding: 3px 10px; }
+
+    /* Modal for Add Container / Add Item */
+    .inv-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .inv-modal { background: #111; border: 1px solid #2a2a2a; border-radius: 6px; max-width: 600px; width: 100%; max-height: 80vh; display: flex; flex-direction: column; overflow: hidden; }
+    .inv-modal-head { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid #1a1a1a; background: #161616; }
+    .inv-modal-title { font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #ccc; flex: 1; }
+    .inv-modal-sub { font-size: 11px; color: #888; }
+    .inv-modal-close { background: transparent; border: none; color: #666; font-size: 22px; cursor: pointer; line-height: 1; padding: 0 4px; }
+    .inv-modal-close:hover { color: #ccc; }
+    .inv-modal-body { padding: 8px; overflow-y: auto; flex: 1; }
+    .inv-modal-empty { font-size: 12px; color: #666; padding: 24px; text-align: center; font-style: italic; }
+    .inv-modal-opt { padding: 10px 14px; border: 1px solid transparent; border-radius: 3px; cursor: pointer; margin-bottom: 3px; transition: all .1s; }
+    .inv-modal-opt:hover { background: #1a1a1a; border-color: #333; }
+    .inv-modal-opt-name { font-size: 13px; font-weight: 500; color: #e0e0e0; margin-bottom: 3px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .inv-modal-cat { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #777; background: #0a0a0a; border: 1px solid #222; padding: 1px 6px; border-radius: 2px; }
+    .inv-modal-dual { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #8a8; background: #0a1a0a; border: 1px solid #2a4a2a; padding: 1px 6px; border-radius: 2px; }
+    .inv-modal-opt-meta { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #888; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
+    .inv-modal-opt-desc { font-size: 11px; color: #888; line-height: 1.5; }
+
   </style>
 </head>
 <body>
@@ -1709,6 +1794,7 @@
       <div class="sheet-tabs">
         <div class="sheet-tab active" id="sheet-tab-overview" onclick="switchSheetTab('overview')">Overview</div>
         <div class="sheet-tab"        id="sheet-tab-combat"   onclick="switchSheetTab('combat')">Combat</div>
+        <div class="sheet-tab"        id="sheet-tab-inventory" onclick="switchSheetTab('inventory')">Inventory</div>
       </div>
 
       <div class="sheet-body">
@@ -1910,6 +1996,11 @@
           <div id="combat-content"></div>
         </div><!-- /panel-combat -->
 
+        <!-- ═══════════════ INVENTORY PANEL ═══════════════ -->
+        <div class="sheet-panel" id="panel-inventory">
+          <div id="inventory-content"></div>
+        </div><!-- /panel-inventory -->
+
       </div><!-- /sheet-body -->
     </div><!-- /sheet-wrap -->
 
@@ -1960,6 +2051,7 @@
   import { createAdvantagesSection } from './char-advantages.js';
   import { createSituationsSection } from './char-situations.js';
   import { createCombatSection } from './char-combat.js';
+  import { createInventorySection } from './char-inventory.js';
 
   // All imports resolved — module body executes from here.
   if (window.__logStep) window.__logStep('all modules imported');
@@ -2048,6 +2140,7 @@
   const advantages = createAdvantagesSection(sectionCtx);
   const situations = createSituationsSection(sectionCtx);
   const combat = createCombatSection(sectionCtx);
+  const inventory = createInventorySection(sectionCtx);
 
   // Expose section handlers on window so inline onclick handlers in the
   // HTML (and in dynamically-generated markup) can reach them. These go
@@ -2201,7 +2294,17 @@
     addTrauma:            (injId) => combat.addTrauma(injId),
     removeTrauma:         (injId, i) => combat.removeTrauma(injId, i),
     updateTraumaField:    (injId, i, field, val) => combat.updateTraumaField(injId, i, field, val),
-    // Sheet tab switcher (Overview / Combat folder tabs)
+    // Inventory tab
+    invToggleSlot:        (code)         => inventory.toggleSlot(code),
+    invToggleEntry:       (id)           => inventory.toggleEntry(id),
+    invOpenAddContainer:  (target, fromContainer) => inventory.openAddContainer(target, fromContainer),
+    invOpenAddItem:       (target, kind) => inventory.openAddItem(target, kind),
+    invCloseModal:        (ev)           => { if (!ev || ev.target === ev.currentTarget) inventory.closeModal(); },
+    invPickContainerDef:  (kind, defId)  => inventory.pickContainerDef(kind, defId),
+    invPickItemDef:       (kind, defId)  => inventory.pickItemDef(kind, defId),
+    invTickQty:           (id, delta)    => inventory.tickQty(id, delta),
+    invRemoveEntry:       (id)           => inventory.removeEntry(id),
+    // Sheet tab switcher (Overview / Combat / Inventory folder tabs)
     switchSheetTab:       (which) => {
       document.querySelectorAll('.sheet-tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.sheet-panel').forEach(p => p.classList.remove('active'));
@@ -2209,8 +2312,9 @@
       const panel = document.getElementById('panel-' + which);
       if (tab) tab.classList.add('active');
       if (panel) panel.classList.add('active');
-      // Re-render Combat on open so stat changes made on Overview are live.
+      // Re-render on open so state changes elsewhere flow through.
       if (which === 'combat') combat.renderAll();
+      if (which === 'inventory') inventory.renderAll();
     },
   });
 
@@ -2511,6 +2615,7 @@
     await safeRender('Advantages', () => advantages.renderAll());
     await safeRender('Situations', () => situations.renderAll());
     await safeRender('Combat',     () => combat.renderAll());
+    await safeRender('Inventory',  () => inventory.renderAll());
 
     // Owner-only UI elements.
     if (canEdit) {
