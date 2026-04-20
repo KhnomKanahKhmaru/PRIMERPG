@@ -194,11 +194,19 @@ export function createCombatSection(ctx) {
   const collapsedPenaltyValues = new Set();
 
   // Speed conversion panel expanded state. Per-stat code. The panel
-  // shows common time/unit conversions (3s, 6s, 1min, 1hr, mph, km/h,
-  // m/s) computed from the card's effective (post-Penalty) value.
+  // shows a single chosen conversion (3s / 6s / min / hr / mph / km/h
+  // / m/s) computed from the card's effective (post-Penalty) value.
   // Opt-in per stat def via def.showSpeedConversions. Session-only,
   // resets on full re-render.
   const expandedSpeedConversions = new Set();
+
+  // Per-stat selection of WHICH conversion to show in the panel.
+  // Map<statCode, conversionKey>. Defaults to '6s' when a stat's
+  // panel is opened for the first time — in PRIME a combat round is
+  // 6 seconds, so that's the most immediately useful number. Valid
+  // keys match renderSpeedConversionsPanel: '3s','6s','1min','1hr',
+  // 'mph','kmh','mps'.
+  const speedConversionChoice = new Map();
 
   // Toggle handler for the strain-value display. CSS-driven: flips a class
   // on the card(s) with this stat code, so both display variants live in
@@ -225,6 +233,18 @@ export function createCombatSection(ctx) {
     if (!code) return;
     if (expandedSpeedConversions.has(code)) expandedSpeedConversions.delete(code);
     else expandedSpeedConversions.add(code);
+    renderAll();
+  }
+
+  // Change which conversion is displayed in the panel for a given stat.
+  // Full re-render so the displayed result swaps to the new unit. The
+  // panel reads the CURRENT effective (post-Penalty) value each render
+  // so penalty changes propagate automatically.
+  function setSpeedConversionChoice(code, choice) {
+    if (!code) return;
+    const valid = new Set(['3s','6s','1min','1hr','mph','kmh','mps']);
+    if (!valid.has(choice)) return;
+    speedConversionChoice.set(code, choice);
     renderAll();
   }
 
@@ -352,24 +372,26 @@ export function createCombatSection(ctx) {
 
     // Speed conversions — opt-in via def.showSpeedConversions. Shows a
     // small ⇅ caret button next to the value that toggles an inline
-    // panel with 3s / 6s / 1min / 1hr / mph / km/h / m/s conversions.
-    // The math is against the EFFECTIVE (post-Penalty) value — that's
-    // what the character can actually cover, and what's useful at the
-    // table. If the value is an error / non-finite, we skip the caret.
+    // panel with a dropdown + result for a single chosen conversion
+    // (3s / 6s / 1min / 1hr / mph / km/h / m/s). The math uses the
+    // EFFECTIVE (post-Penalty) value; the panel displays the effective
+    // value and Penalty % explicitly so the link is visible.
     let speedToggle = '';
     let speedPanelHtml = '';
     if (def.showSpeedConversions === true && Number.isFinite(value) && !error) {
       const isOpen = expandedSpeedConversions.has(def.code);
       const effective = hasPenaltyDisplay ? Math.max(0, value - valReduction) : value;
+      const penaltyPct = entry.penaltyPercent || 0;
       const tip = isOpen
         ? `Hide speed conversions for ${def.name}.`
-        : `Show speed conversions (3s / 6s / min / hr / mph) based on the current effective value.`;
+        : `Show a speed conversion (3s / 6s / min / hr / mph / km·h / m·s). Uses the current effective value (post-Penalty).`;
       speedToggle = `<button class="ds-card-conv-toggle${isOpen ? ' open' : ''}"
             onclick="toggleSpeedConversions('${escapeHtml(def.code)}')"
             title="${escapeHtml(tip)}"
             type="button">⇅</button>`;
       if (isOpen) {
-        speedPanelHtml = renderSpeedConversionsPanel(effective, def);
+        const choice = speedConversionChoice.get(def.code) || '6s';
+        speedPanelHtml = renderSpeedConversionsPanel(def, value, effective, penaltyPct, choice);
       }
     }
 
@@ -386,77 +408,83 @@ export function createCombatSection(ctx) {
       </div>`;
   }
 
-  // Render the speed-conversions panel for a stat card. Input is treated
-  // as feet per second (PRIME's canonical movement unit). Output includes:
-  //   time intervals:  3s, 6s, 1 min, 1 hr distance in ft (or miles)
-  //   speeds:          mph, km/h, m/s
-  // Numbers are formatted with sensible precision — big distances get
-  // commas, small numbers get 1 decimal. Per-hour distance rolls over
-  // to miles automatically when it's a big number.
-  function renderSpeedConversionsPanel(ftPerSec, def) {
-    const v = Number.isFinite(ftPerSec) ? ftPerSec : 0;
+  // Render the speed-conversions panel for a stat card. Dropdown lets
+  // the player pick one of seven conversions; the result displays
+  // alongside. Inputs:
+  //   def        — stat def (for name / unit labels)
+  //   baseValue  — pre-Penalty value (for the Penalty line)
+  //   effective  — post-Penalty value (what the math uses)
+  //   penaltyPct — current Penalty % (for the context line)
+  //   choice     — selected conversion key
+  //
+  // The panel value is treated as feet per second. SPDUP is also
+  // ft/sec-equivalent because it's added to SPD (see the default
+  // stat's description).
+  function renderSpeedConversionsPanel(def, baseValue, effective, penaltyPct, choice) {
+    const v = Number.isFinite(effective) ? effective : 0;
 
-    // Interval distances in feet.
-    const d3  = v * 3;
-    const d6  = v * 6;
-    const dMin = v * 60;
-    const dHr = v * 3600;
-
-    // Unit conversions.
-    const MPH = v * 3600 / 5280;         // 3600 sec/hr ÷ 5280 ft/mile
-    const MPS = v * 0.3048;              // 1 ft = 0.3048 m
-    const KMH = MPS * 3.6;               // m/s × 3.6 = km/h
-
-    // Formatters. Big ft numbers get commas; smallish ones (≤ 99) get
-    // up to one decimal; mph/kmh/mps get 1 decimal.
-    const fmtFt = (n) => {
-      if (!Number.isFinite(n)) return '0';
-      if (n >= 1000) return Math.round(n).toLocaleString('en-US');
-      if (n >= 100)  return Math.round(n).toString();
-      // smaller — one decimal only if nonzero fractional part
-      const r = Math.round(n * 10) / 10;
-      return r.toString();
+    // All seven conversions computed up front; the UI picks one to show.
+    const conversions = {
+      '3s':   { label: '3 seconds',    value: v * 3,            unit: 'ft' },
+      '6s':   { label: '6 seconds',    value: v * 6,            unit: 'ft' },
+      '1min': { label: 'per minute',   value: v * 60,           unit: 'ft' },
+      '1hr':  { label: 'per hour',     value: v * 3600,         unit: 'ft' },
+      'mph':  { label: 'miles/hour',   value: v * 3600 / 5280,  unit: 'mph' },
+      'kmh':  { label: 'km/hour',      value: v * 0.3048 * 3.6, unit: 'km/h' },
+      'mps':  { label: 'meters/sec',   value: v * 0.3048,       unit: 'm/s' }
     };
-    const fmtSpeed = (n) => {
+    const order = ['3s','6s','1min','1hr','mph','kmh','mps'];
+    const picked = conversions[choice] || conversions['6s'];
+
+    // Formatting rules for the result value.
+    const fmtN = (n, unit) => {
       if (!Number.isFinite(n)) return '0';
-      const r = Math.round(n * 10) / 10;
-      return r.toString();
+      // ft distances: comma-thousands, integer when big; 1 decimal otherwise
+      if (unit === 'ft') {
+        if (n >= 1000) return Math.round(n).toLocaleString('en-US');
+        if (n >= 100)  return Math.round(n).toString();
+        return (Math.round(n * 10) / 10).toString();
+      }
+      // Speed units: always 1 decimal
+      return (Math.round(n * 10) / 10).toString();
     };
 
-    // Per-hour distance: if it's over a mile, also show the mile equivalent.
-    const hrFt = fmtFt(dHr);
-    const hrMi = dHr >= 5280 ? ` <span class="ds-conv-sub">(${fmtSpeed(dHr / 5280)} mi)</span>` : '';
+    // Secondary label for /hr in feet: show the mile-equivalent so
+    // long distances are intelligible ("21,600 ft (4.1 mi)").
+    const hrInMiles = (choice === '1hr' && picked.value >= 5280)
+      ? ` <span class="ds-conv-sub">(${fmtN(picked.value / 5280, 'mph')} mi)</span>`
+      : '';
+
+    // Context line — makes the Penalty linkage visible. If Penalty is
+    // zero (or negative), we still show the line but say "no Penalty"
+    // so the user sees the panel IS penalty-aware.
+    const baseFmt = fmtN(baseValue, 'ft');  // same fmt rules as ft distances
+    const effFmt  = fmtN(effective, 'ft');
+    const unitTxt = def.unit || 'ft/sec';
+    let penaltyLine;
+    if (penaltyPct > 0) {
+      penaltyLine = `<span class="ds-conv-ctx-k">Using effective</span> <span class="ds-conv-ctx-v">${effFmt} ${escapeHtml(unitTxt)}</span><span class="ds-conv-ctx-sub"> (base ${baseFmt} − ${penaltyPct}% Penalty)</span>`;
+    } else {
+      penaltyLine = `<span class="ds-conv-ctx-k">Using</span> <span class="ds-conv-ctx-v">${effFmt} ${escapeHtml(unitTxt)}</span><span class="ds-conv-ctx-sub"> (no Penalty applied)</span>`;
+    }
+
+    // Dropdown options — labels include quick preview numbers so a
+    // glance at the menu shows all seven results without selecting
+    // each one. Smaller type inside the option for the preview.
+    const optionsHtml = order.map(key => {
+      const c = conversions[key];
+      const preview = `${fmtN(c.value, c.unit)} ${c.unit}`;
+      return `<option value="${key}"${key === choice ? ' selected' : ''}>${c.label} — ${preview}</option>`;
+    }).join('');
 
     return `<div class="ds-card-conv-panel" aria-label="Speed conversions">
-      <div class="ds-card-conv-grid">
-        <div class="ds-conv-cell">
-          <span class="ds-conv-k">3s</span>
-          <span class="ds-conv-v">${fmtFt(d3)} <span class="ds-conv-u">ft</span></span>
-        </div>
-        <div class="ds-conv-cell">
-          <span class="ds-conv-k">6s</span>
-          <span class="ds-conv-v">${fmtFt(d6)} <span class="ds-conv-u">ft</span></span>
-        </div>
-        <div class="ds-conv-cell">
-          <span class="ds-conv-k">/min</span>
-          <span class="ds-conv-v">${fmtFt(dMin)} <span class="ds-conv-u">ft</span></span>
-        </div>
-        <div class="ds-conv-cell">
-          <span class="ds-conv-k">/hr</span>
-          <span class="ds-conv-v">${hrFt} <span class="ds-conv-u">ft</span>${hrMi}</span>
-        </div>
-        <div class="ds-conv-cell">
-          <span class="ds-conv-k">mph</span>
-          <span class="ds-conv-v">${fmtSpeed(MPH)}</span>
-        </div>
-        <div class="ds-conv-cell">
-          <span class="ds-conv-k">km/h</span>
-          <span class="ds-conv-v">${fmtSpeed(KMH)}</span>
-        </div>
-        <div class="ds-conv-cell">
-          <span class="ds-conv-k">m/s</span>
-          <span class="ds-conv-v">${fmtSpeed(MPS)}</span>
-        </div>
+      <div class="ds-conv-ctx">${penaltyLine}</div>
+      <div class="ds-conv-picker">
+        <select class="ds-conv-select" onchange="setSpeedConversionChoice('${escapeHtml(def.code)}', this.value)">
+          ${optionsHtml}
+        </select>
+        <span class="ds-conv-eq">=</span>
+        <span class="ds-conv-result">${fmtN(picked.value, picked.unit)} <span class="ds-conv-u">${escapeHtml(picked.unit)}</span>${hrInMiles}</span>
       </div>
     </div>`;
   }
@@ -2530,6 +2558,7 @@ export function createCombatSection(ctx) {
     togglePenaltyValueDisplay,
     // Speed conversions panel toggle (⇅ caret on SPD/SPDUP cards)
     toggleSpeedConversions,
+    setSpeedConversionChoice,
     // Roll Calculator — delegated to char-rollcalc.js module. These are
     // thin proxies so the existing window.rollCalc* wirings in
     // character.html keep working without needing to know the module split.
