@@ -427,24 +427,9 @@ export function createInventorySection(ctx) {
 
   // ─── MAIN RENDER ───
 
-  // Build marker — change this string when you ship a new inventory
-  // build, then check document.body.dataset.invBuild in devtools to
-  // confirm the browser is running the fresh version and not an old
-  // cached copy. Invisible to users.
-  const INV_BUILD = 'nested-container-fix-2';
-
   function renderAll() {
     const host = document.getElementById('inventory-content');
     if (!host) return;
-    // Clear the diagnostic log-set so each full render produces fresh
-    // logs for the entries it walks. Prevents "only logs the first
-    // render" gotcha during debugging.
-    _renderEntryLogged.clear();
-    // Expose the build marker on the body so it's trivially visible
-    // from the console: `document.body.dataset.invBuild`.
-    if (typeof document !== 'undefined' && document.body) {
-      document.body.dataset.invBuild = INV_BUILD;
-    }
     const ruleset = getRuleset();
     if (!ruleset) {
       host.innerHTML = '<div class="inv-empty">No ruleset loaded.</div>';
@@ -1019,33 +1004,11 @@ export function createInventorySection(ctx) {
   // row). Depth controls left indentation so nesting reads clearly.
 
   function renderEntry(entry, depth, canEdit) {
-    const isContainer = entryIsContainer(entry);
-    // Diagnostic: log each dispatch the first time it happens, so we
-    // can see in devtools why a container might be rendering as an
-    // item. Cleared on each full renderAll via _renderEntryLogged.
-    if (!_renderEntryLogged.has(entry.id)) {
-      _renderEntryLogged.add(entry.id);
-      const def = getDefForEntry(entry);
-      console.log('[inv render]', {
-        entryId: entry.id,
-        defId: entry.defId,
-        defKind: entry.defKind,
-        isContainer,
-        defFound: !!def,
-        defHasContainerOf: !!(def && def.containerOf),
-        hasContentsArray: Array.isArray(entry.contents),
-        willRender: isContainer ? 'container' : 'item'
-      });
-    }
-    if (isContainer) {
+    if (entryIsContainer(entry)) {
       return renderContainerEntry(entry, depth, canEdit);
     }
     return renderItemEntry(entry, depth, canEdit);
   }
-
-  // Tracks which entries we've already logged this renderAll cycle.
-  // Cleared at the top of renderAll. Prevents log spam on re-renders.
-  const _renderEntryLogged = new Set();
 
   function renderContainerEntry(entry, depth, canEdit) {
     const def = getDefForEntry(entry);
@@ -1265,12 +1228,16 @@ export function createInventorySection(ctx) {
         customKind: 'container'
       });
     } else if (activeModal.kind === 'item') {
-      // Items — show everything (including containers, since the player
-      // might want to stuff a container into another container).
+      // Items only — exclude anything with a containerOf block.
+      // Containers are added via the "+ Container" button, which opens
+      // its own picker. Mixing the two in one modal led to confusing
+      // UX where a user could accidentally add a Duffel Bag from the
+      // "+ Add Loose Item" button.
+      const options = allDefs.filter(o => !o.def.containerOf);
       root.innerHTML = renderModal({
         title: 'Add Item',
         subtitle: activeModal.targetLabel || '',
-        options: allDefs,
+        options,
         emptyMsg: 'No items in this ruleset yet. Use "+ Custom" below to make a one-off for this character, or open the ruleset editor\'s Inventory tab to add reusable ones.',
         onPickAttr: 'invPickItemDef',
         customKind: 'equipment'
@@ -1279,38 +1246,61 @@ export function createInventorySection(ctx) {
   }
 
   function renderModal({ title, subtitle, options, emptyMsg, onPickAttr, customKind }) {
-    const listHtml = options.length === 0
-      ? `<div class="inv-modal-empty">${escapeHtml(emptyMsg)}</div>`
-      : options.map(opt => {
-          const d = opt.def.dimensions || { l: 0, w: 0, h: 0 };
-          const cat = opt.def.category ? `<span class="inv-modal-cat">${escapeHtml(opt.def.category)}</span>` : '';
-          const isContainerDual = opt.kind === 'equipment' && opt.def.containerOf;
-          const dualPill = isContainerDual ? '<span class="inv-modal-dual">dual-role</span>' : '';
-          // Mark character-local custom defs with a distinct pill so users
-          // see at a glance that an entry only exists on this character.
-          const customPill = opt.source === 'custom' ? '<span class="inv-modal-custom">custom</span>' : '';
-          // Custom defs also get a × button to delete them from the
-          // character's catalog. Ruleset defs don't — those belong to
-          // the ruleset editor.
-          const deleteBtn = opt.source === 'custom'
-            ? `<button class="inv-modal-opt-delete" onclick="event.stopPropagation();invDeleteCustomDef('${escapeHtml(opt.kind)}','${escapeHtml(opt.def.id)}')" title="Delete this custom def and remove all instances of it from this character">×</button>`
-            : '';
-          return `<div class="inv-modal-opt" onclick="${onPickAttr}('${escapeHtml(opt.kind)}','${escapeHtml(opt.def.id)}')">
-            <div class="inv-modal-opt-header">
-              <div class="inv-modal-opt-name">${escapeHtml(opt.def.name)}${cat}${dualPill}${customPill}</div>
-              ${deleteBtn}
-            </div>
-            <div class="inv-modal-opt-meta">${fmt(d.l)}×${fmt(d.w)}×${fmt(d.h)} in · ${fmt(opt.def.weight || 0)} lb</div>
-            ${opt.def.description ? `<div class="inv-modal-opt-desc">${escapeHtml(opt.def.description)}</div>` : ''}
-          </div>`;
-        }).join('');
+    // Split options into two visually-separate sections:
+    //   • Personal Catalogue — character-scoped custom defs
+    //   • Ruleset Catalogue  — defs from the shared ruleset
+    // When both are empty, show the emptyMsg.
+    const personal = options.filter(o => o.source === 'custom');
+    const ruleset  = options.filter(o => o.source === 'ruleset');
+
+    // Build option row markup. Same shape for both sections.
+    const optRow = (opt) => {
+      const d = opt.def.dimensions || { l: 0, w: 0, h: 0 };
+      const cat = opt.def.category ? `<span class="inv-modal-cat">${escapeHtml(opt.def.category)}</span>` : '';
+      const isContainerDual = opt.kind === 'equipment' && opt.def.containerOf;
+      const dualPill = isContainerDual ? '<span class="inv-modal-dual">dual-role</span>' : '';
+      // Personal-catalogue entries get a × delete button. Deletion now
+      // removes ONLY the def itself — existing instances on the sheet
+      // are preserved (they render as "deleted def" placeholders and
+      // can be kept or manually removed by the user).
+      const deleteBtn = opt.source === 'custom'
+        ? `<button class="inv-modal-opt-delete" onclick="event.stopPropagation();invDeleteCustomDef('${escapeHtml(opt.kind)}','${escapeHtml(opt.def.id)}')" title="Delete from personal catalogue. Existing instances on the sheet are preserved.">×</button>`
+        : '';
+      return `<div class="inv-modal-opt" onclick="${onPickAttr}('${escapeHtml(opt.kind)}','${escapeHtml(opt.def.id)}')">
+        <div class="inv-modal-opt-header">
+          <div class="inv-modal-opt-name">${escapeHtml(opt.def.name)}${cat}${dualPill}</div>
+          ${deleteBtn}
+        </div>
+        <div class="inv-modal-opt-meta">${fmt(d.l)}×${fmt(d.w)}×${fmt(d.h)} in · ${fmt(opt.def.weight || 0)} lb</div>
+        ${opt.def.description ? `<div class="inv-modal-opt-desc">${escapeHtml(opt.def.description)}</div>` : ''}
+      </div>`;
+    };
+
+    // Build the list. When one section is empty, show only the other
+    // with no header (to avoid a dangling "Personal Catalogue" label
+    // over nothing). When both are empty, fall back to emptyMsg.
+    let listHtml = '';
+    if (options.length === 0) {
+      listHtml = `<div class="inv-modal-empty">${escapeHtml(emptyMsg)}</div>`;
+    } else {
+      if (personal.length > 0) {
+        listHtml += `<div class="inv-modal-section-label" title="Items you've made specifically for this character. Not visible on other characters.">Personal Catalogue <span class="inv-modal-section-count">${personal.length}</span></div>`;
+        listHtml += personal.map(optRow).join('');
+      }
+      if (ruleset.length > 0) {
+        listHtml += `<div class="inv-modal-section-label" title="Items defined in the shared ruleset. Available to every character using this ruleset.">Ruleset Catalogue <span class="inv-modal-section-count">${ruleset.length}</span></div>`;
+        listHtml += ruleset.map(optRow).join('');
+      }
+    }
 
     // "+ Custom" button at the bottom lets the user define a one-off
     // container/item right from the sheet without leaving the flow.
+    // The new one lands in the Personal Catalogue at the top of the
+    // modal next time they open it.
     const customBtn = customKind
       ? `<div class="inv-modal-custom-row">
           <button class="inv-add-btn" onclick="invOpenCustomForm('${escapeHtml(customKind)}')">+ Custom ${customKind === 'container' ? 'Container' : 'Item'}…</button>
-          <span class="inv-modal-custom-hint">One-off for this character — won't appear on others.</span>
+          <span class="inv-modal-custom-hint">Saves to your personal catalogue for this character.</span>
         </div>`
       : '';
 
@@ -1836,31 +1826,25 @@ export function createInventorySection(ctx) {
     const def = bucket.find(x => x.id === defId);
     if (!def) return;
 
-    // Find every entry that uses this def so we can warn + clean up.
-    const refs = [];
-    walkTree(entry => { if (entry.defId === defId) refs.push(entry); });
+    // Count references so we can inform the user. Instances are NOT
+    // auto-removed — they persist as "deleted def" placeholders on
+    // the sheet. User can remove them individually or re-create the
+    // def to restore their display. This matches users' intuition:
+    // deleting a template shouldn't nuke their actual stuff.
+    let refCount = 0;
+    walkTree(entry => { if (entry.defId === defId) refCount++; });
 
-    const msg = refs.length > 0
-      ? `Delete "${def.name}" from this character's custom catalog? This also removes ${refs.length} instance${refs.length === 1 ? '' : 's'} of it from your inventory.`
-      : `Delete "${def.name}" from this character's custom catalog?`;
+    const msg = refCount > 0
+      ? `Remove "${def.name}" from your personal catalogue?\n\n${refCount} instance${refCount === 1 ? '' : 's'} on your sheet will remain (shown as "deleted def") until you remove ${refCount === 1 ? 'it' : 'them'} manually.`
+      : `Remove "${def.name}" from your personal catalogue?`;
     if (!confirm(msg)) return;
 
-    // Remove every entry referencing the def — use the same id-walk
-    // removal path as the entry × button. Collect ids first, remove
-    // after, so we're not mutating the tree mid-walk.
-    const idsToRemove = refs.map(r => r.id);
-    idsToRemove.forEach(id => {
-      removeEntry(id);
-      expandedEntries.delete(id);
-      expandedInfo.delete(id);
-    });
-
-    // Now drop the def itself.
+    // Drop the def — leave instances alone.
     const idx = bucket.findIndex(x => x.id === defId);
     if (idx >= 0) bucket.splice(idx, 1);
 
     renderActiveModal();   // refresh the picker so the row disappears
-    renderAll();           // refresh the sheet so removed instances vanish
+    renderAll();           // refresh the sheet so orphaned entries re-render
     try { await save(); } catch (e) { console.error('inventory save failed', e); }
   }
 
