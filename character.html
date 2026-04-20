@@ -1300,6 +1300,52 @@
       font-variant-numeric: tabular-nums;
       letter-spacing: .02em;
     }
+    /* When the conversion result uses the penalty toggle pattern, the
+       toggle wrapper and its child spans need their sizing set so the
+       main-value CSS defaults (17px red italic reduction, red italic
+       effective) don't leak in. The .penalty-collapsed class on the
+       parent card still controls which of the two spans is visible;
+       we only override size/color/style to match the panel's look. */
+    .ds-conv-result-wrap {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 0;
+      cursor: pointer;
+      border-radius: 3px;
+      padding: 0 2px;
+      margin: 0 -2px;
+      transition: background 0.1s;
+    }
+    .ds-conv-result-wrap:hover { background: rgba(255,255,255,0.04); }
+    .ds-conv-result.ds-card-penalty-expanded,
+    .ds-conv-result.ds-card-penalty-effective {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 16px;
+      font-weight: 700;
+      color: #e0e0e0;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: .02em;
+      font-style: normal;
+    }
+    /* Reduction inside the conversion result — red italic, smaller than
+       the main value's oversized reduction but still visually the
+       "amount lost to Penalty". */
+    .ds-conv-result .ds-card-penalty-reduction {
+      color: #e07878;
+      font-style: italic;
+      font-size: 14px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      margin-left: 4px;
+      margin-right: 2px;
+    }
+    /* Effective-state result: still bold/white, not the red italic
+       used on the main value. The context line already labels this
+       value as effective; a red tint here would be noisy. */
+    .ds-conv-result.ds-card-penalty-effective {
+      color: #e0e0e0;
+      font-style: normal;
+    }
     .ds-conv-u {
       font-family: 'Open Sans', sans-serif;
       font-size: 10px;
