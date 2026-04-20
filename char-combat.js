@@ -83,12 +83,12 @@ export function createCombatSection(ctx) {
   // ─── STATE OF THINGS (overview dashboard) ───
   // Extracted to char-overview.js. The module renders Body / Sanity /
   // Power / Movement / Strain tiles into the Overview tab's #state-body
-  // host. We also re-use its renderStrainTile inline on the Combat tab.
+  // host. We also re-use its renderPenaltyTile inline on the Combat tab.
   //
-  // We inject getCollapsedStrainValues so Movement tile can read the
+  // We inject getCollapsedPenaltyValues so Movement tile can read the
   // same collapse state as the Combat-tab stat cards without owning it.
   const overview = createOverviewSection({
-    getCollapsedStrainValues: () => collapsedStrainValues,
+    getCollapsedPenaltyValues: () => collapsedPenaltyValues,
     getCharData: ctx.getCharData,
     getCanEdit:  ctx.getCanEdit,
     escapeHtml,
@@ -191,23 +191,23 @@ export function createCombatSection(ctx) {
   // than the full breakdown ("10 − 2.5 ft/sec"). Per-stat toggle, lives
   // in memory only (resets on full re-render, persists across in-place
   // toggles via pure CSS class swap, no render needed).
-  const collapsedStrainValues = new Set();
+  const collapsedPenaltyValues = new Set();
 
   // Toggle handler for the strain-value display. CSS-driven: flips a class
   // on the card(s) with this stat code, so both display variants live in
   // the DOM and we swap visibility without running renderAll. That avoids
   // losing focus/scroll and makes the click feel instant.
-  function toggleStrainValueDisplay(code) {
+  function togglePenaltyValueDisplay(code) {
     if (!code) return;
-    if (collapsedStrainValues.has(code)) collapsedStrainValues.delete(code);
-    else collapsedStrainValues.add(code);
+    if (collapsedPenaltyValues.has(code)) collapsedPenaltyValues.delete(code);
+    else collapsedPenaltyValues.add(code);
     // Flip the class on BOTH the Combat-tab card and the Overview movement
     // item. They share data-code, so one selector catches both views —
     // click in either place, both views update in sync without a render.
     const targets = document.querySelectorAll(
       `.ds-card[data-code="${CSS.escape(code)}"], .state-movement-item[data-code="${CSS.escape(code)}"]`
     );
-    targets.forEach(el => el.classList.toggle('strain-collapsed'));
+    targets.forEach(el => el.classList.toggle('penalty-collapsed'));
   }
 
   function renderDsCard(entry) {
@@ -217,29 +217,29 @@ export function createCombatSection(ctx) {
     const unit = def.unit ? ` <span class="ds-card-unit">${escapeHtml(def.unit)}</span>` : '';
 
     // Inline strain value reduction — for movement-style stats flagged as
-    // strainReducesValue. Two display modes baked into the markup at once:
+    // penaltyReducesValue. Two display modes baked into the markup at once:
     //
     //   EXPANDED (default):  "10 − 2.5 ft/sec"   ← base and reduction both shown
     //   COLLAPSED:           "7.5 ft/sec"        ← pre-computed effective value
     //
-    // The card has a 'strain-collapsed' class if the player clicked to
+    // The card has a 'penalty-collapsed' class if the player clicked to
     // collapse; CSS hides whichever span is inactive. Click anywhere on
     // the value toggles the class in-place (no re-render). Both spans
     // carry their own tooltip explaining the other mode.
     let valueBody;
-    const valReduction = entry.strainValueReduction || 0;
-    const hasStrainDisplay = valReduction > 0 && Number.isFinite(value) && !error;
-    if (hasStrainDisplay) {
+    const valReduction = entry.penaltyValueReduction || 0;
+    const hasPenaltyDisplay = valReduction > 0 && Number.isFinite(value) && !error;
+    if (hasPenaltyDisplay) {
       const effective = Math.max(0, value - valReduction);
       const reductionStr = fmt(valReduction);
       const effectiveStr = fmt(effective);
       const baseStr = fmt(value);
-      const pct = entry.strainPercent || 0;
-      const expandedTip = `Strain reduces this value by ${reductionStr} (${pct}% of base ${baseStr}). Effective: ${effectiveStr}${def.unit ? ' ' + def.unit : ''}. Click to show effective only.`;
-      const collapsedTip = `Effective ${effectiveStr}${def.unit ? ' ' + def.unit : ''} — base ${baseStr} reduced by ${reductionStr} (${pct}% Strain). Click to show breakdown.`;
-      valueBody = `<span class="ds-card-strain-toggle" onclick="toggleStrainValueDisplay('${escapeHtml(def.code)}')">` +
-          `<span class="ds-card-strain-expanded" title="${escapeHtml(expandedTip)}">${baseStr} <span class="ds-card-strain-reduction">− ${reductionStr}</span></span>` +
-          `<span class="ds-card-strain-effective" title="${escapeHtml(collapsedTip)}">${effectiveStr}</span>` +
+      const pct = entry.penaltyPercent || 0;
+      const expandedTip = `Penalty reduces this value by ${reductionStr} (${pct}% of base ${baseStr}). Effective: ${effectiveStr}${def.unit ? ' ' + def.unit : ''}. Click to show effective only.`;
+      const collapsedTip = `Effective ${effectiveStr}${def.unit ? ' ' + def.unit : ''} — base ${baseStr} reduced by ${reductionStr} (${pct}% Penalty). Click to show breakdown.`;
+      valueBody = `<span class="ds-card-penalty-toggle" onclick="togglePenaltyValueDisplay('${escapeHtml(def.code)}')">` +
+          `<span class="ds-card-penalty-expanded" title="${escapeHtml(expandedTip)}">${baseStr} <span class="ds-card-penalty-reduction">− ${reductionStr}</span></span>` +
+          `<span class="ds-card-penalty-effective" title="${escapeHtml(collapsedTip)}">${effectiveStr}</span>` +
         `</span>`;
     } else {
       valueBody = display;
@@ -278,7 +278,7 @@ export function createCombatSection(ctx) {
     // the "+ Dice Mod" pill so players can add mods.
     const hasDiceMods = Array.isArray(diceMods) && diceMods.length > 0;
     const isPassive = entry.isPassive === true;
-    const strainPenalty = entry.strainPenalty || 0;
+    const penaltyDice = entry.penaltyDice || 0;
     const finalDice = Number.isFinite(entry.finalDice)
       ? entry.finalDice
       : (Number.isFinite(value) ? value : 0);
@@ -302,10 +302,10 @@ export function createCombatSection(ctx) {
         const sign = diceModTotal >= 0 ? '+' : '−';
         tipParts.push(`${sign}${Math.abs(diceModTotal)}d bonus`);
       }
-      if (strainPenalty > 0) {
-        tipParts.push(`−${strainPenalty}d Strain`);
+      if (penaltyDice > 0) {
+        tipParts.push(`−${penaltyDice}d Penalty`);
       } else if (isPassive) {
-        tipParts.push('passive — Strain does not apply');
+        tipParts.push('passive — Penalty does not apply');
       }
       if (canEdit) tipParts.push('Click to edit');
       const pillTip = tipParts.join(' · ');
@@ -322,14 +322,14 @@ export function createCombatSection(ctx) {
     if (openPanel && canEdit) {
       panelHtml = renderDiceModPanel(def.code, value, diceMods, diceModTotal, {
         isPassive,
-        strainPenalty,
+        penaltyDice,
         finalDice,
-        strainPercent: entry.strainPercent || 0
+        penaltyPercent: entry.penaltyPercent || 0
       });
     }
 
-    const collapsedClass = hasStrainDisplay && collapsedStrainValues.has(def.code)
-      ? ' strain-collapsed'
+    const collapsedClass = hasPenaltyDisplay && collapsedPenaltyValues.has(def.code)
+      ? ' penalty-collapsed'
       : '';
 
     return `
@@ -347,11 +347,11 @@ export function createCombatSection(ctx) {
   // Dice modifier editor panel — lives inside an expanded card. Shows the
   // total dice the player rolls (base + all mods − strain) at the top, then
   // the list of mods with name/value/delete, then an add button.
-  function renderDiceModPanel(code, baseValue, diceMods, diceModTotal, strainInfo) {
+  function renderDiceModPanel(code, baseValue, diceMods, diceModTotal, penaltyInfo) {
     const mods = Array.isArray(diceMods) ? diceMods : [];
     const base = Number.isFinite(baseValue) ? baseValue : 0;
     const modTotal = diceModTotal || 0;
-    const si = strainInfo || { isPassive: false, strainPenalty: 0, finalDice: base + modTotal, strainPercent: 0 };
+    const si = penaltyInfo || { isPassive: false, penaltyDice: 0, finalDice: base + modTotal, penaltyPercent: 0 };
 
     let html = '<div class="ds-rollmod-panel">';
 
@@ -361,9 +361,9 @@ export function createCombatSection(ctx) {
     //   "Rolling 10d   = 10 base  (passive — strain doesn't apply)"
     const breakdownParts = [`${base} base`];
     if (modTotal !== 0) breakdownParts.push(`${modTotal >= 0 ? '+' : '−'} ${Math.abs(modTotal)} bonus`);
-    if (si.strainPenalty > 0) breakdownParts.push(`− ${si.strainPenalty} strain (${si.strainPercent}%)`);
-    const passiveNote = si.isPassive && si.strainPercent > 0
-      ? '<span class="ds-dm-passive-note"> · passive roll · strain does not apply</span>'
+    if (si.penaltyDice > 0) breakdownParts.push(`− ${si.penaltyDice} penalty (${si.penaltyPercent}%)`);
+    const passiveNote = si.isPassive && si.penaltyPercent > 0
+      ? '<span class="ds-dm-passive-note"> · passive roll · Penalty does not apply</span>'
       : '';
     html += `<div class="ds-dicemod-summary">
       <span class="ds-dm-summary-label">Rolling</span>
@@ -451,12 +451,12 @@ export function createCombatSection(ctx) {
     const pain = result.pain;
     if (!pain) return '';
     const canEdit = ctx.getCanEdit();
-    const strain = result.strain || { percent: 0 };
+    const penalty = result.penalty || { percent: 0 };
     return renderStrainPill({
       id: 'pain',
       label: 'Pain',
       data: pain,
-      strain,
+      penalty,
       expanded: expandedPainPanel.open,
       canEdit,
       toggleFn: 'togglePainPanel',
@@ -471,13 +471,13 @@ export function createCombatSection(ctx) {
     const stress = result.stress;
     if (!stress) return '';
     const canEdit = ctx.getCanEdit();
-    const strain = result.strain || { percent: 0 };
+    const penalty = result.penalty || { percent: 0 };
     const sanMax = (result.san && result.san.max) || 0;
     return renderStrainPill({
       id: 'stress',
       label: 'Stress',
       data: stress,
-      strain,
+      penalty,
       expanded: expandedStressPanel.open,
       canEdit,
       toggleFn: 'toggleStressPanel',
@@ -491,7 +491,7 @@ export function createCombatSection(ctx) {
   // Shared renderer for Pain and Stress — same layout, different data/handlers.
   function renderStrainPill(opts) {
     const {
-      id, label, data, strain, expanded, canEdit,
+      id, label, data, penalty, expanded, canEdit,
       toggleFn, addFn, updateFn, deleteFn, baseDescription
     } = opts;
 
@@ -506,7 +506,7 @@ export function createCombatSection(ctx) {
       const sign = data.modTotal >= 0 ? '+' : '−';
       tipParts.push(`${sign}${Math.abs(data.modTotal)}% from modifiers`);
     }
-    tipParts.push(`Strain total: ${strain.percent}%`);
+    tipParts.push(`Penalty total: ${penalty.percent}%`);
     if (canEdit) tipParts.push('Click to edit modifiers');
     const tip = tipParts.join(' · ');
 
@@ -542,7 +542,7 @@ export function createCombatSection(ctx) {
         html += '</div>';
       }
       html += `<div class="mod-add-row"><button class="mod-add-btn" onclick="${addFn}()">+ Add modifier</button></div>`;
-      html += `<div class="strain-panel-total">Total: ${finalPct}% → contributes to Strain (${strain.percent}% overall)</div>`;
+      html += `<div class="strain-panel-total">Total: ${finalPct}% → contributes to Penalty (${penalty.percent}% overall)</div>`;
       html += '</div>';
     }
     html += '</div>';
@@ -2410,7 +2410,7 @@ export function createCombatSection(ctx) {
     // Card dice modifiers (player/GM-editable bonus dice for rolls)
     toggleDiceModPanel, addDiceMod, updateDiceMod, deleteDiceMod,
     // Strain value-display toggle (click to collapse "10 − 2.5" to "7.5")
-    toggleStrainValueDisplay,
+    togglePenaltyValueDisplay,
     // Roll Calculator — delegated to char-rollcalc.js module. These are
     // thin proxies so the existing window.rollCalc* wirings in
     // character.html keep working without needing to know the module split.
