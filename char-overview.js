@@ -317,6 +317,7 @@ export function createOverviewSection(ctx) {
     else               pctColor = '#e07878';
     const painPct   = (pain && pain.finalPercent) || 0;
     const stressPct = (stress && stress.finalPercent) || 0;
+    const encPct    = penalty.encumbrancePercent || 0;
     const otherPct  = penalty.otherPercent || 0;
 
     // Sign formatter for Others values.
@@ -336,7 +337,7 @@ export function createOverviewSection(ctx) {
       othersEditor += '</div>';
 
       if (mods.length === 0) {
-        othersEditor += '<div class="state-penalty-others-empty">No other penalties. Add Exposure, Encumbrance, drugged, restrained — anything that drags you down.</div>';
+        othersEditor += '<div class="state-penalty-others-empty">No other penalties. Add Exposure, drugged, restrained — anything that drags you down. (Encumbrance is managed on the Inventory tab.)</div>';
       } else {
         mods.forEach((m, i) => {
           const name = (m && m.name) || '';
@@ -359,6 +360,17 @@ export function createOverviewSection(ctx) {
       othersEditor += '</div>';
     }
 
+    // Encumbrance row — read-only, locked like Pain/Stress. Editing
+    // happens on the Inventory tab (CAP/ENC/LIFT cards + per-group
+    // toggles). We give the row a lock icon and a "managed on Inventory
+    // tab" tooltip so players know why it can't be edited here.
+    const encTip = 'Encumbrance is auto-calculated from inventory weight vs CAP. Manage it on the Inventory tab.';
+    // ENC row is formatted with one decimal if non-integer (matches
+    // keepDecimals on the ENC stat def).
+    const encDisplay = (Math.round(encPct) === encPct)
+      ? `${encPct}%`
+      : `${Math.round(encPct * 10) / 10}%`;
+
     return `
       <div class="state-tile state-tile-wide state-tile-penalty">
         <div class="state-tile-head">
@@ -373,6 +385,10 @@ export function createOverviewSection(ctx) {
           <div class="state-penalty-row">
             <span class="state-penalty-k">Stress</span>
             <span class="state-penalty-v">${stressPct}%</span>
+          </div>
+          <div class="state-penalty-row state-penalty-row-locked" title="${escapeHtml(encTip)}">
+            <span class="state-penalty-k">Encumbrance <span class="state-penalty-lock">🔒</span></span>
+            <span class="state-penalty-v">${encDisplay}</span>
           </div>
           <div class="state-penalty-row">
             <span class="state-penalty-k">Others</span>
