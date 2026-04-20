@@ -406,16 +406,14 @@ window.RULESET_DEFAULTS = {
   // bag's own material. The longest-dimension check (item longest ≤
   // container longest) runs independently of this.
 
-  bodySlots: [
-    { code: 'head',      label: 'Head'      },
-    { code: 'shoulders', label: 'Shoulders' },
-    { code: 'back',      label: 'Back'      },
-    { code: 'chest',     label: 'Chest'     },
-    { code: 'waist',     label: 'Waist'     },
-    { code: 'arms',      label: 'Arms'      },
-    { code: 'legs',      label: 'Legs'      },
-    { code: 'feet',      label: 'Feet'      }
-  ],
+  // bodySlots are legacy — the current data model organizes everything
+  // into groups (top-level: On-Person, plus any player-created groups
+  // like Vehicle / Stash). The bodySlots field is kept as an empty array
+  // for backward compatibility with older rulesets that still reference
+  // it, but no new code reads from it. Players create their own
+  // subgroups inside On-Person (e.g. "Back", "Belt", "Holster") as
+  // purely organizational buckets.
+  bodySlots: [],
 
   // ── UNIFIED ITEM CATALOG ──
   //
@@ -840,13 +838,10 @@ window.normalizeRuleset = function(rs) {
       return true;
     });
   }
-  // If the author wiped the slot list, fall back to defaults — an inventory
-  // system with no slots available to attach things to would just be
-  // broken. You have to actively choose zero slots by deleting the last
-  // one AND saving empty, which no legitimate path does today.
-  if (out.bodySlots.length === 0) {
-    out.bodySlots = JSON.parse(JSON.stringify(d.bodySlots));
-  }
+  // Empty bodySlots is a valid, supported state now. The old fallback
+  // auto-filled with defaults here; we no longer do that. Organization
+  // is handled by the groups system instead (On-Person + player-created
+  // groups + subgroups).
 
   // ── UNIFIED ITEM CATALOG + CATEGORIES ──
   //
