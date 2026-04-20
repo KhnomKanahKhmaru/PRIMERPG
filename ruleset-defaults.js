@@ -206,7 +206,9 @@ window.RULESET_DEFAULTS = {
       // Penalty reduces movement values linearly — a character at 25%
       // Penalty moves at 75% of their base speed. Shown inline as
       // "10 − 2.5 ft/sec".
-      penaltyReducesValue: true
+      penaltyReducesValue: true,
+      // Expandable conversions panel on the card — 3s/6s/min/hr/mph/etc.
+      showSpeedConversions: true
     },
     {
       code: 'SPDUP',
@@ -217,7 +219,8 @@ window.RULESET_DEFAULTS = {
       trackDamage: false,
       keepDecimals: false,
       unit: 'ft',
-      penaltyReducesValue: true
+      penaltyReducesValue: true,
+      showSpeedConversions: true
     },
     {
       code: 'AGL',
@@ -570,6 +573,10 @@ window.normalizeRuleset = function(rs) {
           // Legacy field `strainReducesValue` still read as a fallback so
           // saved rulesets from before the rename auto-migrate.
           penaltyReducesValue: s.penaltyReducesValue === true || s.strainReducesValue === true,
+          // Expandable conversion panel on the stat card — 3s/6s/min/hr/mph.
+          // Useful for speed stats (SPD, SPDUP, future burrow/swim/etc.).
+          // The card's value is treated as ft/sec for the math.
+          showSpeedConversions: s.showSpeedConversions === true,
           trackDamage: s.trackDamage === true,
           keepDecimals: s.keepDecimals === true,
           unit: (typeof s.unit === 'string') ? s.unit : ''
@@ -664,6 +671,14 @@ window.normalizeRuleset = function(rs) {
         const defaultStat = d.derivedStats.find(ds => ds.code === s.code);
         if (defaultStat && defaultStat.penaltyReducesValue === true) {
           s.penaltyReducesValue = true;
+        }
+      }
+      // Same for showSpeedConversions — if the default says true but the
+      // saved stat is still unset/false, inherit it.
+      if (s.showSpeedConversions !== true) {
+        const defaultStat = d.derivedStats.find(ds => ds.code === s.code);
+        if (defaultStat && defaultStat.showSpeedConversions === true) {
+          s.showSpeedConversions = true;
         }
       }
     });
