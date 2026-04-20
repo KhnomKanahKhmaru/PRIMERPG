@@ -1183,6 +1183,95 @@
     }
     .ds-card-error { color: #c87777; font-size: 14px; }
     .ds-card-unit { font-size: 11px; font-weight: 500; color: #666; margin-left: 3px; }
+
+    /* Speed conversions — opt-in per stat def via showSpeedConversions.
+       Small ⇅ caret button next to the value toggles an inline panel
+       with time/unit conversions (3s, 6s, /min, /hr, mph, km/h, m/s).
+       The panel math uses the EFFECTIVE (post-Penalty) value — what the
+       character can actually move right now — not the base. */
+    .ds-card-conv-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      margin-left: 6px;
+      padding: 0;
+      background: transparent;
+      border: 1px solid #2a2a2a;
+      border-radius: 3px;
+      color: #888;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+      transition: all .1s;
+      vertical-align: middle;
+      -webkit-user-select: none;
+         -moz-user-select: none;
+              user-select: none;
+    }
+    .ds-card-conv-toggle:hover {
+      background: #1a1a1a;
+      border-color: #3a3a3a;
+      color: #ccc;
+    }
+    .ds-card-conv-toggle.open {
+      background: #1a1a1a;
+      color: #e0e0e0;
+      border-color: #3a3a3a;
+    }
+
+    .ds-card-conv-panel {
+      margin-top: 8px;
+      padding: 8px 10px;
+      background: #0a0a0a;
+      border: 1px solid #1a1a1a;
+      border-radius: 3px;
+    }
+    .ds-card-conv-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+      gap: 6px 10px;
+    }
+    .ds-conv-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      padding: 4px 6px;
+      border-radius: 2px;
+      background: #111;
+    }
+    .ds-conv-k {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #777;
+    }
+    .ds-conv-v {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 13px;
+      font-weight: 600;
+      color: #e0e0e0;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.2;
+    }
+    .ds-conv-u {
+      font-family: 'Open Sans', sans-serif;
+      font-size: 10px;
+      font-weight: 500;
+      color: #666;
+      margin-left: 2px;
+    }
+    .ds-conv-sub {
+      font-family: 'Open Sans', sans-serif;
+      font-size: 10px;
+      color: #888;
+      font-weight: 400;
+      margin-left: 4px;
+      font-variant-numeric: tabular-nums;
+    }
     .ds-card-desc { font-size: 11px; color: #666; line-height: 1.5; margin-top: 6px; font-style: italic; }
 
     /* Hit locations */
@@ -2640,6 +2729,7 @@
     deleteDiceMod:        (code, idx) => combat.deleteDiceMod(code, idx),
     // Strain value-display toggle
     togglePenaltyValueDisplay: (code) => combat.togglePenaltyValueDisplay(code),
+    toggleSpeedConversions:    (code) => combat.toggleSpeedConversions(code),
     // Roll Calculator
     rollCalcSetStat:         (key) => combat.rollCalcSetStat(key),
     rollCalcSetSkill:        (key) => combat.rollCalcSetSkill(key),
