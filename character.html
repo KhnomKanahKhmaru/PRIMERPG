@@ -306,6 +306,157 @@
       min-width: 120px;
     }
 
+    /* ── Penalty tile (replaces Strain) ── */
+    /* Identical layout to the old Strain tile, plus an inline Others
+       editor (CRUD for player-named ±% modifiers). Uses a parallel
+       naming so both can coexist during the transition. */
+    .state-tile-penalty .state-tile-head {
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+    }
+    .state-penalty-big {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      align-self: flex-start;
+    }
+    .state-penalty-rows-inline {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 28px;
+      padding-top: 4px;
+      border-top: 1px solid #1a1a1a;
+    }
+    .state-penalty-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 12px;
+      min-width: 120px;
+    }
+    .state-penalty-k {
+      font-weight: 600;
+      letter-spacing: .05em;
+      color: #aaa;
+      margin-right: 10px;
+    }
+    .state-penalty-v {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-weight: 600;
+      color: #ccc;
+      font-variant-numeric: tabular-nums;
+    }
+    /* Others editor — inline CRUD for player-named ±% modifiers.
+       Below the breakdown rows, visually separated by a top border.
+       Each row is a grid: name input (flex) | number input | % unit | × delete. */
+    .state-penalty-others {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #1a1a1a;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .state-penalty-others-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 11px;
+      margin-bottom: 2px;
+    }
+    .state-penalty-others-title {
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #888;
+    }
+    .state-penalty-others-total {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-weight: 600;
+      color: #aaa;
+      font-variant-numeric: tabular-nums;
+    }
+    .state-penalty-others-empty {
+      font-size: 11px;
+      color: #666;
+      font-style: italic;
+      line-height: 1.45;
+      padding: 4px 2px 2px;
+    }
+    .state-penalty-other-row {
+      display: grid;
+      grid-template-columns: 1fr 60px auto auto;
+      gap: 6px;
+      align-items: center;
+    }
+    .state-penalty-other-name,
+    .state-penalty-other-val {
+      background: #0a0a0a;
+      border: 1px solid #222;
+      color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 12px;
+      padding: 5px 8px;
+      border-radius: 3px;
+      outline: none;
+      width: 100%;
+    }
+    .state-penalty-other-val {
+      font-family: 'Consolas', 'Courier New', monospace;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .state-penalty-other-name:focus,
+    .state-penalty-other-val:focus {
+      border-color: #444;
+    }
+    .state-penalty-other-unit {
+      font-size: 11px;
+      color: #888;
+      padding-right: 2px;
+    }
+    .state-penalty-other-del {
+      color: #555;
+      font-size: 16px;
+      cursor: pointer;
+      width: 18px;
+      text-align: center;
+      line-height: 1;
+      user-select: none;
+    }
+    .state-penalty-other-del:hover {
+      color: #c84b4b;
+    }
+    .state-penalty-other-del-ph {
+      width: 18px;
+    }
+    .state-penalty-other-add-row {
+      padding-top: 2px;
+    }
+    .state-penalty-other-add-btn {
+      background: transparent;
+      border: 1px dashed #2a2a2a;
+      color: #888;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 5px 12px;
+      border-radius: 3px;
+      cursor: pointer;
+      letter-spacing: .04em;
+      width: 100%;
+      transition: all .1s;
+    }
+    .state-penalty-other-add-btn:hover {
+      background: #111;
+      color: #ccc;
+      border-color: #3a3a3a;
+      border-style: solid;
+    }
+
     /* ── Roll Calculator ── */
     .state-tile-rollcalc { gap: 14px; }
     .state-tile-rollcalc .state-tile-head {
@@ -2556,7 +2707,8 @@
     rollCalcSetReduction:    (v)   => combat.rollCalcSetReduction(v),
     rollCalcToggle:          ()    => combat.rollCalcToggle(),
     rollCalcSetPassive:      (f)   => combat.rollCalcSetPassive(f),
-    // Pain / Stress (percentile modifiers feeding Strain)
+    // Pain / Stress (percentile modifiers feeding Pain% and Stress%
+    // components of the aggregate Penalty)
     togglePainPanel:      () => combat.togglePainPanel(),
     addPainMod:           () => combat.addPainMod(),
     updatePainMod:        (idx, field, val) => combat.updatePainMod(idx, field, val),
@@ -2565,6 +2717,11 @@
     addStressMod:         () => combat.addStressMod(),
     updateStressMod:      (idx, field, val) => combat.updateStressMod(idx, field, val),
     deleteStressMod:      (idx) => combat.deleteStressMod(idx),
+    // Other modifiers — free-form ±% entries (Exposure, Encumbrance, etc)
+    // that feed Penalty directly. Edited inline on the Penalty card.
+    addOtherModifier:     () => combat.addOtherMod(),
+    updateOtherModifier:  (idx, field, val) => combat.updateOtherMod(idx, field, val),
+    deleteOtherModifier:  (idx) => combat.deleteOtherMod(idx),
     addHlMod:             (target)           => combat.addModifier(target),
     updateHlMod:          (target, i, field, val) => combat.updateModifier(target, i, field, val),
     deleteHlMod:          (target, i)        => combat.deleteModifier(target, i),
