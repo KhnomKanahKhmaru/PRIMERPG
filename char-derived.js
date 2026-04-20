@@ -1023,9 +1023,6 @@ export function computeDerivedStats(character, ruleset) {
     otherPercent:  otherPct,
     percent:       penaltyPct
   };
-  // Back-compat alias — older code reads `strain` with `.percent`. Removed
-  // in the next cleanup turn once all readers have been updated.
-  const strain = { painPercent: painPct, stressPercent: stressPct, percent: penaltyPct };
 
   // Post-pass: for each stat entry, compute Penalty-adjusted dice count.
   // Passive rolls are exempt (HP/SAN resistance rolls don't suffer Penalty).
@@ -1043,12 +1040,9 @@ export function computeDerivedStats(character, ruleset) {
     const finalDice = Math.max(0, poolBeforePenalty - penaltyDice);
 
     // Value reduction — for stats like SPD/SPDUP where Penalty cuts the
-    // displayed value rather than the dice pool. `penaltyReducesValue`
-    // is the new def flag; the old `strainReducesValue` still works as
-    // a fallback for unmigrated rulesets.
-    const reducesValue = def.penaltyReducesValue === true || def.strainReducesValue === true;
+    // displayed value rather than the dice pool.
     let penaltyValueReduction = 0;
-    if (reducesValue && !isPassive
+    if (def.penaltyReducesValue === true && !isPassive
         && entry.value != null && Number.isFinite(entry.value)) {
       penaltyValueReduction = entry.value * penaltyPct / 100;
     }
@@ -1059,16 +1053,9 @@ export function computeDerivedStats(character, ruleset) {
     entry.penaltyPercent = penaltyPct;
     entry.penaltyValueReduction = penaltyValueReduction;
     entry.poolBeforePenalty = poolBeforePenalty;
-
-    // Back-compat aliases for any reader that still uses the strain*
-    // names. Removed after the UI rewrite lands.
-    entry.strainPenalty = penaltyDice;
-    entry.strainPercent = penaltyPct;
-    entry.strainValueReduction = penaltyValueReduction;
-    entry.poolBeforeStrain = poolBeforePenalty;
   });
 
-  return { stats, locations, errors, vars, body, power, san, injuries, pain, stress, other, penalty, strain };
+  return { stats, locations, errors, vars, body, power, san, injuries, pain, stress, other, penalty };
 }
 
 // ─── DEGRADATION TABLE ───
