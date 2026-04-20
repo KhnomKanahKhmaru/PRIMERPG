@@ -399,37 +399,48 @@ export function createInventorySection(ctx) {
     }
     const inv = charData.inventory;
 
-    // bySlot: always an object. Body slots hang off it directly.
-    if (!inv.bySlot || typeof inv.bySlot !== 'object') inv.bySlot = {};
-
     // customDefs: always shaped { containers: [], equipment: [] }.
     if (!inv.customDefs || typeof inv.customDefs !== 'object') inv.customDefs = {};
     if (!Array.isArray(inv.customDefs.containers)) inv.customDefs.containers = [];
     if (!Array.isArray(inv.customDefs.equipment))  inv.customDefs.equipment  = [];
 
-    // Legacy migration — old inventories had a top-level `stowed` array
-    // instead of groups. Convert it into a "Stowed" group so the player's
-    // existing data is preserved and keeps working. We don't seed a fresh
-    // Stowed group for NEW characters — users add their own groups via
-    // +Add Group.
+    // bySlot is legacy. Kept as an always-empty object during the
+    // migration transition so any code still reading it sees empty
+    // arrays (turning those branches into no-ops). Will be deleted
+    // entirely once the render path stops consulting it.
+    //
+    // If inv.bySlot exists with data when we open the character, the
+    // body-slot → subgroup migration below moves that data into
+    // subgroups inside On-Person and then deletes inv.bySlot. The
+    // shim re-creates an empty object so old readers don't crash.
+
+    // Legacy flat-stowed migration (pre-groups-era). Convert into a
+    // "Stowed" group so players' existing data keeps working. New chars
+    // don't get a default Stowed group — they add their own.
     const hadLegacyStowed = Array.isArray(inv.stowed);
     if (!Array.isArray(inv.groups)) inv.groups = [];
 
-    // On-Person: always present, always first. Its contents are the body
-    // slots (bySlot), which live outside groups. The group entry itself
-    // carries just metadata (name, collapsed state).
-    if (!inv.groups.find(g => g.id === GROUP_ONPERSON_ID)) {
-      inv.groups.unshift({
+    // On-Person: always present, always first. Post-refactor, On-Person
+    // is a regular group with its own `contents` array. Previously its
+    // contents lived in bySlot (the body-slot map); those get migrated
+    // into subgroups of On-Person below.
+    let onPerson = inv.groups.find(g => g.id === GROUP_ONPERSON_ID);
+    if (!onPerson) {
+      onPerson = {
         id: GROUP_ONPERSON_ID,
         name: 'On-Person',
         kind: 'onPerson',
-        collapsed: false
-      });
+        collapsed: false,
+        contents: []
+      };
+      inv.groups.unshift(onPerson);
     }
+    // Make sure On-Person has a contents array — older docs stored
+    // items in bySlot, not here, so contents wasn't needed.
+    if (!Array.isArray(onPerson.contents)) onPerson.contents = [];
 
     // Preserve legacy Stowed data by wrapping it in a group — only if
     // that legacy array actually existed AND had content worth keeping.
-    // Empty legacy stowed just gets discarded.
     if (hadLegacyStowed && inv.stowed.length > 0 && !inv.groups.find(g => g.id === GROUP_STOWED_ID)) {
       inv.groups.push({
         id: GROUP_STOWED_ID,
@@ -439,18 +450,64 @@ export function createInventorySection(ctx) {
         contents: inv.stowed.slice()
       });
     }
-
-    // Drop the legacy top-level stowed field after migrating (or
-    // discarding) it. Keeps the Firestore doc clean.
     if (hadLegacyStowed) delete inv.stowed;
 
-    // Validate every group entry and make sure custom groups have a
-    // contents array. Malformed groups get dropped rather than crashing.
+    // ── BODY-SLOT → SUBGROUP MIGRATION ──
+    //
+    // Body slots are gone. Each non-empty legacy slot becomes a subgroup
+    // inside On-Person, preserving its items. Slot labels are read from
+    // the current ruleset when available (so "back" renders as "Back");
+    // if the ruleset no longer has that slot defined, we title-case the
+    // code as a fallback.
+    //
+    // Empty slots are discarded — no point cluttering On-Person with
+    // seven empty "Head", "Shoulders" etc. buckets.
+    //
+    // Idempotent: after migration the bySlot field is deleted, so
+    // reopening the same character is a no-op.
+    if (inv.bySlot && typeof inv.bySlot === 'object') {
+      const ruleset = getRuleset ? getRuleset() : null;
+      const slotLabels = new Map();
+      if (ruleset && Array.isArray(ruleset.bodySlots)) {
+        ruleset.bodySlots.forEach(s => { if (s && s.code) slotLabels.set(s.code, s.label || s.code); });
+      }
+      Object.keys(inv.bySlot).forEach(slotCode => {
+        const items = inv.bySlot[slotCode];
+        if (!Array.isArray(items) || items.length === 0) return;
+        const label = slotLabels.get(slotCode) || slotCode.charAt(0).toUpperCase() + slotCode.slice(1).replace(/_/g, ' ');
+        // Use a deterministic subgroup id based on slot code so
+        // migrations don't create duplicates if run twice.
+        const subId = 'grp_migrated_' + slotCode;
+        if (!onPerson.contents.some(n => n && n.id === subId)) {
+          onPerson.contents.push({
+            id: subId,
+            name: label,
+            kind: 'custom',
+            collapsed: false,
+            contents: items.slice()
+          });
+        }
+      });
+      delete inv.bySlot;
+    }
+
+    // Shim: always ensure inv.bySlot exists as an empty object so any
+    // remaining legacy reader sees `{}`, not `undefined`. Turn 2 of
+    // the slot→group refactor will strip the last readers; until then
+    // this keeps everything working.
+    if (!inv.bySlot || typeof inv.bySlot !== 'object') inv.bySlot = {};
+
+    // Validate every top-level group and ensure contents is an array.
     inv.groups = inv.groups.filter(g => {
       if (!g || typeof g !== 'object' || !g.id || !g.kind) return false;
-      if (g.kind === 'custom' && !Array.isArray(g.contents)) g.contents = [];
+      if (!Array.isArray(g.contents)) g.contents = [];
       return true;
     });
+
+    // Recursively validate subgroups — any node in contents that looks
+    // like a group (has kind 'custom') must have a contents array.
+    // Entries (defId / defKind present) are left alone here.
+    normalizeGroupTree(inv.groups);
 
     // ── SNAPSHOT MIGRATION ──
     //
@@ -472,27 +529,61 @@ export function createInventorySection(ctx) {
     return inv;
   }
 
+  // Walk the group tree, making sure every group node has a contents
+  // array and dropping anything malformed. Called after any migration
+  // step that might have left the tree in a partial state.
+  function normalizeGroupTree(groups) {
+    if (!Array.isArray(groups)) return;
+    groups.forEach(g => {
+      if (!g || typeof g !== 'object') return;
+      if (isGroupNode(g)) {
+        if (!Array.isArray(g.contents)) g.contents = [];
+        // Recurse into subgroup children.
+        g.contents = g.contents.filter(child => {
+          if (!child || typeof child !== 'object') return false;
+          if (isGroupNode(child)) {
+            if (!Array.isArray(child.contents)) child.contents = [];
+            normalizeGroupTree([child]);
+          }
+          return true;
+        });
+      }
+    });
+  }
+
+  // A node is a "group" (vs an entry) when it has a `kind` field of
+  // 'custom' or 'onPerson'. Entries don't have that field (they have
+  // defKind + defId). This is the single discriminator used throughout
+  // the walk code.
+  function isGroupNode(node) {
+    return !!(node && (node.kind === 'custom' || node.kind === 'onPerson'));
+  }
+
   // Walk every entry in the inventory tree and ensure it has a
-  // `snapshot` field. See ensureInventory for rationale.
+  // `snapshot` field. See ensureInventory for rationale. Post-refactor,
+  // the tree is entirely groups-and-entries; bySlot is gone.
   function migrateSnapshots(inv) {
     const ruleset = getRuleset ? getRuleset() : null;
+    // `visit` walks an array that may hold entries OR subgroups.
+    // Entries get their snapshot populated; groups are recursed into.
     const visit = (arr) => {
       if (!Array.isArray(arr)) return;
-      arr.forEach(entry => {
-        if (entry && typeof entry === 'object') {
-          if (!entry.snapshot) {
-            entry.snapshot = buildSnapshotFromDef(entry, ruleset, inv);
+      arr.forEach(node => {
+        if (!node || typeof node !== 'object') return;
+        if (isGroupNode(node)) {
+          visit(node.contents);
+        } else {
+          // Entry — populate snapshot if missing.
+          if (!node.snapshot) {
+            node.snapshot = buildSnapshotFromDef(node, ruleset, inv);
           }
-          // Recurse into container contents, regardless of snapshot
-          // presence, so nested legacy entries get migrated too.
-          if (Array.isArray(entry.contents)) visit(entry.contents);
+          // Recurse into container contents so nested legacy entries
+          // get migrated too.
+          if (Array.isArray(node.contents)) visit(node.contents);
         }
       });
     };
-    (inv.groups || []).forEach(g => {
-      if (g.kind === 'custom') visit(g.contents);
-    });
-    Object.keys(inv.bySlot || {}).forEach(slotCode => visit(inv.bySlot[slotCode]));
+    (inv.groups || []).forEach(g => visit(g.contents));
   }
 
   // Build a snapshot object for an entry by looking up its def in the
@@ -572,23 +663,31 @@ export function createInventorySection(ctx) {
     };
   }
 
-  // Walk the inventory tree, calling visit(entry) for each item/container
-  // entry — not groups themselves. Used for find-by-id and remove-by-id.
+  // Walk the inventory tree, calling visit(entry, parentArray, index)
+  // for each item/container entry. Groups are traversed into but never
+  // passed to the visitor — visit() is called only on entries.
+  //
+  // Post-refactor, every entry lives inside some group's contents (or
+  // nested inside a container or subgroup within that). There are no
+  // more body slots to special-case.
   function walkTree(visit) {
     const inv = ensureInventory();
     const visitArr = (arr) => {
       if (!Array.isArray(arr)) return;
       for (let i = 0; i < arr.length; i++) {
-        visit(arr[i], arr, i);
-        if (Array.isArray(arr[i].contents)) visitArr(arr[i].contents);
+        const node = arr[i];
+        if (!node || typeof node !== 'object') continue;
+        if (isGroupNode(node)) {
+          // Subgroup — don't call visit, just recurse.
+          visitArr(node.contents);
+        } else {
+          // Entry — call visit, then recurse into its container contents.
+          visit(node, arr, i);
+          if (Array.isArray(node.contents)) visitArr(node.contents);
+        }
       }
     };
-    // Body slot contents (under On-Person)
-    Object.values(inv.bySlot).forEach(visitArr);
-    // Custom-group contents
-    (inv.groups || []).forEach(g => {
-      if (g.kind === 'custom') visitArr(g.contents);
-    });
+    (inv.groups || []).forEach(g => visitArr(g.contents));
   }
 
   function findEntry(id) {
@@ -600,21 +699,49 @@ export function createInventorySection(ctx) {
 
   function removeEntry(id) {
     const inv = ensureInventory();
+    // Remove a node (entry OR subgroup) from whichever array it lives
+    // in. Recurses through subgroups and container contents equally.
     const removeFromArr = (arr) => {
       if (!Array.isArray(arr)) return false;
       for (let i = 0; i < arr.length; i++) {
-        if (arr[i].id === id) { arr.splice(i, 1); return true; }
-        if (Array.isArray(arr[i].contents) && removeFromArr(arr[i].contents)) return true;
+        const node = arr[i];
+        if (!node || typeof node !== 'object') continue;
+        if (node.id === id) { arr.splice(i, 1); return true; }
+        if (Array.isArray(node.contents) && removeFromArr(node.contents)) return true;
       }
       return false;
     };
-    for (const slotCode of Object.keys(inv.bySlot)) {
-      if (removeFromArr(inv.bySlot[slotCode])) return true;
-    }
     for (const g of inv.groups) {
-      if (g.kind === 'custom' && removeFromArr(g.contents)) return true;
+      if (removeFromArr(g.contents)) return true;
     }
     return false;
+  }
+
+  // Find the subgroup (or top-level group) with the given id. Walks the
+  // nested subgroup tree. Returns null if not found. Used by placement
+  // targeting when the user picks a specific subgroup from a menu.
+  function findGroup(id) {
+    if (!id) return null;
+    const inv = ensureInventory();
+    const search = (nodes) => {
+      if (!Array.isArray(nodes)) return null;
+      for (const node of nodes) {
+        if (!node || typeof node !== 'object') continue;
+        if (isGroupNode(node)) {
+          if (node.id === id) return node;
+          const nested = search(node.contents);
+          if (nested) return nested;
+        }
+      }
+      return null;
+    };
+    // Top-level groups (On-Person + custom) are in inv.groups directly.
+    for (const g of inv.groups || []) {
+      if (g.id === id) return g;
+      const nested = search(g.contents);
+      if (nested) return nested;
+    }
+    return null;
   }
 
   // ─── PERSISTENCE ───
@@ -632,10 +759,6 @@ export function createInventorySection(ctx) {
     const ruleset = getRuleset();
     if (!ruleset) {
       host.innerHTML = '<div class="inv-empty">No ruleset loaded.</div>';
-      return;
-    }
-    if (!Array.isArray(ruleset.bodySlots) || ruleset.bodySlots.length === 0) {
-      host.innerHTML = '<div class="inv-empty">This ruleset defines no body slots. Open the ruleset editor to add some.</div>';
       return;
     }
 
@@ -712,24 +835,38 @@ export function createInventorySection(ctx) {
   // the ruleset's body slots (each a sub-section). Custom groups have a
   // flat contents array — containers and loose items at the top level.
 
-  function renderGroup(group, ruleset, inv, canEdit) {
+  function renderGroup(group, ruleset, inv, canEdit, depth) {
+    if (depth == null) depth = 0;
     const collapsed = !!group.collapsed;
     const isOnPerson = group.kind === 'onPerson';
+    const isSubgroup = depth > 0;
 
-    // Totals: weight and count across everything in the group. For
-    // On-Person, this is the sum of every body slot's contents; for
-    // custom groups, it's the sum of the group's contents array.
-    const { totalWeight, totalCount } = isOnPerson
-      ? tallyBySlot(inv.bySlot, ruleset.bodySlots || [])
-      : tallyArr(group.contents || []);
+    // Totals: weight and count across everything in the group,
+    // recursively including nested subgroups.
+    const { totalWeight, totalCount } = tallyArr(group.contents || []);
 
-    // Header actions. On-Person has no rename/delete; custom groups do.
+    // Header actions. On-Person cannot be renamed or deleted. Custom
+    // groups and subgroups both allow it. Subgroups use the same
+    // rename/delete flow as top-level custom groups — the handlers
+    // walk the tree to find the target by id, so depth doesn't matter.
     const extraHeaderActions = (!isOnPerson && canEdit) ? `
       <button class="inv-group-btn" onclick="event.stopPropagation();invRenameGroup('${escapeHtml(group.id)}')" title="Rename group">✎</button>
       <button class="inv-group-btn inv-group-btn-danger" onclick="event.stopPropagation();invDeleteGroup('${escapeHtml(group.id)}')" title="Delete group (and everything in it)">×</button>
     ` : '';
 
-    let html = `<div class="inv-group${collapsed ? ' collapsed' : ''}${isOnPerson ? ' inv-group-onperson' : ' inv-group-custom'}">
+    const groupClasses = [
+      'inv-group',
+      collapsed ? 'collapsed' : '',
+      isOnPerson ? 'inv-group-onperson' : 'inv-group-custom',
+      isSubgroup ? 'inv-group-sub' : ''
+    ].filter(Boolean).join(' ');
+
+    // Subgroups are indented relative to their parent group's body.
+    // Depth * 16px matches the indent scheme used by container entries
+    // nested inside other containers.
+    const indentStyle = isSubgroup ? `style="margin-left:${depth * 16}px"` : '';
+
+    let html = `<div class="${groupClasses}" ${indentStyle}>
       <div class="inv-group-head" onclick="invToggleGroupCollapse('${escapeHtml(group.id)}')">
         <span class="inv-group-caret">${collapsed ? '▸' : '▾'}</span>
         <span class="inv-group-label">${escapeHtml(group.name)}</span>
@@ -739,33 +876,42 @@ export function createInventorySection(ctx) {
 
     if (!collapsed) {
       html += '<div class="inv-group-body">';
-      if (isOnPerson) {
-        // Render each body slot as a sub-section of On-Person.
-        ruleset.bodySlots.forEach(slot => {
-          html += renderSlotSection(slot, inv.bySlot[slot.code] || [], canEdit);
-        });
-      } else {
-        // Description banner at the top of the group body — only shown
-        // for custom groups that have one. Whitespace-preserving so the
-        // user's line breaks survive. Sits above the contents so a long
-        // group description doesn't push the items too far down.
-        if (group.description && group.description.trim()) {
-          html += `<div class="inv-group-desc">${escapeHtml(group.description)}</div>`;
-        }
-        // Custom group — flat contents list plus add buttons at the bottom.
-        const entries = Array.isArray(group.contents) ? group.contents : [];
-        if (entries.length === 0) {
-          html += '<div class="inv-empty-row">Empty.</div>';
-        } else {
-          entries.forEach(e => { html += renderEntry(e, 0, canEdit); });
-        }
-        if (canEdit) {
-          html += `<div class="inv-group-actions">
-            <button class="inv-add-btn" onclick="invOpenAddContainer('${escapeHtml(group.id)}','group')">+ Add Container</button>
-            <button class="inv-add-btn inv-add-btn-ghost" onclick="invOpenAddItem('${escapeHtml(group.id)}','group')">+ Add Loose Item</button>
-          </div>`;
-        }
+
+      // Description banner at the top — custom groups and subgroups
+      // can both have one. On-Person traditionally doesn't.
+      if (!isOnPerson && group.description && group.description.trim()) {
+        html += `<div class="inv-group-desc">${escapeHtml(group.description)}</div>`;
       }
+
+      // Walk contents: mix of entries and subgroups. Subgroups recurse
+      // via renderGroup with incremented depth; entries go through the
+      // normal entry renderer.
+      const contents = Array.isArray(group.contents) ? group.contents : [];
+      if (contents.length === 0) {
+        html += '<div class="inv-empty-row">Empty.</div>';
+      } else {
+        contents.forEach(node => {
+          if (isGroupNode(node)) {
+            // Nested subgroup. Recurse.
+            html += renderGroup(node, ruleset, inv, canEdit, depth + 1);
+          } else {
+            // Regular entry (container or item).
+            html += renderEntry(node, 0, canEdit);
+          }
+        });
+      }
+
+      // Action row at the bottom of every group's body. Three buttons:
+      // add a container, add a loose item, and add a subgroup (for
+      // further organizational nesting).
+      if (canEdit) {
+        html += `<div class="inv-group-actions">
+          <button class="inv-add-btn" onclick="invOpenAddContainer('${escapeHtml(group.id)}','group')">+ Add Container</button>
+          <button class="inv-add-btn inv-add-btn-ghost" onclick="invOpenAddItem('${escapeHtml(group.id)}','group')">+ Add Loose Item</button>
+          <button class="inv-add-btn inv-add-btn-ghost" onclick="invAddSubgroup('${escapeHtml(group.id)}')" title="Add a nested group inside this one (e.g. inside On-Person: Back, Belt, Holster).">+ Add Subgroup</button>
+        </div>`;
+      }
+
       html += '</div>';
     }
     html += '</div>';
@@ -1160,62 +1306,28 @@ export function createInventorySection(ctx) {
     return { weight, count };
   }
 
+  // Sum weight and item count across a contents array. The array may
+  // contain entries (counted via tallyEntry) AND subgroups (recursed
+  // into — groups themselves contribute zero but their contents roll
+  // up). Used for group headers across all nesting levels.
   function tallyArr(arr) {
     let totalWeight = 0;
     let totalCount = 0;
-    (arr || []).forEach(e => {
-      const t = tallyEntry(e);
-      totalWeight += t.weight;
-      totalCount += t.count;
-    });
-    return { totalWeight, totalCount };
-  }
-
-  function tallyBySlot(bySlot, bodySlots) {
-    let totalWeight = 0;
-    let totalCount = 0;
-    (bodySlots || []).forEach(slot => {
-      const t = tallyArr(bySlot[slot.code] || []);
-      totalWeight += t.totalWeight;
-      totalCount += t.totalCount;
-    });
-    return { totalWeight, totalCount };
-  }
-
-  // ─── BODY SLOT SUBSECTION ───
-  //
-  // Renders a single body slot as a subsection inside the On-Person
-  // group. Same shape as the custom-group body but with slot-specific
-  // targeting for the Add buttons.
-
-  function renderSlotSection(slot, entries, canEdit) {
-    const collapsed = collapsedSlots.has(slot.code);
-    const { totalWeight, totalCount } = tallyArr(entries);
-
-    let html = `<div class="inv-slot-section${collapsed ? ' collapsed' : ''}">
-      <div class="inv-slot-head" onclick="invToggleSlot('${escapeHtml(slot.code)}')">
-        <span class="inv-slot-caret">${collapsed ? '▸' : '▾'}</span>
-        <span class="inv-slot-label">${escapeHtml(slot.label)}</span>
-        <span class="inv-slot-meta">${totalCount} item${totalCount === 1 ? '' : 's'} · ${fmt(totalWeight)} lb${totalWeight === 1 ? '' : 's'}</span>
-      </div>`;
-
-    if (!collapsed) {
-      html += '<div class="inv-slot-body">';
-      if (entries.length === 0) {
-        html += '<div class="inv-empty-row">Empty.</div>';
+    (arr || []).forEach(node => {
+      if (!node || typeof node !== 'object') return;
+      if (isGroupNode(node)) {
+        // Subgroup — recurse. Groups themselves have no weight / aren't
+        // counted as items; their contents contribute.
+        const t = tallyArr(node.contents || []);
+        totalWeight += t.totalWeight;
+        totalCount += t.totalCount;
       } else {
-        entries.forEach(e => { html += renderEntry(e, 0, canEdit); });
+        const t = tallyEntry(node);
+        totalWeight += t.weight;
+        totalCount += t.count;
       }
-      if (canEdit) {
-        html += `<div class="inv-slot-actions">
-          <button class="inv-add-btn" onclick="invOpenAddContainer('${escapeHtml(slot.code)}','slot')">+ Add Container</button>
-          <button class="inv-add-btn inv-add-btn-ghost" onclick="invOpenAddItem('${escapeHtml(slot.code)}','slot')">+ Add Loose Item</button>
-        </div>`;
-      }
-      html += '</div>';
-    }
-    html += '</div>';
-    return html;
+    });
+    return { totalWeight, totalCount };
   }
 
   // ─── ENTRY RENDERERS ───
@@ -2425,17 +2537,27 @@ export function createInventorySection(ctx) {
 
   // ─── GROUP EDIT MODAL ───
   //
-  // Single modal shared by Add Group and Rename Group. Distinguished by
-  // activeModal.groupEditMode ('add' | 'edit') which only affects the
-  // header label and the save handler's target.
+  // Single modal shared by Add Group, Add Subgroup, and Rename Group.
+  // activeModal.groupEditMode ('add' | 'addSubgroup' | 'edit') drives
+  // the header label, hint text, and the saveGroup handler's target.
 
   function renderGroupEditModal() {
     const draft = activeModal.groupDraft || {};
-    const isAdd = activeModal.groupEditMode === 'add';
-    const title = isAdd ? 'New Group' : 'Edit Group';
-    const hint = isAdd
-      ? 'Groups are containers for things not on your body — e.g. Vehicle, Stash, Safe House.'
-      : '';
+    const mode = activeModal.groupEditMode || 'add';
+    const isAdd = mode === 'add';
+    const isSub = mode === 'addSubgroup';
+    const title = isAdd ? 'New Group' : isSub ? 'New Subgroup' : 'Edit Group';
+    let hint = '';
+    let placeholder = 'e.g. Vehicle, Safe House, Stash';
+    if (isAdd) {
+      hint = 'Groups are top-level buckets for things not on your body — e.g. Vehicle, Stash, Safe House.';
+    } else if (isSub) {
+      // Find parent name for a more grounded hint.
+      const parent = findGroup(activeModal.groupParentId);
+      const parentName = parent ? parent.name : 'this group';
+      hint = `Creates a subgroup inside "${parentName}". Use subgroups to organize things — e.g. inside On-Person: Back, Belt, Holster; inside Vehicle: Glove Box, Trunk.`;
+      placeholder = 'e.g. Back, Belt, Glove Box, Bedroom';
+    }
 
     return `<div class="inv-modal-backdrop" onclick="invCloseModal(event)">
       <div class="inv-modal" onclick="event.stopPropagation()">
@@ -2448,7 +2570,7 @@ export function createInventorySection(ctx) {
 
           <div class="inv-field">
             <label>Name</label>
-            <input type="text" value="${escapeHtml(draft.name || '')}" placeholder="e.g. Vehicle, Safe House, Stash" oninput="invUpdateGroupDraft('name',this.value)" autofocus>
+            <input type="text" value="${escapeHtml(draft.name || '')}" placeholder="${escapeHtml(placeholder)}" oninput="invUpdateGroupDraft('name',this.value)" autofocus>
           </div>
 
           <div class="inv-field">
@@ -2457,7 +2579,7 @@ export function createInventorySection(ctx) {
           </div>
 
           <div class="inv-modal-actions">
-            <button class="inv-add-btn" onclick="invSaveGroup()">${isAdd ? 'Create' : 'Save'}</button>
+            <button class="inv-add-btn" onclick="invSaveGroup()">${(isAdd || isSub) ? 'Create' : 'Save'}</button>
             <button class="inv-add-btn inv-add-btn-ghost" onclick="invCloseModal()">Cancel</button>
           </div>
 
@@ -2655,19 +2777,24 @@ export function createInventorySection(ctx) {
   }
 
   // ─── GROUP HANDLERS ───
+  //
+  // Groups now form a tree: On-Person + any custom top-level groups at
+  // the root, with arbitrary subgroups nested inside each. Every
+  // handler here walks the tree via findGroup so it works at any depth.
+  //
+  // On-Person is special — it can't be renamed or deleted, but
+  // subgroups INSIDE On-Person can be (they're just custom groups).
 
   async function toggleGroupCollapse(groupId) {
-    const inv = ensureInventory();
-    const g = (inv.groups || []).find(x => x.id === groupId);
+    const g = findGroup(groupId);
     if (!g) return;
     g.collapsed = !g.collapsed;
     renderAll();
     try { await save(); } catch (e) { console.error('inventory save failed', e); }
   }
 
-  // addGroup and renameGroup are thin wrappers that open the shared
-  // Group Edit modal in the right mode. Actual persistence happens in
-  // saveGroup when the user hits Save.
+  // addGroup and renameGroup open the shared Group Edit modal. Actual
+  // persistence happens in saveGroup when the user hits Save.
 
   function addGroup() {
     if (!getCanEdit()) return;
@@ -2679,10 +2806,27 @@ export function createInventorySection(ctx) {
     renderActiveModal();
   }
 
+  // Add a subgroup inside an existing group (or subgroup). The parent
+  // is identified by id and located via findGroup so any depth works.
+  // Opens the same Group Edit modal in add-subgroup mode — on save,
+  // the new subgroup is pushed into the parent's contents rather than
+  // onto the top-level inv.groups.
+  function addSubgroup(parentGroupId) {
+    if (!getCanEdit()) return;
+    const parent = findGroup(parentGroupId);
+    if (!parent) return;
+    activeModal = {
+      kind: 'groupEdit',
+      groupEditMode: 'addSubgroup',
+      groupParentId: parentGroupId,
+      groupDraft: { name: '', description: '' }
+    };
+    renderActiveModal();
+  }
+
   function renameGroup(groupId) {
     if (!getCanEdit()) return;
-    const inv = ensureInventory();
-    const g = (inv.groups || []).find(x => x.id === groupId);
+    const g = findGroup(groupId);
     if (!g || g.kind === 'onPerson') return;
     activeModal = {
       kind: 'groupEdit',
@@ -2697,8 +2841,8 @@ export function createInventorySection(ctx) {
     if (!activeModal || activeModal.kind !== 'groupEdit') return;
     if (!activeModal.groupDraft) activeModal.groupDraft = {};
     activeModal.groupDraft[field] = typeof value === 'string' ? value : '';
-    // Don't re-render — the inputs are self-updating. Re-rendering
-    // would steal focus from the field the user is typing into.
+    // Don't re-render — inputs are self-updating. Re-rendering would
+    // steal focus from the field being typed into.
   }
 
   async function saveGroup() {
@@ -2713,6 +2857,7 @@ export function createInventorySection(ctx) {
     const inv = ensureInventory();
 
     if (activeModal.groupEditMode === 'add') {
+      // Top-level custom group — pushed into inv.groups.
       inv.groups.push({
         id: _nextInvId('grp'),
         name,
@@ -2721,8 +2866,22 @@ export function createInventorySection(ctx) {
         collapsed: false,
         contents: []
       });
+    } else if (activeModal.groupEditMode === 'addSubgroup') {
+      // Subgroup — pushed into the parent's contents. Parent may be
+      // at any depth in the tree, so findGroup does the walk.
+      const parent = findGroup(activeModal.groupParentId);
+      if (!parent) { closeModal(); return; }
+      if (!Array.isArray(parent.contents)) parent.contents = [];
+      parent.contents.push({
+        id: _nextInvId('grp'),
+        name,
+        description,
+        kind: 'custom',
+        collapsed: false,
+        contents: []
+      });
     } else if (activeModal.groupEditMode === 'edit') {
-      const g = (inv.groups || []).find(x => x.id === activeModal.groupEditId);
+      const g = findGroup(activeModal.groupEditId);
       if (!g || g.kind === 'onPerson') { closeModal(); return; }
       g.name = name;
       g.description = description;
@@ -2733,18 +2892,42 @@ export function createInventorySection(ctx) {
     try { await save(); } catch (e) { console.error('inventory save failed', e); }
   }
 
+  // Delete a group or subgroup. Walks the tree to find the node and
+  // the parent array it lives in, then splices it out. On-Person is
+  // guarded — can't delete. Confirm dialog with item count if non-empty.
   async function deleteGroup(groupId) {
     if (!getCanEdit()) return;
-    const inv = ensureInventory();
-    const g = (inv.groups || []).find(x => x.id === groupId);
+    const g = findGroup(groupId);
     if (!g || g.kind === 'onPerson') return;
-    const hasStuff = Array.isArray(g.contents) && g.contents.length > 0;
-    if (hasStuff) {
-      if (!confirm(`Delete "${g.name}" and everything inside (${g.contents.length} top-level items)? This cannot be undone.`)) return;
+    const itemCount = Array.isArray(g.contents) ? g.contents.length : 0;
+    if (itemCount > 0) {
+      if (!confirm(`Delete "${g.name}" and everything inside (${itemCount} item${itemCount === 1 ? '' : 's'})? This cannot be undone.`)) return;
     } else {
       if (!confirm(`Delete "${g.name}"?`)) return;
     }
-    inv.groups = inv.groups.filter(x => x.id !== groupId);
+    // Remove from the tree — walk both top-level and nested contents.
+    const inv = ensureInventory();
+    const removeFrom = (arr) => {
+      if (!Array.isArray(arr)) return false;
+      for (let i = 0; i < arr.length; i++) {
+        const node = arr[i];
+        if (!node || typeof node !== 'object') continue;
+        if (node.id === groupId && isGroupNode(node)) {
+          arr.splice(i, 1);
+          return true;
+        }
+        if (isGroupNode(node) && removeFrom(node.contents)) return true;
+      }
+      return false;
+    };
+    // Top-level groups live in inv.groups; subgroups live in a group's
+    // contents. Try top-level first.
+    if (!removeFrom(inv.groups)) {
+      // Must be a subgroup — walk each top-level group's contents.
+      for (const top of inv.groups || []) {
+        if (removeFrom(top.contents)) break;
+      }
+    }
     renderAll();
     try { await save(); } catch (e) { console.error('inventory save failed', e); }
   }
@@ -2979,16 +3162,19 @@ export function createInventorySection(ctx) {
         placed = true;
       }
     } else if (tkind === 'group') {
-      const g = inv.groups.find(x => x.id === tgt);
-      if (g && g.kind === 'custom') {
+      // Accept placements into any group or subgroup (On-Person, custom
+      // top-level groups, and nested subgroups all qualify). findGroup
+      // walks the full tree.
+      const g = findGroup(tgt);
+      if (g && isGroupNode(g)) {
         if (!Array.isArray(g.contents)) g.contents = [];
         g.contents.push(newEntry);
         placed = true;
       }
     } else if (tkind === 'slot') {
-      if (!Array.isArray(inv.bySlot[tgt])) inv.bySlot[tgt] = [];
-      inv.bySlot[tgt].push(newEntry);
-      placed = true;
+      // Legacy 'slot' targeting — body slots are gone, so this path
+      // is a no-op. Kept so any stale menu callers don't throw.
+      placed = false;
     }
 
     if (!placed) { closeModal(); return; }
@@ -3026,16 +3212,19 @@ export function createInventorySection(ctx) {
         placed = true;
       }
     } else if (tkind === 'group') {
-      const g = inv.groups.find(x => x.id === tgt);
-      if (g && g.kind === 'custom') {
+      // Accept placements into any group or subgroup (On-Person, custom
+      // top-level groups, and nested subgroups all qualify). findGroup
+      // walks the full tree.
+      const g = findGroup(tgt);
+      if (g && isGroupNode(g)) {
         if (!Array.isArray(g.contents)) g.contents = [];
         g.contents.push(newEntry);
         placed = true;
       }
     } else if (tkind === 'slot') {
-      if (!Array.isArray(inv.bySlot[tgt])) inv.bySlot[tgt] = [];
-      inv.bySlot[tgt].push(newEntry);
-      placed = true;
+      // Legacy 'slot' targeting — body slots are gone, so this path
+      // is a no-op. Kept so any stale menu callers don't throw.
+      placed = false;
     }
 
     if (!placed) { closeModal(); return; }
@@ -3095,6 +3284,7 @@ export function createInventorySection(ctx) {
     toggleItemInfo,
     toggleGroupCollapse,
     addGroup,
+    addSubgroup,
     renameGroup,
     deleteGroup,
     updateGroupDraft,
