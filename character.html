@@ -1741,6 +1741,64 @@
     .inv-modal-opt-meta { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #888; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
     .inv-modal-opt-desc { font-size: 11px; color: #888; line-height: 1.5; }
 
+    /* ── Groups layer ──
+     * On-Person wraps the body-slot sections. Custom groups (Stowed,
+     * Vehicle, Stash, etc.) live as siblings. Each group is a top-level
+     * collapsible with a header, contents, and action buttons. */
+    .inv-group { margin-bottom: 10px; border: 1px solid #1a1a1a; border-radius: 5px; background: #0a0a0a; overflow: hidden; }
+    .inv-group-onperson { border-color: #2a2a2a; }
+    .inv-group-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; user-select: none; background: #131313; border-bottom: 1px solid #1a1a1a; }
+    .inv-group.collapsed .inv-group-head { border-bottom: none; }
+    .inv-group-head:hover { background: #181818; }
+    .inv-group-caret { font-size: 11px; color: #888; width: 10px; display: inline-block; }
+    .inv-group-label { font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #e0e0e0; flex: 1; }
+    .inv-group-onperson .inv-group-label { color: #cfe3f6; }
+    .inv-group-meta { font-size: 11px; color: #888; font-variant-numeric: tabular-nums; margin-right: 6px; }
+    .inv-group-btn { background: transparent; border: 1px solid #222; color: #777; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 2px 8px; border-radius: 3px; cursor: pointer; }
+    .inv-group-btn:hover { color: #ccc; border-color: #444; }
+    .inv-group-btn-danger:hover { color: #c84b4b; border-color: #6a2020; }
+    .inv-group-body { padding: 10px 12px 12px; }
+    .inv-group-actions { display: flex; gap: 6px; padding: 6px 2px 2px; flex-wrap: wrap; }
+
+    /* Add-group button at the bottom of the tab */
+    .inv-add-group-row { display: flex; align-items: center; gap: 12px; margin: 16px 0 4px; padding: 8px 4px; }
+    .inv-add-group-hint { font-size: 11px; color: #666; font-style: italic; }
+
+    /* "custom" pill — shown on character-local defs in the picker modal */
+    .inv-modal-custom { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #c8a; background: #1a0a1a; border: 1px solid #3a2a3a; padding: 1px 6px; border-radius: 2px; }
+
+    /* Item description panel — shown when the row is clicked open */
+    .inv-entry-name-clickable { cursor: pointer; }
+    .inv-entry-name-clickable:hover { color: #fff; }
+    .inv-entry-info-caret { font-size: 9px; color: #666; margin-left: 6px; }
+    .inv-entry-info { background: #0d0d0d; border: 1px solid #1a1a1a; border-top: none; border-radius: 0 0 3px 3px; padding: 8px 12px; margin-top: -1px; font-size: 12px; color: #bbb; line-height: 1.55; }
+    .inv-entry-info-desc { white-space: pre-wrap; }
+    .inv-entry-info-notes { margin-top: 6px; padding-top: 6px; border-top: 1px solid #1a1a1a; color: #999; white-space: pre-wrap; }
+    .inv-entry-info-label { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #777; margin-right: 4px; }
+
+    /* Custom-def form inside the modal — same field shape as edit-ruleset */
+    .inv-custom-form .inv-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+    .inv-custom-form .inv-field label { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; }
+    .inv-custom-form .inv-field input, .inv-custom-form .inv-field textarea {
+      background: #0a0a0a; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 10px;
+      border-radius: 3px; outline: none; width: 100%;
+    }
+    .inv-custom-form .inv-field input:focus, .inv-custom-form .inv-field textarea:focus { border-color: #444; }
+    .inv-custom-form .inv-field textarea { resize: vertical; min-height: 44px; line-height: 1.5; }
+    .inv-custom-form .inv-dims-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .inv-custom-form .inv-dims-row input { text-align: center; font-family: 'Consolas', 'Courier New', monospace; }
+    .inv-custom-form .inv-toggle-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .inv-custom-form .inv-toggle { display: inline-block; cursor: pointer; user-select: none; padding: 5px 12px; border: 1px solid #222; border-radius: 3px; background: #0a0a0a; color: #555; font-size: 11px; font-weight: 500; }
+    .inv-custom-form .inv-toggle:hover { border-color: #444; color: #888; }
+    .inv-custom-form .inv-toggle.on { background: #1f2c3a; border-color: #3a5878; color: #cfe3f6; }
+    .inv-custom-form .inv-toggle-hint { font-size: 11px; color: #666; }
+    .inv-custom-form .inv-container-block { border: 1px dashed #2a2a2a; border-radius: 4px; padding: 10px 12px; margin-top: 6px; background: #0c0c0c; }
+    .inv-custom-form .inv-container-block-title { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #888; margin-bottom: 8px; }
+    .inv-modal-actions { display: flex; gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #1a1a1a; }
+    .inv-modal-custom-row { display: flex; align-items: center; gap: 10px; padding: 10px 4px 2px; margin-top: 8px; border-top: 1px solid #1a1a1a; }
+    .inv-modal-custom-hint { font-size: 10px; color: #666; font-style: italic; }
+
   </style>
 </head>
 <body>
@@ -2295,15 +2353,24 @@
     removeTrauma:         (injId, i) => combat.removeTrauma(injId, i),
     updateTraumaField:    (injId, i, field, val) => combat.updateTraumaField(injId, i, field, val),
     // Inventory tab
-    invToggleSlot:        (code)         => inventory.toggleSlot(code),
-    invToggleEntry:       (id)           => inventory.toggleEntry(id),
-    invOpenAddContainer:  (target, fromContainer) => inventory.openAddContainer(target, fromContainer),
-    invOpenAddItem:       (target, kind) => inventory.openAddItem(target, kind),
-    invCloseModal:        (ev)           => { if (!ev || ev.target === ev.currentTarget) inventory.closeModal(); },
-    invPickContainerDef:  (kind, defId)  => inventory.pickContainerDef(kind, defId),
-    invPickItemDef:       (kind, defId)  => inventory.pickItemDef(kind, defId),
-    invTickQty:           (id, delta)    => inventory.tickQty(id, delta),
-    invRemoveEntry:       (id)           => inventory.removeEntry(id),
+    invToggleSlot:           (code)               => inventory.toggleSlot(code),
+    invToggleEntry:          (id)                 => inventory.toggleEntry(id),
+    invToggleItemInfo:       (id)                 => inventory.toggleItemInfo(id),
+    invToggleGroupCollapse:  (id)                 => inventory.toggleGroupCollapse(id),
+    invAddGroup:             ()                   => inventory.addGroup(),
+    invRenameGroup:          (id)                 => inventory.renameGroup(id),
+    invDeleteGroup:          (id)                 => inventory.deleteGroup(id),
+    invOpenAddContainer:     (target, kind)       => inventory.openAddContainer(target, kind),
+    invOpenAddItem:          (target, kind)       => inventory.openAddItem(target, kind),
+    invCloseModal:           (ev)                 => { if (!ev || ev.target === ev.currentTarget) inventory.closeModal(); },
+    invPickContainerDef:     (kind, defId)        => inventory.pickContainerDef(kind, defId),
+    invPickItemDef:          (kind, defId)        => inventory.pickItemDef(kind, defId),
+    invOpenCustomForm:       (customKind)         => inventory.openCustomForm(customKind),
+    invCancelCustomForm:     ()                   => inventory.cancelCustomForm(),
+    invUpdateCustomDraft:    (field, value)       => inventory.updateCustomDraft(field, value),
+    invSaveCustomDef:        ()                   => inventory.saveCustomDef(),
+    invTickQty:              (id, delta)          => inventory.tickQty(id, delta),
+    invRemoveEntry:          (id)                 => inventory.removeEntry(id),
     // Sheet tab switcher (Overview / Combat / Inventory folder tabs)
     switchSheetTab:       (which) => {
       document.querySelectorAll('.sheet-tab').forEach(t => t.classList.remove('active'));
