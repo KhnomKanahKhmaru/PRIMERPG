@@ -19,11 +19,17 @@
 //      value is currently collapsed (click-to-toggle in Movement tile).
 //      Shared with combat.js so the two views stay in sync without this
 //      module needing to own the state itself.
+//   getCharData() → current character doc (used by the Penalty tile's
+//      Others editor to read otherModifiers; handlers themselves live
+//      in combat.js and are exposed via window.*)
+//   getCanEdit() → boolean; whether the user can edit this character
 //   escapeHtml, fmt → shared formatting helpers
 
 export function createOverviewSection(ctx) {
   const {
     getCollapsedStrainValues,
+    getCharData,
+    getCanEdit,
     escapeHtml,
     fmt
   } = ctx;
@@ -65,10 +71,13 @@ export function createOverviewSection(ctx) {
 
     // Bottom section — full-width rows below the resource tiles. The Roll
     // Calculator lives on the Combat tab instead (it's a combat tool, not
-    // a state summary), so the Overview only shows Movement and Strain.
+    // a state summary), so the Overview only shows Movement and Penalty.
     const movementHtml = renderMovementTile(result, ruleset);
     if (movementHtml) tiles.push(movementHtml);
-    tiles.push(renderStrainTile(result.pain, result.stress, result.strain));
+    const charData = getCharData ? getCharData() : null;
+    const otherMods = charData && Array.isArray(charData.otherModifiers) ? charData.otherModifiers : [];
+    const canEdit = getCanEdit ? getCanEdit() : true;
+    tiles.push(renderPenaltyTile(result.pain, result.stress, result.penalty, otherMods, canEdit));
 
     host.innerHTML = tiles.length
       ? `<div class="state-grid">${tiles.join('')}</div>`
@@ -290,14 +299,19 @@ export function createOverviewSection(ctx) {
 
   // ─── STRAIN TILE ───
   //
-  // Full-width Strain readout — also used inline on the Combat tab (top of
-  // the tab, under Roll Calc) so we export it from this module even though
-  // it's not just an Overview tile. Big severity-tinted percent with a
-  // labeled Pain/Stress breakdown. Pure readout; edits live on the Combat
-  // tab's Pain and Stress pills.
-  function renderStrainTile(pain, stress, strain) {
-    if (!strain) return '';
-    const pct = strain.percent;
+  // Full-width Penalty readout — also used inline on the Combat tab (top
+  // of the tab, under Roll Calc). Big severity-tinted percent with a
+  // labeled three-row breakdown: Pain / Stress / Others. Pain and Stress
+  // are auto-calculated from damage; Others is a free-form list of named
+  // ±% entries (Exposure, Encumbrance, etc.). The Others block is where
+  // this card earns its name — it's a full CRUD editor for that list,
+  // inline in the card.
+  //
+  // Kept under the renderStrainTile export name as well, for any caller
+  // that still uses the old name. Removed in the cleanup turn.
+  function renderPenaltyTile(pain, stress, penalty, otherMods, canEdit) {
+    if (!penalty) return '';
+    const pct = penalty.percent;
     let pctColor;
     if (pct <= 0)      pctColor = '#666';
     else if (pct < 50) pctColor = '#a0c080';
@@ -305,27 +319,92 @@ export function createOverviewSection(ctx) {
     else               pctColor = '#e07878';
     const painPct   = (pain && pain.finalPercent) || 0;
     const stressPct = (stress && stress.finalPercent) || 0;
+    const otherPct  = penalty.otherPercent || 0;
+
+    // Sign formatter for Others values.
+    const fmtSigned = (n) => (n > 0 ? '+' + n : String(n));
+    const otherSummaryPct = fmtSigned(otherPct);
+
+    const mods = Array.isArray(otherMods) ? otherMods : [];
+
+    // Each other-mod row: name input, ±value input, delete ×. Empty-state
+    // message if no mods. + Add Modifier row at the bottom.
+    let othersEditor = '';
+    if (canEdit || mods.length > 0) {
+      othersEditor += '<div class="state-penalty-others">';
+      othersEditor += '<div class="state-penalty-others-head">';
+      othersEditor += '<span class="state-penalty-others-title">Other modifiers</span>';
+      othersEditor += `<span class="state-penalty-others-total">${escapeHtml(otherSummaryPct)}%</span>`;
+      othersEditor += '</div>';
+
+      if (mods.length === 0) {
+        othersEditor += '<div class="state-penalty-others-empty">No other penalties. Add Exposure, Encumbrance, drugged, restrained — anything that drags you down.</div>';
+      } else {
+        mods.forEach((m, i) => {
+          const name = (m && m.name) || '';
+          const val = (m && Number.isFinite(parseInt(m.value))) ? parseInt(m.value) : 0;
+          othersEditor += `<div class="state-penalty-other-row">
+            <input type="text" class="state-penalty-other-name" value="${escapeHtml(name)}" placeholder="Name (e.g. Exposure)" ${canEdit ? '' : 'readonly'} oninput="updateOtherModifier(${i}, 'name', this.value)">
+            <input type="number" class="state-penalty-other-val" value="${val}" step="1" ${canEdit ? '' : 'readonly'} oninput="updateOtherModifier(${i}, 'value', this.value)">
+            <span class="state-penalty-other-unit">%</span>
+            ${canEdit ? `<span class="state-penalty-other-del" title="Remove modifier" onclick="deleteOtherModifier(${i})">×</span>` : '<span class="state-penalty-other-del-ph"></span>'}
+          </div>`;
+        });
+      }
+
+      if (canEdit) {
+        othersEditor += '<div class="state-penalty-other-add-row">';
+        othersEditor += '<button class="state-penalty-other-add-btn" onclick="addOtherModifier()">+ Add Modifier</button>';
+        othersEditor += '</div>';
+      }
+
+      othersEditor += '</div>';
+    }
+
     return `
-      <div class="state-tile state-tile-wide state-tile-strain">
+      <div class="state-tile state-tile-wide state-tile-penalty">
         <div class="state-tile-head">
-          <span class="state-tile-label">Strain</span>
-          <span class="state-strain-big" style="color:${pctColor}">${pct}%</span>
+          <span class="state-tile-label">Penalty</span>
+          <span class="state-penalty-big" style="color:${pctColor}">${pct}%</span>
         </div>
-        <div class="state-strain-rows-inline">
-          <div class="state-strain-row">
-            <span class="state-strain-k">Pain</span>
-            <span class="state-strain-v">${painPct}%</span>
+        <div class="state-penalty-rows-inline">
+          <div class="state-penalty-row">
+            <span class="state-penalty-k">Pain</span>
+            <span class="state-penalty-v">${painPct}%</span>
           </div>
-          <div class="state-strain-row">
-            <span class="state-strain-k">Stress</span>
-            <span class="state-strain-v">${stressPct}%</span>
+          <div class="state-penalty-row">
+            <span class="state-penalty-k">Stress</span>
+            <span class="state-penalty-v">${stressPct}%</span>
+          </div>
+          <div class="state-penalty-row">
+            <span class="state-penalty-k">Others</span>
+            <span class="state-penalty-v">${escapeHtml(otherSummaryPct)}%</span>
           </div>
         </div>
+        ${othersEditor}
       </div>`;
+  }
+
+  // Back-compat alias — callers on older code paths still use the
+  // renderStrainTile name. Forwards to the new renderer; reconstructs
+  // a minimal penalty object from the legacy strain arg, and pulls
+  // otherModifiers + edit permission from ctx. Removed in cleanup turn.
+  function renderStrainTile(pain, stress, strain) {
+    const penalty = strain ? {
+      painPercent:   strain.painPercent || 0,
+      stressPercent: strain.stressPercent || 0,
+      otherPercent:  (strain.percent || 0) - (strain.painPercent || 0) - (strain.stressPercent || 0),
+      percent:       strain.percent || 0
+    } : null;
+    const charData = getCharData ? getCharData() : null;
+    const otherMods = charData && Array.isArray(charData.otherModifiers) ? charData.otherModifiers : [];
+    const canEdit = getCanEdit ? getCanEdit() : true;
+    return renderPenaltyTile(pain, stress, penalty, otherMods, canEdit);
   }
 
   return {
     renderState,
-    renderStrainTile
+    renderPenaltyTile,
+    renderStrainTile   // back-compat alias; remove in cleanup turn
   };
 }
