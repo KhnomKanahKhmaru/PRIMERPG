@@ -1802,6 +1802,15 @@
     .inv-group-desc { font-size: 12px; color: #999; line-height: 1.55; padding: 6px 10px 10px; margin: -4px 0 8px; border-bottom: 1px solid #1a1a1a; white-space: pre-wrap; font-style: italic; }
     .inv-group-actions { display: flex; gap: 6px; padding: 6px 2px 2px; flex-wrap: wrap; }
 
+    /* Subgroups — nested groups living inside another group's contents.
+     * Slightly tinted background, thinner header, smaller label. Indent
+     * is applied inline via style="margin-left: Npx". */
+    .inv-group-sub { background: #0d0d0d; margin-bottom: 6px; border-color: #1f1f1f; }
+    .inv-group-sub > .inv-group-head { padding: 6px 12px; background: #0f0f0f; }
+    .inv-group-sub > .inv-group-head:hover { background: #141414; }
+    .inv-group-sub > .inv-group-head .inv-group-label { font-size: 11px; letter-spacing: .08em; color: #c8c8c8; }
+    .inv-group-sub > .inv-group-body { padding: 8px 10px 10px; }
+
     /* Add-group button at the bottom of the tab */
     .inv-add-group-row { display: flex; align-items: center; gap: 12px; margin: 16px 0 4px; padding: 8px 4px; }
     .inv-add-group-hint { font-size: 11px; color: #666; font-style: italic; }
@@ -2581,6 +2590,7 @@
     invToggleItemInfo:       (id)                 => inventory.toggleItemInfo(id),
     invToggleGroupCollapse:  (id)                 => inventory.toggleGroupCollapse(id),
     invAddGroup:             ()                   => inventory.addGroup(),
+    invAddSubgroup:          (parentId)            => inventory.addSubgroup(parentId),
     invRenameGroup:          (id)                 => inventory.renameGroup(id),
     invDeleteGroup:          (id)                 => inventory.deleteGroup(id),
     invUpdateGroupDraft:     (field, value)       => inventory.updateGroupDraft(field, value),
