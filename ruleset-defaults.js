@@ -296,7 +296,7 @@ window.RULESET_DEFAULTS = {
     {
       code: 'LIFT',
       name: 'Maximum Lift',
-      description: 'The absolute maximum you can carry — the point at which Encumbrance reaches 100% and you can no longer move. Equal to CAP × 11.',
+      description: 'Absolute maximum you can ever carry without a roll. At this weight, ENC is 100% and you cannot move without rolling to "lift". Equal to CAP × 11.',
       group: 'carry',
       formula: 'CAP * 11',
       passiveRoll: true,
