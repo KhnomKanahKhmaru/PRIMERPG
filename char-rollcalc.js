@@ -44,8 +44,8 @@ export function createRollCalc(ctx) {
     difficulty: 6,
     mitigation: 0,
     reduction:  0,
-    showRaw:    false,       // false = strain-reduced pool; true = pre-strain
-    passive:    false        // true = skip Strain penalty (e.g. resistance check)
+    showRaw:    false,       // false = Penalty-reduced pool; true = pre-Penalty
+    passive:    false        // true = skip Penalty (e.g. resistance check)
   };
 
   // ─── DROPDOWN OPTIONS ───
@@ -215,21 +215,21 @@ export function createRollCalc(ctx) {
     const effStatmod = statmod - diffDelta;
 
     const basePool = Math.max(0, (parseInt(statValue) || 0) + (parseInt(skillValue) || 0));
-    const strainPct = (result.strain && result.strain.percent) || 0;
+    const penaltyPct = (result.penalty && result.penalty.percent) || 0;
     // Passive rolls bypass Strain — used for resistance checks.
     const isPassive = state.passive === true;
-    const strainPenalty = isPassive ? 0 : Math.floor(basePool * strainPct / 100);
-    const finalPool = Math.max(0, basePool - strainPenalty);
+    const penaltyDice = isPassive ? 0 : Math.floor(basePool * penaltyPct / 100);
+    const finalPool = Math.max(0, basePool - penaltyDice);
 
     // Distribution of result = pool rolls + effStatmod. Based on the pool
-    // the player actually rolls (post-strain if active, raw if passive).
+    // the player actually rolls (post-Penalty if active, raw if passive).
     const dist = computeRollDistribution(finalPool, effDifficulty, effStatmod);
 
     return {
       statOpts, skillOpts, pickedStat, pickedSkill,
       statValue, skillValue, statmod,
       diff, mit, red, effDifficulty, diffDelta, effStatmod,
-      basePool, strainPct, strainPenalty, finalPool,
+      basePool, penaltyPct, penaltyDice, finalPool,
       isPassive, dist
     };
   }
@@ -325,9 +325,9 @@ export function createRollCalc(ctx) {
       : ` (${r.statmod >= 0 ? '+' : '−'}${Math.abs(r.statmod)} base ${r.diffDelta > 0 ? '−' : '+'} ${Math.abs(r.diffDelta)})`;
 
     const expected = formatExpected(r.dist, r.finalPool);
-    const strainLine = r.isPassive
-      ? `<div class="rc-line"><span class="rc-k">Strain penalty</span><span class="rc-v">— <span class="rc-dim">(passive — ignored)</span></span></div>`
-      : `<div class="rc-line"><span class="rc-k">Strain penalty</span><span class="rc-v">−${r.strainPenalty}d  <span class="rc-dim">(${r.strainPct}% of ${r.basePool})</span></span></div>`;
+    const penaltyLine = r.isPassive
+      ? `<div class="rc-line"><span class="rc-k">Penalty</span><span class="rc-v">— <span class="rc-dim">(passive — ignored)</span></span></div>`
+      : `<div class="rc-line"><span class="rc-k">Penalty</span><span class="rc-v">−${r.penaltyDice}d  <span class="rc-dim">(${r.penaltyPct}% of ${r.basePool})</span></span></div>`;
 
     return `
       <div class="state-tile state-tile-wide state-tile-rollcalc">
@@ -412,7 +412,7 @@ export function createRollCalc(ctx) {
           </div>
           <div class="rc-breakdown">
             <div class="rc-line"><span class="rc-k">Pool</span><span class="rc-v">${r.statValue} + ${r.skillValue} = <b>${r.basePool}d</b></span></div>
-            ${strainLine}
+            ${penaltyLine}
             <div class="rc-line"><span class="rc-k">After Strain</span><span class="rc-v"><b>${r.finalPool}d</b></span></div>
             <div class="rc-line"><span class="rc-k">Difficulty</span><span class="rc-v">${r.diff} − ${r.mit} mit − ${r.red} red = <b>${r.effDifficulty}</b>  <span class="rc-dim">(${diffNote})</span></span></div>
             <div class="rc-line"><span class="rc-k">Stat mod</span><span class="rc-v"><b>${modSign}${modAbs}</b>${escapeHtml(statmodNote)}</span></div>
@@ -489,15 +489,15 @@ export function createRollCalc(ctx) {
       ? ''
       : ` (${r.statmod >= 0 ? '+' : '−'}${Math.abs(r.statmod)} base ${r.diffDelta > 0 ? '−' : '+'} ${Math.abs(r.diffDelta)})`;
 
-    const strainLineHtml = r.isPassive
-      ? `<div class="rc-line"><span class="rc-k">Strain penalty</span><span class="rc-v">— <span class="rc-dim">(passive — ignored)</span></span></div>`
-      : `<div class="rc-line"><span class="rc-k">Strain penalty</span><span class="rc-v">−${r.strainPenalty}d  <span class="rc-dim">(${r.strainPct}% of ${r.basePool})</span></span></div>`;
+    const penaltyLineHtml = r.isPassive
+      ? `<div class="rc-line"><span class="rc-k">Penalty</span><span class="rc-v">— <span class="rc-dim">(passive — ignored)</span></span></div>`
+      : `<div class="rc-line"><span class="rc-k">Penalty</span><span class="rc-v">−${r.penaltyDice}d  <span class="rc-dim">(${r.penaltyPct}% of ${r.basePool})</span></span></div>`;
 
     const bd = tile.querySelector('.rc-breakdown');
     if (bd) {
       bd.innerHTML = `
         <div class="rc-line"><span class="rc-k">Pool</span><span class="rc-v">${r.statValue} + ${r.skillValue} = <b>${r.basePool}d</b></span></div>
-        ${strainLineHtml}
+        ${penaltyLineHtml}
         <div class="rc-line"><span class="rc-k">After Strain</span><span class="rc-v"><b>${r.finalPool}d</b></span></div>
         <div class="rc-line"><span class="rc-k">Difficulty</span><span class="rc-v">${r.diff} − ${r.mit} mit − ${r.red} red = <b>${r.effDifficulty}</b>  <span class="rc-dim">(${diffNote})</span></span></div>
         <div class="rc-line"><span class="rc-k">Stat mod</span><span class="rc-v"><b>${modSign}${modAbs}</b>${escapeHtml(statmodNote)}</span></div>`;
