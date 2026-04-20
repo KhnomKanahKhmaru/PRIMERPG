@@ -2141,6 +2141,274 @@
     .inv-manage-btn { background: transparent; border: 1px solid #2a2010; color: #caa060; font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 500; padding: 6px 14px; border-radius: 3px; cursor: pointer; letter-spacing: .04em; transition: all .1s; }
     .inv-manage-btn:hover { background: #1a1406; border-color: #3a2c10; color: #e0b870; }
 
+    /* ═══ CARRY CARDS (CAP / ENC / LIFT) ═══
+     * Three cards at the top of the Inventory tab summarizing the
+     * character's carry state. Same collapse/expand pattern as the
+     * Pain/Stress pills — click header to toggle a modifier editor.
+     * ENC gets a severity tint on its value based on current %. */
+    .inv-carry-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .inv-carry-card {
+      background: #0a0a0a;
+      border: 1px solid #1a1a1a;
+      border-radius: 4px;
+      overflow: hidden;
+      transition: border-color .1s;
+    }
+    .inv-carry-card:hover { border-color: #2a2a2a; }
+    .inv-carry-card.open { border-color: #3a3a3a; }
+    .inv-carry-card.has-mods { border-color: #2a2010; }
+    .inv-carry-card.open.has-mods { border-color: #3a2c10; }
+
+    .inv-carry-head {
+      padding: 10px 14px 4px;
+      cursor: pointer;
+      user-select: none;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      grid-template-rows: auto auto;
+      gap: 2px 12px;
+    }
+    .inv-carry-head:hover { background: #111; }
+
+    .inv-carry-label {
+      grid-column: 1;
+      grid-row: 1;
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .inv-carry-name {
+      font-family: 'Open Sans', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #888;
+    }
+    .inv-carry-code {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 9px;
+      font-weight: 600;
+      color: #555;
+      letter-spacing: .1em;
+    }
+    .inv-carry-value {
+      grid-column: 2;
+      grid-row: 1 / 3;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 22px;
+      font-weight: 700;
+      color: #e0e0e0;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      align-self: center;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .inv-carry-unit {
+      font-family: 'Open Sans', sans-serif;
+      font-size: 10px;
+      font-weight: 500;
+      color: #666;
+      margin-left: 2px;
+    }
+    .inv-carry-sub {
+      grid-column: 1;
+      grid-row: 2;
+      font-size: 10px;
+      color: #666;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.3;
+    }
+    .inv-carry-base {
+      color: #666;
+    }
+    .inv-carry-ratio {
+      color: #aaa;
+      font-weight: 600;
+    }
+    .inv-carry-desc {
+      padding: 4px 14px 10px;
+      font-size: 10px;
+      color: #666;
+      line-height: 1.4;
+      font-style: italic;
+    }
+
+    /* ENC severity tint — mirrors the Pain/Stress pill color scale.
+       Applies to the big numeric value only; base/desc stay neutral. */
+    .inv-carry-card.carry-zero  .inv-carry-value { color: #e0e0e0; }
+    .inv-carry-card.carry-light .inv-carry-value { color: #e0c870; }
+    .inv-carry-card.carry-heavy .inv-carry-value { color: #e09870; }
+    .inv-carry-card.carry-crit  .inv-carry-value { color: #e07878; }
+
+    /* Expanded modifier editor panel. Same mental model as pain/stress
+       pill panels: a list of named ± rows, each editable, plus an
+       add button. Readonly mode (other players viewing the sheet)
+       shows values without input controls. */
+    .inv-carry-panel {
+      padding: 8px 14px 12px;
+      border-top: 1px solid #151515;
+      background: #070707;
+    }
+    .inv-carry-empty {
+      font-size: 11px;
+      color: #555;
+      font-style: italic;
+      padding: 4px 0 8px;
+    }
+    .inv-carry-mods {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 8px;
+    }
+    .inv-carry-mod-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .inv-carry-mod-name {
+      flex: 1;
+      min-width: 0;
+      background: #111;
+      border: 1px solid #222;
+      color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 3px;
+      outline: none;
+    }
+    .inv-carry-mod-name:focus { border-color: #3a3a3a; }
+    .inv-carry-mod-name.readonly {
+      border: none;
+      background: transparent;
+      padding: 4px 0;
+      color: #ccc;
+    }
+    .inv-carry-mod-value {
+      width: 56px;
+      background: #111;
+      border: 1px solid #222;
+      color: #e0e0e0;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 6px;
+      border-radius: 3px;
+      outline: none;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      -moz-appearance: textfield;
+    }
+    .inv-carry-mod-value::-webkit-outer-spin-button,
+    .inv-carry-mod-value::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .inv-carry-mod-value:focus { border-color: #3a3a3a; }
+    .inv-carry-mod-value.readonly {
+      border: none;
+      background: transparent;
+      padding: 4px 0;
+      color: #ccc;
+    }
+    .inv-carry-mod-unit {
+      color: #666;
+      font-size: 10px;
+      font-family: 'Open Sans', sans-serif;
+      margin-left: -2px;
+    }
+    .inv-carry-mod-del {
+      background: transparent;
+      border: 1px solid #2a1a1a;
+      color: #a05050;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border-radius: 3px;
+      cursor: pointer;
+      line-height: 1;
+      transition: all .1s;
+    }
+    .inv-carry-mod-del:hover {
+      background: #2a1212;
+      border-color: #4a2a2a;
+      color: #d07070;
+    }
+    .inv-carry-add {
+      background: transparent;
+      border: 1px dashed #2a2a2a;
+      color: #888;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 5px 10px;
+      border-radius: 3px;
+      cursor: pointer;
+      width: 100%;
+      letter-spacing: .04em;
+      transition: all .1s;
+    }
+    .inv-carry-add:hover {
+      background: #0f0f0f;
+      border-color: #3a3a3a;
+      color: #ccc;
+    }
+
+    /* Group-header "count for encumbrance" toggle. A pill button that
+       flips state per click. ON state: amber (matches the "⚖ ENC" idea
+       of a scale weighing on you). OFF state: dim grey with hollow
+       bullet. Read-only viewers see a neutral badge when counting. */
+    .inv-group-enc-toggle {
+      background: transparent;
+      border: 1px solid #1a1a1a;
+      color: #555;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 3px;
+      cursor: pointer;
+      letter-spacing: .04em;
+      transition: all .1s;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .inv-group-enc-toggle:hover {
+      background: #111;
+      color: #888;
+      border-color: #2a2a2a;
+    }
+    .inv-group-enc-toggle.on {
+      background: #1a1406;
+      border-color: #3a2c10;
+      color: #caa060;
+    }
+    .inv-group-enc-toggle.on:hover {
+      background: #2a1f0a;
+      border-color: #4a3a18;
+      color: #e0b870;
+    }
+    .inv-group-enc-badge {
+      font-family: 'Open Sans', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      color: #caa060;
+      letter-spacing: .04em;
+      padding: 3px 0;
+    }
+
     /* ═══ MANAGE PERSONAL CATALOGUE MODAL ═══
      * Wider than the picker modals since cards have full edit forms.
      * Cards are collapsible with a head row (name + dims + weight +
@@ -2912,6 +3180,18 @@
     invCatMgrSaveNew:        ()                   => inventory.catMgrSaveNew(),
     invTickQty:              (id, delta)          => inventory.tickQty(id, delta),
     invRemoveEntry:          (id)                 => inventory.removeEntry(id),
+    // Carry cards (CAP / ENC / LIFT) + group-level encumbrance toggle
+    invToggleCarryCard:      (key)                => inventory.toggleCarryCard(key),
+    invAddCapMod:            ()                   => inventory.addCapMod(),
+    invUpdateCapMod:         (i, field, value)    => inventory.updateCapMod(i, field, value),
+    invDeleteCapMod:         (i)                  => inventory.deleteCapMod(i),
+    invAddLiftMod:           ()                   => inventory.addLiftMod(),
+    invUpdateLiftMod:        (i, field, value)    => inventory.updateLiftMod(i, field, value),
+    invDeleteLiftMod:        (i)                  => inventory.deleteLiftMod(i),
+    invAddEncMod:            ()                   => inventory.addEncMod(),
+    invUpdateEncMod:         (i, field, value)    => inventory.updateEncMod(i, field, value),
+    invDeleteEncMod:         (i)                  => inventory.deleteEncMod(i),
+    invToggleGroupEncumbrance:(id)                => inventory.toggleGroupEncumbrance(id),
     // Sheet tab switcher (Overview / Combat / Inventory folder tabs)
     switchSheetTab:       (which) => {
       document.querySelectorAll('.sheet-tab').forEach(t => t.classList.remove('active'));
