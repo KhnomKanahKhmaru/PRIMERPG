@@ -55,23 +55,59 @@ export function createInventorySection(ctx) {
 
   const expandedEntries = new Set();
 
+  // Which item entries have their description panel expanded. Separate
+  // from expandedEntries because containers use expansion for "show
+  // contents" and items use it for "show description/notes" — different
+  // semantics, different default state (always collapsed for items).
+  const expandedInfo = new Set();
+
   // Which slots have their whole section collapsed. Stored BY CODE.
   // Default is all-open. Used so a user can fold away unused slots.
   const collapsedSlots = new Set();
 
+  // Which groups are collapsed — stored by group id. We do persist the
+  // group's own `collapsed` flag to Firestore (part of the group record),
+  // but we mirror it here for fast read access during render.
+  //
   // Modal state for the "Add Item" and "Add Container" flows. Null when
-  // no modal is open. { kind: 'container'|'item', target: slotCode | entryId }
+  // no modal is open. Expanded shape: {
+  //   kind:       'container' | 'item',
+  //   target:     slotCode | groupId | entryId,
+  //   targetKind: 'slot' | 'group' | 'container',
+  //   targetLabel: string,
+  //   showCustomForm: boolean,   // whether the inline custom def form is open
+  //   customDraft: { ... }       // in-progress custom def fields
+  // }
   let activeModal = null;
 
+  // Character-scoped id counter for group/def synthesis. Prefixed so
+  // ruleset ids (cont_ / eq_) and character custom ids (cust_cont_ /
+  // cust_eq_) don't collide.
+  const _nextInvId = (() => {
+    let n = 0;
+    return (prefix) => `${prefix}_${Date.now().toString(36)}_${(n++).toString(36)}`;
+  })();
+
   // ─── DEF LOOKUP ───
+  //
+  // Ids are resolved against the RULESET catalog first, then the
+  // character's personal customDefs as a fallback. Custom ids use a
+  // 'cust_' prefix to make the source visible at a glance, but lookup
+  // doesn't depend on the prefix — it walks both catalogs.
 
   function getContainerDef(id) {
     const ruleset = getRuleset();
-    return (ruleset.containers || []).find(c => c.id === id) || null;
+    const fromRuleset = (ruleset.containers || []).find(c => c.id === id);
+    if (fromRuleset) return fromRuleset;
+    const inv = ensureInventory();
+    return (inv.customDefs.containers || []).find(c => c.id === id) || null;
   }
   function getEquipmentDef(id) {
     const ruleset = getRuleset();
-    return (ruleset.equipment || []).find(e => e.id === id) || null;
+    const fromRuleset = (ruleset.equipment || []).find(e => e.id === id);
+    if (fromRuleset) return fromRuleset;
+    const inv = ensureInventory();
+    return (inv.customDefs.equipment || []).find(e => e.id === id) || null;
   }
   function getDefForEntry(entry) {
     if (!entry) return null;
@@ -197,39 +233,115 @@ export function createInventorySection(ctx) {
 
   // ─── ID HELPERS ───
 
-  const _nextId = (() => {
-    let n = 0;
-    return () => `inv_${Date.now().toString(36)}_${(n++).toString(36)}`;
-  })();
+  // Legacy alias for the existing name used throughout the module.
+  const _nextId = () => _nextInvId('inv');
 
-  // Ensure charData.inventory has the expected shape. Mutates in place.
-  // Called before any read/write so legacy characters don't crash.
+  // Well-known group ids. On-Person is fixed and always present; its
+  // contents come from bySlot (the body-slot map) rather than its own
+  // array. The default Stowed group is added on new-character / migration.
+  const GROUP_ONPERSON_ID = 'grp_onperson';
+  const GROUP_STOWED_ID   = 'grp_stowed';
+
+  // Ensure charData.inventory has the current expected shape. Mutates in
+  // place. Called before any read/write so legacy characters don't crash.
+  //
+  // Handles three migration paths:
+  //   1. No inventory at all              → create fresh with On-Person + Stowed
+  //   2. Old shape (bySlot + flat stowed) → wrap into groups, keep bySlot
+  //   3. Current shape                    → validate and fill any gaps
+  //
+  // customDefs holds per-character one-off defs — one-offs created right
+  // from the sheet, not promoted to the ruleset. Lookups walk customDefs
+  // as a fallback, so these entries render and weigh just like ruleset
+  // defs do.
   function ensureInventory() {
     const charData = getCharData();
     if (!charData.inventory || typeof charData.inventory !== 'object') {
-      charData.inventory = { bySlot: {}, stowed: [] };
+      charData.inventory = {};
     }
-    if (!charData.inventory.bySlot || typeof charData.inventory.bySlot !== 'object') {
-      charData.inventory.bySlot = {};
+    const inv = charData.inventory;
+
+    // bySlot: always an object. Body slots hang off it directly.
+    if (!inv.bySlot || typeof inv.bySlot !== 'object') inv.bySlot = {};
+
+    // customDefs: always shaped { containers: [], equipment: [] }.
+    if (!inv.customDefs || typeof inv.customDefs !== 'object') inv.customDefs = {};
+    if (!Array.isArray(inv.customDefs.containers)) inv.customDefs.containers = [];
+    if (!Array.isArray(inv.customDefs.equipment))  inv.customDefs.equipment  = [];
+
+    // Legacy migration — old inventories had a top-level `stowed` array
+    // instead of groups. Convert it into a default Stowed group so the
+    // player's existing data is preserved and keeps working.
+    const hadLegacyStowed = Array.isArray(inv.stowed);
+    if (!Array.isArray(inv.groups)) inv.groups = [];
+
+    // On-Person: always present, always first. Its contents are the body
+    // slots (bySlot), which live outside groups. The group entry itself
+    // carries just metadata (name, collapsed state).
+    if (!inv.groups.find(g => g.id === GROUP_ONPERSON_ID)) {
+      inv.groups.unshift({
+        id: GROUP_ONPERSON_ID,
+        name: 'On-Person',
+        kind: 'onPerson',
+        collapsed: false
+      });
     }
-    if (!Array.isArray(charData.inventory.stowed)) {
-      charData.inventory.stowed = [];
+
+    // Stowed: default custom group. Seeded from legacy `stowed` array if
+    // one existed, otherwise created empty. Deletable like any other
+    // custom group after that.
+    if (!inv.groups.find(g => g.id === GROUP_STOWED_ID) && hadLegacyStowed) {
+      inv.groups.push({
+        id: GROUP_STOWED_ID,
+        name: 'Stowed',
+        kind: 'custom',
+        collapsed: false,
+        contents: inv.stowed.slice()
+      });
+    } else if (inv.groups.length === 1) {
+      // Only On-Person — add a fresh empty Stowed so new chars aren't
+      // staring at just the body-slot row.
+      inv.groups.push({
+        id: GROUP_STOWED_ID,
+        name: 'Stowed',
+        kind: 'custom',
+        collapsed: false,
+        contents: []
+      });
     }
-    return charData.inventory;
+
+    // Drop the legacy top-level stowed field after migrating it. Keeps
+    // the Firestore doc clean and matches the new schema.
+    if (hadLegacyStowed) delete inv.stowed;
+
+    // Validate every group entry and make sure custom groups have a
+    // contents array. Malformed groups get dropped rather than crashing.
+    inv.groups = inv.groups.filter(g => {
+      if (!g || typeof g !== 'object' || !g.id || !g.kind) return false;
+      if (g.kind === 'custom' && !Array.isArray(g.contents)) g.contents = [];
+      return true;
+    });
+
+    return inv;
   }
 
-  // Walk the inventory tree, calling visit(entry, parentArray, index) for
-  // each entry. Useful for find-by-id, remove-by-id, etc.
+  // Walk the inventory tree, calling visit(entry) for each item/container
+  // entry — not groups themselves. Used for find-by-id and remove-by-id.
   function walkTree(visit) {
     const inv = ensureInventory();
     const visitArr = (arr) => {
+      if (!Array.isArray(arr)) return;
       for (let i = 0; i < arr.length; i++) {
         visit(arr[i], arr, i);
         if (Array.isArray(arr[i].contents)) visitArr(arr[i].contents);
       }
     };
+    // Body slot contents (under On-Person)
     Object.values(inv.bySlot).forEach(visitArr);
-    visitArr(inv.stowed);
+    // Custom-group contents
+    (inv.groups || []).forEach(g => {
+      if (g.kind === 'custom') visitArr(g.contents);
+    });
   }
 
   function findEntry(id) {
@@ -242,6 +354,7 @@ export function createInventorySection(ctx) {
   function removeEntry(id) {
     const inv = ensureInventory();
     const removeFromArr = (arr) => {
+      if (!Array.isArray(arr)) return false;
       for (let i = 0; i < arr.length; i++) {
         if (arr[i].id === id) { arr.splice(i, 1); return true; }
         if (Array.isArray(arr[i].contents) && removeFromArr(arr[i].contents)) return true;
@@ -251,7 +364,10 @@ export function createInventorySection(ctx) {
     for (const slotCode of Object.keys(inv.bySlot)) {
       if (removeFromArr(inv.bySlot[slotCode])) return true;
     }
-    return removeFromArr(inv.stowed);
+    for (const g of inv.groups) {
+      if (g.kind === 'custom' && removeFromArr(g.contents)) return true;
+    }
+    return false;
   }
 
   // ─── PERSISTENCE ───
@@ -281,15 +397,22 @@ export function createInventorySection(ctx) {
 
     let html = '';
 
-    // One section per body slot. Each shows the containers attached, plus
-    // an "Add Container" button. Empty slots are still shown — visible
-    // slot list tells the player what they're wearing (or not).
-    ruleset.bodySlots.forEach(slot => {
-      html += renderSlotSection(slot, inv.bySlot[slot.code] || [], canEdit);
+    // Groups-first layout: On-Person (wraps slots) plus any custom
+    // groups (free-form contents array). One group header per entry
+    // in inv.groups, rendered in order. Custom groups may be renamed
+    // or deleted; On-Person cannot.
+    inv.groups.forEach(group => {
+      html += renderGroup(group, ruleset, inv, canEdit);
     });
 
-    // The Stowed bucket is always last — things not currently worn.
-    html += renderStowedSection(inv.stowed, canEdit);
+    // Add-group button at the bottom. Custom groups only — On-Person
+    // is special and always exists.
+    if (canEdit) {
+      html += `<div class="inv-add-group-row">
+        <button class="inv-add-btn inv-add-btn-ghost" onclick="invAddGroup()">+ Add Group</button>
+        <span class="inv-add-group-hint">e.g. Vehicle, Safe House, Stash — anything that isn't on your body.</span>
+      </div>`;
+    }
 
     // Modal host — only gets content when activeModal is set.
     html += '<div id="inv-modal-root"></div>';
@@ -299,22 +422,123 @@ export function createInventorySection(ctx) {
     if (activeModal) renderActiveModal();
   }
 
-  // ─── SECTION RENDERERS ───
+  // ─── GROUP RENDERER ───
+  //
+  // Each group is a top-level collapsible section. On-Person's body is
+  // the ruleset's body slots (each a sub-section). Custom groups have a
+  // flat contents array — containers and loose items at the top level.
+
+  function renderGroup(group, ruleset, inv, canEdit) {
+    const collapsed = !!group.collapsed;
+    const isOnPerson = group.kind === 'onPerson';
+
+    // Totals: weight and count across everything in the group. For
+    // On-Person, this is the sum of every body slot's contents; for
+    // custom groups, it's the sum of the group's contents array.
+    const { totalWeight, totalCount } = isOnPerson
+      ? tallyBySlot(inv.bySlot, ruleset.bodySlots || [])
+      : tallyArr(group.contents || []);
+
+    // Header actions. On-Person has no rename/delete; custom groups do.
+    const extraHeaderActions = (!isOnPerson && canEdit) ? `
+      <button class="inv-group-btn" onclick="event.stopPropagation();invRenameGroup('${escapeHtml(group.id)}')" title="Rename group">✎</button>
+      <button class="inv-group-btn inv-group-btn-danger" onclick="event.stopPropagation();invDeleteGroup('${escapeHtml(group.id)}')" title="Delete group (and everything in it)">×</button>
+    ` : '';
+
+    let html = `<div class="inv-group${collapsed ? ' collapsed' : ''}${isOnPerson ? ' inv-group-onperson' : ' inv-group-custom'}">
+      <div class="inv-group-head" onclick="invToggleGroupCollapse('${escapeHtml(group.id)}')">
+        <span class="inv-group-caret">${collapsed ? '▸' : '▾'}</span>
+        <span class="inv-group-label">${escapeHtml(group.name)}</span>
+        <span class="inv-group-meta">${totalCount} item${totalCount === 1 ? '' : 's'} · ${fmt(totalWeight)} lb${totalWeight === 1 ? '' : 's'}</span>
+        ${extraHeaderActions}
+      </div>`;
+
+    if (!collapsed) {
+      html += '<div class="inv-group-body">';
+      if (isOnPerson) {
+        // Render each body slot as a sub-section of On-Person.
+        ruleset.bodySlots.forEach(slot => {
+          html += renderSlotSection(slot, inv.bySlot[slot.code] || [], canEdit);
+        });
+      } else {
+        // Custom group — flat contents list plus add buttons at the bottom.
+        const entries = Array.isArray(group.contents) ? group.contents : [];
+        if (entries.length === 0) {
+          html += '<div class="inv-empty-row">Empty.</div>';
+        } else {
+          entries.forEach(e => { html += renderEntry(e, 0, canEdit); });
+        }
+        if (canEdit) {
+          html += `<div class="inv-group-actions">
+            <button class="inv-add-btn" onclick="invOpenAddContainer('${escapeHtml(group.id)}','group')">+ Add Container</button>
+            <button class="inv-add-btn inv-add-btn-ghost" onclick="invOpenAddItem('${escapeHtml(group.id)}','group')">+ Add Loose Item</button>
+          </div>`;
+        }
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  // ─── TALLY HELPERS ───
+  //
+  // Recursively sum weight and item counts for a given scope. Weight
+  // flows all the way up — a pouch inside a backpack inside a trunk
+  // contributes to all three tallies.
+
+  function tallyEntry(entry) {
+    const def = getDefForEntry(entry);
+    const qty = entry.quantity || 1;
+    let weight = def ? (def.weight || 0) * qty : 0;
+    let count = qty;
+    if (Array.isArray(entry.contents)) {
+      entry.contents.forEach(c => {
+        const sub = tallyEntry(c);
+        weight += sub.weight;
+        count += sub.count;
+      });
+    }
+    return { weight, count };
+  }
+
+  function tallyArr(arr) {
+    let totalWeight = 0;
+    let totalCount = 0;
+    (arr || []).forEach(e => {
+      const t = tallyEntry(e);
+      totalWeight += t.weight;
+      totalCount += t.count;
+    });
+    return { totalWeight, totalCount };
+  }
+
+  function tallyBySlot(bySlot, bodySlots) {
+    let totalWeight = 0;
+    let totalCount = 0;
+    (bodySlots || []).forEach(slot => {
+      const t = tallyArr(bySlot[slot.code] || []);
+      totalWeight += t.totalWeight;
+      totalCount += t.totalCount;
+    });
+    return { totalWeight, totalCount };
+  }
+
+  // ─── BODY SLOT SUBSECTION ───
+  //
+  // Renders a single body slot as a subsection inside the On-Person
+  // group. Same shape as the custom-group body but with slot-specific
+  // targeting for the Add buttons.
 
   function renderSlotSection(slot, entries, canEdit) {
     const collapsed = collapsedSlots.has(slot.code);
-    const entryCount = entries.length;
-    const totalWeight = entries.reduce((acc, e) => {
-      if (entryIsContainer(e)) return acc + computeContainerStats(e).totalWeight;
-      const def = getDefForEntry(e);
-      return acc + (def ? (def.weight || 0) * (e.quantity || 1) : 0);
-    }, 0);
+    const { totalWeight, totalCount } = tallyArr(entries);
 
     let html = `<div class="inv-slot-section${collapsed ? ' collapsed' : ''}">
       <div class="inv-slot-head" onclick="invToggleSlot('${escapeHtml(slot.code)}')">
         <span class="inv-slot-caret">${collapsed ? '▸' : '▾'}</span>
         <span class="inv-slot-label">${escapeHtml(slot.label)}</span>
-        <span class="inv-slot-meta">${entryCount} item${entryCount === 1 ? '' : 's'} · ${fmt(totalWeight)} lb${totalWeight === 1 ? '' : 's'}</span>
+        <span class="inv-slot-meta">${totalCount} item${totalCount === 1 ? '' : 's'} · ${fmt(totalWeight)} lb${totalWeight === 1 ? '' : 's'}</span>
       </div>`;
 
     if (!collapsed) {
@@ -326,43 +550,8 @@ export function createInventorySection(ctx) {
       }
       if (canEdit) {
         html += `<div class="inv-slot-actions">
-          <button class="inv-add-btn" onclick="invOpenAddContainer('${escapeHtml(slot.code)}')">+ Add Container</button>
+          <button class="inv-add-btn" onclick="invOpenAddContainer('${escapeHtml(slot.code)}','slot')">+ Add Container</button>
           <button class="inv-add-btn inv-add-btn-ghost" onclick="invOpenAddItem('${escapeHtml(slot.code)}','slot')">+ Add Loose Item</button>
-        </div>`;
-      }
-      html += '</div>';
-    }
-    html += '</div>';
-    return html;
-  }
-
-  function renderStowedSection(entries, canEdit) {
-    const collapsed = collapsedSlots.has('__stowed__');
-    const entryCount = entries.length;
-    const totalWeight = entries.reduce((acc, e) => {
-      if (entryIsContainer(e)) return acc + computeContainerStats(e).totalWeight;
-      const def = getDefForEntry(e);
-      return acc + (def ? (def.weight || 0) * (e.quantity || 1) : 0);
-    }, 0);
-
-    let html = `<div class="inv-slot-section inv-slot-stowed${collapsed ? ' collapsed' : ''}">
-      <div class="inv-slot-head" onclick="invToggleSlot('__stowed__')">
-        <span class="inv-slot-caret">${collapsed ? '▸' : '▾'}</span>
-        <span class="inv-slot-label">Stowed</span>
-        <span class="inv-slot-meta">${entryCount} item${entryCount === 1 ? '' : 's'} · ${fmt(totalWeight)} lb${totalWeight === 1 ? '' : 's'}</span>
-      </div>`;
-
-    if (!collapsed) {
-      html += '<div class="inv-slot-body">';
-      if (entries.length === 0) {
-        html += '<div class="inv-empty-row">Nothing stowed. Items here live in a vehicle, a safehouse, or aren\'t currently on your person.</div>';
-      } else {
-        entries.forEach(e => { html += renderEntry(e, 0, canEdit); });
-      }
-      if (canEdit) {
-        html += `<div class="inv-slot-actions">
-          <button class="inv-add-btn" onclick="invOpenAddContainer('__stowed__')">+ Add Container</button>
-          <button class="inv-add-btn inv-add-btn-ghost" onclick="invOpenAddItem('__stowed__','slot')">+ Add Loose Item</button>
         </div>`;
       }
       html += '</div>';
@@ -473,11 +662,24 @@ export function createInventorySection(ctx) {
     const qty = entry.quantity || 1;
     const totalWeight = (def.weight || 0) * qty;
     const catLabel = def.category ? ` · ${def.category}` : '';
+    const hasInfo = !!((def.description && def.description.trim()) || (entry.notes && entry.notes.trim()));
+    const infoOpen = expandedInfo.has(entry.id);
 
-    let html = `<div class="inv-entry inv-entry-item" style="margin-left:${depth * 16}px">
+    // Hover tooltip: first ~80 chars of description as a title attribute
+    // on the name. Full description shows when the row is clicked.
+    const tooltip = hasInfo
+      ? escapeHtml(truncate((def.description || entry.notes || '').replace(/\s+/g, ' ').trim(), 80))
+      : '';
+    // If there's info to show, the name is clickable to toggle the
+    // expanded panel. If not, the row is purely informational.
+    const nameAttrs = hasInfo
+      ? ` class="inv-entry-name inv-entry-name-clickable" title="${tooltip}" onclick="invToggleItemInfo('${escapeHtml(entry.id)}')"`
+      : ` class="inv-entry-name"`;
+
+    let html = `<div class="inv-entry inv-entry-item${infoOpen ? ' info-open' : ''}" style="margin-left:${depth * 16}px">
       <div class="inv-entry-head inv-entry-head-item">
         <span class="inv-entry-icon" title="Item">◆</span>
-        <span class="inv-entry-name">${escapeHtml(name)}${escapeHtml(catLabel)}</span>
+        <span${nameAttrs}>${escapeHtml(name)}${escapeHtml(catLabel)}${hasInfo ? `<span class="inv-entry-info-caret">${infoOpen ? '▾' : '▸'}</span>` : ''}</span>
         <span class="inv-entry-qty">${canEdit
           ? `<button class="inv-qty-btn" onclick="invTickQty('${escapeHtml(entry.id)}',-1)" title="Decrease quantity" ${qty <= 1 ? 'disabled' : ''}>−</button>`
           : ''}
@@ -489,9 +691,33 @@ export function createInventorySection(ctx) {
         <span class="inv-entry-dims">${fmt(dims.l)}×${fmt(dims.w)}×${fmt(dims.h)} in</span>
         <span class="inv-entry-weight">${fmt(totalWeight)} lb</span>
         ${canEdit ? `<button class="inv-row-btn inv-row-btn-danger" onclick="invRemoveEntry('${escapeHtml(entry.id)}')" title="Remove this item">×</button>` : ''}
-      </div>
-    </div>`;
+      </div>`;
+
+    if (infoOpen && hasInfo) {
+      const desc = (def.description || '').trim();
+      const notes = (entry.notes || '').trim();
+      html += `<div class="inv-entry-info">`;
+      if (desc) {
+        html += `<div class="inv-entry-info-desc">${escapeHtml(desc)}</div>`;
+      }
+      if (notes) {
+        html += `<div class="inv-entry-info-notes"><span class="inv-entry-info-label">Notes:</span> ${escapeHtml(notes)}</div>`;
+      }
+      html += `</div>`;
+    }
+
+    html += `</div>`;
     return html;
+  }
+
+  // Truncate a string to a max length, adding "…" if truncated. Avoids
+  // breaking mid-word when possible — trims back to the previous space
+  // rather than cutting a word in half.
+  function truncate(s, max) {
+    if (!s || s.length <= max) return s || '';
+    const cut = s.slice(0, max);
+    const lastSpace = cut.lastIndexOf(' ');
+    return (lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut) + '…';
   }
 
   // ─── MODALS: ADD CONTAINER / ADD ITEM ───
@@ -507,32 +733,48 @@ export function createInventorySection(ctx) {
     if (!root) return;
     if (!activeModal) { root.innerHTML = ''; return; }
 
+    // Custom-def form takes over the modal when open. When the user is
+    // filling in their one-off item, we don't want the catalog list
+    // cluttering up the view.
+    if (activeModal.showCustomForm) {
+      root.innerHTML = renderCustomForm();
+      return;
+    }
+
     const ruleset = getRuleset();
+    const inv = ensureInventory();
     if (activeModal.kind === 'container') {
       // Container modal — ruleset containers + equipment-with-containerOf
+      // + character-scoped custom containers + character equipment-with-containerOf
       const options = [];
-      (ruleset.containers || []).forEach(c => options.push({ kind: 'container', def: c }));
-      (ruleset.equipment || []).filter(e => e.containerOf).forEach(e => options.push({ kind: 'equipment', def: e }));
+      (ruleset.containers || []).forEach(c => options.push({ kind: 'container', def: c, source: 'ruleset' }));
+      (ruleset.equipment || []).filter(e => e.containerOf).forEach(e => options.push({ kind: 'equipment', def: e, source: 'ruleset' }));
+      (inv.customDefs.containers || []).forEach(c => options.push({ kind: 'container', def: c, source: 'custom' }));
+      (inv.customDefs.equipment || []).filter(e => e.containerOf).forEach(e => options.push({ kind: 'equipment', def: e, source: 'custom' }));
       root.innerHTML = renderModal({
         title: 'Add Container',
         subtitle: activeModal.targetLabel || '',
         options,
-        emptyMsg: 'No containers or container-like equipment in this ruleset yet. Open the ruleset editor\'s Inventory tab to add some.',
-        onPickAttr: 'invPickContainerDef'
+        emptyMsg: 'No containers in this ruleset yet. Use "+ Custom" below to make a one-off for this character, or open the ruleset editor\'s Inventory tab to add reusable ones.',
+        onPickAttr: 'invPickContainerDef',
+        customKind: 'container'
       });
     } else if (activeModal.kind === 'item') {
-      const options = (ruleset.equipment || []).map(e => ({ kind: 'equipment', def: e }));
+      const options = [];
+      (ruleset.equipment || []).forEach(e => options.push({ kind: 'equipment', def: e, source: 'ruleset' }));
+      (inv.customDefs.equipment || []).forEach(e => options.push({ kind: 'equipment', def: e, source: 'custom' }));
       root.innerHTML = renderModal({
         title: 'Add Item',
         subtitle: activeModal.targetLabel || '',
         options,
-        emptyMsg: 'No equipment in this ruleset yet. Open the ruleset editor\'s Inventory tab to add some.',
-        onPickAttr: 'invPickItemDef'
+        emptyMsg: 'No equipment in this ruleset yet. Use "+ Custom" below to make a one-off for this character, or open the ruleset editor\'s Inventory tab to add reusable ones.',
+        onPickAttr: 'invPickItemDef',
+        customKind: 'equipment'
       });
     }
   }
 
-  function renderModal({ title, subtitle, options, emptyMsg, onPickAttr }) {
+  function renderModal({ title, subtitle, options, emptyMsg, onPickAttr, customKind }) {
     const listHtml = options.length === 0
       ? `<div class="inv-modal-empty">${escapeHtml(emptyMsg)}</div>`
       : options.map(opt => {
@@ -540,12 +782,24 @@ export function createInventorySection(ctx) {
           const cat = opt.def.category ? `<span class="inv-modal-cat">${escapeHtml(opt.def.category)}</span>` : '';
           const isContainerDual = opt.kind === 'equipment' && opt.def.containerOf;
           const dualPill = isContainerDual ? '<span class="inv-modal-dual">dual-role</span>' : '';
+          // Mark character-local custom defs with a distinct pill so users
+          // see at a glance that an entry only exists on this character.
+          const customPill = opt.source === 'custom' ? '<span class="inv-modal-custom">custom</span>' : '';
           return `<div class="inv-modal-opt" onclick="${onPickAttr}('${escapeHtml(opt.kind)}','${escapeHtml(opt.def.id)}')">
-            <div class="inv-modal-opt-name">${escapeHtml(opt.def.name)}${cat}${dualPill}</div>
+            <div class="inv-modal-opt-name">${escapeHtml(opt.def.name)}${cat}${dualPill}${customPill}</div>
             <div class="inv-modal-opt-meta">${fmt(d.l)}×${fmt(d.w)}×${fmt(d.h)} in · ${fmt(opt.def.weight || 0)} lb</div>
             ${opt.def.description ? `<div class="inv-modal-opt-desc">${escapeHtml(opt.def.description)}</div>` : ''}
           </div>`;
         }).join('');
+
+    // "+ Custom" button at the bottom lets the user define a one-off
+    // container/item right from the sheet without leaving the flow.
+    const customBtn = customKind
+      ? `<div class="inv-modal-custom-row">
+          <button class="inv-add-btn" onclick="invOpenCustomForm('${escapeHtml(customKind)}')">+ Custom ${customKind === 'container' ? 'Container' : 'Item'}…</button>
+          <span class="inv-modal-custom-hint">One-off for this character — won't appear on others.</span>
+        </div>`
+      : '';
 
     return `<div class="inv-modal-backdrop" onclick="invCloseModal(event)">
       <div class="inv-modal" onclick="event.stopPropagation()">
@@ -556,6 +810,92 @@ export function createInventorySection(ctx) {
         </div>
         <div class="inv-modal-body">
           ${listHtml}
+          ${customBtn}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // ─── CUSTOM DEF FORM ───
+  //
+  // In-modal form for creating a character-scoped one-off def. Saves to
+  // inv.customDefs and immediately instantiates an entry at the modal's
+  // target. Pattern matches the ruleset editor's card layout so it feels
+  // familiar, just collapsed into a form.
+
+  function renderCustomForm() {
+    const draft = activeModal.customDraft || {};
+    const isContainer = activeModal.customKind === 'container';
+    const isContainerDual = !!draft.alsoContainer;
+    const title = isContainer ? 'New Container (one-off)' : 'New Item (one-off)';
+
+    return `<div class="inv-modal-backdrop" onclick="invCloseModal(event)">
+      <div class="inv-modal" onclick="event.stopPropagation()">
+        <div class="inv-modal-head">
+          <div class="inv-modal-title">${escapeHtml(title)}</div>
+          <div class="inv-modal-sub">${escapeHtml(activeModal.targetLabel || '')}</div>
+          <button class="inv-modal-close" onclick="invCloseModal()">×</button>
+        </div>
+        <div class="inv-modal-body inv-custom-form">
+
+          <div class="inv-field">
+            <label>Name</label>
+            <input type="text" id="inv-custom-name" value="${escapeHtml(draft.name || '')}" placeholder="${escapeHtml(isContainer ? 'Duct-tape Satchel' : 'Lucky Zippo')}" oninput="invUpdateCustomDraft('name',this.value)">
+          </div>
+
+          <div class="inv-field">
+            <label>Description</label>
+            <textarea rows="3" id="inv-custom-desc" placeholder="Optional — flavor, special properties, notes." oninput="invUpdateCustomDraft('description',this.value)">${escapeHtml(draft.description || '')}</textarea>
+          </div>
+
+          ${!isContainer ? `<div class="inv-field">
+            <label>Category (optional)</label>
+            <input type="text" value="${escapeHtml(draft.category || '')}" placeholder="firearm, melee, ammo, tool, armor, misc" oninput="invUpdateCustomDraft('category',this.value)">
+          </div>` : ''}
+
+          <div class="inv-field">
+            <label>Dimensions (L × W × H, inches)</label>
+            <div class="inv-dims-row">
+              <input type="number" step="0.25" min="0" value="${escapeHtml(String(draft.l || 0))}" placeholder="L" oninput="invUpdateCustomDraft('l',this.value)">
+              <input type="number" step="0.25" min="0" value="${escapeHtml(String(draft.w || 0))}" placeholder="W" oninput="invUpdateCustomDraft('w',this.value)">
+              <input type="number" step="0.25" min="0" value="${escapeHtml(String(draft.h || 0))}" placeholder="H" oninput="invUpdateCustomDraft('h',this.value)">
+            </div>
+          </div>
+
+          <div class="inv-field">
+            <label>Weight (lbs)</label>
+            <input type="number" step="0.1" min="0" value="${escapeHtml(String(draft.weight || 0))}" oninput="invUpdateCustomDraft('weight',this.value)" style="max-width:140px">
+          </div>
+
+          ${isContainer ? `<div class="inv-field">
+            <label>Packing Efficiency (0.1 – 1.0)</label>
+            <input type="number" step="0.05" min="0.1" max="1.0" value="${escapeHtml(String(draft.packingEfficiency || 0.75))}" oninput="invUpdateCustomDraft('packingEfficiency',this.value)" style="max-width:140px">
+          </div>` : `
+          <div class="inv-toggle-row">
+            <span class="inv-toggle${isContainerDual ? ' on' : ''}" onclick="invUpdateCustomDraft('alsoContainer',${!isContainerDual})">${isContainerDual ? '✓ Also a container' : 'Also a container'}</span>
+            <span class="inv-toggle-hint">Toggle for ammo pouches, quivers, holsters.</span>
+          </div>
+          ${isContainerDual ? `<div class="inv-container-block">
+            <div class="inv-container-block-title">Container Capacity</div>
+            <div class="inv-field">
+              <label>Inner Dimensions (L × W × H, inches)</label>
+              <div class="inv-dims-row">
+                <input type="number" step="0.25" min="0" value="${escapeHtml(String(draft.innerL || 0))}" placeholder="L" oninput="invUpdateCustomDraft('innerL',this.value)">
+                <input type="number" step="0.25" min="0" value="${escapeHtml(String(draft.innerW || 0))}" placeholder="W" oninput="invUpdateCustomDraft('innerW',this.value)">
+                <input type="number" step="0.25" min="0" value="${escapeHtml(String(draft.innerH || 0))}" placeholder="H" oninput="invUpdateCustomDraft('innerH',this.value)">
+              </div>
+            </div>
+            <div class="inv-field" style="max-width:220px">
+              <label>Packing Efficiency (0.1 – 1.0)</label>
+              <input type="number" step="0.05" min="0.1" max="1.0" value="${escapeHtml(String(draft.innerPacking || 0.75))}" oninput="invUpdateCustomDraft('innerPacking',this.value)">
+            </div>
+          </div>` : ''}`}
+
+          <div class="inv-modal-actions">
+            <button class="inv-add-btn" onclick="invSaveCustomDef()">Save &amp; Add</button>
+            <button class="inv-add-btn inv-add-btn-ghost" onclick="invCancelCustomForm()">Cancel</button>
+          </div>
+
         </div>
       </div>
     </div>`;
@@ -575,39 +915,125 @@ export function createInventorySection(ctx) {
     renderAll();
   }
 
-  // Add-container flow. `target` is a slot code, the special '__stowed__'
-  // string, or (when fromContainer=true) a parent entry id.
-  function openAddContainer(target, fromContainer = false) {
+  // Click on an item row toggles its description panel. Separate state
+  // set from containers so the two semantics don't tangle.
+  function toggleItemInfo(id) {
+    if (expandedInfo.has(id)) expandedInfo.delete(id);
+    else expandedInfo.add(id);
+    renderAll();
+  }
+
+  // ─── GROUP HANDLERS ───
+
+  async function toggleGroupCollapse(groupId) {
+    const inv = ensureInventory();
+    const g = (inv.groups || []).find(x => x.id === groupId);
+    if (!g) return;
+    g.collapsed = !g.collapsed;
+    renderAll();
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
+  async function addGroup() {
     if (!getCanEdit()) return;
-    const ruleset = getRuleset();
-    let label = '';
-    if (fromContainer) {
-      const parent = findEntry(target);
-      label = parent ? `Inside: ${entryName(parent)}` : '';
-    } else if (target === '__stowed__') {
-      label = 'To: Stowed';
+    const name = prompt('Name for the new group (e.g. Vehicle, Stash, Safe House):');
+    if (!name || !name.trim()) return;
+    const inv = ensureInventory();
+    inv.groups.push({
+      id: _nextInvId('grp'),
+      name: name.trim(),
+      kind: 'custom',
+      collapsed: false,
+      contents: []
+    });
+    renderAll();
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
+  async function renameGroup(groupId) {
+    if (!getCanEdit()) return;
+    const inv = ensureInventory();
+    const g = (inv.groups || []).find(x => x.id === groupId);
+    if (!g || g.kind === 'onPerson') return;
+    const next = prompt('New name:', g.name || '');
+    if (next === null) return;
+    const trimmed = next.trim();
+    if (!trimmed) return;
+    g.name = trimmed;
+    renderAll();
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
+  async function deleteGroup(groupId) {
+    if (!getCanEdit()) return;
+    const inv = ensureInventory();
+    const g = (inv.groups || []).find(x => x.id === groupId);
+    if (!g || g.kind === 'onPerson') return;
+    const hasStuff = Array.isArray(g.contents) && g.contents.length > 0;
+    if (hasStuff) {
+      if (!confirm(`Delete "${g.name}" and everything inside (${g.contents.length} top-level items)? This cannot be undone.`)) return;
     } else {
-      const slot = (ruleset.bodySlots || []).find(s => s.code === target);
-      label = slot ? `To slot: ${slot.label}` : '';
+      if (!confirm(`Delete "${g.name}"?`)) return;
     }
-    activeModal = { kind: 'container', target, fromContainer, targetLabel: label };
+    inv.groups = inv.groups.filter(x => x.id !== groupId);
+    renderAll();
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
+  // ─── ADD FLOW HANDLERS ───
+  //
+  // `target` identifies where the new entry goes. Possible shapes:
+  //   { targetKind: 'slot',      target: slotCode }   → inv.bySlot[slotCode]
+  //   { targetKind: 'group',     target: groupId }    → group.contents
+  //   { targetKind: 'container', target: entryId }    → entry.contents
+  //
+  // The legacy '__stowed__' code is translated into the Stowed group if
+  // one exists (unlikely to hit this path post-migration, but defensive).
+
+  function resolveTargetLabel(target, targetKind) {
+    const ruleset = getRuleset();
+    const inv = ensureInventory();
+    if (targetKind === 'container') {
+      const parent = findEntry(target);
+      return parent ? `Inside: ${entryName(parent)}` : '';
+    }
+    if (targetKind === 'group') {
+      const g = inv.groups.find(x => x.id === target);
+      return g ? `To: ${g.name}` : '';
+    }
+    if (targetKind === 'slot') {
+      const slot = (ruleset.bodySlots || []).find(s => s.code === target);
+      return slot ? `To slot: ${slot.label}` : '';
+    }
+    return '';
+  }
+
+  function openAddContainer(target, targetKind) {
+    if (!getCanEdit()) return;
+    // Back-compat: second arg used to be a boolean `fromContainer`.
+    // Normalize to the new targetKind.
+    if (targetKind === true) targetKind = 'container';
+    if (!targetKind) targetKind = 'slot';
+    activeModal = {
+      kind: 'container',
+      target,
+      targetKind,
+      targetLabel: resolveTargetLabel(target, targetKind),
+      showCustomForm: false
+    };
     renderActiveModal();
   }
 
   function openAddItem(target, targetKind) {
     if (!getCanEdit()) return;
-    const ruleset = getRuleset();
-    let label = '';
-    if (targetKind === 'container') {
-      const parent = findEntry(target);
-      label = parent ? `Inside: ${entryName(parent)}` : '';
-    } else if (target === '__stowed__') {
-      label = 'To: Stowed (loose)';
-    } else {
-      const slot = (ruleset.bodySlots || []).find(s => s.code === target);
-      label = slot ? `To slot: ${slot.label} (loose)` : '';
-    }
-    activeModal = { kind: 'item', target, targetKind, targetLabel: label };
+    if (!targetKind) targetKind = 'slot';
+    activeModal = {
+      kind: 'item',
+      target,
+      targetKind,
+      targetLabel: resolveTargetLabel(target, targetKind),
+      showCustomForm: false
+    };
     renderActiveModal();
   }
 
@@ -617,64 +1043,171 @@ export function createInventorySection(ctx) {
     if (root) root.innerHTML = '';
   }
 
-  async function pickContainerDef(defKind, defId) {
-    if (!activeModal || activeModal.kind !== 'container') return;
-    const inv = ensureInventory();
-    const newEntry = {
-      id: _nextId(),
-      defId,
-      defKind,
-      quantity: 1,
-      contents: []
+  // ─── CUSTOM DEF FORM HANDLERS ───
+
+  function openCustomForm(customKind) {
+    if (!activeModal) return;
+    activeModal.showCustomForm = true;
+    activeModal.customKind = customKind;
+    activeModal.customDraft = {
+      name: '',
+      description: '',
+      category: '',
+      l: 6, w: 3, h: 1,
+      weight: 0.5,
+      packingEfficiency: 0.75,
+      alsoContainer: false,
+      innerL: 0, innerW: 0, innerH: 0,
+      innerPacking: 0.75
     };
-    if (activeModal.fromContainer) {
-      const parent = findEntry(activeModal.target);
-      if (!parent) { closeModal(); return; }
-      if (!Array.isArray(parent.contents)) parent.contents = [];
-      parent.contents.push(newEntry);
-      expandedEntries.add(parent.id);
-    } else if (activeModal.target === '__stowed__') {
-      inv.stowed.push(newEntry);
-    } else {
-      const slotCode = activeModal.target;
-      if (!Array.isArray(inv.bySlot[slotCode])) inv.bySlot[slotCode] = [];
-      inv.bySlot[slotCode].push(newEntry);
-    }
-    expandedEntries.add(newEntry.id);   // auto-expand the new container
-    closeModal();
-    renderAll();
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+    renderActiveModal();
   }
 
-  async function pickItemDef(defKind, defId) {
-    if (!activeModal || activeModal.kind !== 'item') return;
+  function cancelCustomForm() {
+    if (!activeModal) return;
+    activeModal.showCustomForm = false;
+    activeModal.customDraft = null;
+    renderActiveModal();
+  }
+
+  function updateCustomDraft(field, value) {
+    if (!activeModal || !activeModal.customDraft) return;
+    const d = activeModal.customDraft;
+    // Numeric fields — coerce, clamp non-negative. Text fields pass through.
+    const numericFields = new Set(['l','w','h','weight','packingEfficiency','innerL','innerW','innerH','innerPacking']);
+    if (numericFields.has(field)) {
+      const n = parseFloat(value);
+      d[field] = Number.isFinite(n) && n >= 0 ? n : 0;
+    } else if (field === 'alsoContainer') {
+      d[field] = !!value;
+      // Re-render so the inner-container block shows/hides.
+      renderActiveModal();
+      return;
+    } else {
+      d[field] = typeof value === 'string' ? value : '';
+    }
+    // Most text/number tweaks don't need a re-render — the inputs are
+    // self-updating. Only structural changes (toggles) re-render above.
+  }
+
+  async function saveCustomDef() {
+    if (!activeModal || !activeModal.customDraft) return;
+    const d = activeModal.customDraft;
+    const name = (d.name || '').trim();
+    if (!name) {
+      alert('Please enter a name.');
+      return;
+    }
     const inv = ensureInventory();
-    const def = defKind === 'equipment' ? getEquipmentDef(defId) : getContainerDef(defId);
+    const isContainer = activeModal.customKind === 'container';
+
+    // Build the def record — same schema as ruleset defs, with a
+    // `cust_`-prefixed id so the source is legible.
+    let def;
+    if (isContainer) {
+      def = {
+        id: _nextInvId('cust_cont'),
+        name,
+        description: (d.description || '').trim(),
+        dimensions: { l: d.l || 0, w: d.w || 0, h: d.h || 0 },
+        weight: d.weight || 0,
+        packingEfficiency: clampEff(d.packingEfficiency, 0.75),
+        defaultSlot: null
+      };
+      inv.customDefs.containers.push(def);
+    } else {
+      def = {
+        id: _nextInvId('cust_eq'),
+        name,
+        description: (d.description || '').trim(),
+        dimensions: { l: d.l || 0, w: d.w || 0, h: d.h || 0 },
+        weight: d.weight || 0,
+        category: (d.category || '').trim(),
+        weaponId: null,
+        containerOf: d.alsoContainer ? {
+          dimensions: { l: d.innerL || 0, w: d.innerW || 0, h: d.innerH || 0 },
+          packingEfficiency: clampEff(d.innerPacking, 0.75)
+        } : null
+      };
+      inv.customDefs.equipment.push(def);
+    }
+
+    // Immediately instantiate a new entry using this def at the modal's
+    // target. Saves the player two clicks — they created the def *so that*
+    // they could use it; no reason to make them pick from the catalog
+    // afterward.
+    const defKind = isContainer ? 'container' : 'equipment';
+    if (activeModal.kind === 'container') {
+      await instantiateAndPlace(defKind, def.id, /*isContainerRole=*/true);
+    } else {
+      await instantiateAndPlace(defKind, def.id, /*isContainerRole=*/!!def.containerOf);
+    }
+  }
+
+  function clampEff(v, fallback) {
+    const n = Number.isFinite(v) ? v : parseFloat(v);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(0.1, Math.min(1.0, n));
+  }
+
+  // Shared instantiation path — used by catalog-picked defs AND by the
+  // just-created custom def flow. Builds an entry, routes to the right
+  // container array based on targetKind, saves.
+  async function instantiateAndPlace(defKind, defId, isContainerRole) {
+    const inv = ensureInventory();
     const newEntry = {
       id: _nextId(),
       defId,
       defKind,
       quantity: 1
     };
-    // Equipment with containerOf gets contents array too (it IS a container).
-    if (def && def.containerOf) newEntry.contents = [];
+    if (isContainerRole) newEntry.contents = [];
 
-    if (activeModal.targetKind === 'container') {
-      const parent = findEntry(activeModal.target);
-      if (!parent) { closeModal(); return; }
-      if (!Array.isArray(parent.contents)) parent.contents = [];
-      parent.contents.push(newEntry);
-      expandedEntries.add(parent.id);
-    } else if (activeModal.target === '__stowed__') {
-      inv.stowed.push(newEntry);
-    } else {
-      const slotCode = activeModal.target;
-      if (!Array.isArray(inv.bySlot[slotCode])) inv.bySlot[slotCode] = [];
-      inv.bySlot[slotCode].push(newEntry);
+    const tgt = activeModal.target;
+    const tkind = activeModal.targetKind;
+    let placed = false;
+    if (tkind === 'container') {
+      const parent = findEntry(tgt);
+      if (parent) {
+        if (!Array.isArray(parent.contents)) parent.contents = [];
+        parent.contents.push(newEntry);
+        expandedEntries.add(parent.id);
+        placed = true;
+      }
+    } else if (tkind === 'group') {
+      const g = inv.groups.find(x => x.id === tgt);
+      if (g && g.kind === 'custom') {
+        if (!Array.isArray(g.contents)) g.contents = [];
+        g.contents.push(newEntry);
+        placed = true;
+      }
+    } else if (tkind === 'slot') {
+      if (!Array.isArray(inv.bySlot[tgt])) inv.bySlot[tgt] = [];
+      inv.bySlot[tgt].push(newEntry);
+      placed = true;
     }
+
+    if (!placed) { closeModal(); return; }
+
+    if (isContainerRole) expandedEntries.add(newEntry.id);
     closeModal();
     renderAll();
     try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
+  async function pickContainerDef(defKind, defId) {
+    if (!activeModal || activeModal.kind !== 'container') return;
+    // Container picks are always container-role.
+    await instantiateAndPlace(defKind, defId, /*isContainerRole=*/true);
+  }
+
+  async function pickItemDef(defKind, defId) {
+    if (!activeModal || activeModal.kind !== 'item') return;
+    // An item can secretly also be a container if its def has a
+    // containerOf block — that flag flows through to entryIsContainer.
+    const def = defKind === 'equipment' ? getEquipmentDef(defId) : getContainerDef(defId);
+    const isContainerRole = !!(def && def.containerOf) || defKind === 'container';
+    await instantiateAndPlace(defKind, defId, isContainerRole);
   }
 
   async function tickQty(id, delta) {
@@ -699,6 +1232,7 @@ export function createInventorySection(ctx) {
     }
     removeEntry(id);
     expandedEntries.delete(id);
+    expandedInfo.delete(id);
     renderAll();
     try { await save(); } catch (e) { console.error('inventory save failed', e); }
   }
@@ -707,11 +1241,20 @@ export function createInventorySection(ctx) {
     renderAll,
     toggleSlot,
     toggleEntry,
+    toggleItemInfo,
+    toggleGroupCollapse,
+    addGroup,
+    renameGroup,
+    deleteGroup,
     openAddContainer,
     openAddItem,
     closeModal,
     pickContainerDef,
     pickItemDef,
+    openCustomForm,
+    cancelCustomForm,
+    updateCustomDraft,
+    saveCustomDef,
     tickQty,
     removeEntry: removeEntryHandler
   };
