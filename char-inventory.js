@@ -80,6 +80,19 @@ export function createInventorySection(ctx) {
   // }
   let activeModal = null;
 
+  // Inline entry-edit state. Only one entry can be in edit mode at a
+  // time — opening a second one auto-closes the first. While editing,
+  // the draft is held OUTSIDE the entry (so we don't mutate the stored
+  // snapshot on every keystroke); on Save it replaces the snapshot and
+  // persists. On Cancel, the draft is discarded.
+  //
+  // Shape:
+  //   editingEntryId: string (the entry's id) | null
+  //   editDraft: { name, description, weight, dimensions:{l,w,h},
+  //                isContainer, innerL, innerW, innerH, innerPacking }
+  let editingEntryId = null;
+  let editDraft = null;
+
   // View mode: 'inventory' shows the character's actual kit (groups +
   // slots + items they own). 'catalog' shows the read-only ruleset
   // catalog — every item the ruleset defines, organized by category.
@@ -1231,7 +1244,9 @@ export function createInventorySection(ctx) {
     const pkEff = spec ? (spec.packingEfficiency || 0.75) : 0.75;
     const capTip = `Used / usable volume.\nUsable = ${fmt(dims.l)}×${fmt(dims.w)}×${fmt(dims.h)} (${fmt(rawVolume)} in³ raw) × ${fmt(pkEff)} packing efficiency = ${fmt(stats.availableVolume)} in³.\nPacking efficiency accounts for wasted space between irregular items.`;
 
-    let html = `<div class="inv-entry inv-entry-container${open ? ' open' : ''}" style="margin-left:${depth * 16}px">
+    const isEditing = editingEntryId === entry.id;
+
+    let html = `<div class="inv-entry inv-entry-container${open ? ' open' : ''}${isEditing ? ' editing' : ''}" style="margin-left:${depth * 16}px">
       <div class="inv-entry-head" onclick="invToggleEntry('${escapeHtml(entry.id)}')">
         <span class="inv-entry-caret">${open ? '▾' : '▸'}</span>
         <span class="inv-entry-icon" title="Container">▣</span>
@@ -1240,8 +1255,17 @@ export function createInventorySection(ctx) {
         <span class="inv-entry-capacity" title="${escapeHtml(capTip)}">${fmt(stats.usedVolume)}/${fmt(stats.availableVolume)} in³ (${pct}%)</span>
         <span class="inv-entry-weight">${fmt(stats.totalWeight)} lb</span>
         ${badge}
+        ${canEdit ? `<button class="inv-row-btn inv-row-btn-edit" onclick="event.stopPropagation();invOpenEntryEdit('${escapeHtml(entry.id)}')" title="Edit this instance (changes only this one, not the template).">✎</button>` : ''}
         ${canEdit ? `<button class="inv-row-btn inv-row-btn-danger" onclick="event.stopPropagation();invRemoveEntry('${escapeHtml(entry.id)}')" title="Remove this container (and everything inside)">×</button>` : ''}
       </div>`;
+
+    // Inline edit panel for this container. Renders between the head
+    // and the contents body so the user can see their container stay
+    // in place while tweaking its fields. The panel is wide enough to
+    // hold L×W×H rows and a description field.
+    if (isEditing) {
+      html += renderEntryEditPanel(entry, /*asContainer=*/true, depth);
+    }
 
     if (open) {
       html += '<div class="inv-entry-body">';
@@ -1300,7 +1324,9 @@ export function createInventorySection(ctx) {
       ? ` class="inv-entry-name inv-entry-name-clickable" title="${tooltip}" onclick="invToggleItemInfo('${escapeHtml(entry.id)}')"`
       : ` class="inv-entry-name"`;
 
-    let html = `<div class="inv-entry inv-entry-item${infoOpen ? ' info-open' : ''}" style="margin-left:${depth * 16}px">
+    const isEditing = editingEntryId === entry.id;
+
+    let html = `<div class="inv-entry inv-entry-item${infoOpen ? ' info-open' : ''}${isEditing ? ' editing' : ''}" style="margin-left:${depth * 16}px">
       <div class="inv-entry-head inv-entry-head-item">
         <span class="inv-entry-icon" title="Item">◆</span>
         <span${nameAttrs}>${escapeHtml(name)}${escapeHtml(catLabel)}${hasInfo ? `<span class="inv-entry-info-caret">${infoOpen ? '▾' : '▸'}</span>` : ''}</span>
@@ -1314,8 +1340,15 @@ export function createInventorySection(ctx) {
         </span>
         <span class="inv-entry-dims">${fmt(dims.l)}×${fmt(dims.w)}×${fmt(dims.h)} in</span>
         <span class="inv-entry-weight">${fmt(totalWeight)} lb</span>
+        ${canEdit ? `<button class="inv-row-btn inv-row-btn-edit" onclick="invOpenEntryEdit('${escapeHtml(entry.id)}')" title="Edit this instance (changes only this one, not the template).">✎</button>` : ''}
         ${canEdit ? `<button class="inv-row-btn inv-row-btn-danger" onclick="invRemoveEntry('${escapeHtml(entry.id)}')" title="Remove this item">×</button>` : ''}
       </div>`;
+
+    // Inline edit panel for plain items — simpler than the container
+    // version (no inner dims / packing fields).
+    if (isEditing) {
+      html += renderEntryEditPanel(entry, /*asContainer=*/false, depth);
+    }
 
     if (infoOpen && hasInfo) {
       const desc = (description || '').trim();
@@ -1342,6 +1375,166 @@ export function createInventorySection(ctx) {
     const cut = s.slice(0, max);
     const lastSpace = cut.lastIndexOf(' ');
     return (lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut) + '…';
+  }
+
+  // ─── INLINE ENTRY EDIT ───
+  //
+  // Per-instance edit panel that tweaks the entry's snapshot. The def
+  // is never touched — edits stay local to this one entry. The panel
+  // renders inline (not as a modal) between the entry's head row and
+  // its contents, so the user can see their container's new dimensions
+  // affect its capacity math live.
+  //
+  // Flow:
+  //   • User clicks ✎ → openEntryEdit(id) copies snapshot into editDraft
+  //   • User types → updateEditDraft(field, value) mutates draft
+  //   • User clicks Save → saveEntryEdit writes draft back to snapshot + persists
+  //   • User clicks Cancel → cancelEntryEdit discards draft, closes panel
+
+  function renderEntryEditPanel(entry, asContainer, depth) {
+    if (!editDraft) return '';
+    const d = editDraft;
+    // Indentation lines up with the entry body so the panel reads as
+    // belonging to the entry above it.
+    const margin = (depth + 1) * 16;
+
+    let html = `<div class="inv-edit-panel" style="margin-left:${margin}px" onclick="event.stopPropagation()">
+      <div class="inv-edit-panel-title">Edit this ${asContainer ? 'container' : 'item'} <span class="inv-edit-panel-hint">— changes apply only to this instance</span></div>
+
+      <div class="inv-field">
+        <label>Name</label>
+        <input type="text" value="${escapeHtml(d.name || '')}" oninput="invUpdateEditDraft('name',this.value)" placeholder="e.g. Duffel Bag">
+      </div>
+
+      <div class="inv-field">
+        <label>Description</label>
+        <textarea rows="2" oninput="invUpdateEditDraft('description',this.value)" placeholder="Optional — notes, flavor text, condition.">${escapeHtml(d.description || '')}</textarea>
+      </div>
+
+      <div class="inv-pair-row">
+        <div class="inv-field">
+          <label>Weight (lbs)</label>
+          <input type="number" step="0.1" min="0" value="${escapeHtml(String(d.weight || 0))}" oninput="invUpdateEditDraft('weight',this.value)">
+        </div>
+        <div class="inv-field">
+          <label>Dimensions (L × W × H, inches)</label>
+          <div class="inv-dims-row">
+            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.l || 0))}" placeholder="L" oninput="invUpdateEditDraft('l',this.value)">
+            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.w || 0))}" placeholder="W" oninput="invUpdateEditDraft('w',this.value)">
+            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.h || 0))}" placeholder="H" oninput="invUpdateEditDraft('h',this.value)">
+          </div>
+        </div>
+      </div>`;
+
+    // Container-only fields: inner dimensions + packing efficiency.
+    // These live in snapshot.containerOf.
+    if (asContainer) {
+      html += `<div class="inv-container-block">
+        <div class="inv-container-block-title">Container Capacity</div>
+        <div class="inv-field">
+          <label>Inner Dimensions (L × W × H, inches)</label>
+          <div class="inv-dims-row">
+            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.innerL || 0))}" placeholder="L" oninput="invUpdateEditDraft('innerL',this.value)">
+            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.innerW || 0))}" placeholder="W" oninput="invUpdateEditDraft('innerW',this.value)">
+            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.innerH || 0))}" placeholder="H" oninput="invUpdateEditDraft('innerH',this.value)">
+          </div>
+        </div>
+        <div class="inv-field" style="max-width:260px">
+          <label title="Fraction of the inner L×W×H volume that can actually hold items.">Packing Efficiency (0.1 – 1.0)</label>
+          <input type="number" step="0.05" min="0.1" max="1.0" value="${escapeHtml(String(d.innerPacking != null ? d.innerPacking : 0.75))}" oninput="invUpdateEditDraft('innerPacking',this.value)">
+          <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">1.0 = fitted case · 0.75 = typical bag · 0.5 = loose sack</div>
+        </div>
+      </div>`;
+    }
+
+    html += `<div class="inv-edit-panel-actions">
+      <button class="inv-add-btn" onclick="invSaveEntryEdit()">Save</button>
+      <button class="inv-add-btn inv-add-btn-ghost" onclick="invCancelEntryEdit()">Cancel</button>
+    </div>`;
+
+    html += `</div>`;
+    return html;
+  }
+
+  // Open the edit panel for a given entry. Copies the entry's snapshot
+  // into a draft object so the user can tweak without mutating the
+  // persisted data until Save is clicked.
+  function openEntryEdit(entryId) {
+    if (!getCanEdit()) return;
+    const entry = findEntry(entryId);
+    if (!entry) return;
+    const snap = entrySnapshot(entry);
+    const isContainer = entryIsContainer(entry);
+    const dims = snap.dimensions || { l: 0, w: 0, h: 0 };
+    const innerDims = (snap.containerOf && snap.containerOf.dimensions) || { l: 0, w: 0, h: 0 };
+    editDraft = {
+      name:         snap.name || '',
+      description:  snap.description || '',
+      weight:       snap.weight || 0,
+      l:            dims.l || 0,
+      w:            dims.w || 0,
+      h:            dims.h || 0,
+      isContainer,
+      innerL:       innerDims.l || 0,
+      innerW:       innerDims.w || 0,
+      innerH:       innerDims.h || 0,
+      innerPacking: (snap.containerOf && Number.isFinite(snap.containerOf.packingEfficiency))
+        ? snap.containerOf.packingEfficiency
+        : 0.75
+    };
+    editingEntryId = entryId;
+    renderAll();
+  }
+
+  // Patch a single field in the edit draft as the user types. Numeric
+  // fields get coerced; text fields pass through. Does NOT re-render —
+  // the inputs are self-managing and re-rendering would steal focus.
+  function updateEditDraft(field, value) {
+    if (!editDraft) return;
+    const numericFields = new Set(['weight','l','w','h','innerL','innerW','innerH','innerPacking']);
+    if (numericFields.has(field)) {
+      const n = parseFloat(value);
+      editDraft[field] = Number.isFinite(n) && n >= 0 ? n : 0;
+    } else {
+      editDraft[field] = typeof value === 'string' ? value : '';
+    }
+  }
+
+  // Commit the draft back to the entry's snapshot and save.
+  async function saveEntryEdit() {
+    if (!editDraft || !editingEntryId) return;
+    const entry = findEntry(editingEntryId);
+    if (!entry) { cancelEntryEdit(); return; }
+    const d = editDraft;
+
+    // Build the new snapshot from the draft. containerOf is included
+    // only when the entry was already a container (we don't promote/
+    // demote container-ness from the inline edit panel — that's too
+    // surprising a change to make here; user should remove and re-add).
+    const newSnapshot = {
+      name:           (d.name || '').trim() || '(unnamed)',
+      description:    (d.description || '').trim(),
+      dimensions:     { l: d.l || 0, w: d.w || 0, h: d.h || 0 },
+      weight:         d.weight || 0,
+      containerOf:    d.isContainer ? {
+        dimensions:        { l: d.innerL || 0, w: d.innerW || 0, h: d.innerH || 0 },
+        packingEfficiency: clampEff(d.innerPacking, 0.75)
+      } : null,
+      legacyCategory: (entry.snapshot && entry.snapshot.legacyCategory) || ''
+    };
+    entry.snapshot = newSnapshot;
+
+    editingEntryId = null;
+    editDraft = null;
+    renderAll();
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
+  // Discard the draft and close the panel. No save call.
+  function cancelEntryEdit() {
+    editingEntryId = null;
+    editDraft = null;
+    renderAll();
   }
 
   // ─── MODALS: ADD CONTAINER / ADD ITEM ───
@@ -2236,7 +2429,12 @@ export function createInventorySection(ctx) {
     catalogToggleAddMenu,
     catalogQuickAdd,
     catalogAddTo,
-    catalogAddToNewGroup
+    catalogAddToNewGroup,
+    // Inline entry edit
+    openEntryEdit,
+    updateEditDraft,
+    saveEntryEdit,
+    cancelEntryEdit
   };
 }
 
