@@ -1843,11 +1843,94 @@
     /* ═══ INVENTORY / CATALOG VIEW TOGGLE ═══
      * Top-right header bar inside the Inventory tab. Two buttons, only
      * one active. Same visual language as the sheet's top-level tabs so
-     * it reads as "sub-tab". */
-    .inv-view-toggle { display: flex; justify-content: flex-end; gap: 4px; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid #1a1a1a; }
+     * it reads as "sub-tab". Manage Catalogue button sits on the right. */
+    .inv-view-toggle { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid #1a1a1a; flex-wrap: wrap; }
+    .inv-view-toggle-left { display: flex; gap: 4px; }
     .inv-view-btn { background: transparent; border: 1px solid #1a1a1a; color: #888; font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 500; padding: 6px 16px; border-radius: 3px; cursor: pointer; letter-spacing: .04em; text-transform: uppercase; }
     .inv-view-btn:hover { background: #111; color: #ccc; border-color: #2a2a2a; }
     .inv-view-btn.on { background: #1a1a1a; color: #e0e0e0; border-color: #3a3a3a; cursor: default; }
+
+    .inv-manage-btn { background: transparent; border: 1px solid #2a2010; color: #caa060; font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 500; padding: 6px 14px; border-radius: 3px; cursor: pointer; letter-spacing: .04em; transition: all .1s; }
+    .inv-manage-btn:hover { background: #1a1406; border-color: #3a2c10; color: #e0b870; }
+
+    /* ═══ MANAGE PERSONAL CATALOGUE MODAL ═══
+     * Wider than the picker modals since cards have full edit forms.
+     * Cards are collapsible with a head row (name + dims + weight +
+     * delete) and an expanded body (full edit form). */
+    .inv-modal-manage { max-width: 720px; }
+    .inv-manage-card { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 4px; margin-bottom: 6px; overflow: hidden; transition: border-color .1s; }
+    .inv-manage-card:hover { border-color: #2a2a2a; }
+    .inv-manage-card.open { border-color: #3a2c10; background: #0d0a02; }
+    .inv-manage-card-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; user-select: none; }
+    .inv-manage-card.open .inv-manage-card-head { border-bottom: 1px solid #2a2010; }
+    .inv-manage-card-caret { font-size: 10px; color: #888; width: 10px; display: inline-block; }
+    .inv-manage-card-name { flex: 1; font-size: 13px; font-weight: 500; color: #e0e0e0; display: flex; align-items: center; gap: 8px; }
+    .inv-manage-card-name.empty { color: #555; font-style: italic; }
+    .inv-manage-card-dims { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #777; font-variant-numeric: tabular-nums; }
+    .inv-manage-card-weight { font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; color: #aaa; font-variant-numeric: tabular-nums; font-weight: 500; }
+
+    .inv-manage-card-body { padding: 12px 14px; background: #0a0802; }
+    .inv-manage-card-body .inv-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+    .inv-manage-card-body .inv-field label { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; }
+    .inv-manage-card-body .inv-field input, .inv-manage-card-body .inv-field textarea {
+      background: #0a0a0a; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 9px;
+      border-radius: 3px; outline: none; width: 100%;
+    }
+    .inv-manage-card-body .inv-field input:focus, .inv-manage-card-body .inv-field textarea:focus { border-color: #5a4820; }
+    .inv-manage-card-body .inv-field textarea { resize: vertical; min-height: 44px; line-height: 1.5; }
+    .inv-manage-card-body .inv-dims-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .inv-manage-card-body .inv-dims-row input { text-align: center; font-family: 'Consolas', 'Courier New', monospace; }
+    .inv-manage-card-body .inv-pair-row { display: grid; grid-template-columns: 140px 1fr; gap: 14px; }
+    .inv-manage-card-body .inv-container-block { border: 1px dashed #2a2010; border-radius: 4px; padding: 10px 12px; margin-top: 6px; background: #050401; }
+    .inv-manage-card-body .inv-container-block-title { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #caa060; margin-bottom: 8px; }
+    .inv-manage-card-body .inv-toggle-row { display: flex; align-items: center; gap: 10px; margin: 4px 0 10px; }
+    .inv-manage-card-body .inv-toggle { background: #0a0a0a; border: 1px solid #222; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 10px; border-radius: 3px; cursor: pointer; user-select: none; }
+    .inv-manage-card-body .inv-toggle.on { background: #1a2010; border-color: #3a4820; color: #cfe3a6; }
+    .inv-manage-card-body .inv-toggle-hint { font-size: 10px; color: #666; font-style: italic; }
+
+    .inv-manage-add-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 4px 4px; margin-top: 14px; border-top: 1px solid #1a1a1a; }
+    .inv-manage-add-hint { font-size: 10px; color: #666; font-style: italic; flex: 1; min-width: 180px; }
+
+    /* Empty state shown when the personal catalogue has no defs yet. */
+    .inv-cat-mgr-empty { font-size: 12px; color: #888; line-height: 1.55; padding: 24px 20px; text-align: center; font-style: italic; }
+
+    /* Section labels inside the manager — "Containers" and "Items"
+     * split the rows into groups so the modal doesn't read as a
+     * single undifferentiated pile. Count pill on the right. */
+    .inv-cat-mgr-section-label { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #caa060; padding: 12px 4px 6px; margin-top: 6px; border-top: 1px solid #2a2010; display: flex; align-items: center; gap: 8px; }
+    .inv-cat-mgr-section-label:first-child { border-top: none; margin-top: 0; padding-top: 4px; }
+    .inv-cat-mgr-section-count { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #776040; font-weight: 500; letter-spacing: 0; }
+
+    /* Pills in the row head — container (green) and "on sheet"
+     * reference counter (muted amber). */
+    .inv-cat-mgr-container-pill { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #8a8; background: #0a1a0a; border: 1px solid #2a4a2a; padding: 1px 6px; border-radius: 2px; flex-shrink: 0; }
+    .inv-cat-mgr-ref-pill { font-size: 9px; font-weight: 500; color: #caa060; background: #0d0a02; border: 1px solid #2a2010; padding: 1px 6px; border-radius: 2px; flex-shrink: 0; cursor: help; font-family: 'Consolas', 'Courier New', monospace; letter-spacing: 0; text-transform: none; }
+
+    /* Inline "new def" form rendered at the top of the manager when
+     * the user clicks + New Container / + New Item. Similar visual
+     * language to the card-body editor but with a distinct header
+     * so the user knows this is a create flow, not an edit. */
+    .inv-cat-mgr-new-form { background: #0d0a02; border: 1px solid #3a2c10; border-radius: 4px; padding: 14px; margin-bottom: 14px; }
+    .inv-cat-mgr-new-title { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #caa060; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #2a2010; }
+    .inv-cat-mgr-new-form .inv-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+    .inv-cat-mgr-new-form .inv-field label { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; }
+    .inv-cat-mgr-new-form .inv-field input, .inv-cat-mgr-new-form .inv-field textarea {
+      background: #0a0a0a; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 9px;
+      border-radius: 3px; outline: none; width: 100%;
+    }
+    .inv-cat-mgr-new-form .inv-field input:focus, .inv-cat-mgr-new-form .inv-field textarea:focus { border-color: #5a4820; }
+    .inv-cat-mgr-new-form .inv-field textarea { resize: vertical; min-height: 44px; line-height: 1.5; }
+    .inv-cat-mgr-new-form .inv-dims-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .inv-cat-mgr-new-form .inv-dims-row input { text-align: center; font-family: 'Consolas', 'Courier New', monospace; }
+    .inv-cat-mgr-new-form .inv-pair-row { display: grid; grid-template-columns: 140px 1fr; gap: 14px; }
+    .inv-cat-mgr-new-form .inv-container-block { border: 1px dashed #2a2010; border-radius: 4px; padding: 10px 12px; margin-top: 6px; background: #050401; }
+    .inv-cat-mgr-new-form .inv-container-block-title { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #caa060; margin-bottom: 8px; }
+    .inv-cat-mgr-new-form .inv-toggle-row { display: flex; align-items: center; gap: 10px; margin: 4px 0 10px; }
+    .inv-cat-mgr-new-form .inv-toggle { background: #0a0a0a; border: 1px solid #222; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 10px; border-radius: 3px; cursor: pointer; user-select: none; }
+    .inv-cat-mgr-new-form .inv-toggle.on { background: #1a2010; border-color: #3a4820; color: #cfe3a6; }
+    .inv-cat-mgr-new-form .inv-toggle-hint { font-size: 10px; color: #666; font-style: italic; }
 
     /* ═══ CATALOG VIEW ═══
      * Read-only tree of the ruleset's items grouped by category. Each
@@ -2517,6 +2600,18 @@
     invUpdateEditDraft:      (field, value)       => inventory.updateEditDraft(field, value),
     invSaveEntryEdit:        ()                   => inventory.saveEntryEdit(),
     invCancelEntryEdit:      ()                   => inventory.cancelEntryEdit(),
+    invOpenManageCatalog:    ()                   => inventory.openManageCatalog(),
+    invCatMgrClose:          ()                   => inventory.catMgrClose(),
+    invCatMgrCloseIfBackdrop:(ev)                 => inventory.catMgrCloseIfBackdrop(ev),
+    invCatMgrToggleRow:      (id)                 => inventory.catMgrToggleRow(id),
+    invCatMgrCollapseRow:    (id)                 => inventory.catMgrCollapseRow(id),
+    invCatMgrDraft:          (id, field, value)   => inventory.catMgrDraft(id, field, value),
+    invCatMgrSaveEdit:       (kind, id)           => inventory.catMgrSaveEdit(kind, id),
+    invCatMgrDelete:         (kind, id)           => inventory.catMgrDelete(kind, id),
+    invCatMgrStartNew:       (kind)               => inventory.catMgrStartNew(kind),
+    invCatMgrCancelNew:      ()                   => inventory.catMgrCancelNew(),
+    invCatMgrNewDraft:       (field, value)       => inventory.catMgrNewDraft(field, value),
+    invCatMgrSaveNew:        ()                   => inventory.catMgrSaveNew(),
     invTickQty:              (id, delta)          => inventory.tickQty(id, delta),
     invRemoveEntry:          (id)                 => inventory.removeEntry(id),
     // Sheet tab switcher (Overview / Combat / Inventory folder tabs)
