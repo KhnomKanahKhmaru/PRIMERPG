@@ -1805,6 +1805,99 @@
     .inv-modal-custom-row { display: flex; align-items: center; gap: 10px; padding: 10px 4px 2px; margin-top: 8px; border-top: 1px solid #1a1a1a; }
     .inv-modal-custom-hint { font-size: 10px; color: #666; font-style: italic; }
 
+    /* ═══ INVENTORY / CATALOG VIEW TOGGLE ═══
+     * Top-right header bar inside the Inventory tab. Two buttons, only
+     * one active. Same visual language as the sheet's top-level tabs so
+     * it reads as "sub-tab". */
+    .inv-view-toggle { display: flex; justify-content: flex-end; gap: 4px; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid #1a1a1a; }
+    .inv-view-btn { background: transparent; border: 1px solid #1a1a1a; color: #888; font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 500; padding: 6px 16px; border-radius: 3px; cursor: pointer; letter-spacing: .04em; text-transform: uppercase; }
+    .inv-view-btn:hover { background: #111; color: #ccc; border-color: #2a2a2a; }
+    .inv-view-btn.on { background: #1a1a1a; color: #e0e0e0; border-color: #3a3a3a; cursor: default; }
+
+    /* ═══ CATALOG VIEW ═══
+     * Read-only tree of the ruleset's items grouped by category. Each
+     * category is collapsible; each item expands for detail. Visual
+     * language intentionally distinct from the inventory view so it
+     * reads as "this is browse, not manage." */
+    .cat-view-header { padding: 0 4px 14px; margin-bottom: 8px; border-bottom: 1px solid #1a1a1a; }
+    .cat-view-title { font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #cfe3f6; margin-bottom: 4px; }
+    .cat-view-sub { font-size: 11px; color: #777; line-height: 1.4; }
+
+    .cat-view-section { margin-bottom: 4px; }
+    .cat-view-section-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: #0e0e0e; border: 1px solid #1a1a1a; border-radius: 3px; cursor: pointer; user-select: none; transition: border-color .1s; }
+    .cat-view-section-head:hover { background: #131313; border-color: #2a2a2a; }
+    .cat-view-section-head.empty { opacity: 0.6; }
+    .cat-view-caret { font-size: 10px; color: #888; width: 10px; display: inline-block; }
+    .cat-view-name { flex: 1; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #ccc; }
+    .cat-view-count { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #777; font-variant-numeric: tabular-nums; }
+
+    /* "Custom" pseudo-section gets a subtle violet tint to mark it as
+     * character-local rather than ruleset-defined. */
+    .cat-view-section-custom .cat-view-section-head { border-color: #2a1a2a; background: #120a12; }
+    .cat-view-section-custom .cat-view-name { color: #c8a; }
+    .cat-view-custom-badge { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #a8c; background: #1a0a1a; border: 1px solid #3a2a3a; padding: 1px 6px; border-radius: 2px; }
+
+    .cat-view-desc { font-size: 11px; color: #888; line-height: 1.55; padding: 6px 10px 8px; font-style: italic; }
+    .cat-view-empty-row { font-size: 11px; color: #555; font-style: italic; padding: 4px 10px; }
+
+    /* Item rows */
+    .cat-view-item { margin: 3px 0 3px 18px; }
+    .cat-view-item-caret { font-size: 10px; color: #666; width: 10px; display: inline-block; }
+    .cat-view-item-name { flex: 1; font-size: 12px; font-weight: 500; color: #e0e0e0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cat-view-container-pill { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #6a9; background: #0a1a0a; border: 1px solid #2a4a2a; padding: 1px 6px; border-radius: 2px; flex-shrink: 0; }
+    .cat-view-item-custom { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #a8c; background: #1a0a1a; border: 1px solid #3a2a3a; padding: 1px 6px; border-radius: 2px; flex-shrink: 0; }
+    .cat-view-item-dims { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #777; font-variant-numeric: tabular-nums; white-space: nowrap; flex-shrink: 0; }
+    .cat-view-item-weight { font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; color: #aaa; font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 500; flex-shrink: 0; }
+
+    /* Detail panel (shown when item is expanded) */
+    .cat-view-item-detail { background: #0a0a0a; border: 1px solid #1a1a1a; border-top: none; border-radius: 0 0 3px 3px; padding: 10px 14px; margin-top: -1px; }
+    .cat-view-item-desc { font-size: 12px; color: #ccc; line-height: 1.55; white-space: pre-wrap; margin-bottom: 8px; }
+    .cat-view-item-cap, .cat-view-item-slot, .cat-view-item-legacy { font-size: 11px; color: #888; line-height: 1.5; margin: 3px 0; }
+    .cat-view-item-cap-label { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #777; margin-right: 6px; }
+    .cat-view-item-cap-val { font-family: 'Consolas', 'Courier New', monospace; font-variant-numeric: tabular-nums; color: #aaa; }
+    .cat-view-item-cap-val b { color: #e0e0e0; font-weight: 700; }
+
+    /* ═══ Catalog "+ Add" split button ═══
+     * Sits on the right of each item row. Left half is the quick-add;
+     * right half is a ▾ that opens the target dropdown. The row header
+     * uses flex; cat-view-item-main takes remaining width and the split
+     * button is fixed at the end. */
+    .cat-view-item-head { display: flex; align-items: center; gap: 0; }
+    .cat-view-item-main { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; padding: 5px 10px; background: #0d0d0d; border: 1px solid #1a1a1a; border-radius: 3px 0 0 3px; border-right: none; transition: border-color .1s, background .1s; }
+    .cat-view-item.expandable .cat-view-item-main { cursor: pointer; }
+    .cat-view-item.expandable .cat-view-item-main:hover { background: #131313; border-color: #2a2a2a; }
+    .cat-view-item.open > .cat-view-item-head > .cat-view-item-main { border-color: #3a3a3a; background: #151515; }
+
+    /* Split-button container */
+    .cat-view-add-split { display: flex; flex-shrink: 0; border: 1px solid #1a1a1a; border-radius: 0 3px 3px 0; overflow: hidden; background: #0d0d0d; }
+    .cat-view-add-btn { background: transparent; border: none; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 500; padding: 5px 10px; cursor: pointer; letter-spacing: .02em; transition: background .1s, color .1s; }
+    .cat-view-add-btn:hover { background: #1a2a1a; color: #cfe3cf; }
+    .cat-view-add-drop { background: transparent; border: none; border-left: 1px solid #1a1a1a; color: #777; font-family: 'Open Sans', sans-serif; font-size: 11px; width: 24px; padding: 0; cursor: pointer; transition: background .1s, color .1s; }
+    .cat-view-add-drop:hover { background: #1a1a1a; color: #ccc; }
+    .cat-view-add-drop.open { background: #1a1a1a; color: #e0e0e0; }
+
+    /* Add-target dropdown menu — renders inline in the row's DOM, but
+     * visually sits as a floating panel below. Uses margin-top offset
+     * to sit flush with the button. Max-height + overflow so a ruleset
+     * with many containers doesn't push the whole catalog around. */
+    .cat-view-add-menu { background: #111; border: 1px solid #2a2a2a; border-radius: 3px; padding: 6px 0; margin: 2px 0 8px auto; max-width: 340px; max-height: 360px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.6); }
+    .cat-view-add-menu-label { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #666; padding: 4px 12px 8px; border-bottom: 1px solid #1a1a1a; }
+    .cat-view-add-menu-section { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; padding: 8px 12px 4px; }
+    .cat-view-add-menu-opt { font-size: 12px; color: #ccc; padding: 6px 14px; cursor: pointer; transition: background .08s, color .08s; }
+    .cat-view-add-menu-opt:hover { background: #1a2a1a; color: #fff; }
+    .cat-view-add-menu-opt-new { color: #8a9; font-style: italic; }
+    .cat-view-add-menu-opt-new:hover { background: #0a1a0a; color: #cfe3cf; }
+    .cat-view-add-menu-divider { height: 1px; background: #1a1a1a; margin: 6px 0; }
+
+    /* Toast confirmation for catalog adds */
+    .inv-add-toast { background: #0f2418; border: 1px solid #2a4a2a; color: #cfe3cf; font-size: 11px; font-weight: 500; padding: 8px 14px; border-radius: 4px; margin-bottom: 10px; animation: inv-toast-fade 3s ease-out forwards; }
+    @keyframes inv-toast-fade {
+      0%   { opacity: 0; transform: translateY(-4px); }
+      8%   { opacity: 1; transform: translateY(0); }
+      80%  { opacity: 1; }
+      100% { opacity: 0; }
+    }
+
   </style>
 </head>
 <body>
@@ -2378,6 +2471,13 @@
     invUpdateCustomDraft:    (field, value)       => inventory.updateCustomDraft(field, value),
     invSaveCustomDef:        ()                   => inventory.saveCustomDef(),
     invDeleteCustomDef:      (kind, defId)        => inventory.deleteCustomDef(kind, defId),
+    invSetViewMode:          (mode)               => inventory.setViewMode(mode),
+    invToggleCatalogCat:     (id)                 => inventory.toggleCatalogCat(id),
+    invToggleCatalogItem:    (id)                 => inventory.toggleCatalogItem(id),
+    invCatalogToggleAddMenu: (id)                 => inventory.catalogToggleAddMenu(id),
+    invCatalogQuickAdd:      (id)                 => inventory.catalogQuickAdd(id),
+    invCatalogAddTo:         (itemId, kind, tid)  => inventory.catalogAddTo(itemId, kind, tid),
+    invCatalogAddToNewGroup: (id)                 => inventory.catalogAddToNewGroup(id),
     invTickQty:              (id, delta)          => inventory.tickQty(id, delta),
     invRemoveEntry:          (id)                 => inventory.removeEntry(id),
     // Sheet tab switcher (Overview / Combat / Inventory folder tabs)
