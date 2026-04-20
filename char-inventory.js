@@ -1274,9 +1274,15 @@ export function createInventorySection(ctx) {
   // contributes to all three tallies.
 
   function tallyEntry(entry) {
-    const def = getDefForEntry(entry);
+    // Weight comes from the entry's snapshot (the post-Turn-A source of
+    // truth). Reading from the def would miss:
+    //   1. One-off custom items (defId is null; no def to read)
+    //   2. Edited entries whose snapshot diverged from the def
+    //   3. Entries whose def was deleted from the catalogue
+    // entryWeight() handles all three — falls through from snapshot to
+    // def to zero.
     const qty = entry.quantity || 1;
-    let weight = def ? (def.weight || 0) * qty : 0;
+    let weight = entryWeight(entry) * qty;
     let count = qty;
     if (Array.isArray(entry.contents)) {
       entry.contents.forEach(c => {
