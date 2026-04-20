@@ -155,56 +155,101 @@ export function createInventorySection(ctx) {
     return getItemDef(entry.defId);
   }
 
-  // An entry "is a container" if its def has a containerOf block.
-  // defKind is no longer consulted for this — the def's shape is
-  // authoritative. This correctly handles:
-  //   - Ruleset items with containerOf = container
-  //   - Ruleset items without containerOf = plain item
-  //   - Character custom defs follow the same rule
-  //   - Legacy entries with defKind='container' (migrated defs now
-  //     have containerOf synthesized from old top-level dims)
+  // ─── SNAPSHOT-FIRST ACCESSORS ───
   //
-  // FALLBACK: if the def is missing (ruleset edited out from under us,
-  // stale cache, etc.), trust the entry's own metadata — `defKind`
-  // set at add-time and/or a `contents` array on the entry itself.
-  // This keeps pre-existing containers renderable-as-containers even
-  // if their def resolution temporarily fails. Without this fallback,
-  // a stale def lookup silently flips a container into an item, which
-  // shows only a description and hides the + buttons.
+  // Entries carry a `snapshot` object that holds name, dimensions,
+  // weight, description, and containerOf. This is the source of truth
+  // for display and calculations. The def is only consulted as a
+  // fallback for legacy entries that haven't been snapshot-migrated,
+  // or to look up external references (like the ruleset category tree).
+  //
+  // Every accessor below reads from snapshot first, falls through to
+  // the def as a safety net. Post-migration the fallback should never
+  // fire, but it keeps us robust against mid-render migration gaps.
+
+  function entrySnapshot(entry) {
+    if (entry && entry.snapshot) return entry.snapshot;
+    // Synthesize a snapshot on-the-fly if missing — used as a last
+    // resort so accessors never return null fields.
+    const def = getDefForEntry(entry);
+    if (def) {
+      return {
+        name:         def.name || '',
+        description:  def.description || '',
+        dimensions:   def.dimensions || { l: 0, w: 0, h: 0 },
+        weight:       def.weight || 0,
+        containerOf:  def.containerOf || null,
+        legacyCategory: def.legacyCategory || def.category || ''
+      };
+    }
+    return {
+      name: '(unknown item)',
+      description: '',
+      dimensions: { l: 0, w: 0, h: 0 },
+      weight: 0,
+      containerOf: null,
+      legacyCategory: ''
+    };
+  }
+
+  // An entry "is a container" if its snapshot has a containerOf block.
+  // Falls back to def and entry metadata for safety against missing
+  // snapshot (e.g. pre-migration legacy entries loaded mid-transaction).
   function entryIsContainer(entry) {
     if (!entry) return false;
+    const snap = entry.snapshot;
+    if (snap && snap.containerOf) return true;
+    if (snap) return false;   // snapshot exists and explicitly has no containerOf
+    // No snapshot — fall back to def + legacy signals.
     const def = getDefForEntry(entry);
     if (def && def.containerOf) return true;
-    // Fallback paths — used when the def lookup fails OR returns a
-    // def that no longer has containerOf. Trusts the entry.
     if (entry.defKind === 'container') return true;
     if (Array.isArray(entry.contents)) return true;
     return false;
   }
 
-  // Get the inner container spec (dimensions + packingEfficiency) from
-  // an entry that is a container. After migration, every container's
-  // capacity lives in def.containerOf. For legacy defs that still
-  // expose top-level dimensions/packingEfficiency (migration safety),
-  // we fall back to those if containerOf is missing.
+  // Inner container spec (dimensions + packingEfficiency). Reads from
+  // the snapshot's containerOf. Legacy fallback for entries without
+  // snapshots, matching the old behavior.
   function innerSpec(entry) {
+    const snap = entry && entry.snapshot;
+    if (snap && snap.containerOf) return snap.containerOf;
+    // Fallback for pre-migration entries.
     const def = getDefForEntry(entry);
     if (!def) return null;
     if (def.containerOf) return def.containerOf;
-    // Legacy fallback — shouldn't happen post-migration but defensive.
     if (def.packingEfficiency != null) {
       return { dimensions: def.dimensions, packingEfficiency: def.packingEfficiency };
     }
     return null;
   }
 
-  // Display name: custom rename wins, otherwise def name. Falls back to
-  // a placeholder if the def has since been deleted from the ruleset
-  // (avoids blanking out everything when a GM cleans up the catalog).
+  // Display name. Priority: explicit customName (player rename) →
+  // snapshot.name → def.name → placeholder. Edits to a container's name
+  // via the pencil icon go into snapshot.name, not customName, so
+  // customName is mostly unused going forward but preserved for any
+  // legacy entries that set it.
   function entryName(entry) {
     if (entry.customName && entry.customName.trim()) return entry.customName.trim();
+    const snap = entry.snapshot;
+    if (snap && snap.name) return snap.name;
     const def = getDefForEntry(entry);
     return def && def.name ? def.name : '(missing def)';
+  }
+
+  // Convenience: entry's own dimensions. Reads snapshot.dimensions.
+  function entryDimensions(entry) {
+    return entrySnapshot(entry).dimensions || { l: 0, w: 0, h: 0 };
+  }
+
+  // Convenience: entry's own weight.
+  function entryWeight(entry) {
+    return entrySnapshot(entry).weight || 0;
+  }
+
+  // Convenience: entry's own description.
+  function entryDescription(entry) {
+    return entrySnapshot(entry).description || '';
   }
 
   // ─── OVERFLOW COMPUTATION ───
@@ -224,10 +269,10 @@ export function createInventorySection(ctx) {
   // }
 
   function computeContainerStats(entry) {
-    const def = getDefForEntry(entry);
     const spec = innerSpec(entry);
+    const ownWeight = entryWeight(entry);
     const result = {
-      totalWeight:     (def && def.weight) ? def.weight * (entry.quantity || 1) : 0,
+      totalWeight:     ownWeight * (entry.quantity || 1),
       usedVolume:      0,
       availableVolume: 0,
       volumeOver:      false,
@@ -245,9 +290,9 @@ export function createInventorySection(ctx) {
 
     const contents = Array.isArray(entry.contents) ? entry.contents : [];
     contents.forEach(child => {
-      const cdef = getDefForEntry(child);
-      if (!cdef) return;
-      const cd = cdef.dimensions || { l: 0, w: 0, h: 0 };
+      // Read dimensions/weight from the child's snapshot, not from
+      // its def — children carry their own data post-migration.
+      const cd = entryDimensions(child);
       const qty = child.quantity || 1;
 
       // Volume and weight contribution. Both stack with quantity — carrying
@@ -276,7 +321,7 @@ export function createInventorySection(ctx) {
         const sub = computeContainerStats(child);
         result.totalWeight += sub.totalWeight;
       } else {
-        result.totalWeight += (cdef.weight || 0) * qty;
+        result.totalWeight += entryWeight(child) * qty;
       }
     });
 
@@ -370,7 +415,124 @@ export function createInventorySection(ctx) {
       return true;
     });
 
+    // ── SNAPSHOT MIGRATION ──
+    //
+    // Every entry now carries a `snapshot` object — its own copy of the
+    // def's name, dimensions, weight, description, and containerOf at
+    // the moment of placement. Entries use this for display/calculation
+    // rather than looking up the def each time. Result: deleting a def
+    // (custom or ruleset) doesn't strand entries as "(deleted def)" —
+    // they keep their own data.
+    //
+    // Legacy entries (placed before this migration) have no snapshot.
+    // For those, look up the def and populate the snapshot from it.
+    // If the def is also missing, we build a minimal snapshot with
+    // "(unknown item)" placeholders so the entry still renders.
+    //
+    // Idempotent: entries with a snapshot already are left alone.
+    migrateSnapshots(inv);
+
     return inv;
+  }
+
+  // Walk every entry in the inventory tree and ensure it has a
+  // `snapshot` field. See ensureInventory for rationale.
+  function migrateSnapshots(inv) {
+    const ruleset = getRuleset ? getRuleset() : null;
+    const visit = (arr) => {
+      if (!Array.isArray(arr)) return;
+      arr.forEach(entry => {
+        if (entry && typeof entry === 'object') {
+          if (!entry.snapshot) {
+            entry.snapshot = buildSnapshotFromDef(entry, ruleset, inv);
+          }
+          // Recurse into container contents, regardless of snapshot
+          // presence, so nested legacy entries get migrated too.
+          if (Array.isArray(entry.contents)) visit(entry.contents);
+        }
+      });
+    };
+    (inv.groups || []).forEach(g => {
+      if (g.kind === 'custom') visit(g.contents);
+    });
+    Object.keys(inv.bySlot || {}).forEach(slotCode => visit(inv.bySlot[slotCode]));
+  }
+
+  // Build a snapshot object for an entry by looking up its def in the
+  // ruleset + customDefs. Used during migration of legacy entries AND
+  // during instantiation of new ones. Deep-copies dimensions and
+  // containerOf so snapshot edits don't mutate shared def references.
+  function buildSnapshotFromDef(entry, ruleset, inv) {
+    const def = findDefInSources(entry.defId, ruleset, inv);
+    if (def) {
+      // Determine containerOf. Three possible def shapes:
+      //   1. Unified ruleset item with `containerOf` block — use it.
+      //   2. Legacy pure-container with top-level `packingEfficiency`
+      //      and no explicit containerOf — synthesize containerOf from
+      //      dimensions + packingEfficiency (they represent the inner
+      //      capacity in the old schema).
+      //   3. Plain item — null.
+      let containerOf = null;
+      if (def.containerOf) {
+        containerOf = {
+          dimensions:        deepCopyDims(def.containerOf.dimensions),
+          packingEfficiency: Number.isFinite(def.containerOf.packingEfficiency) ? def.containerOf.packingEfficiency : 0.75
+        };
+      } else if (def.packingEfficiency != null) {
+        containerOf = {
+          dimensions:        deepCopyDims(def.dimensions),
+          packingEfficiency: Number.isFinite(def.packingEfficiency) ? def.packingEfficiency : 0.75
+        };
+      }
+      return {
+        name:          def.name || '',
+        description:   def.description || '',
+        dimensions:    deepCopyDims(def.dimensions),
+        weight:        Number.isFinite(def.weight) ? def.weight : 0,
+        containerOf,
+        // Legacy category string preserved so weapon-linkage etc. can
+        // still resolve if needed. defaultSlot NOT snapshotted because
+        // it's only useful during catalog-add.
+        legacyCategory: def.legacyCategory || def.category || ''
+      };
+    }
+    // Def is missing entirely — build a minimal placeholder snapshot
+    // so the entry still renders with a recognizable name.
+    return {
+      name:          '(unknown item)',
+      description:   '',
+      dimensions:    { l: 0, w: 0, h: 0 },
+      weight:        0,
+      containerOf:   entry.defKind === 'container' || Array.isArray(entry.contents) ? {
+        dimensions: { l: 0, w: 0, h: 0 },
+        packingEfficiency: 0.75
+      } : null,
+      legacyCategory: ''
+    };
+  }
+
+  // Helper: find a def across ruleset.items + customDefs.{containers,equipment}.
+  // Returns null if no match. Same logic as getItemDef but without
+  // requiring the module's context getters — used by migrations that
+  // may run before the full module is wired up.
+  function findDefInSources(defId, ruleset, inv) {
+    if (!defId) return null;
+    const fromRuleset = ((ruleset && ruleset.items) || []).find(x => x.id === defId);
+    if (fromRuleset) return fromRuleset;
+    const fromEq   = ((inv && inv.customDefs && inv.customDefs.equipment)  || []).find(x => x.id === defId);
+    if (fromEq) return fromEq;
+    const fromCont = ((inv && inv.customDefs && inv.customDefs.containers) || []).find(x => x.id === defId);
+    if (fromCont) return fromCont;
+    return null;
+  }
+
+  function deepCopyDims(d) {
+    if (!d || typeof d !== 'object') return { l: 0, w: 0, h: 0 };
+    return {
+      l: Number.isFinite(d.l) ? d.l : 0,
+      w: Number.isFinite(d.w) ? d.w : 0,
+      h: Number.isFinite(d.h) ? d.h : 0
+    };
   }
 
   // Walk the inventory tree, calling visit(entry) for each item/container
@@ -1011,10 +1173,16 @@ export function createInventorySection(ctx) {
   }
 
   function renderContainerEntry(entry, depth, canEdit) {
+    // Post-snapshot, we can render an entry even when its def is gone
+    // from the ruleset/customDefs — the snapshot carries all the
+    // display data. Only fall back to the placeholder if we have
+    // literally no snapshot AND no def (shouldn't happen after
+    // ensureInventory has run, but defensive).
     const def = getDefForEntry(entry);
-    if (!def) {
+    const snap = entry.snapshot;
+    if (!def && !snap) {
       return `<div class="inv-entry inv-entry-missing" style="margin-left:${depth * 16}px">
-        <span class="inv-entry-name">(deleted def: ${escapeHtml(entry.defId || '')})</span>
+        <span class="inv-entry-name">(no data: ${escapeHtml(entry.defId || '')})</span>
         ${canEdit ? `<button class="inv-row-btn" onclick="invRemoveEntry('${escapeHtml(entry.id)}')">Remove</button>` : ''}
       </div>`;
     }
@@ -1024,7 +1192,10 @@ export function createInventorySection(ctx) {
     const spec = innerSpec(entry);
     const dims = (spec && spec.dimensions) || { l: 0, w: 0, h: 0 };
     const name = entryName(entry);
-    const outerDims = def.dimensions || { l: 0, w: 0, h: 0 };
+    // Outer dimensions come from the entry's own snapshot — this lets
+    // in-sheet edits change just this instance's size without touching
+    // other instances of the same def.
+    const outerDims = entryDimensions(entry);
     const hasOverflow = stats.volumeOver || stats.dimIssues.length > 0;
 
     let badge = '';
@@ -1094,26 +1265,34 @@ export function createInventorySection(ctx) {
   }
 
   function renderItemEntry(entry, depth, canEdit) {
+    // Post-snapshot, we can render even with no def. Placeholder only
+    // fires in pathological cases (no snapshot AND no def).
     const def = getDefForEntry(entry);
-    if (!def) {
+    const snap = entry.snapshot;
+    if (!def && !snap) {
       return `<div class="inv-entry inv-entry-missing" style="margin-left:${depth * 16}px">
-        <span class="inv-entry-name">(deleted def: ${escapeHtml(entry.defId || '')})</span>
+        <span class="inv-entry-name">(no data: ${escapeHtml(entry.defId || '')})</span>
         ${canEdit ? `<button class="inv-row-btn" onclick="invRemoveEntry('${escapeHtml(entry.id)}')">Remove</button>` : ''}
       </div>`;
     }
 
     const name = entryName(entry);
-    const dims = def.dimensions || { l: 0, w: 0, h: 0 };
+    const dims = entryDimensions(entry);
     const qty = entry.quantity || 1;
-    const totalWeight = (def.weight || 0) * qty;
-    const catLabel = def.category ? ` · ${def.category}` : '';
-    const hasInfo = !!((def.description && def.description.trim()) || (entry.notes && entry.notes.trim()));
+    const totalWeight = entryWeight(entry) * qty;
+    // Legacy category string — only ruleset items carry this.
+    // Prefer snapshot's copy, fall back to def.category for very old
+    // pre-snapshot data.
+    const legacyCat = (snap && snap.legacyCategory) || (def && def.category) || '';
+    const catLabel = legacyCat ? ` · ${legacyCat}` : '';
+    const description = entryDescription(entry);
+    const hasInfo = !!((description && description.trim()) || (entry.notes && entry.notes.trim()));
     const infoOpen = expandedInfo.has(entry.id);
 
     // Hover tooltip: first ~80 chars of description as a title attribute
     // on the name. Full description shows when the row is clicked.
     const tooltip = hasInfo
-      ? escapeHtml(truncate((def.description || entry.notes || '').replace(/\s+/g, ' ').trim(), 80))
+      ? escapeHtml(truncate((description || entry.notes || '').replace(/\s+/g, ' ').trim(), 80))
       : '';
     // If there's info to show, the name is clickable to toggle the
     // expanded panel. If not, the row is purely informational.
@@ -1139,7 +1318,7 @@ export function createInventorySection(ctx) {
       </div>`;
 
     if (infoOpen && hasInfo) {
-      const desc = (def.description || '').trim();
+      const desc = (description || '').trim();
       const notes = (entry.notes || '').trim();
       html += `<div class="inv-entry-info">`;
       if (desc) {
@@ -1565,12 +1744,19 @@ export function createInventorySection(ctx) {
   // message describing where it went.
   async function catalogPlaceItem(def, target) {
     const inv = ensureInventory();
+    const ruleset = getRuleset();
     const defKind = def.containerOf ? 'container' : 'equipment';
+    // Snapshot is baked at placement time. The `def` argument itself
+    // is the current def — we pass a synthetic entry with just the
+    // defId to buildSnapshotFromDef, which re-resolves it against the
+    // current ruleset/customDefs. This keeps the snapshot logic in one
+    // place rather than duplicating the field-copying here.
     const newEntry = {
       id: _nextId(),
       defId: def.id,
       defKind,
-      quantity: 1
+      quantity: 1,
+      snapshot: buildSnapshotFromDef({ defId: def.id }, ruleset, inv)
     };
     if (def.containerOf) newEntry.contents = [];
 
@@ -1933,11 +2119,16 @@ export function createInventorySection(ctx) {
   // container array based on targetKind, saves.
   async function instantiateAndPlace(defKind, defId, isContainerRole) {
     const inv = ensureInventory();
+    const ruleset = getRuleset();
+    // Build the new entry with its snapshot baked in right away. The
+    // snapshot is what the sheet reads for display + calculation, so
+    // future def edits/deletes don't affect this instance.
     const newEntry = {
       id: _nextId(),
       defId,
       defKind,
-      quantity: 1
+      quantity: 1,
+      snapshot: buildSnapshotFromDef({ defId }, ruleset, inv)
     };
     if (isContainerRole) newEntry.contents = [];
 
