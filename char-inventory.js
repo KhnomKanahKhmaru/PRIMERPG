@@ -93,6 +93,30 @@ export function createInventorySection(ctx) {
   let editingEntryId = null;
   let editDraft = null;
 
+  // Personal Catalogue manager. Separate from activeModal (the picker)
+  // because they have nothing in common and shouldn't share state.
+  //
+  // When open, the manager is a modal overlay with a list of all the
+  // character's custom defs. Each can be inline-edited (same semantics
+  // as the entry edit panel, but against the def instead of an entry's
+  // snapshot). New defs can be added. Deleting a def here uses the
+  // instance-preserving delete — existing sheet entries keep their
+  // snapshot data.
+  //
+  // Shape:
+  //   open:             boolean
+  //   expandedDefIds:   Set<string>   (which rows are expanded for editing)
+  //   drafts:           Map<id, draft>  (per-def working drafts)
+  //   newDraft:         draft | null   (inline "create new" form state)
+  //   newKind:          'container' | 'equipment' | null
+  let catalogManager = {
+    open: false,
+    expandedDefIds: new Set(),
+    drafts: new Map(),
+    newDraft: null,
+    newKind: null
+  };
+
   // View mode: 'inventory' shows the character's actual kit (groups +
   // slots + items they own). 'catalog' shows the read-only ruleset
   // catalog — every item the ruleset defines, organized by category.
@@ -620,10 +644,15 @@ export function createInventorySection(ctx) {
 
     // View toggle header: always at the top, switches between the
     // character's actual inventory and the read-only ruleset catalog.
-    // Buttons are mutually exclusive — the active one gets the 'on' class.
+    // Owner-only Manage Catalogue button floats to the right; it opens
+    // a modal for CRUD on the character's personal catalogue (custom
+    // defs) without needing to go through the Add → + Custom flow.
     let html = `<div class="inv-view-toggle">
-      <button class="inv-view-btn${viewMode === 'inventory' ? ' on' : ''}" onclick="invSetViewMode('inventory')">Inventory</button>
-      <button class="inv-view-btn${viewMode === 'catalog'   ? ' on' : ''}" onclick="invSetViewMode('catalog')">Catalog</button>
+      <div class="inv-view-toggle-left">
+        <button class="inv-view-btn${viewMode === 'inventory' ? ' on' : ''}" onclick="invSetViewMode('inventory')">Inventory</button>
+        <button class="inv-view-btn${viewMode === 'catalog'   ? ' on' : ''}" onclick="invSetViewMode('catalog')">Catalog</button>
+      </div>
+      ${canEdit ? `<button class="inv-manage-btn" onclick="invOpenManageCatalog()" title="Create, edit, and delete items in your personal catalogue for this character.">Manage Personal Catalogue</button>` : ''}
     </div>`;
 
     if (viewMode === 'catalog') {
@@ -655,9 +684,25 @@ export function createInventorySection(ctx) {
     // Modal host — only gets content when activeModal is set.
     html += '<div id="inv-modal-root"></div>';
 
+    // Personal Catalogue manager — separate modal root so it stacks
+    // cleanly above the picker when both would be open (rare, but
+    // possible if a user Ctrl-clicks or script-triggers; better to have
+    // predictable ordering than overlap chaos).
+    html += '<div id="inv-catalog-manager-root"></div>';
+
     host.innerHTML = html;
 
     if (activeModal) renderActiveModal();
+    // Always touch the manager root — when open, render the modal;
+    // when closed, explicitly clear it. Without the explicit clear,
+    // a stale modal could persist in environments that re-use DOM
+    // references rather than rebuilding from the host's innerHTML.
+    if (catalogManager.open) {
+      renderCatalogManager();
+    } else {
+      const mgrRoot = document.getElementById('inv-catalog-manager-root');
+      if (mgrRoot) mgrRoot.innerHTML = '';
+    }
   }
 
   // ─── GROUP RENDERER ───
@@ -1535,6 +1580,497 @@ export function createInventorySection(ctx) {
     editingEntryId = null;
     editDraft = null;
     renderAll();
+  }
+
+  // ─── PERSONAL CATALOGUE MANAGER ───
+  //
+  // Standalone modal for CRUD on the character's custom defs. Opened
+  // from the inventory tab header. Separate from the Add Container/Add
+  // Item picker flow — creating a def here does NOT place it on the
+  // sheet. That keeps the two flows mentally distinct:
+  //
+  //   • Picker's + Custom: "I need this thing, and it's going HERE"
+  //   • Manager:           "I'm building my catalogue, no placement yet"
+
+  function renderCatalogManager() {
+    const root = document.getElementById('inv-catalog-manager-root');
+    if (!root) return;
+    if (!catalogManager.open) { root.innerHTML = ''; return; }
+
+    const inv = ensureInventory();
+    const containers = (inv.customDefs.containers || []);
+    const equipment  = (inv.customDefs.equipment  || []);
+    const total = containers.length + equipment.length;
+
+    let body = '';
+    if (total === 0 && !catalogManager.newDraft) {
+      body = `<div class="inv-cat-mgr-empty">
+        Your personal catalogue is empty. Create one-off items and containers that only exist on this character — they won't appear on other characters' sheets or in the shared ruleset.
+      </div>`;
+    }
+
+    // New-def inline form at the top if the user clicked + New X.
+    if (catalogManager.newDraft) {
+      body += renderCatalogManagerNewForm();
+    }
+
+    // Containers section
+    if (containers.length > 0) {
+      body += `<div class="inv-cat-mgr-section-label">Containers <span class="inv-cat-mgr-section-count">${containers.length}</span></div>`;
+      body += containers.map(def => renderCatalogManagerRow(def, 'container')).join('');
+    }
+
+    // Equipment section
+    if (equipment.length > 0) {
+      body += `<div class="inv-cat-mgr-section-label">Items <span class="inv-cat-mgr-section-count">${equipment.length}</span></div>`;
+      body += equipment.map(def => renderCatalogManagerRow(def, 'equipment')).join('');
+    }
+
+    const addRow = `<div class="inv-manage-add-row">
+      <button class="inv-add-btn" onclick="invCatMgrStartNew('container')">+ New Container</button>
+      <button class="inv-add-btn inv-add-btn-ghost" onclick="invCatMgrStartNew('equipment')">+ New Item</button>
+      <span class="inv-manage-add-hint">New defs land here in your personal catalogue — they don't appear on your sheet until you add them through the normal flow.</span>
+    </div>`;
+
+    root.innerHTML = `<div class="inv-modal-backdrop" onclick="invCatMgrCloseIfBackdrop(event)">
+      <div class="inv-modal inv-modal-manage" onclick="event.stopPropagation()">
+        <div class="inv-modal-head">
+          <div class="inv-modal-title">Personal Catalogue</div>
+          <div class="inv-modal-sub">One-off items and containers for this character only.</div>
+          <button class="inv-modal-close" onclick="invCatMgrClose()">×</button>
+        </div>
+        <div class="inv-modal-body">
+          ${body}
+          ${addRow}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // Render one row in the manager. Collapsed shows summary (name, dims,
+  // weight, container pill, delete ×). Expanded shows the full edit
+  // form (same fields as renderEntryEditPanel but targeting the def
+  // directly instead of a snapshot).
+  function renderCatalogManagerRow(def, defKind) {
+    const isContainer = defKind === 'container' || (defKind === 'equipment' && !!def.containerOf);
+    const expanded = catalogManager.expandedDefIds.has(def.id);
+    const dims = def.dimensions || { l: 0, w: 0, h: 0 };
+    const weight = def.weight || 0;
+    const containerPill = isContainer ? '<span class="inv-cat-mgr-container-pill">container</span>' : '';
+    const dualPill = (defKind === 'equipment' && def.containerOf) ? '<span class="inv-modal-dual">dual-role</span>' : '';
+    // Reference count — how many instances of this def exist on the
+    // sheet. Shown as a pill so the user knows editing the def could
+    // conceptually affect N rows (but post-snapshot, it doesn't — only
+    // NEW placements use the current def fields).
+    let refCount = 0;
+    walkTree(e => { if (e.defId === def.id) refCount++; });
+    const refPill = refCount > 0 ? `<span class="inv-cat-mgr-ref-pill" title="${refCount} instance${refCount === 1 ? '' : 's'} of this def currently on the sheet. Existing instances keep their own snapshot data — edits here only affect NEW placements from the picker.">${refCount} on sheet</span>` : '';
+
+    let html = `<div class="inv-manage-card${expanded ? ' open' : ''}">
+      <div class="inv-manage-card-head" onclick="invCatMgrToggleRow('${escapeHtml(def.id)}')">
+        <span class="inv-manage-card-caret">${expanded ? '▾' : '▸'}</span>
+        <span class="inv-manage-card-name">${escapeHtml(def.name || '(unnamed)')}</span>
+        ${containerPill}
+        ${dualPill}
+        ${refPill}
+        <span class="inv-manage-card-dims">${fmt(dims.l)}×${fmt(dims.w)}×${fmt(dims.h)} in</span>
+        <span class="inv-manage-card-weight">${fmt(weight)} lb</span>
+        <button class="inv-row-btn inv-row-btn-danger" onclick="event.stopPropagation();invCatMgrDelete('${escapeHtml(defKind)}','${escapeHtml(def.id)}')" title="Delete this def from your personal catalogue. Existing sheet instances are preserved.">×</button>
+      </div>`;
+
+    if (expanded) {
+      html += renderCatalogManagerEditForm(def, defKind);
+    }
+    html += `</div>`;
+    return html;
+  }
+
+  // Inline edit form for an existing def in the manager. Mirrors the
+  // custom-def form from the picker flow but without the auto-place
+  // step — save writes the def, that's it.
+  function renderCatalogManagerEditForm(def, defKind) {
+    // Seed the draft if not already present. Pattern: edit is always
+    // against a working draft; save copies draft → def.
+    if (!catalogManager.drafts.has(def.id)) {
+      seedCatalogManagerDraft(def, defKind);
+    }
+    const d = catalogManager.drafts.get(def.id);
+    const isContainer = defKind === 'container';
+    const isDualCapable = defKind === 'equipment';
+    const hasContainerBlock = isContainer || (isDualCapable && d.alsoContainer);
+
+    let html = `<div class="inv-manage-card-body">
+      <div class="inv-field">
+        <label>Name</label>
+        <input type="text" value="${escapeHtml(d.name || '')}" oninput="invCatMgrDraft('${escapeHtml(def.id)}','name',this.value)" placeholder="e.g. My Heirloom Knife">
+      </div>
+
+      <div class="inv-field">
+        <label>Description</label>
+        <textarea rows="2" oninput="invCatMgrDraft('${escapeHtml(def.id)}','description',this.value)" placeholder="Optional — flavor text, special properties, condition.">${escapeHtml(d.description || '')}</textarea>
+      </div>
+
+      <div class="inv-pair-row">
+        <div class="inv-field">
+          <label>Weight (lbs)</label>
+          <input type="number" step="0.1" min="0" value="${escapeHtml(String(d.weight || 0))}" oninput="invCatMgrDraft('${escapeHtml(def.id)}','weight',this.value)">
+        </div>
+        <div class="inv-field">
+          <label>Dimensions (L × W × H, inches)</label>
+          <div class="inv-dims-row">
+            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.l || 0))}" placeholder="L" oninput="invCatMgrDraft('${escapeHtml(def.id)}','l',this.value)">
+            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.w || 0))}" placeholder="W" oninput="invCatMgrDraft('${escapeHtml(def.id)}','w',this.value)">
+            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.h || 0))}" placeholder="H" oninput="invCatMgrDraft('${escapeHtml(def.id)}','h',this.value)">
+          </div>
+        </div>
+      </div>`;
+
+    // Dual-role toggle — only shown for equipment (container defs are
+    // always containers; converting requires delete + recreate).
+    if (isDualCapable) {
+      html += `<div class="inv-toggle-row">
+        <span class="inv-toggle${d.alsoContainer ? ' on' : ''}" onclick="invCatMgrDraft('${escapeHtml(def.id)}','alsoContainer',${!d.alsoContainer})">${d.alsoContainer ? '✓ Also a container' : 'Also a container'}</span>
+        <span class="inv-toggle-hint">Turn on to let this item hold other items (backpacks, pouches, holsters).</span>
+      </div>`;
+    }
+
+    if (hasContainerBlock) {
+      html += `<div class="inv-container-block">
+        <div class="inv-container-block-title">Container Capacity</div>
+        <div class="inv-field">
+          <label>Inner Dimensions (L × W × H, inches)</label>
+          <div class="inv-dims-row">
+            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.innerL || 0))}" placeholder="L" oninput="invCatMgrDraft('${escapeHtml(def.id)}','innerL',this.value)">
+            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.innerW || 0))}" placeholder="W" oninput="invCatMgrDraft('${escapeHtml(def.id)}','innerW',this.value)">
+            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.innerH || 0))}" placeholder="H" oninput="invCatMgrDraft('${escapeHtml(def.id)}','innerH',this.value)">
+          </div>
+        </div>
+        <div class="inv-field" style="max-width:260px">
+          <label title="Fraction of the inner L×W×H volume that can actually hold items.">Packing Efficiency (0.1 – 1.0)</label>
+          <input type="number" step="0.05" min="0.1" max="1.0" value="${escapeHtml(String(d.innerPacking != null ? d.innerPacking : 0.75))}" oninput="invCatMgrDraft('${escapeHtml(def.id)}','innerPacking',this.value)">
+          <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">1.0 = fitted case · 0.75 = typical bag · 0.5 = loose sack</div>
+        </div>
+      </div>`;
+    }
+
+    html += `<div class="inv-edit-panel-actions">
+      <button class="inv-add-btn" onclick="invCatMgrSaveEdit('${escapeHtml(defKind)}','${escapeHtml(def.id)}')">Save Changes</button>
+      <button class="inv-add-btn inv-add-btn-ghost" onclick="invCatMgrCollapseRow('${escapeHtml(def.id)}')">Cancel</button>
+    </div>`;
+
+    html += `</div>`;
+    return html;
+  }
+
+  // Render the inline form for creating a new def. Appears at the top
+  // of the modal when the user clicks + New Container / + New Item.
+  function renderCatalogManagerNewForm() {
+    const d = catalogManager.newDraft;
+    const kind = catalogManager.newKind;
+    const isContainer = kind === 'container';
+    const isDualCapable = kind === 'equipment';
+    const hasContainerBlock = isContainer || (isDualCapable && d.alsoContainer);
+    const title = isContainer ? 'New Container' : 'New Item';
+
+    let html = `<div class="inv-cat-mgr-new-form">
+      <div class="inv-cat-mgr-new-title">${escapeHtml(title)}</div>
+
+      <div class="inv-field">
+        <label>Name</label>
+        <input type="text" value="${escapeHtml(d.name || '')}" oninput="invCatMgrNewDraft('name',this.value)" placeholder="e.g. ${isContainer ? 'Leather Satchel' : 'Lockpicks'}" autofocus>
+      </div>
+
+      <div class="inv-field">
+        <label>Description</label>
+        <textarea rows="2" oninput="invCatMgrNewDraft('description',this.value)" placeholder="Optional — flavor text, special properties.">${escapeHtml(d.description || '')}</textarea>
+      </div>
+
+      <div class="inv-pair-row">
+        <div class="inv-field">
+          <label>Weight (lbs)</label>
+          <input type="number" step="0.1" min="0" value="${escapeHtml(String(d.weight || 0))}" oninput="invCatMgrNewDraft('weight',this.value)">
+        </div>
+        <div class="inv-field">
+          <label>Dimensions (L × W × H, inches)</label>
+          <div class="inv-dims-row">
+            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.l || 0))}" placeholder="L" oninput="invCatMgrNewDraft('l',this.value)">
+            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.w || 0))}" placeholder="W" oninput="invCatMgrNewDraft('w',this.value)">
+            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.h || 0))}" placeholder="H" oninput="invCatMgrNewDraft('h',this.value)">
+          </div>
+        </div>
+      </div>`;
+
+    if (isDualCapable) {
+      html += `<div class="inv-toggle-row">
+        <span class="inv-toggle${d.alsoContainer ? ' on' : ''}" onclick="invCatMgrNewDraft('alsoContainer',${!d.alsoContainer})">${d.alsoContainer ? '✓ Also a container' : 'Also a container'}</span>
+        <span class="inv-toggle-hint">Turn on to let this item hold other items.</span>
+      </div>`;
+    }
+
+    if (hasContainerBlock) {
+      html += `<div class="inv-container-block">
+        <div class="inv-container-block-title">Container Capacity</div>
+        <div class="inv-field">
+          <label>Inner Dimensions (L × W × H, inches)</label>
+          <div class="inv-dims-row">
+            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.innerL || 0))}" placeholder="L" oninput="invCatMgrNewDraft('innerL',this.value)">
+            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.innerW || 0))}" placeholder="W" oninput="invCatMgrNewDraft('innerW',this.value)">
+            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.innerH || 0))}" placeholder="H" oninput="invCatMgrNewDraft('innerH',this.value)">
+          </div>
+        </div>
+        <div class="inv-field" style="max-width:260px">
+          <label>Packing Efficiency (0.1 – 1.0)</label>
+          <input type="number" step="0.05" min="0.1" max="1.0" value="${escapeHtml(String(d.innerPacking != null ? d.innerPacking : 0.75))}" oninput="invCatMgrNewDraft('innerPacking',this.value)">
+          <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">1.0 = fitted case · 0.75 = typical bag · 0.5 = loose sack</div>
+        </div>
+      </div>`;
+    }
+
+    html += `<div class="inv-edit-panel-actions">
+      <button class="inv-add-btn" onclick="invCatMgrSaveNew()">Save to Catalogue</button>
+      <button class="inv-add-btn inv-add-btn-ghost" onclick="invCatMgrCancelNew()">Cancel</button>
+    </div>`;
+
+    html += `</div>`;
+    return html;
+  }
+
+  // Seed a draft object from an existing def. Copies all the editable
+  // fields into a flat shape the form can bind to.
+  function seedCatalogManagerDraft(def, defKind) {
+    const dims = def.dimensions || { l: 0, w: 0, h: 0 };
+    // Container defs carry packingEfficiency at top level (legacy
+    // schema) AND may have a containerOf block (post-unification).
+    // Equipment defs use containerOf only. We support both.
+    let innerDims = { l: 0, w: 0, h: 0 };
+    let innerPacking = 0.75;
+    let alsoContainer = false;
+    if (defKind === 'container') {
+      if (def.containerOf) {
+        innerDims = def.containerOf.dimensions || dims;
+        innerPacking = Number.isFinite(def.containerOf.packingEfficiency) ? def.containerOf.packingEfficiency : 0.75;
+      } else {
+        innerDims = dims;
+        innerPacking = Number.isFinite(def.packingEfficiency) ? def.packingEfficiency : 0.75;
+      }
+    } else if (def.containerOf) {
+      alsoContainer = true;
+      innerDims = def.containerOf.dimensions || { l: 0, w: 0, h: 0 };
+      innerPacking = Number.isFinite(def.containerOf.packingEfficiency) ? def.containerOf.packingEfficiency : 0.75;
+    }
+    catalogManager.drafts.set(def.id, {
+      name:         def.name || '',
+      description:  def.description || '',
+      weight:       def.weight || 0,
+      l:            dims.l || 0,
+      w:            dims.w || 0,
+      h:            dims.h || 0,
+      alsoContainer,
+      innerL:       innerDims.l || 0,
+      innerW:       innerDims.w || 0,
+      innerH:       innerDims.h || 0,
+      innerPacking
+    });
+  }
+
+  // ── Handlers ──
+
+  function openManageCatalog() {
+    if (!getCanEdit()) return;
+    catalogManager.open = true;
+    catalogManager.expandedDefIds.clear();
+    catalogManager.drafts.clear();
+    catalogManager.newDraft = null;
+    catalogManager.newKind = null;
+    renderAll();
+  }
+
+  function catMgrClose() {
+    catalogManager.open = false;
+    catalogManager.expandedDefIds.clear();
+    catalogManager.drafts.clear();
+    catalogManager.newDraft = null;
+    catalogManager.newKind = null;
+    renderAll();
+  }
+
+  function catMgrCloseIfBackdrop(ev) {
+    if (!ev || ev.target === ev.currentTarget) catMgrClose();
+  }
+
+  function catMgrToggleRow(defId) {
+    if (catalogManager.expandedDefIds.has(defId)) {
+      catalogManager.expandedDefIds.delete(defId);
+      // Drop any pending draft when collapsing — matches the Cancel
+      // behavior of the inline edit panel on the sheet.
+      catalogManager.drafts.delete(defId);
+    } else {
+      // Only one row expanded at a time — keeps the UI focused and
+      // avoids stale drafts piling up.
+      catalogManager.expandedDefIds.clear();
+      catalogManager.drafts.clear();
+      catalogManager.expandedDefIds.add(defId);
+    }
+    renderCatalogManager();
+  }
+
+  function catMgrCollapseRow(defId) {
+    catalogManager.expandedDefIds.delete(defId);
+    catalogManager.drafts.delete(defId);
+    renderCatalogManager();
+  }
+
+  // Update a single field in a per-def draft.
+  function catMgrDraft(defId, field, value) {
+    const d = catalogManager.drafts.get(defId);
+    if (!d) return;
+    const numericFields = new Set(['weight','l','w','h','innerL','innerW','innerH','innerPacking']);
+    if (numericFields.has(field)) {
+      const n = parseFloat(value);
+      d[field] = Number.isFinite(n) && n >= 0 ? n : 0;
+    } else if (field === 'alsoContainer') {
+      d[field] = !!value;
+      renderCatalogManager();   // show/hide container block
+    } else {
+      d[field] = typeof value === 'string' ? value : '';
+    }
+  }
+
+  // Save the draft back to the def and persist.
+  async function catMgrSaveEdit(defKind, defId) {
+    const inv = ensureInventory();
+    const bucket = defKind === 'container' ? inv.customDefs.containers : inv.customDefs.equipment;
+    const def = bucket.find(x => x.id === defId);
+    if (!def) return;
+    const d = catalogManager.drafts.get(defId);
+    if (!d) return;
+
+    const name = (d.name || '').trim();
+    if (!name) { alert('Please enter a name.'); return; }
+
+    // Write back. Shape varies by kind — containers use legacy
+    // packingEfficiency at top-level (matches how saveCustomDef creates
+    // them); equipment uses containerOf block.
+    def.name = name;
+    def.description = (d.description || '').trim();
+    def.dimensions = { l: d.l || 0, w: d.w || 0, h: d.h || 0 };
+    def.weight = d.weight || 0;
+    if (defKind === 'container') {
+      def.packingEfficiency = clampEff(d.innerPacking, 0.75);
+      // Legacy container defs use dimensions as inner dims. If the user
+      // entered different innerDims, sync them back to dimensions so
+      // the legacy schema stays coherent.
+      def.dimensions = { l: d.innerL || d.l || 0, w: d.innerW || d.w || 0, h: d.innerH || d.h || 0 };
+    } else {
+      def.containerOf = d.alsoContainer ? {
+        dimensions: { l: d.innerL || 0, w: d.innerW || 0, h: d.innerH || 0 },
+        packingEfficiency: clampEff(d.innerPacking, 0.75)
+      } : null;
+    }
+
+    // Drop the draft and close the row.
+    catalogManager.drafts.delete(defId);
+    catalogManager.expandedDefIds.delete(defId);
+    renderCatalogManager();
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
+  // Instance-preserving delete from the manager. Reuses the same
+  // implementation as the picker modal's × — confirms, removes the
+  // def, leaves sheet instances alone (their snapshots carry them).
+  async function catMgrDelete(defKind, defId) {
+    await deleteCustomDef(defKind, defId);
+    // deleteCustomDef re-renders the picker modal (activeModal) which
+    // isn't what's open here. Re-render the manager so the row drops.
+    renderCatalogManager();
+  }
+
+  // Start the inline "new def" form at the top of the modal. kind
+  // determines whether it's a container or equipment draft.
+  function catMgrStartNew(kind) {
+    catalogManager.newKind = kind;
+    catalogManager.newDraft = {
+      name: '',
+      description: '',
+      weight: 0,
+      l: 0, w: 0, h: 0,
+      alsoContainer: false,
+      innerL: 0, innerW: 0, innerH: 0,
+      innerPacking: 0.75
+    };
+    renderCatalogManager();
+  }
+
+  function catMgrCancelNew() {
+    catalogManager.newDraft = null;
+    catalogManager.newKind = null;
+    renderCatalogManager();
+  }
+
+  function catMgrNewDraft(field, value) {
+    const d = catalogManager.newDraft;
+    if (!d) return;
+    const numericFields = new Set(['weight','l','w','h','innerL','innerW','innerH','innerPacking']);
+    if (numericFields.has(field)) {
+      const n = parseFloat(value);
+      d[field] = Number.isFinite(n) && n >= 0 ? n : 0;
+    } else if (field === 'alsoContainer') {
+      d[field] = !!value;
+      renderCatalogManager();
+    } else {
+      d[field] = typeof value === 'string' ? value : '';
+    }
+  }
+
+  // Commit the new-def draft to the customDefs bucket. Does NOT
+  // instantiate on the sheet — the manager is about catalog CRUD, not
+  // placement.
+  async function catMgrSaveNew() {
+    const d = catalogManager.newDraft;
+    const kind = catalogManager.newKind;
+    if (!d || !kind) return;
+    const name = (d.name || '').trim();
+    if (!name) { alert('Please enter a name.'); return; }
+    const inv = ensureInventory();
+
+    let def;
+    if (kind === 'container') {
+      def = {
+        id: _nextInvId('cust_cont'),
+        name,
+        description: (d.description || '').trim(),
+        dimensions: { l: d.l || 0, w: d.w || 0, h: d.h || 0 },
+        weight: d.weight || 0,
+        packingEfficiency: clampEff(d.innerPacking, 0.75),
+        defaultSlot: null
+      };
+      // Container dimensions double as inner dims in the legacy schema.
+      // If the user entered different innerDims, prefer those.
+      if (d.innerL || d.innerW || d.innerH) {
+        def.dimensions = { l: d.innerL || d.l || 0, w: d.innerW || d.w || 0, h: d.innerH || d.h || 0 };
+      }
+      inv.customDefs.containers.push(def);
+    } else {
+      def = {
+        id: _nextInvId('cust_eq'),
+        name,
+        description: (d.description || '').trim(),
+        dimensions: { l: d.l || 0, w: d.w || 0, h: d.h || 0 },
+        weight: d.weight || 0,
+        category: '',
+        weaponId: null,
+        containerOf: d.alsoContainer ? {
+          dimensions: { l: d.innerL || 0, w: d.innerW || 0, h: d.innerH || 0 },
+          packingEfficiency: clampEff(d.innerPacking, 0.75)
+        } : null
+      };
+      inv.customDefs.equipment.push(def);
+    }
+
+    catalogManager.newDraft = null;
+    catalogManager.newKind = null;
+    renderCatalogManager();
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
   }
 
   // ─── MODALS: ADD CONTAINER / ADD ITEM ───
@@ -2434,7 +2970,20 @@ export function createInventorySection(ctx) {
     openEntryEdit,
     updateEditDraft,
     saveEntryEdit,
-    cancelEntryEdit
+    cancelEntryEdit,
+    // Manage personal catalogue
+    openManageCatalog,
+    catMgrClose,
+    catMgrCloseIfBackdrop,
+    catMgrToggleRow,
+    catMgrCollapseRow,
+    catMgrDraft,
+    catMgrSaveEdit,
+    catMgrDelete,
+    catMgrStartNew,
+    catMgrCancelNew,
+    catMgrNewDraft,
+    catMgrSaveNew
   };
 }
 
