@@ -1741,6 +1741,14 @@
     .inv-modal-opt-meta { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #888; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
     .inv-modal-opt-desc { font-size: 11px; color: #888; line-height: 1.5; }
 
+    /* Picker modal section labels — split options into Personal
+     * Catalogue (character-scoped) and Ruleset Catalogue (shared).
+     * Small muted headers above each group. First one has no top
+     * border; subsequent ones do to separate sections visually. */
+    .inv-modal-section-label { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #888; padding: 10px 14px 6px; border-top: 1px solid #1a1a1a; margin-top: 4px; display: flex; align-items: center; gap: 8px; cursor: help; }
+    .inv-modal-section-label:first-child { border-top: none; margin-top: 0; padding-top: 4px; }
+    .inv-modal-section-count { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #666; font-weight: 500; letter-spacing: 0; }
+
     /* ── Groups layer ──
      * On-Person wraps the body-slot sections. Custom groups (Stowed,
      * Vehicle, Stash, etc.) live as siblings. Each group is a top-level
