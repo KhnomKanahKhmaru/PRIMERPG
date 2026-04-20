@@ -655,12 +655,13 @@ export function createInventorySection(ctx) {
       ${canEdit ? `<button class="inv-manage-btn" onclick="invOpenManageCatalog()" title="Create, edit, and delete items in your personal catalogue for this character.">Manage Personal Catalogue</button>` : ''}
     </div>`;
 
+    // Toast confirming the last add/promote action, if any. Fades
+    // after 3s via the timer that set it. Renders in either view.
+    if (lastAddToast) {
+      html += `<div class="inv-add-toast">${escapeHtml(lastAddToast)}</div>`;
+    }
+
     if (viewMode === 'catalog') {
-      // Toast confirming the last catalog add, if any. Fades after 3s
-      // via a timer set in catalogPlaceItem.
-      if (lastAddToast) {
-        html += `<div class="inv-add-toast">${escapeHtml(lastAddToast)}</div>`;
-      }
       html += renderCatalogView(ruleset, inv);
     } else {
       // Inventory view — groups-first layout: On-Person (wraps slots)
@@ -1495,6 +1496,7 @@ export function createInventorySection(ctx) {
     html += `<div class="inv-edit-panel-actions">
       <button class="inv-add-btn" onclick="invSaveEntryEdit()">Save</button>
       <button class="inv-add-btn inv-add-btn-ghost" onclick="invCancelEntryEdit()">Cancel</button>
+      <button class="inv-add-btn inv-add-btn-promote" onclick="invPromoteEntryToCatalogue()" title="Copy this instance's current fields (name, dimensions, weight, description, capacity) into your personal catalogue as a reusable template. Does not modify this instance.">Save to Personal Catalogue</button>
     </div>`;
 
     html += `</div>`;
@@ -1580,6 +1582,107 @@ export function createInventorySection(ctx) {
     editingEntryId = null;
     editDraft = null;
     renderAll();
+  }
+
+  // "Save to Personal Catalogue" — copies the entry's CURRENT snapshot
+  // into a new catalog def so the user can pick it again later from
+  // the Add Container / Add Item modals. The entry on the sheet is
+  // NOT modified — it stays a free-standing instance with its own
+  // snapshot. The catalog def gets a fresh id; if a def with the same
+  // name already exists, we warn so the user doesn't accidentally
+  // shadow their existing one.
+  //
+  // Uses the current edit draft if the panel is open (so edits-in-flight
+  // get promoted too). If no panel is open, uses the entry's snapshot
+  // as-is. Either way, the promotion is just a copy — the entry's
+  // defId is not rewritten to point at the new catalog def. That keeps
+  // the mental model simple: "catalog is templates for future picks;
+  // existing instances are self-contained."
+  async function promoteEntryToCatalogue() {
+    if (!getCanEdit()) return;
+    if (!editingEntryId) return;
+    const entry = findEntry(editingEntryId);
+    if (!entry) return;
+
+    // Source the snapshot data from the current draft (edits-in-flight
+    // should propagate) OR the entry's stored snapshot as a fallback.
+    const source = editDraft || null;
+    const snap = entry.snapshot || {};
+
+    const name = (source ? source.name : snap.name || '').trim();
+    if (!name) { alert('Please enter a name before saving to the catalogue.'); return; }
+
+    const inv = ensureInventory();
+
+    // Duplicate-name check across both custom buckets. Warns rather
+    // than blocks — user might genuinely want two "Rifle Case" defs
+    // (e.g. short and long versions). Confirm lets them proceed.
+    const existingNames = [
+      ...(inv.customDefs.containers || []).map(x => (x.name || '').toLowerCase()),
+      ...(inv.customDefs.equipment  || []).map(x => (x.name || '').toLowerCase())
+    ];
+    if (existingNames.includes(name.toLowerCase())) {
+      if (!confirm(`A catalogue entry named "${name}" already exists. Save another copy anyway?`)) return;
+    }
+
+    // Build the def fields from the draft (if present) or snapshot.
+    const dims = source
+      ? { l: source.l || 0, w: source.w || 0, h: source.h || 0 }
+      : (snap.dimensions || { l: 0, w: 0, h: 0 });
+    const weight = source ? (source.weight || 0) : (snap.weight || 0);
+    const description = (source ? source.description : snap.description || '').trim();
+    const isContainer = !!(snap.containerOf || (source && source.isContainer));
+
+    // Inner-container fields: prefer the draft, fall back to snapshot.
+    const innerDims = source
+      ? { l: source.innerL || 0, w: source.innerW || 0, h: source.innerH || 0 }
+      : ((snap.containerOf && snap.containerOf.dimensions) || { l: 0, w: 0, h: 0 });
+    const innerPacking = source
+      ? clampEff(source.innerPacking, 0.75)
+      : ((snap.containerOf && Number.isFinite(snap.containerOf.packingEfficiency)) ? snap.containerOf.packingEfficiency : 0.75);
+
+    let def;
+    if (isContainer) {
+      // Legacy container schema — top-level packingEfficiency, dimensions
+      // represent inner capacity. Matches the shape other custom
+      // containers use on this character.
+      def = {
+        id: _nextInvId('cust_cont'),
+        name,
+        description,
+        dimensions: { l: innerDims.l || dims.l || 0, w: innerDims.w || dims.w || 0, h: innerDims.h || dims.h || 0 },
+        weight,
+        packingEfficiency: innerPacking,
+        defaultSlot: null
+      };
+      inv.customDefs.containers.push(def);
+    } else {
+      def = {
+        id: _nextInvId('cust_eq'),
+        name,
+        description,
+        dimensions: dims,
+        weight,
+        category: '',
+        weaponId: null,
+        containerOf: null
+      };
+      inv.customDefs.equipment.push(def);
+    }
+
+    // Ephemeral toast-style confirmation via the catalog-add toast
+    // mechanism (already wired to fade after 3s). Keeps the feedback
+    // loop short.
+    lastAddToast = `Saved "${name}" to your personal catalogue.`;
+    renderAll();
+    setTimeout(() => {
+      if (lastAddToast && lastAddToast.startsWith('Saved "')) {
+        lastAddToast = null;
+        renderAll();
+      }
+    }, 3000);
+
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
   }
 
   // ─── PERSONAL CATALOGUE MANAGER ───
@@ -2214,7 +2317,7 @@ export function createInventorySection(ctx) {
     const customBtn = customKind
       ? `<div class="inv-modal-custom-row">
           <button class="inv-add-btn" onclick="invOpenCustomForm('${escapeHtml(customKind)}')">+ Custom ${customKind === 'container' ? 'Container' : 'Item'}…</button>
-          <span class="inv-modal-custom-hint">Saves to your personal catalogue for this character.</span>
+          <span class="inv-modal-custom-hint">Adds a one-off to your sheet. To save it for reuse, use the ✎ pencil → "Save to Personal Catalogue".</span>
         </div>`
       : '';
 
@@ -2789,6 +2892,14 @@ export function createInventorySection(ctx) {
     // self-updating. Only structural changes (toggles) re-render above.
   }
 
+  // Create a one-off entry from the inline custom form in the picker
+  // modal. NO catalog side effect — the entry is built directly with
+  // its own snapshot and placed on the sheet. To promote it into the
+  // personal catalogue later, the user hits "Save to Personal Catalogue"
+  // from the entry's pencil-edit panel.
+  //
+  // Kept named `saveCustomDef` for back-compat with existing window
+  // handler wiring. Despite the name, no def is written to customDefs.
   async function saveCustomDef() {
     if (!activeModal || !activeModal.customDraft) return;
     const d = activeModal.customDraft;
@@ -2797,50 +2908,39 @@ export function createInventorySection(ctx) {
       alert('Please enter a name.');
       return;
     }
-    const inv = ensureInventory();
     const isContainer = activeModal.customKind === 'container';
 
-    // Build the def record — same schema as ruleset defs, with a
-    // `cust_`-prefixed id so the source is legible.
-    let def;
+    // Build the snapshot directly from the draft — this is what
+    // getDefForEntry fallback would synthesize anyway, so we just
+    // construct it up front. defId stays null because there's no
+    // backing catalog def.
+    const snapshot = {
+      name,
+      description: (d.description || '').trim(),
+      dimensions:  { l: d.l || 0, w: d.w || 0, h: d.h || 0 },
+      weight:      d.weight || 0,
+      containerOf: null,
+      legacyCategory: ''
+    };
     if (isContainer) {
-      def = {
-        id: _nextInvId('cust_cont'),
-        name,
-        description: (d.description || '').trim(),
-        dimensions: { l: d.l || 0, w: d.w || 0, h: d.h || 0 },
-        weight: d.weight || 0,
-        packingEfficiency: clampEff(d.packingEfficiency, 0.75),
-        defaultSlot: null
+      snapshot.containerOf = {
+        dimensions:        { l: d.l || 0, w: d.w || 0, h: d.h || 0 },
+        packingEfficiency: clampEff(d.packingEfficiency, 0.75)
       };
-      inv.customDefs.containers.push(def);
-    } else {
-      def = {
-        id: _nextInvId('cust_eq'),
-        name,
-        description: (d.description || '').trim(),
-        dimensions: { l: d.l || 0, w: d.w || 0, h: d.h || 0 },
-        weight: d.weight || 0,
-        category: (d.category || '').trim(),
-        weaponId: null,
-        containerOf: d.alsoContainer ? {
-          dimensions: { l: d.innerL || 0, w: d.innerW || 0, h: d.innerH || 0 },
-          packingEfficiency: clampEff(d.innerPacking, 0.75)
-        } : null
+    } else if (d.alsoContainer) {
+      snapshot.containerOf = {
+        dimensions:        { l: d.innerL || 0, w: d.innerW || 0, h: d.innerH || 0 },
+        packingEfficiency: clampEff(d.innerPacking, 0.75)
       };
-      inv.customDefs.equipment.push(def);
     }
 
-    // Immediately instantiate a new entry using this def at the modal's
-    // target. Saves the player two clicks — they created the def *so that*
-    // they could use it; no reason to make them pick from the catalog
-    // afterward.
-    const defKind = isContainer ? 'container' : 'equipment';
-    if (activeModal.kind === 'container') {
-      await instantiateAndPlace(defKind, def.id, /*isContainerRole=*/true);
-    } else {
-      await instantiateAndPlace(defKind, def.id, /*isContainerRole=*/!!def.containerOf);
-    }
+    const isContainerRole = !!snapshot.containerOf;
+    const defKind = isContainerRole ? 'container' : 'equipment';
+
+    // Place it directly. `instantiateAndPlaceOneOff` is a sibling of
+    // instantiateAndPlace that doesn't require a catalog def — it
+    // takes the pre-built snapshot instead.
+    await instantiateAndPlaceOneOff(defKind, snapshot, isContainerRole);
   }
 
   function clampEff(v, fallback) {
@@ -2864,6 +2964,53 @@ export function createInventorySection(ctx) {
       defKind,
       quantity: 1,
       snapshot: buildSnapshotFromDef({ defId }, ruleset, inv)
+    };
+    if (isContainerRole) newEntry.contents = [];
+
+    const tgt = activeModal.target;
+    const tkind = activeModal.targetKind;
+    let placed = false;
+    if (tkind === 'container') {
+      const parent = findEntry(tgt);
+      if (parent) {
+        if (!Array.isArray(parent.contents)) parent.contents = [];
+        parent.contents.push(newEntry);
+        expandedEntries.add(parent.id);
+        placed = true;
+      }
+    } else if (tkind === 'group') {
+      const g = inv.groups.find(x => x.id === tgt);
+      if (g && g.kind === 'custom') {
+        if (!Array.isArray(g.contents)) g.contents = [];
+        g.contents.push(newEntry);
+        placed = true;
+      }
+    } else if (tkind === 'slot') {
+      if (!Array.isArray(inv.bySlot[tgt])) inv.bySlot[tgt] = [];
+      inv.bySlot[tgt].push(newEntry);
+      placed = true;
+    }
+
+    if (!placed) { closeModal(); return; }
+
+    if (isContainerRole) expandedEntries.add(newEntry.id);
+    closeModal();
+    renderAll();
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
+  // One-off variant: used when the user creates an item via the
+  // "+ Custom" form in the picker. Takes a pre-built snapshot instead
+  // of a defId — no catalog def exists yet. The entry's defId is null
+  // so lookups correctly report "no def" and fall through to snapshot.
+  async function instantiateAndPlaceOneOff(defKind, snapshot, isContainerRole) {
+    const inv = ensureInventory();
+    const newEntry = {
+      id: _nextId(),
+      defId: null,              // no backing def — purely a one-off
+      defKind,
+      quantity: 1,
+      snapshot: snapshot        // already pre-built by caller
     };
     if (isContainerRole) newEntry.contents = [];
 
@@ -2977,6 +3124,7 @@ export function createInventorySection(ctx) {
     updateEditDraft,
     saveEntryEdit,
     cancelEntryEdit,
+    promoteEntryToCatalogue,
     // Manage personal catalogue
     openManageCatalog,
     catMgrClose,
