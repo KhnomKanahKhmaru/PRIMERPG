@@ -821,6 +821,13 @@
   let existingDoc = null;
   let userPlaygroups = [];
 
+  // UI-only state for the Inventory top-tab. Hoisted here so renderers
+  // called during initUI (which runs before the inventory section's
+  // `const` declarations execute) don't hit a temporal dead zone. These
+  // hold transient collapse/expand state — never persisted.
+  const openInvCards = new Set();
+  const collapsedCategories = new Set();
+
   // Fixed category codes — display labels can change but the stored code never does.
   const AD_CATEGORIES = [
     { code: 'physical',   label: 'Physical'   },
@@ -2030,10 +2037,9 @@
   // The normalizer in ruleset-defaults.js re-shapes them on load, so even
   // malformed entries from earlier versions get cleaned up for free.
 
-  // UI-only state: which card ids are expanded. A Set of the card's
-  // ruleset-generated id. Persists across re-renders within a session so
-  // you don't lose your place when you tweak a field.
-  const openInvCards = new Set();
+  // UI-only state (expanded-card ids, collapsed-category ids) is
+  // hoisted to the top of the module so initUI's early render doesn't
+  // hit a temporal dead zone. Referenced here by renderItemList et al.
 
   // Small id generator for new container/equipment entries. Same shape
   // as the normalizer's fallback (prefix_timebase_counter).
@@ -2146,10 +2152,9 @@
   // description field, and a delete × (hidden on builtIn). Indentation
   // reflects depth. The "+ Add Category" row has a parent dropdown so
   // you can slot new categories anywhere in the tree.
-
-  // Which categories are collapsed in the editor view. Collapsing hides
-  // child categories (and their items, in the Items list below).
-  const collapsedCategories = new Set();
+  //
+  // Note: `collapsedCategories` is hoisted to the top of the module so
+  // initUI's early render doesn't hit a temporal dead zone.
 
   function renderCategoryTree() {
     const host = document.getElementById('category-tree');
