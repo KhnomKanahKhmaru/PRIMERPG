@@ -230,81 +230,25 @@
       min-width: 2px;
       transition: background 0.2s;
     }
-    /* Strain tile — no bar. Big number up top in severity-colored text,
-       and a Pain / Stress breakdown below with explicit labels. */
-    .state-strain-big {
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-size: 28px;
-      font-weight: 700;
-      line-height: 1;
-      font-variant-numeric: tabular-nums;
-      align-self: flex-start;
-    }
-    .state-strain-rows {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      padding-top: 4px;
-      border-top: 1px solid #1a1a1a;
-    }
-    .state-strain-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      font-size: 12px;
-    }
-    .state-strain-k {
-      font-weight: 600;
-      letter-spacing: .05em;
-      color: #aaa;
-    }
-    .state-strain-v {
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-weight: 600;
-      color: #ccc;
-      font-variant-numeric: tabular-nums;
-    }
-    /* Power + other progress bars — keep the shared class name. */
-    .state-strain-bar {
+    /* Shared progress-bar primitive used by the Power tile (and any
+       future resource-pool tile). Previously misnamed state-strain-*; the
+       Penalty tile has its own layout and doesn't use a bar. */
+    .state-progress-bar {
       position: relative;
       height: 10px;
       background: #111;
       border-radius: 2px;
       overflow: hidden;
     }
-    .state-strain-fill {
+    .state-progress-fill {
       position: absolute;
       top: 0; left: 0; bottom: 0;
       transition: width 0.3s, background 0.2s;
     }
-    .state-strain-breakdown {
-      font-size: 10px;
-      color: #666;
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-variant-numeric: tabular-nums;
-    }
 
     /* Wide tile — full-width inside the state grid. Used by Movement,
-       Roll Calc, and Strain in the bottom stack. */
+       Roll Calc, and Penalty in the bottom stack. */
     .state-tile-wide { grid-column: 1 / -1; }
-
-    /* Standalone Strain tile (full-width row). Label on the left, big
-       severity-colored percent in the head, breakdown rows inline below. */
-    .state-tile-strain .state-tile-head {
-      display: flex;
-      align-items: baseline;
-      gap: 16px;
-    }
-    .state-strain-rows-inline {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px 28px;
-      padding-top: 4px;
-      border-top: 1px solid #1a1a1a;
-    }
-    .state-strain-rows-inline .state-strain-row {
-      min-width: 120px;
-    }
 
     /* ── Penalty tile (replaces Strain) ── */
     /* Identical layout to the old Strain tile, plus an inline Others
@@ -707,7 +651,7 @@
     }
     /* The red-italic annotation when movement is strain-reduced — same
        visual language as the Combat tab cards for consistency. */
-    .state-movement-item .mi-strain {
+    .state-movement-item .mi-penalty {
       color: #e07878;
       font-style: italic;
       font-size: 13px;
@@ -715,8 +659,8 @@
       margin-left: 4px;
     }
     /* Clickable variant — toggle between "10 − 2.5" and "7.5" inline.
-       Uses the same .strain-collapsed class convention as the Combat tab
-       Dice/Stat cards so the same toggleStrainValueDisplay() handler
+       Uses the same .penalty-collapsed class convention as the Combat tab
+       Dice/Stat cards so the same togglePenaltyValueDisplay() handler
        flips both views in sync. */
     .state-movement-item.clickable {
       cursor: pointer;
@@ -731,8 +675,8 @@
     .state-movement-item.clickable:hover { background: rgba(255,255,255,0.04); }
     .state-movement-item .mi-expanded,
     .state-movement-item .mi-effective { display: inline; }
-    .state-movement-item.strain-collapsed .mi-expanded { display: none; }
-    .state-movement-item:not(.strain-collapsed) .mi-effective { display: none; }
+    .state-movement-item.penalty-collapsed .mi-expanded { display: none; }
+    .state-movement-item:not(.penalty-collapsed) .mi-effective { display: none; }
     /* Collapsed value takes the same red italic as the reduction — signals
        this number has been modified by Strain. */
     .state-movement-item .mi-effective {
@@ -1204,7 +1148,7 @@
        displays: the full breakdown ("10 − 2.5") and the pre-computed
        effective value ("7.5"). Card class 'strain-collapsed' flips which
        one is visible. Cursor signals the value is clickable. */
-    .ds-card-strain-toggle {
+    .ds-card-penalty-toggle {
       cursor: pointer;
       -webkit-user-select: none;
          -moz-user-select: none;
@@ -1214,15 +1158,15 @@
       margin: 0 -2px;
       transition: background 0.1s;
     }
-    .ds-card-strain-toggle:hover { background: rgba(255,255,255,0.04); }
+    .ds-card-penalty-toggle:hover { background: rgba(255,255,255,0.04); }
     /* Both spans render inline by default; CSS below hides whichever one
        is inactive for the current card state. */
-    .ds-card-strain-expanded,
-    .ds-card-strain-effective { display: inline; }
-    .ds-card.strain-collapsed .ds-card-strain-expanded { display: none; }
-    .ds-card:not(.strain-collapsed) .ds-card-strain-effective { display: none; }
+    .ds-card-penalty-expanded,
+    .ds-card-penalty-effective { display: inline; }
+    .ds-card.penalty-collapsed .ds-card-penalty-expanded { display: none; }
+    .ds-card:not(.penalty-collapsed) .ds-card-penalty-effective { display: none; }
     /* The "− 2.5" part of the expanded view — red italic emphasis. */
-    .ds-card-strain-reduction {
+    .ds-card-penalty-reduction {
       color: #e07878;
       font-style: italic;
       font-size: 17px;
@@ -1232,7 +1176,7 @@
     }
     /* The collapsed "7.5" effective value — tinted red italic so the
        player sees it's a strain-reduced number, not the base stat. */
-    .ds-card-strain-effective {
+    .ds-card-penalty-effective {
       color: #e07878;
       font-style: italic;
       font-variant-numeric: tabular-nums;
@@ -2695,7 +2639,7 @@
     updateDiceMod:        (code, idx, field, val) => combat.updateDiceMod(code, idx, field, val),
     deleteDiceMod:        (code, idx) => combat.deleteDiceMod(code, idx),
     // Strain value-display toggle
-    toggleStrainValueDisplay: (code) => combat.toggleStrainValueDisplay(code),
+    togglePenaltyValueDisplay: (code) => combat.togglePenaltyValueDisplay(code),
     // Roll Calculator
     rollCalcSetStat:         (key) => combat.rollCalcSetStat(key),
     rollCalcSetSkill:        (key) => combat.rollCalcSetSkill(key),
