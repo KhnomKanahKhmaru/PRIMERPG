@@ -933,7 +933,7 @@ export function createInventorySection(ctx) {
       baseHtml:   (carry.liftModTotal !== 0)
                     ? `<span class="inv-carry-base">base ${fmt(carry.rawLift)} ${carry.liftModTotal > 0 ? '+' : '−'} ${Math.abs(carry.liftModTotal)}%</span>`
                     : `<span class="inv-carry-base">base ${fmt(carry.rawLift)}</span>`,
-      description:'Absolute maximum you can lift. At this weight, ENC is 100% and you cannot move. Base: CAP × 11.',
+      description:'Absolute maximum you can ever carry without a roll. At this weight, ENC is 100% and you cannot move without rolling to "lift". Base: CAP × 11.',
       modifiers:  carry.liftModifiers,
       modUnit:    '%',
       addFn:      'invAddLiftMod',
