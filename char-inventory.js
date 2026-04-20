@@ -1068,7 +1068,6 @@ export function createInventorySection(ctx) {
     const hasDetail = !!(
       (it.description && it.description.trim()) ||
       it.containerOf ||
-      it.defaultSlot ||
       (it.legacyCategory && it.legacyCategory.trim())
     );
 
@@ -1124,14 +1123,9 @@ export function createInventorySection(ctx) {
           <span class="cat-view-item-cap-val">${fmt(cofDims.l)}×${fmt(cofDims.w)}×${fmt(cofDims.h)} in · ${fmt(cof.packingEfficiency || 0.75)} packing · <b>${fmt(usable)} in³ usable</b></span>
         </div>`;
       }
-      if (it.defaultSlot) {
-        const ruleset = getRuleset();
-        const slotLabel = (ruleset.bodySlots || []).find(s => s.code === it.defaultSlot);
-        html += `<div class="cat-view-item-slot">
-          <span class="cat-view-item-cap-label">Default slot:</span>
-          <span class="cat-view-item-cap-val">${escapeHtml(slotLabel ? slotLabel.label : it.defaultSlot)}</span>
-        </div>`;
-      }
+      // Note: item defs may carry a legacy `defaultSlot` field pointing
+      // at a body-slot code. Body slots no longer exist, so we don't
+      // show this field in the catalog detail panel.
       if (it.legacyCategory && it.legacyCategory.trim()) {
         html += `<div class="cat-view-item-legacy">
           <span class="cat-view-item-cap-label">Legacy tag:</span>
@@ -1172,70 +1166,66 @@ export function createInventorySection(ctx) {
   }
 
   // Determine where a catalog item should go when the user quick-adds.
-  // Returns { kind, ...targetRef } or null on failure.
+  // Smart-default target selection for the catalog's quick-add button.
+  // Returns { kind, ...targetRef }. Falls back to creating a new group
+  // if nothing exists yet.
   //
   // Priority order:
-  //   1. If container AND defaultSlot exists in ruleset → that slot
-  //   2. If any existing Stowed-like custom group → that group
-  //   3. Any custom group → the first one
-  //   4. Otherwise → create a new Stowed group
+  //   1. An existing custom group named "Stowed" (case-insensitive)
+  //   2. First existing custom top-level group
+  //   3. On-Person (always exists; everything gets dumped in its root)
   //
-  // The "any existing custom group" step prefers a group named "Stowed"
-  // if one exists (case-insensitive match) to match user intent.
+  // Body slots no longer exist as targets. Items go into groups.
   function smartDefaultTarget(it) {
-    const ruleset = getRuleset();
     const inv = ensureInventory();
-    const isContainer = !!it.containerOf;
+    const topLevel = inv.groups || [];
 
-    if (isContainer && it.defaultSlot) {
-      const slotExists = (ruleset.bodySlots || []).some(s => s.code === it.defaultSlot);
-      if (slotExists) return { kind: 'slot', code: it.defaultSlot };
-    }
-
-    // Prefer a group named "Stowed" over arbitrary custom groups.
-    const customGroups = (inv.groups || []).filter(g => g.kind === 'custom');
+    const customGroups = topLevel.filter(g => g.kind === 'custom');
     const stowed = customGroups.find(g => (g.name || '').trim().toLowerCase() === 'stowed');
     if (stowed) return { kind: 'group', id: stowed.id };
     if (customGroups.length > 0) return { kind: 'group', id: customGroups[0].id };
 
+    // Fall back to On-Person's root (not any subgroup — user's choice
+    // to subdivide further is respected). On-Person is guaranteed to
+    // exist via ensureInventory.
+    const onPerson = topLevel.find(g => g.kind === 'onPerson');
+    if (onPerson) return { kind: 'group', id: onPerson.id };
+
+    // Extreme edge case — no groups at all. Ask for a new group to be
+    // created so the item has somewhere to live.
     return { kind: 'newGroup' };
   }
 
-  // Render the Add-target dropdown menu for an item. Lists body slots,
-  // existing custom groups, and existing containers (nested under slots
-  // or groups). Sits inline under the row header; CSS positions it.
+  // Render the Add-target dropdown menu for an item. Lists every group
+  // and subgroup in the tree (indented), plus every container as a
+  // nested target. Body slots no longer exist.
   function renderCatalogAddMenu(it) {
-    const ruleset = getRuleset();
     const inv = ensureInventory();
-    const isContainer = !!it.containerOf;
 
     let html = `<div class="cat-view-add-menu">`;
     html += `<div class="cat-view-add-menu-label">Add to:</div>`;
 
-    // Body slots section — only relevant for containers (non-containers
-    // can't sit directly on a slot; they need a container to live in).
-    // Actually — the existing data model DOES allow loose items on slots
-    // (see openAddItem with targetKind='slot' on the inventory view), so
-    // we permit it here too. UX ambiguity but matches the existing flow.
-    if (ruleset.bodySlots && ruleset.bodySlots.length > 0) {
-      html += `<div class="cat-view-add-menu-section">Body Slots</div>`;
-      ruleset.bodySlots.forEach(slot => {
-        html += `<div class="cat-view-add-menu-opt" onclick="event.stopPropagation();invCatalogAddTo('${escapeHtml(it.id)}','slot','${escapeHtml(slot.code)}')">${escapeHtml(slot.label)}</div>`;
-      });
-    }
-
-    // Custom groups
-    const customGroups = (inv.groups || []).filter(g => g.kind === 'custom');
-    if (customGroups.length > 0) {
+    // Groups tree — walk every top-level group (On-Person + any custom
+    // ones) and recurse into subgroups. Each level gets an indent marker
+    // (a chevron-prefix) so the hierarchy reads correctly even inside a
+    // flat dropdown.
+    const topLevel = inv.groups || [];
+    if (topLevel.length > 0) {
       html += `<div class="cat-view-add-menu-section">Groups</div>`;
-      customGroups.forEach(g => {
-        html += `<div class="cat-view-add-menu-opt" onclick="event.stopPropagation();invCatalogAddTo('${escapeHtml(it.id)}','group','${escapeHtml(g.id)}')">${escapeHtml(g.name)}</div>`;
-      });
+      const walk = (nodes, depth) => {
+        nodes.forEach(node => {
+          if (!node || !isGroupNode(node)) return;
+          const indent = depth === 0 ? '' : '&nbsp;'.repeat(depth * 3) + '└ ';
+          html += `<div class="cat-view-add-menu-opt" onclick="event.stopPropagation();invCatalogAddTo('${escapeHtml(it.id)}','group','${escapeHtml(node.id)}')">${indent}${escapeHtml(node.name)}</div>`;
+          if (Array.isArray(node.contents)) walk(node.contents, depth + 1);
+        });
+      };
+      walk(topLevel, 0);
     }
 
     // Existing containers — find every container in the inventory tree
     // and offer it as a nested target. Names include the container's
-    // position for disambiguation ("Duffel Bag · Back").
+    // position for disambiguation.
     const containerTargets = collectContainerTargets();
     if (containerTargets.length > 0) {
       html += `<div class="cat-view-add-menu-section">Inside Container</div>`;
@@ -1251,37 +1241,29 @@ export function createInventorySection(ctx) {
     return html;
   }
 
-  // Walk the inventory tree and collect every container entry as a
-  // dropdown-ready target. Each entry's label combines its name with a
-  // short position hint ("Duffel Bag · Back slot") so identical names
-  // in different places are disambiguated.
+  // Walk the full group tree and collect every container entry as a
+  // dropdown-ready target. Labels include the ancestor context so
+  // identical container names in different groups are disambiguated.
   function collectContainerTargets() {
-    const ruleset = getRuleset();
     const inv = ensureInventory();
     const results = [];
-    // Helper that visits contents of an array, collecting containers,
-    // and recursing into their contents.
     const visit = (arr, ancestorLabel) => {
       if (!Array.isArray(arr)) return;
-      arr.forEach(entry => {
-        if (entryIsContainer(entry)) {
-          const name = entryName(entry);
-          const label = ancestorLabel
-            ? `${name} · in ${ancestorLabel}`
-            : `${name}`;
-          results.push({ id: entry.id, label });
-          visit(entry.contents, name);
+      arr.forEach(node => {
+        if (!node || typeof node !== 'object') return;
+        if (isGroupNode(node)) {
+          // Subgroup — recurse, using the subgroup's name as the new
+          // ancestor context.
+          visit(node.contents, node.name);
+        } else if (entryIsContainer(node)) {
+          const name = entryName(node);
+          const label = ancestorLabel ? `${name} · in ${ancestorLabel}` : name;
+          results.push({ id: node.id, label });
+          visit(node.contents, name);
         }
       });
     };
-    // Body slots
-    (ruleset.bodySlots || []).forEach(slot => {
-      visit(inv.bySlot[slot.code] || [], `${slot.label} slot`);
-    });
-    // Custom groups
-    (inv.groups || []).forEach(g => {
-      if (g.kind === 'custom') visit(g.contents, g.name);
-    });
+    (inv.groups || []).forEach(g => visit(g.contents, g.name));
     return results;
   }
 
@@ -2721,15 +2703,11 @@ export function createInventorySection(ctx) {
     if (def.containerOf) newEntry.contents = [];
 
     let whereLabel = '';
-    if (target.kind === 'slot') {
-      const ruleset = getRuleset();
-      const slot = (ruleset.bodySlots || []).find(s => s.code === target.code);
-      if (!Array.isArray(inv.bySlot[target.code])) inv.bySlot[target.code] = [];
-      inv.bySlot[target.code].push(newEntry);
-      whereLabel = slot ? slot.label : target.code;
-    } else if (target.kind === 'group') {
-      const g = inv.groups.find(x => x.id === target.id);
-      if (!g || g.kind !== 'custom') return;
+    if (target.kind === 'group') {
+      // Accept any group in the tree (On-Person, custom top-level,
+      // or nested subgroups). findGroup walks the whole structure.
+      const g = findGroup(target.id);
+      if (!g || !isGroupNode(g)) return;
       if (!Array.isArray(g.contents)) g.contents = [];
       g.contents.push(newEntry);
       whereLabel = g.name;
@@ -2943,20 +2921,17 @@ export function createInventorySection(ctx) {
   // one exists (unlikely to hit this path post-migration, but defensive).
 
   function resolveTargetLabel(target, targetKind) {
-    const ruleset = getRuleset();
-    const inv = ensureInventory();
     if (targetKind === 'container') {
       const parent = findEntry(target);
       return parent ? `Inside: ${entryName(parent)}` : '';
     }
     if (targetKind === 'group') {
-      const g = inv.groups.find(x => x.id === target);
+      // Walks the full tree so subgroup labels work. On-Person and
+      // nested subgroups all render correctly.
+      const g = findGroup(target);
       return g ? `To: ${g.name}` : '';
     }
-    if (targetKind === 'slot') {
-      const slot = (ruleset.bodySlots || []).find(s => s.code === target);
-      return slot ? `To slot: ${slot.label}` : '';
-    }
+    // Legacy 'slot' targeting — no-op after the slot → group refactor.
     return '';
   }
 
@@ -2965,7 +2940,9 @@ export function createInventorySection(ctx) {
     // Back-compat: second arg used to be a boolean `fromContainer`.
     // Normalize to the new targetKind.
     if (targetKind === true) targetKind = 'container';
-    if (!targetKind) targetKind = 'slot';
+    // Default to 'group' — any caller passing no kind assumes a group
+    // target. The old 'slot' default no longer makes sense post-refactor.
+    if (!targetKind) targetKind = 'group';
     activeModal = {
       kind: 'container',
       target,
@@ -2978,7 +2955,7 @@ export function createInventorySection(ctx) {
 
   function openAddItem(target, targetKind) {
     if (!getCanEdit()) return;
-    if (!targetKind) targetKind = 'slot';
+    if (!targetKind) targetKind = 'group';
     activeModal = {
       kind: 'item',
       target,
