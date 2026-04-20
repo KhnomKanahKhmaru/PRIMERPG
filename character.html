@@ -1749,6 +1749,12 @@
     .inv-add-btn-ghost { background: transparent; color: #888; }
     .inv-add-btn-ghost:hover { color: #ccc; background: #151515; }
     .inv-add-btn-sm { font-size: 10px; padding: 3px 10px; }
+    /* Promote-to-catalogue button — amber to match the edit panel theme
+     * and visually distinguish from the normal Save. Pushed to the
+     * right of the actions row via margin-left:auto so it visually
+     * reads as a secondary/separate action from Save & Cancel. */
+    .inv-add-btn-promote { background: #1a1406; border-color: #2a2010; color: #caa060; margin-left: auto; }
+    .inv-add-btn-promote:hover { background: #241a08; border-color: #3a2c10; color: #e0b870; }
 
     /* Modal for Add Container / Add Item */
     .inv-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 20px; }
@@ -2600,6 +2606,7 @@
     invUpdateEditDraft:      (field, value)       => inventory.updateEditDraft(field, value),
     invSaveEntryEdit:        ()                   => inventory.saveEntryEdit(),
     invCancelEntryEdit:      ()                   => inventory.cancelEntryEdit(),
+    invPromoteEntryToCatalogue: ()                => inventory.promoteEntryToCatalogue(),
     invOpenManageCatalog:    ()                   => inventory.openManageCatalog(),
     invCatMgrClose:          ()                   => inventory.catMgrClose(),
     invCatMgrCloseIfBackdrop:(ev)                 => inventory.catMgrCloseIfBackdrop(ev),
