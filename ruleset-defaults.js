@@ -417,12 +417,26 @@ window.RULESET_DEFAULTS = {
     { code: 'feet',      label: 'Feet'      }
   ],
 
-  // Container and equipment catalogs ship empty — ruleset authors fill
-  // them in the ruleset editor. Basic Set may get seeded with a starter
-  // set later (duffel bag, backpack, belt pouch) but we don't hardcode
-  // them in the defaults so rulesets stay lean.
-  containers: [],
-  equipment:  []
+  // ── UNIFIED ITEM CATALOG ──
+  //
+  // Every carryable thing — weapon, tool, armor, container — is a single
+  // kind of record: an Item. An item becomes a container when its
+  // `containerOf` block is populated (inner dims + packing efficiency).
+  // This collapses the old "containers vs equipment" split into one
+  // catalog that's easier to browse and categorize.
+  //
+  // Items are organized into a tree of categories via `categoryId` +
+  // `categories` (a flat array with `parentId` pointers, allowing
+  // arbitrary nesting depth). Uncategorized items fall into the
+  // auto-created "Miscellaneous" category on display.
+
+  items: [],
+  categories: [
+    // "Miscellaneous" is a built-in category that always exists. It's
+    // the bucket for items whose categoryId is null or points to a
+    // deleted category. Can be renamed/described but not deleted.
+    { id: 'cat_misc', name: 'Miscellaneous', description: '', parentId: null, builtIn: true }
+  ]
 };
 
 // Normalize any ruleset doc by filling in missing fields from defaults.
@@ -834,16 +848,24 @@ window.normalizeRuleset = function(rs) {
     out.bodySlots = JSON.parse(JSON.stringify(d.bodySlots));
   }
 
-  // Container / equipment catalog entries share most of their schema —
-  // a display name, optional description, dimensions (L×W×H inches), and
-  // weight (lbs). Containers additionally define packingEfficiency.
-  // Equipment can carry a weaponId linking to the weapons catalog (not
-  // built yet; reserved for later) and a containerOf block making the
-  // equipment ALSO function as a container (ammo pouch, quiver, etc.).
+  // ── UNIFIED ITEM CATALOG + CATEGORIES ──
   //
-  // We don't slugify IDs — rulesets generate stable ids client-side when
-  // adding entries and pass them in verbatim. Missing ids get synthesized
-  // so legacy data doesn't break.
+  // The inventory catalog is ONE array of items (any kind of carryable
+  // thing) plus a tree of categories. Items point at a category via
+  // `categoryId`; uncategorized items fall into the built-in
+  // "Miscellaneous" category at display time. Items become containers
+  // when their `containerOf` block is populated.
+  //
+  // On load we handle three shapes:
+  //   1. Legacy: `containers` + `equipment` arrays present, no `items`.
+  //      → migrate containers into items (wrapped as container items),
+  //        move equipment in directly, assemble unified `items` array,
+  //        then drop the legacy fields.
+  //   2. Current: `items` + `categories` arrays present.
+  //      → validate and fill any gaps.
+  //   3. Empty: nothing here.
+  //      → create empty arrays + a built-in "Miscellaneous" category.
+
   const nextSynthId = (() => {
     let n = 0;
     return (prefix) => `${prefix}_${Date.now().toString(36)}_${(n++).toString(36)}`;
@@ -873,56 +895,146 @@ window.normalizeRuleset = function(rs) {
     return { dimensions: dims, packingEfficiency: eff };
   };
 
-  if (!Array.isArray(out.containers)) out.containers = [];
-  out.containers = out.containers
-    .map(c => {
-      if (!c || typeof c !== 'object') return null;
-      const name = (typeof c.name === 'string' && c.name.trim()) ? c.name.trim() : '';
-      if (!name) return null;
-      const block = coerceContainerBlock(c) || coerceContainerBlock({});
-      return {
-        id:                 (typeof c.id === 'string' && c.id) ? c.id : nextSynthId('cont'),
-        name,
-        description:        (typeof c.description === 'string') ? c.description : '',
-        dimensions:         block.dimensions,
-        weight:             coerceFiniteNonNeg(c.weight, 0),
-        packingEfficiency:  block.packingEfficiency,
-        // defaultSlot is a hint: when a player adds this container to
-        // their character, which body slot should it pre-select? null =
-        // prompt the player. Must match a slot code in bodySlots to be
-        // useful, but we don't validate here since catalogs can be edited
-        // independently of each other.
-        defaultSlot:        (typeof c.defaultSlot === 'string' && c.defaultSlot) ? c.defaultSlot : null
-      };
-    })
-    .filter(Boolean);
+  // Normalize a single item record. Shared by the migration path
+  // (legacy entry → item) and the validation path (existing item → item).
+  // `sourceKind` is 'container' when coming from the old containers
+  // array — those are auto-promoted to have a containerOf block synthesized
+  // from their top-level dimensions/packing fields.
+  const normalizeItem = (raw, sourceKind) => {
+    if (!raw || typeof raw !== 'object') return null;
+    const name = (typeof raw.name === 'string' && raw.name.trim()) ? raw.name.trim() : '';
+    if (!name) return null;
 
-  if (!Array.isArray(out.equipment)) out.equipment = [];
-  out.equipment = out.equipment
-    .map(e => {
-      if (!e || typeof e !== 'object') return null;
-      const name = (typeof e.name === 'string' && e.name.trim()) ? e.name.trim() : '';
-      if (!name) return null;
-      return {
-        id:           (typeof e.id === 'string' && e.id) ? e.id : nextSynthId('eq'),
-        name,
-        description:  (typeof e.description === 'string') ? e.description : '',
-        dimensions:   coerceDimensions(e.dimensions),
-        weight:       coerceFiniteNonNeg(e.weight, 0),
-        // Free-form categorization. Just a display hint, no enforcement.
-        // Common values: 'firearm', 'melee', 'ammo', 'tool', 'consumable',
-        // 'armor', 'clothing', 'misc'. Blank means "misc".
-        category:     (typeof e.category === 'string') ? e.category.trim() : '',
-        // Reserved for the future weapons catalog linkage. Present now so
-        // data created today stays forward-compatible.
-        weaponId:     (typeof e.weaponId === 'string' && e.weaponId) ? e.weaponId : null,
-        // If set, this equipment ALSO behaves as a container (ammo pouch,
-        // quiver, holster). Character-side code reads this and lets
-        // players drop items inside the equipment instance.
-        containerOf:  coerceContainerBlock(e.containerOf)
+    // Outer dimensions (the item's physical size) — carried by every
+    // item whether it's a container or not.
+    const dimensions = coerceDimensions(raw.dimensions);
+
+    // Determine the containerOf block. Three paths:
+    //   - Legacy `container` record: synthesize from its top-level
+    //     dimensions + packingEfficiency (those fields describe its
+    //     internal capacity in the old schema).
+    //   - Legacy `equipment` record or current item: use its containerOf
+    //     block directly if present.
+    //   - Plain item: null.
+    let containerOf = null;
+    if (sourceKind === 'container') {
+      // Old containers carried packingEfficiency at the top level and
+      // their outer/inner dimensions were the same. Wrap into the new
+      // containerOf shape so they "just work" as containers.
+      containerOf = {
+        dimensions: { l: dimensions.l, w: dimensions.w, h: dimensions.h },
+        packingEfficiency: coerceContainerBlock(raw) ? coerceContainerBlock(raw).packingEfficiency : 0.75
       };
-    })
-    .filter(Boolean);
+    } else if (raw.containerOf) {
+      containerOf = coerceContainerBlock(raw.containerOf);
+    }
+
+    return {
+      id:           (typeof raw.id === 'string' && raw.id) ? raw.id : nextSynthId(sourceKind === 'container' ? 'cont' : 'item'),
+      name,
+      description:  (typeof raw.description === 'string') ? raw.description : '',
+      dimensions,
+      weight:       coerceFiniteNonNeg(raw.weight, 0),
+      // Category membership — string id pointing at a categories entry,
+      // or null for uncategorized (displays under Miscellaneous).
+      categoryId:   (typeof raw.categoryId === 'string' && raw.categoryId) ? raw.categoryId : null,
+      // Legacy free-form `category` string preserved if present, for
+      // potential later auto-mapping to real categories. Safe to ignore
+      // by new code.
+      legacyCategory: (typeof raw.category === 'string' && raw.category) ? raw.category : '',
+      // Future weapon-catalog linkage (not built yet).
+      weaponId:     (typeof raw.weaponId === 'string' && raw.weaponId) ? raw.weaponId : null,
+      // Default body slot — set on containers so adding one to a
+      // character pre-selects the right slot.
+      defaultSlot:  (typeof raw.defaultSlot === 'string' && raw.defaultSlot) ? raw.defaultSlot : null,
+      containerOf
+    };
+  };
+
+  // Detect legacy shape. If we find containers/equipment arrays AND no
+  // items array, it's pre-unification data that needs migrating.
+  const hasLegacyCatalog = Array.isArray(out.containers) || Array.isArray(out.equipment);
+  const hasUnifiedItems  = Array.isArray(out.items);
+
+  if (!hasUnifiedItems) {
+    // Migration path — merge old catalogs into one items array.
+    const items = [];
+    (Array.isArray(out.containers) ? out.containers : []).forEach(c => {
+      const item = normalizeItem(c, 'container');
+      if (item) items.push(item);
+    });
+    (Array.isArray(out.equipment) ? out.equipment : []).forEach(e => {
+      const item = normalizeItem(e, 'equipment');
+      if (item) items.push(item);
+    });
+    out.items = items;
+  } else {
+    // Current shape — just validate and clean.
+    out.items = out.items.map(i => normalizeItem(i, 'equipment')).filter(Boolean);
+  }
+
+  // Drop legacy fields so the persisted doc stays clean and we don't
+  // keep re-migrating on every load.
+  if (hasLegacyCatalog) {
+    delete out.containers;
+    delete out.equipment;
+  }
+
+  // ── CATEGORIES ──
+  //
+  // Flat array of { id, name, description, parentId, builtIn }.
+  // parentId=null means top-level; non-null must point at another
+  // category in the array. Arbitrary nesting depth is allowed.
+  // "Miscellaneous" is a built-in category that always exists — items
+  // with categoryId=null or pointing at a deleted category display
+  // under it.
+
+  if (!Array.isArray(out.categories)) out.categories = [];
+
+  // Normalize entries: name required, description optional, parentId
+  // nullable, builtIn preserved if set.
+  out.categories = out.categories.map(c => {
+    if (!c || typeof c !== 'object') return null;
+    const name = (typeof c.name === 'string' && c.name.trim()) ? c.name.trim() : '';
+    if (!name) return null;
+    return {
+      id:          (typeof c.id === 'string' && c.id) ? c.id : nextSynthId('cat'),
+      name,
+      description: (typeof c.description === 'string') ? c.description : '',
+      parentId:    (typeof c.parentId === 'string' && c.parentId) ? c.parentId : null,
+      builtIn:     c.builtIn === true
+    };
+  }).filter(Boolean);
+
+  // Ensure built-in "Miscellaneous" exists. If the author tried to
+  // delete it in raw JSON, add it back. If multiple exist (shouldn't
+  // happen but defensive), keep the first.
+  const miscExists = out.categories.find(c => c.id === 'cat_misc');
+  if (!miscExists) {
+    out.categories.push({
+      id: 'cat_misc',
+      name: 'Miscellaneous',
+      description: 'Uncategorized items end up here.',
+      parentId: null,
+      builtIn: true
+    });
+  } else {
+    // Force builtIn flag on the Misc category so UI code can rely on it.
+    miscExists.builtIn = true;
+  }
+
+  // Validate parent links: a parentId pointing at a non-existent
+  // category becomes null (orphan → top-level). A parentId pointing at
+  // ITSELF also becomes null (would cause infinite render loops).
+  // We don't try to detect longer cycles here — the editor should
+  // prevent them at input time; if they somehow slip through, the
+  // tree renderer guards against revisiting nodes.
+  const catIds = new Set(out.categories.map(c => c.id));
+  out.categories.forEach(c => {
+    if (c.parentId && (c.parentId === c.id || !catIds.has(c.parentId))) {
+      c.parentId = null;
+    }
+  });
 
   return out;
 };
