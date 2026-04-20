@@ -228,14 +228,10 @@
        sections (Primary Skills, A/D entries) so it reads as familiar. */
 
     /* Body slot rows — similar shape to Primary Skills but with slug preview */
-    .slot-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
-    .slot-row { display: grid; grid-template-columns: 140px 1fr 24px; gap: 8px; align-items: center; background: #111; border: 1px solid #1a1a1a; border-radius: 4px; padding: 7px 10px; }
-    .slot-row input { background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 5px 8px; border-radius: 3px; outline: none; width: 100%; }
-    .slot-row input:focus { border-color: #444; }
-    .slot-row .slot-code { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #666; background: #0a0a0a; border: 1px solid #1a1a1a; padding: 5px 8px; border-radius: 3px; text-align: center; }
-    .slot-row .delete-x { color: #555; font-size: 18px; cursor: pointer; text-align: center; line-height: 1.6; }
-    .slot-row .delete-x:hover { color: #c84b4b; }
-    .slot-list-header { display: grid; grid-template-columns: 140px 1fr 24px; gap: 8px; padding: 0 10px 4px; font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #666; border-bottom: 1px solid #1a1a1a; margin-bottom: 4px; }
+    /* .slot-add-row is shared by Categories and Items sections for
+     * their inline "add new" rows. The body-slot list CSS that used
+     * to live here (.slot-list, .slot-row, .slot-code, .slot-list-header)
+     * was removed when body slots were retired. */
     .slot-add-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 6px; }
     .slot-add-row input, .slot-add-row select { background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 10px; border-radius: 3px; outline: none; }
     .slot-add-row input:focus, .slot-add-row select:focus { border-color: #444; }
@@ -735,25 +731,6 @@
 
       <div class="section">
         <div class="section-header">
-          <div class="section-title">Body Slots</div>
-        </div>
-        <div class="section-desc">Named positions where worn containers attach to a character. Purely organizational — the GM decides how much fits in each. Add as many as your setting needs.</div>
-
-        <div class="slot-list-header">
-          <div style="padding-left:4px">Code</div>
-          <div>Label</div>
-          <div></div>
-        </div>
-        <div class="slot-list" id="slot-list"></div>
-
-        <div class="slot-add-row">
-          <input type="text" id="new-slot-label" placeholder="New slot label (e.g. Right Hand)" onkeydown="if(event.key==='Enter')addBodySlot()">
-          <button class="inv-add-btn" onclick="addBodySlot()">+ Add Slot</button>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-header">
           <div class="section-title">Categories</div>
         </div>
         <div class="section-desc">Organize your items into a category tree. Nest categories as deep as you want — e.g. Weapons → Firearms → Pistols. Items without a category fall into <b>Miscellaneous</b> automatically. The tree mirrors what players see when browsing the catalog on their character sheet.</div>
@@ -965,7 +942,6 @@
     renderPowerPool();
 
     // Inventory tab
-    renderBodySlots();
     renderCategoryTree();
     renderItemList();
     refreshCategorySelects();
@@ -2052,17 +2028,6 @@
     return (prefix) => `${prefix}_${Date.now().toString(36)}_${(n++).toString(36)}`;
   })();
 
-  // Turn a label like "Right Hand" into a stable slot code "right_hand".
-  // Matches the slugify in ruleset-defaults.js — the normalizer will
-  // re-run this on save, but we preview the result live so the author
-  // knows what code their label becomes.
-  function slugSlotCode(s) {
-    return String(s || '')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '');
-  }
-
   // Shared input-value escape. Matches the .replace(/"/g,'&quot;') pattern
   // used throughout this file — inputs only, since we're writing into
   // `value="..."` attributes. Textareas put content between tags, which
@@ -2073,76 +2038,11 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  // ── BODY SLOTS ──
-  //
-  // Simple list: each row shows the slug-slot code on the left (read-only
-  // preview), an editable label in the middle, delete on the right. The
-  // code is regenerated from the label every render — users think in
-  // labels, the system thinks in codes.
-
-  function renderBodySlots() {
-    const host = document.getElementById('slot-list');
-    if (!host) return;
-    if (!Array.isArray(state.bodySlots) || state.bodySlots.length === 0) {
-      host.innerHTML = '<div class="empty" style="font-size:12px;color:#555;padding:10px">No body slots defined. Defaults will be restored on save.</div>';
-      return;
-    }
-    host.innerHTML = state.bodySlots.map((s, i) => `
-      <div class="slot-row">
-        <div class="slot-code">${qText(s.code || '—')}</div>
-        <input type="text" value="${q(s.label || '')}" placeholder="Label" oninput="updateBodySlotLabel(${i}, this.value)">
-        <span class="delete-x" onclick="deleteBodySlot(${i})" title="Remove slot">×</span>
-      </div>`).join('');
-  }
-
-  window.addBodySlot = function() {
-    const input = document.getElementById('new-slot-label');
-    if (!input) return;
-    const label = (input.value || '').trim();
-    if (!label) { input.focus(); return; }
-    const code = slugSlotCode(label);
-    if (!code) { input.focus(); return; }
-    // Silently ignore collisions — the normalizer would drop the dupe
-    // on save anyway, but we may as well spare the confusion.
-    if (state.bodySlots.some(s => s.code === code)) {
-      input.value = '';
-      input.focus();
-      return;
-    }
-    state.bodySlots.push({ code, label });
-    input.value = '';
-    input.focus();
-    renderBodySlots();
-    renderItemList();   // item default-slot dropdowns need to refresh
-  };
-
-  window.updateBodySlotLabel = function(i, value) {
-    const slot = state.bodySlots[i];
-    if (!slot) return;
-    slot.label = typeof value === 'string' ? value : '';
-    // Regenerate code from the new label. Update the row's code preview
-    // in place so the user sees the slug change live without re-rendering
-    // the whole list (which would steal focus from the input they're typing in).
-    const newCode = slugSlotCode(slot.label);
-    // Avoid collisions with OTHER slots. If the new code clashes, keep the
-    // old code — author can rename further. No error surfacing beyond the
-    // preview column staying on the old value; simplest UX.
-    if (newCode && !state.bodySlots.some((s, j) => j !== i && s.code === newCode)) {
-      slot.code = newCode;
-    }
-    const row = document.querySelectorAll('#slot-list .slot-row')[i];
-    if (row) {
-      const codeCell = row.querySelector('.slot-code');
-      if (codeCell) codeCell.textContent = slot.code || '—';
-    }
-  };
-
-  window.deleteBodySlot = function(i) {
-    if (!state.bodySlots[i]) return;
-    state.bodySlots.splice(i, 1);
-    renderBodySlots();
-    renderItemList();   // item default-slot dropdowns need to refresh
-  };
+  // Body slots were removed from the ruleset model — the groups system
+  // in the character sheet organizes everything now (On-Person group
+  // plus player-created groups and subgroups). The `bodySlots` array
+  // is still serialized for back-compat with old rulesets but has no
+  // UI and no effect.
 
 
   // ── CATEGORIES ──
@@ -2435,19 +2335,10 @@
               <input type="number" step="0.25" min="0" value="${q(cofDims.h)}" placeholder="H" oninput="updateItemCofDim('${q(it.id)}','h',this.value)">
             </div>
           </div>
-          <div class="inv-pair-row">
-            <div class="inv-field" style="max-width:260px">
-              <label title="Fraction of the inner L×W×H volume that can actually hold items.">Packing Efficiency (0.1 – 1.0)</label>
-              <input type="number" step="0.05" min="0.1" max="1.0" value="${q(cof.packingEfficiency || 0.75)}" oninput="updateItemCofField('${q(it.id)}','packingEfficiency',this.value)">
-              <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">1.0 = fitted case · 0.75 = typical bag · 0.5 = loose sack</div>
-            </div>
-            <div class="inv-field">
-              <label>Default Body Slot (optional)</label>
-              <select onchange="updateItemField('${q(it.id)}','defaultSlot',this.value)">
-                <option value="">— None (stowed) —</option>
-                ${state.bodySlots.map(s => `<option value="${q(s.code)}"${s.code === it.defaultSlot ? ' selected' : ''}>${qText(s.label)}</option>`).join('')}
-              </select>
-            </div>
+          <div class="inv-field" style="max-width:260px">
+            <label title="Fraction of the inner L×W×H volume that can actually hold items.">Packing Efficiency (0.1 – 1.0)</label>
+            <input type="number" step="0.05" min="0.1" max="1.0" value="${q(cof.packingEfficiency || 0.75)}" oninput="updateItemCofField('${q(it.id)}','packingEfficiency',this.value)">
+            <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">1.0 = fitted case · 0.75 = typical bag · 0.5 = loose sack</div>
           </div>
         </div>` : ''}
       </div>`;
@@ -2487,7 +2378,6 @@
       categoryId: null,
       legacyCategory: '',
       weaponId: null,
-      defaultSlot: null,
       containerOf: null
     };
     state.items.push(it);
@@ -2526,8 +2416,6 @@
       // it changes which header it sits under.
       renderItemList();
       return;
-    } else if (field === 'defaultSlot') {
-      it.defaultSlot = (typeof value === 'string' && value) ? value : null;
     } else {
       it[field] = typeof value === 'string' ? value : '';
     }
