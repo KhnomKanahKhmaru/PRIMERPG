@@ -90,54 +90,70 @@ export function createInventorySection(ctx) {
 
   // ─── DEF LOOKUP ───
   //
-  // Ids are resolved against the RULESET catalog first, then the
-  // character's personal customDefs as a fallback. Custom ids use a
-  // 'cust_' prefix to make the source visible at a glance, but lookup
-  // doesn't depend on the prefix — it walks both catalogs.
+  // Under the unified schema, the ruleset has ONE items array — no more
+  // containers/equipment split. An item is a container when its def's
+  // `containerOf` block is populated. Character-scoped custom defs work
+  // the same way; they live in charData.inventory.customDefs.containers
+  // and .equipment for backwards compatibility with older charData but
+  // get read as a merged pool (both arrays are walked on lookup).
+  //
+  // defKind on entries is now cosmetic — kept for legacy entries that
+  // already have it set, but new entries don't need to distinguish.
+  // containerness is determined by def.containerOf, not by defKind.
 
-  function getContainerDef(id) {
+  function getItemDef(id) {
+    if (!id) return null;
     const ruleset = getRuleset();
-    const fromRuleset = (ruleset.containers || []).find(c => c.id === id);
+    const fromRuleset = (ruleset.items || []).find(x => x.id === id);
     if (fromRuleset) return fromRuleset;
     const inv = ensureInventory();
-    return (inv.customDefs.containers || []).find(c => c.id === id) || null;
+    // Walk both legacy customDef buckets so older character data still
+    // resolves. New custom defs written today land in `.equipment` (for
+    // plain items) or `.containers` (for custom pure-containers), but
+    // either bucket works at lookup time.
+    const fromCustomEq   = (inv.customDefs.equipment  || []).find(x => x.id === id);
+    if (fromCustomEq) return fromCustomEq;
+    const fromCustomCont = (inv.customDefs.containers || []).find(x => x.id === id);
+    if (fromCustomCont) return fromCustomCont;
+    return null;
   }
-  function getEquipmentDef(id) {
-    const ruleset = getRuleset();
-    const fromRuleset = (ruleset.equipment || []).find(e => e.id === id);
-    if (fromRuleset) return fromRuleset;
-    const inv = ensureInventory();
-    return (inv.customDefs.equipment || []).find(e => e.id === id) || null;
-  }
+
+  // Legacy aliases — the rest of the module still calls these. They all
+  // resolve via getItemDef now, so the legacy containers/equipment split
+  // no longer matters at lookup time.
+  function getContainerDef(id) { return getItemDef(id); }
+  function getEquipmentDef(id) { return getItemDef(id); }
+
   function getDefForEntry(entry) {
     if (!entry) return null;
-    return entry.defKind === 'container' ? getContainerDef(entry.defId)
-         : entry.defKind === 'equipment' ? getEquipmentDef(entry.defId)
-         : null;
+    return getItemDef(entry.defId);
   }
 
-  // An entry "is a container" if its def is a Container, OR if it's an
-  // Equipment with a containerOf block. Same shape either way — we just
-  // have to look in two places for the dimensions/packing.
+  // An entry "is a container" if its def has a containerOf block.
+  // defKind is no longer consulted for this — the def's shape is
+  // authoritative. This correctly handles:
+  //   - Ruleset items with containerOf = container
+  //   - Ruleset items without containerOf = plain item
+  //   - Character custom defs follow the same rule
+  //   - Legacy entries with defKind='container' (migrated defs now
+  //     have containerOf synthesized from old top-level dims)
   function entryIsContainer(entry) {
     const def = getDefForEntry(entry);
-    if (!def) return false;
-    if (entry.defKind === 'container') return true;
-    if (entry.defKind === 'equipment' && def.containerOf) return true;
-    return false;
+    return !!(def && def.containerOf);
   }
 
-  // Get the "inner" container spec (dimensions + packingEfficiency) from
-  // an entry that is a container. For pure Container defs this is the
-  // def itself. For Equipment with containerOf, it's the nested block.
+  // Get the inner container spec (dimensions + packingEfficiency) from
+  // an entry that is a container. After migration, every container's
+  // capacity lives in def.containerOf. For legacy defs that still
+  // expose top-level dimensions/packingEfficiency (migration safety),
+  // we fall back to those if containerOf is missing.
   function innerSpec(entry) {
     const def = getDefForEntry(entry);
     if (!def) return null;
-    if (entry.defKind === 'container') {
+    if (def.containerOf) return def.containerOf;
+    // Legacy fallback — shouldn't happen post-migration but defensive.
+    if (def.packingEfficiency != null) {
       return { dimensions: def.dimensions, packingEfficiency: def.packingEfficiency };
-    }
-    if (entry.defKind === 'equipment' && def.containerOf) {
-      return def.containerOf;
     }
     return null;
   }
@@ -729,11 +745,13 @@ export function createInventorySection(ctx) {
 
   // ─── MODALS: ADD CONTAINER / ADD ITEM ───
   //
-  // Both modals pull from the ruleset catalogs and let the player pick a
-  // def to instantiate. Container modal filters to `ruleset.containers`
-  // plus any `ruleset.equipment` with a `containerOf` block (dual-role
-  // items like ammo pouches count as containers for placement purposes).
-  // Item modal lists all equipment.
+  // Both modals pull from the ruleset's items catalog plus the
+  // character's custom defs. The Container modal filters to items with
+  // a containerOf block (those are the things that can hold stuff).
+  // The Item modal shows the full catalog.
+  //
+  // NOTE: In Turn 4 this gets replaced with a category-tree picker that
+  // lets users drill down by category. For now the picker is flat.
 
   function renderActiveModal() {
     const root = document.getElementById('inv-modal-root');
@@ -758,14 +776,27 @@ export function createInventorySection(ctx) {
 
     const ruleset = getRuleset();
     const inv = ensureInventory();
+
+    // Collect all candidate defs from both sources. Each entry carries
+    // its `kind` (for instantiation's defKind field — container or
+    // equipment based on whether def.containerOf is set) and its
+    // `source` (for the UI "custom" pill).
+    const allDefs = [];
+    (ruleset.items || []).forEach(def => {
+      const kind = def.containerOf ? 'container' : 'equipment';
+      allDefs.push({ kind, def, source: 'ruleset' });
+    });
+    (inv.customDefs.containers || []).forEach(def => {
+      allDefs.push({ kind: 'container', def, source: 'custom' });
+    });
+    (inv.customDefs.equipment || []).forEach(def => {
+      const kind = def.containerOf ? 'container' : 'equipment';
+      allDefs.push({ kind, def, source: 'custom' });
+    });
+
     if (activeModal.kind === 'container') {
-      // Container modal — ruleset containers + equipment-with-containerOf
-      // + character-scoped custom containers + character equipment-with-containerOf
-      const options = [];
-      (ruleset.containers || []).forEach(c => options.push({ kind: 'container', def: c, source: 'ruleset' }));
-      (ruleset.equipment || []).filter(e => e.containerOf).forEach(e => options.push({ kind: 'equipment', def: e, source: 'ruleset' }));
-      (inv.customDefs.containers || []).forEach(c => options.push({ kind: 'container', def: c, source: 'custom' }));
-      (inv.customDefs.equipment || []).filter(e => e.containerOf).forEach(e => options.push({ kind: 'equipment', def: e, source: 'custom' }));
+      // Containers only — anything with a containerOf block.
+      const options = allDefs.filter(o => !!o.def.containerOf);
       root.innerHTML = renderModal({
         title: 'Add Container',
         subtitle: activeModal.targetLabel || '',
@@ -775,14 +806,13 @@ export function createInventorySection(ctx) {
         customKind: 'container'
       });
     } else if (activeModal.kind === 'item') {
-      const options = [];
-      (ruleset.equipment || []).forEach(e => options.push({ kind: 'equipment', def: e, source: 'ruleset' }));
-      (inv.customDefs.equipment || []).forEach(e => options.push({ kind: 'equipment', def: e, source: 'custom' }));
+      // Items — show everything (including containers, since the player
+      // might want to stuff a container into another container).
       root.innerHTML = renderModal({
         title: 'Add Item',
         subtitle: activeModal.targetLabel || '',
-        options,
-        emptyMsg: 'No equipment in this ruleset yet. Use "+ Custom" below to make a one-off for this character, or open the ruleset editor\'s Inventory tab to add reusable ones.',
+        options: allDefs,
+        emptyMsg: 'No items in this ruleset yet. Use "+ Custom" below to make a one-off for this character, or open the ruleset editor\'s Inventory tab to add reusable ones.',
         onPickAttr: 'invPickItemDef',
         customKind: 'equipment'
       });
