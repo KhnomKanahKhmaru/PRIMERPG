@@ -1758,6 +1758,7 @@
     .inv-group-btn:hover { color: #ccc; border-color: #444; }
     .inv-group-btn-danger:hover { color: #c84b4b; border-color: #6a2020; }
     .inv-group-body { padding: 10px 12px 12px; }
+    .inv-group-desc { font-size: 12px; color: #999; line-height: 1.55; padding: 6px 10px 10px; margin: -4px 0 8px; border-bottom: 1px solid #1a1a1a; white-space: pre-wrap; font-style: italic; }
     .inv-group-actions { display: flex; gap: 6px; padding: 6px 2px 2px; flex-wrap: wrap; }
 
     /* Add-group button at the bottom of the tab */
@@ -2365,6 +2366,8 @@
     invAddGroup:             ()                   => inventory.addGroup(),
     invRenameGroup:          (id)                 => inventory.renameGroup(id),
     invDeleteGroup:          (id)                 => inventory.deleteGroup(id),
+    invUpdateGroupDraft:     (field, value)       => inventory.updateGroupDraft(field, value),
+    invSaveGroup:            ()                   => inventory.saveGroup(),
     invOpenAddContainer:     (target, kind)       => inventory.openAddContainer(target, kind),
     invOpenAddItem:          (target, kind)       => inventory.openAddItem(target, kind),
     invCloseModal:           (ev)                 => { if (!ev || ev.target === ev.currentTarget) inventory.closeModal(); },
