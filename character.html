@@ -293,6 +293,25 @@
       color: #ccc;
       font-variant-numeric: tabular-nums;
     }
+    /* Locked row — used for Encumbrance (auto-calculated from inventory).
+       Muted label with a tiny lock icon, but the value still pops because
+       players need to read it. Cursor becomes help-question on hover
+       so the tooltip ("managed on Inventory tab") is discoverable. */
+    .state-penalty-row-locked {
+      cursor: help;
+    }
+    .state-penalty-row-locked .state-penalty-k {
+      color: #888;
+    }
+    .state-penalty-lock {
+      font-size: 9px;
+      margin-left: 2px;
+      opacity: 0.5;
+      vertical-align: middle;
+    }
+    .state-penalty-row-locked:hover .state-penalty-lock {
+      opacity: 0.9;
+    }
     /* Others editor — inline CRUD for player-named ±% modifiers.
        Below the breakdown rows, visually separated by a top border.
        Each row is a grid: name input (flex) | number input | % unit | × delete. */
