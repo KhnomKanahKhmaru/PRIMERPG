@@ -41,6 +41,7 @@
 //   fmt           → shared number formatter
 
 import { saveCharacter } from './char-firestore.js';
+import { computeDerivedStats } from './char-derived.js';
 
 export function createInventorySection(ctx) {
   const { getCharId, getCharData, getCanEdit, getRuleset } = ctx;
@@ -64,6 +65,11 @@ export function createInventorySection(ctx) {
   // Which slots have their whole section collapsed. Stored BY CODE.
   // Default is all-open. Used so a user can fold away unused slots.
   const collapsedSlots = new Set();
+
+  // Which carry cards (CAP / ENC / LIFT) have their modifier editor
+  // expanded. Set of card keys: 'cap', 'enc', 'lift'. Click the card
+  // header to toggle. Session-only, not persisted.
+  const expandedCarryCards = new Set();
 
   // Which groups are collapsed — stored by group id. We do persist the
   // group's own `collapsed` flag to Firestore (part of the group record),
@@ -787,6 +793,17 @@ export function createInventorySection(ctx) {
     if (viewMode === 'catalog') {
       html += renderCatalogView(ruleset, inv);
     } else {
+      // Carry stats — three cards (CAP / ENC / LIFT) at the top of the
+      // inventory view. They show the current derived carry state and
+      // let the player manage named modifiers on each. Derived in sync
+      // with char-derived.js; modifiers are stored on the character
+      // (capModifiers, liftModifiers, encModifiers arrays).
+      const charData = getCharData();
+      if (charData) {
+        const derived = computeDerivedStats(charData, ruleset);
+        html += renderCarryCards(derived.carry, canEdit);
+      }
+
       // Inventory view — groups-first layout: On-Person (wraps slots)
       // plus any custom groups. One group header per entry in inv.groups,
       // rendered in order. Custom groups may be renamed/deleted;
@@ -829,6 +846,247 @@ export function createInventorySection(ctx) {
     }
   }
 
+  // ─── CARRY CARDS (CAP / ENC / LIFT) ───
+  //
+  // Three cards at the top of the Inventory tab showing the character's
+  // current carry stats. Each card has:
+  //   - A current value (post-modifier)
+  //   - A base value (pre-modifier, if mods are in play)
+  //   - A toggle-to-expand modifier editor with named ± entries
+  //
+  // CAP and LIFT accept percent modifiers (+50% = ×1.5). ENC modifiers
+  // are additive to the % value directly. See char-derived.js for the
+  // math; this file is purely presentation + CRUD.
+
+  function renderCarryCards(carry, canEdit) {
+    if (!carry) return '';
+    const capOpen  = expandedCarryCards.has('cap');
+    const encOpen  = expandedCarryCards.has('enc');
+    const liftOpen = expandedCarryCards.has('lift');
+
+    // Over-capacity severity tint on ENC. Mirrors the Pain/Stress pill
+    // color scale so players read severity at a glance.
+    const encPct = carry.encPercent || 0;
+    const encSev = encPct >= 75 ? ' carry-crit'
+                 : encPct >= 50 ? ' carry-heavy'
+                 : encPct >= 25 ? ' carry-light'
+                 : ' carry-zero';
+
+    let html = '<div class="inv-carry-cards">';
+
+    // ── CAP CARD ──
+    html += renderCarryCard({
+      key:        'cap',
+      label:      'Carrying Capacity',
+      code:       'CAP',
+      open:       capOpen,
+      canEdit,
+      valueHtml:  `${fmt(carry.cap)} <span class="inv-carry-unit">lbs</span>`,
+      baseHtml:   (carry.capModTotal !== 0)
+                    ? `<span class="inv-carry-base">base ${fmt(carry.rawCap)} ${carry.capModTotal > 0 ? '+' : '−'} ${Math.abs(carry.capModTotal)}%</span>`
+                    : `<span class="inv-carry-base">base ${fmt(carry.rawCap)}</span>`,
+      description:'Maximum weight you can carry without penalty. Base: STR × 10. Abilities and modifiers adjust this.',
+      modifiers:  carry.capModifiers,
+      modUnit:    '%',
+      addFn:      'invAddCapMod',
+      updateFn:   'invUpdateCapMod',
+      deleteFn:   'invDeleteCapMod',
+      severityCls:''
+    });
+
+    // ── ENC CARD ──
+    // ENC shows current % + the ratio that produced it. The card is
+    // "informational" — you can still add named mods (Exhausted: +10%)
+    // but the raw ENC from carried/CAP flows in automatically.
+    const ratio = carry.cap > 0
+      ? `${fmt(carry.carried)} / ${fmt(carry.cap)} lbs`
+      : `${fmt(carry.carried)} lbs (no CAP)`;
+    const overBy = Math.max(0, carry.carried - carry.cap);
+    const ratioSub = overBy > 0
+      ? `<span class="inv-carry-base">over by ${fmt(overBy)} lbs</span>`
+      : `<span class="inv-carry-base">within CAP</span>`;
+    html += renderCarryCard({
+      key:        'enc',
+      label:      'Encumbrance',
+      code:       'ENC',
+      open:       encOpen,
+      canEdit,
+      valueHtml:  `${fmt(encPct)}<span class="inv-carry-unit">%</span>`,
+      baseHtml:   `<div class="inv-carry-ratio">${ratio}</div>${ratioSub}${carry.encModTotal !== 0 ? `<span class="inv-carry-base"> · mods ${carry.encModTotal > 0 ? '+' : '−'}${Math.abs(carry.encModTotal)}%</span>` : ''}`,
+      description:'Penalty from carrying weight above CAP. +10% per increment over CAP (continuous). Hits 100% at LIFT.',
+      modifiers:  carry.encModifiers,
+      modUnit:    '%',
+      addFn:      'invAddEncMod',
+      updateFn:   'invUpdateEncMod',
+      deleteFn:   'invDeleteEncMod',
+      severityCls: encSev
+    });
+
+    // ── LIFT CARD ──
+    html += renderCarryCard({
+      key:        'lift',
+      label:      'Maximum Lift',
+      code:       'LIFT',
+      open:       liftOpen,
+      canEdit,
+      valueHtml:  `${fmt(carry.lift)} <span class="inv-carry-unit">lbs</span>`,
+      baseHtml:   (carry.liftModTotal !== 0)
+                    ? `<span class="inv-carry-base">base ${fmt(carry.rawLift)} ${carry.liftModTotal > 0 ? '+' : '−'} ${Math.abs(carry.liftModTotal)}%</span>`
+                    : `<span class="inv-carry-base">base ${fmt(carry.rawLift)}</span>`,
+      description:'Absolute maximum you can lift. At this weight, ENC is 100% and you cannot move. Base: CAP × 11.',
+      modifiers:  carry.liftModifiers,
+      modUnit:    '%',
+      addFn:      'invAddLiftMod',
+      updateFn:   'invUpdateLiftMod',
+      deleteFn:   'invDeleteLiftMod',
+      severityCls:''
+    });
+
+    html += '</div>';
+    return html;
+  }
+
+  // One carry card. Shared markup for CAP / ENC / LIFT — they all have
+  // the same visual shape: big value, base/ratio sub-line, description,
+  // and an expandable modifier editor.
+  function renderCarryCard(opts) {
+    const {
+      key, label, code, open, canEdit, valueHtml, baseHtml,
+      description, modifiers, modUnit, addFn, updateFn, deleteFn, severityCls
+    } = opts;
+    const mods = Array.isArray(modifiers) ? modifiers : [];
+    const modsClass = mods.length > 0 ? ' has-mods' : '';
+
+    let html = `<div class="inv-carry-card${open ? ' open' : ''}${modsClass}${severityCls || ''}">
+      <div class="inv-carry-head" onclick="invToggleCarryCard('${key}')" title="Click to ${open ? 'collapse' : 'expand'} ${label} modifiers">
+        <div class="inv-carry-label">
+          <span class="inv-carry-name">${escapeHtml(label)}</span>
+          <span class="inv-carry-code">${escapeHtml(code)}</span>
+        </div>
+        <div class="inv-carry-value">${valueHtml}</div>
+        <div class="inv-carry-sub">${baseHtml || ''}</div>
+      </div>
+      <div class="inv-carry-desc">${escapeHtml(description || '')}</div>`;
+
+    if (open) {
+      html += `<div class="inv-carry-panel">`;
+      if (mods.length === 0) {
+        html += `<div class="inv-carry-empty">No modifiers. ${canEdit ? 'Add one below.' : ''}</div>`;
+      } else {
+        html += `<div class="inv-carry-mods">`;
+        mods.forEach((m, idx) => {
+          const name  = (m && m.name)  || '';
+          const value = (m && typeof m.value === 'number') ? m.value : 0;
+          html += `<div class="inv-carry-mod-row">`;
+          if (canEdit) {
+            html += `
+              <input type="text" class="inv-carry-mod-name"
+                     value="${escapeHtml(name)}"
+                     oninput="${updateFn}(${idx}, 'name', this.value)"
+                     placeholder="Name (e.g. Brawny Trait)"/>
+              <input type="number" class="inv-carry-mod-value"
+                     value="${value}" step="1"
+                     oninput="${updateFn}(${idx}, 'value', this.value)"/>
+              <span class="inv-carry-mod-unit">${escapeHtml(modUnit)}</span>
+              <button class="inv-carry-mod-del" onclick="${deleteFn}(${idx})" title="Remove modifier">×</button>`;
+          } else {
+            const sign = value > 0 ? '+' : (value < 0 ? '−' : '±');
+            html += `
+              <span class="inv-carry-mod-name readonly">${escapeHtml(name || '(unnamed)')}</span>
+              <span class="inv-carry-mod-value readonly">${sign}${Math.abs(value)}${escapeHtml(modUnit)}</span>`;
+          }
+          html += `</div>`;
+        });
+        html += `</div>`;
+      }
+      if (canEdit) {
+        html += `<button class="inv-carry-add" onclick="${addFn}()">+ Add Modifier</button>`;
+      }
+      html += `</div>`;
+    }
+
+    html += `</div>`;
+    return html;
+  }
+
+  function toggleCarryCard(key) {
+    if (!key) return;
+    if (expandedCarryCards.has(key)) expandedCarryCards.delete(key);
+    else expandedCarryCards.add(key);
+    renderAll();
+  }
+
+  // ── CAP/LIFT/ENC modifier CRUD ──
+  // Three parallel arrays on the character object. Same patterns as
+  // painModifiers / stressModifiers — add a default-named entry,
+  // update per field, delete by index. Save after each change so
+  // the change persists even if the session ends mid-edit.
+
+  function addCarryMod(arrayKey, defaultName) {
+    if (!getCanEdit()) return;
+    const c = getCharData();
+    if (!c) return;
+    if (!Array.isArray(c[arrayKey])) c[arrayKey] = [];
+    c[arrayKey].push({ name: defaultName || '', value: 0 });
+    saveCharacter(getCharId(), c);
+    // Expand the card matching this array so the new row is visible.
+    const key = (arrayKey === 'capModifiers')  ? 'cap'
+             : (arrayKey === 'liftModifiers') ? 'lift'
+             : (arrayKey === 'encModifiers')  ? 'enc' : null;
+    if (key) expandedCarryCards.add(key);
+    renderAll();
+  }
+  function updateCarryMod(arrayKey, idx, field, raw) {
+    if (!getCanEdit()) return;
+    const c = getCharData();
+    if (!c || !Array.isArray(c[arrayKey]) || !c[arrayKey][idx]) return;
+    if (field === 'name') {
+      c[arrayKey][idx].name = String(raw || '');
+    } else if (field === 'value') {
+      const n = parseFloat(raw);
+      c[arrayKey][idx].value = Number.isFinite(n) ? n : 0;
+    }
+    saveCharacter(getCharId(), c);
+    renderAll();
+  }
+  function deleteCarryMod(arrayKey, idx) {
+    if (!getCanEdit()) return;
+    const c = getCharData();
+    if (!c || !Array.isArray(c[arrayKey])) return;
+    c[arrayKey].splice(idx, 1);
+    saveCharacter(getCharId(), c);
+    renderAll();
+  }
+
+  function addCapMod()    { addCarryMod('capModifiers',  ''); }
+  function addLiftMod()   { addCarryMod('liftModifiers', ''); }
+  function addEncMod()    { addCarryMod('encModifiers',  ''); }
+  function updateCapMod(i,f,v)  { updateCarryMod('capModifiers',  i, f, v); }
+  function updateLiftMod(i,f,v) { updateCarryMod('liftModifiers', i, f, v); }
+  function updateEncMod(i,f,v)  { updateCarryMod('encModifiers',  i, f, v); }
+  function deleteCapMod(i)  { deleteCarryMod('capModifiers',  i); }
+  function deleteLiftMod(i) { deleteCarryMod('liftModifiers', i); }
+  function deleteEncMod(i)  { deleteCarryMod('encModifiers',  i); }
+
+  // Toggle a group's countsForEncumbrance flag. Called from the group
+  // header checkbox. Inverts the current effective value — if the
+  // group was counting (explicitly or by default), it stops counting;
+  // if it wasn't, it starts.
+  function toggleGroupEncumbrance(groupId) {
+    if (!getCanEdit()) return;
+    const c = getCharData();
+    if (!c) return;
+    const group = findGroup(groupId);
+    if (!group) return;
+    // Compute current effective state: onPerson defaults true, others false.
+    const currentlyCounts = (typeof group.countsForEncumbrance === 'boolean')
+      ? group.countsForEncumbrance
+      : (group.kind === 'onPerson');
+    group.countsForEncumbrance = !currentlyCounts;
+    saveCharacter(getCharId(), c);
+    renderAll();
+  }
+
   // ─── GROUP RENDERER ───
   //
   // Each group is a top-level collapsible section. On-Person's body is
@@ -854,6 +1112,26 @@ export function createInventorySection(ctx) {
       <button class="inv-group-btn inv-group-btn-danger" onclick="event.stopPropagation();invDeleteGroup('${escapeHtml(group.id)}')" title="Delete group (and everything in it)">×</button>
     ` : '';
 
+    // "Counts for encumbrance" toggle. On-Person defaults true (and
+    // stays true unless the player explicitly flips it off). Custom
+    // groups default false (must be turned on). The effective value:
+    //   explicit boolean on the group record wins;
+    //   otherwise fall back to the kind default.
+    // Inline button styled as a pill with an obvious on/off state.
+    // Click stops propagation so it doesn't also collapse the group.
+    const countsForEnc = (typeof group.countsForEncumbrance === 'boolean')
+      ? group.countsForEncumbrance
+      : (group.kind === 'onPerson');
+    const encTitle = countsForEnc
+      ? `Items in this group COUNT toward your Encumbrance. Click to stop counting.`
+      : `Items in this group do NOT count toward your Encumbrance. Click to start counting.`;
+    const encToggle = canEdit ? `
+      <button class="inv-group-enc-toggle${countsForEnc ? ' on' : ''}"
+              onclick="event.stopPropagation();invToggleGroupEncumbrance('${escapeHtml(group.id)}')"
+              title="${escapeHtml(encTitle)}">
+        ${countsForEnc ? '⚖ ENC' : '○ ENC'}
+      </button>` : (countsForEnc ? `<span class="inv-group-enc-badge">⚖ ENC</span>` : '');
+
     const groupClasses = [
       'inv-group',
       collapsed ? 'collapsed' : '',
@@ -871,6 +1149,7 @@ export function createInventorySection(ctx) {
         <span class="inv-group-caret">${collapsed ? '▸' : '▾'}</span>
         <span class="inv-group-label">${escapeHtml(group.name)}</span>
         <span class="inv-group-meta">${totalCount} item${totalCount === 1 ? '' : 's'} · ${fmt(totalWeight)} lb${totalWeight === 1 ? '' : 's'}</span>
+        ${encToggle}
         ${extraHeaderActions}
       </div>`;
 
@@ -3308,7 +3587,13 @@ export function createInventorySection(ctx) {
     catMgrStartNew,
     catMgrCancelNew,
     catMgrNewDraft,
-    catMgrSaveNew
+    catMgrSaveNew,
+    // Carry cards (CAP / ENC / LIFT) + group-level encumbrance toggle
+    toggleCarryCard,
+    addCapMod, updateCapMod, deleteCapMod,
+    addLiftMod, updateLiftMod, deleteLiftMod,
+    addEncMod, updateEncMod, deleteEncMod,
+    toggleGroupEncumbrance
   };
 }
 
