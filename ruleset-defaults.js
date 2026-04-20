@@ -158,7 +158,8 @@ window.RULESET_DEFAULTS = {
     { code: 'health',   label: 'Health'   },
     { code: 'movement', label: 'Movement' },
     { code: 'mental',   label: 'Mental'   },
-    { code: 'power',    label: 'Power'    }
+    { code: 'power',    label: 'Power'    },
+    { code: 'carry',    label: 'Carry'    }
   ],
 
   derivedStats: [
@@ -274,6 +275,49 @@ window.RULESET_DEFAULTS = {
       trackDamage: false,
       keepDecimals: true,
       unit: ''
+    },
+    // CARRY
+    // CAP, ENC, LIFT are the three carry stats. All three are passive
+    // (they don't contribute to dice pools themselves) and render as
+    // their own cards at the top of the Inventory tab — NOT in the
+    // Combat tab's derived-stats section. The 'carry' group flag is
+    // read by the inventory renderer to know which stats to display.
+    {
+      code: 'CAP',
+      name: 'Carrying Capacity',
+      description: 'The weight in pounds you can carry without any Encumbrance. Baseline: STR × 10.',
+      group: 'carry',
+      formula: 'STR * 10',
+      passiveRoll: true,
+      trackDamage: false,
+      keepDecimals: false,
+      unit: 'lbs'
+    },
+    {
+      code: 'LIFT',
+      name: 'Maximum Lift',
+      description: 'The absolute maximum you can carry — the point at which Encumbrance reaches 100% and you can no longer move. Equal to CAP × 11.',
+      group: 'carry',
+      formula: 'CAP * 11',
+      passiveRoll: true,
+      trackDamage: false,
+      keepDecimals: false,
+      unit: 'lbs'
+    },
+    {
+      code: 'ENC',
+      name: 'Encumbrance',
+      description: 'Penalty from carrying more than your CAP. Accumulates at 10% per CAP-increment over CAP; reaches 100% at LIFT. Auto-calculated from your inventory (groups tagged "count for encumbrance").',
+      group: 'carry',
+      // CARRIED is injected into the symbol table by computeDerivedStats
+      // before formula evaluation (see the inventory weight sum there).
+      // Formula: fraction of the over-CAP range, expressed as 0–100%.
+      // max/min clamp handles carrying ≤ CAP (0%) and > LIFT (100%).
+      formula: 'max(0, min(100, (CARRIED - CAP) / CAP * 10))',
+      passiveRoll: true,
+      trackDamage: false,
+      keepDecimals: true,
+      unit: '%'
     }
   ],
 
