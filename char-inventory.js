@@ -2125,8 +2125,14 @@ export function createInventorySection(ctx) {
     });
 
     if (activeModal.kind === 'container') {
-      // Containers only — anything with a containerOf block.
-      const options = allDefs.filter(o => !!o.def.containerOf);
+      // Containers only. Use the `kind` field we assigned when
+      // collecting allDefs — it's already normalized across both
+      // legacy (top-level packingEfficiency, no containerOf block)
+      // and unified (containerOf block) def shapes. Checking
+      // o.def.containerOf directly would miss legacy custom container
+      // defs, which live in customDefs.containers but carry their
+      // packing data at the top level.
+      const options = allDefs.filter(o => o.kind === 'container');
       root.innerHTML = renderModal({
         title: 'Add Container',
         subtitle: activeModal.targetLabel || '',
@@ -2136,12 +2142,12 @@ export function createInventorySection(ctx) {
         customKind: 'container'
       });
     } else if (activeModal.kind === 'item') {
-      // Items only — exclude anything with a containerOf block.
-      // Containers are added via the "+ Container" button, which opens
-      // its own picker. Mixing the two in one modal led to confusing
-      // UX where a user could accidentally add a Duffel Bag from the
-      // "+ Add Loose Item" button.
-      const options = allDefs.filter(o => !o.def.containerOf);
+      // Items only. Same authoritative-kind rule as above — excluding
+      // everything classified as 'container', whether that's a ruleset
+      // item with containerOf, a custom equipment with containerOf
+      // (dual-role), or a legacy custom container with top-level
+      // packingEfficiency.
+      const options = allDefs.filter(o => o.kind !== 'container');
       root.innerHTML = renderModal({
         title: 'Add Item',
         subtitle: activeModal.targetLabel || '',
