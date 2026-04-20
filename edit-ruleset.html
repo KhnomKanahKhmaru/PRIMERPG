@@ -237,7 +237,9 @@
     .slot-row .delete-x:hover { color: #c84b4b; }
     .slot-list-header { display: grid; grid-template-columns: 140px 1fr 24px; gap: 8px; padding: 0 10px 4px; font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #666; border-bottom: 1px solid #1a1a1a; margin-bottom: 4px; }
     .slot-add-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 6px; }
-    .slot-add-row input { background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 10px; border-radius: 3px; outline: none; }
+    .slot-add-row input, .slot-add-row select { background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 10px; border-radius: 3px; outline: none; }
+    .slot-add-row input:focus, .slot-add-row select:focus { border-color: #444; }
+    .slot-add-row select option { background: #111; color: #e0e0e0; }
 
     /* Container / equipment cards — collapsed by default, expand on click */
     .inv-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
@@ -290,6 +292,8 @@
      * item count / delete. Indentation represents parent → child depth.
      * Built-in Misc category gets a badge instead of a delete button. */
     .cat-row { display: grid; grid-template-columns: 18px 180px 1fr 40px 70px; gap: 8px; align-items: center; background: #111; border: 1px solid #1a1a1a; border-radius: 4px; padding: 6px 8px; margin-bottom: 4px; }
+    .cat-row select { background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 5px 8px; border-radius: 3px; outline: none; }
+    .cat-row select option { background: #111; color: #e0e0e0; }
     .cat-caret { font-size: 11px; color: #888; text-align: center; user-select: none; }
     .cat-name { background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; font-weight: 500; padding: 5px 8px; border-radius: 3px; outline: none; }
     .cat-name:focus { border-color: #444; }
