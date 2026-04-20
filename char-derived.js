@@ -1097,24 +1097,83 @@ export function computeDerivedStats(character, ruleset) {
   const otherTotal = otherMods.reduce((a, m) => a + (parseInt(m && m.value) || 0), 0);
   const other = { modifiers: otherMods, modTotal: otherTotal, finalPercent: otherTotal };
 
-  // Encumbrance component — auto-calculated from the ENC derived stat.
-  // Stands alongside Pain and Stress as a core Penalty contributor
-  // (not an entry in Others; can't be edited directly). Reads ENC from
-  // the stats map populated above. Falls through to 0 if the ruleset
-  // doesn't define ENC.
-  let encumbrance = { finalPercent: 0, carried: vars.CARRIED || 0, cap: 0, lift: 0 };
-  const encEntry = stats.get('ENC');
-  if (encEntry && Number.isFinite(encEntry.value)) {
-    const encPct = Math.max(0, Math.min(100, encEntry.value));
-    const capEntry = stats.get('CAP');
-    const liftEntry = stats.get('LIFT');
-    encumbrance = {
-      finalPercent: encPct,
-      carried:      vars.CARRIED || 0,
-      cap:          (capEntry && Number.isFinite(capEntry.value)) ? capEntry.value : 0,
-      lift:         (liftEntry && Number.isFinite(liftEntry.value)) ? liftEntry.value : 0
-    };
+  // CAP / LIFT / ENC modifiers — character-managed named ± entries.
+  // CAP and LIFT mods are ADDITIVE PERCENT adjustments applied to the
+  // formula result: a "+50%" mod on CAP becomes base × 1.50; a "-25%"
+  // mod becomes × 0.75. Multiple mods stack additively by percent
+  // (+50% and +25% = ×1.75, not compounding) — matches how Pain and
+  // Stress modifiers work elsewhere in the system.
+  //
+  // ENC mods are ADDITIVE PERCENT to the Encumbrance % itself, clamped
+  // to [0, 100]. Negative values offset; positive values add. Useful
+  // for circumstance modifiers ("Exhaustion: +10% ENC").
+  //
+  // Modifiers DO NOT change the stat entry.value — they only re-shape
+  // the final reported value on the card + penalty rollup. The raw
+  // formula value is still in stats.get('CAP').value; the UI reads the
+  // augmented value from the `carry` object below.
+  const applyPctMods = (base, mods) => {
+    if (!Array.isArray(mods) || mods.length === 0) return base;
+    const totalPct = mods.reduce((a, m) => a + (parseFloat(m && m.value) || 0), 0);
+    return base * (1 + totalPct / 100);
+  };
+  const capMods  = Array.isArray(character.capModifiers)  ? character.capModifiers  : [];
+  const liftMods = Array.isArray(character.liftModifiers) ? character.liftModifiers : [];
+  const encMods  = Array.isArray(character.encModifiers)  ? character.encModifiers  : [];
+
+  const capEntry  = stats.get('CAP');
+  const liftEntry = stats.get('LIFT');
+  const encEntry  = stats.get('ENC');
+
+  const rawCap  = (capEntry  && Number.isFinite(capEntry.value))  ? capEntry.value  : 0;
+  const rawLift = (liftEntry && Number.isFinite(liftEntry.value)) ? liftEntry.value : 0;
+
+  const finalCap  = Math.max(0, Math.round(applyPctMods(rawCap,  capMods)));
+  const finalLift = Math.max(0, Math.round(applyPctMods(rawLift, liftMods)));
+
+  // Recompute ENC using the adjusted CAP so CAP modifiers propagate
+  // naturally. Without this, a +50% CAP mod would still be measured
+  // against the raw CAP in the ENC formula — which is wrong (the
+  // whole point of the mod is "I can carry more before getting tired").
+  const carried = vars.CARRIED || 0;
+  let rawEncPct = 0;
+  if (finalCap > 0) {
+    rawEncPct = Math.max(0, Math.min(100, (carried - finalCap) / finalCap * 10));
+  } else {
+    // Zero CAP edge case — if we can carry zero, any weight is LIFT. Not
+    // realistic but shouldn't crash: treat as max ENC if carrying anything.
+    rawEncPct = carried > 0 ? 100 : 0;
   }
+  const encModTotal = encMods.reduce((a, m) => a + (parseFloat(m && m.value) || 0), 0);
+  const finalEncPct = Math.max(0, Math.min(100, Math.round((rawEncPct + encModTotal) * 10) / 10));
+
+  // Expose `carry` as the canonical carry-stats bundle. Cards + Penalty
+  // roll-up read from this object. The raw stats.get('CAP') / LIFT / ENC
+  // still exist with their formula-only values for any caller that wants
+  // to see them pre-modifier (e.g. a "show base vs modified" tooltip).
+  const carry = {
+    carried,
+    cap:         finalCap,
+    rawCap,
+    capModifiers:  capMods,
+    capModTotal:   capMods.reduce((a, m) => a + (parseFloat(m && m.value) || 0), 0),
+    lift:        finalLift,
+    rawLift,
+    liftModifiers: liftMods,
+    liftModTotal:  liftMods.reduce((a, m) => a + (parseFloat(m && m.value) || 0), 0),
+    encPercent:  finalEncPct,
+    rawEncPercent: rawEncPct,
+    encModifiers:  encMods,
+    encModTotal
+  };
+
+  // Encumbrance block fed into penalty — uses the post-modifier values.
+  const encumbrance = {
+    finalPercent: finalEncPct,
+    carried,
+    cap:          finalCap,
+    lift:         finalLift
+  };
 
   const painPct = pain ? pain.finalPercent : 0;
   const stressPct = stress ? stress.finalPercent : 0;
@@ -1160,7 +1219,7 @@ export function computeDerivedStats(character, ruleset) {
     entry.poolBeforePenalty = poolBeforePenalty;
   });
 
-  return { stats, locations, errors, vars, body, power, san, injuries, pain, stress, other, encumbrance, penalty };
+  return { stats, locations, errors, vars, body, power, san, injuries, pain, stress, other, encumbrance, carry, penalty };
 }
 
 // ─── DEGRADATION TABLE ───
