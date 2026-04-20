@@ -458,11 +458,95 @@ function topoSort(defs, baseVarNames) {
 // `status` for locations is one of: 'healthy', 'disabled', 'destroyed',
 // 'definitelyDestroyed'.
 
+// ── CARRIED WEIGHT ──
+//
+// Total weight (lbs) of everything the character is carrying for
+// encumbrance purposes. Walks the inventory group tree; each group
+// individually flags whether it "counts for encumbrance" — On-Person
+// defaults to true (undefined === true), other groups default to false.
+// Player-created subgroups inherit their parent's status unless they
+// have their own explicit flag.
+//
+// Within a counting group, ALL nested contents (entries, containers,
+// sub-subgroups) contribute. A subgroup with countsForEncumbrance
+// explicitly set to false opts itself out regardless of parent — lets
+// the player stash stuff in an On-Person subgroup (e.g. "Cached" inside
+// a hidden pocket) that doesn't weigh on them right now.
+//
+// Weight source per entry: the snapshot (post-Turn-A source of truth).
+// Same precedence as the inventory tab's display — the number shown
+// there is the number that counts here.
+function computeCarriedWeight(character) {
+  const inv = character && character.inventory;
+  if (!inv || !Array.isArray(inv.groups)) return 0;
+
+  // A node is a group if it has a kind of 'custom' or 'onPerson'.
+  // Entries have defKind instead. This matches char-inventory.js's
+  // isGroupNode — duplicated here to avoid module cycles.
+  const isGroup = (n) => !!(n && (n.kind === 'custom' || n.kind === 'onPerson'));
+
+  // Per group: does it count? On-Person counts unless explicitly set false.
+  // Custom groups only count when explicitly true. Subgroup flag overrides
+  // parent — undefined means "inherit parent".
+  const groupCounts = (g, parentCounts) => {
+    if (typeof g.countsForEncumbrance === 'boolean') return g.countsForEncumbrance;
+    if (parentCounts != null) return parentCounts;
+    if (g.kind === 'onPerson') return true;
+    return false;
+  };
+
+  // Walk: if this group counts, sum every entry in it. Recurse into
+  // subgroups with their own counts decision. If it doesn't count, we
+  // still recurse — a subgroup might re-enable counting even inside an
+  // opted-out parent (flexibility: "I don't usually count Vehicle, but
+  // the Driver's-Seat subgroup is effectively on my person right now").
+  let total = 0;
+  const walk = (nodes, inheritedCounts) => {
+    if (!Array.isArray(nodes)) return;
+    nodes.forEach(node => {
+      if (!node || typeof node !== 'object') return;
+      if (isGroup(node)) {
+        const counts = groupCounts(node, inheritedCounts);
+        walk(node.contents, counts);
+      } else {
+        if (inheritedCounts) {
+          // Snapshot weight × quantity, plus anything nested (for containers).
+          const qty = node.quantity || 1;
+          const snapW = (node.snapshot && Number.isFinite(node.snapshot.weight))
+            ? node.snapshot.weight : 0;
+          total += snapW * qty;
+          if (Array.isArray(node.contents)) {
+            // Nested entries (inside a container) contribute at the
+            // container's inherited counting status. They're not groups,
+            // so they don't get their own flag.
+            walk(node.contents, inheritedCounts);
+          }
+        }
+      }
+    });
+  };
+  // Top-level groups: each gets its own "does it count" read, starting
+  // from no inheritance.
+  inv.groups.forEach(g => {
+    if (!isGroup(g)) return;
+    const counts = groupCounts(g, null);
+    walk(g.contents, counts);
+  });
+  return total;
+}
+
 export function computeDerivedStats(character, ruleset) {
   const errors = [];
 
   // 1. Build initial symbol table from base stats.
   const vars = buildSymbolTable(character, ruleset);
+
+  // 1a. CARRIED — total weight (lbs) of everything in groups the player
+  // has tagged as counting for encumbrance. On-Person counts by default;
+  // other groups only count when group.countsForEncumbrance === true.
+  // This is injected as a symbol BEFORE derivation so the ENC formula
+  // can reference it like any other stat (CARRIED - CAP / CAP * 10 …).
+  vars.CARRIED = computeCarriedWeight(character);
 
   // 2. Evaluate derived stats in dependency order.
   const defs = Array.isArray(ruleset.derivedStats) ? ruleset.derivedStats : [];
@@ -999,8 +1083,8 @@ export function computeDerivedStats(character, ruleset) {
   }
 
   // "Other" Penalty — user-managed list of named +/- percentile entries
-  // for Exposure, Encumbrance, and anything else that should drag on
-  // capabilities without being Stress or Pain. Values can be negative
+  // for Exposure and anything else that should drag on capabilities
+  // without being Stress, Pain, or Encumbrance. Values can be negative
   // to model buffs that offset existing penalty (an adrenaline shot
   // briefly cancels exhaustion, say).
   //
@@ -1008,20 +1092,41 @@ export function computeDerivedStats(character, ruleset) {
   // it comes from named modifiers. If the modifiers list is empty, the
   // component contributes nothing. The total is NOT clamped to [0, 100]
   // here (the roll-up into Penalty clamps the full sum instead) so that
-  // negative Others can fully offset Pain/Stress.
+  // negative Others can fully offset Pain/Stress/Encumbrance.
   const otherMods = Array.isArray(character.otherModifiers) ? character.otherModifiers : [];
   const otherTotal = otherMods.reduce((a, m) => a + (parseInt(m && m.value) || 0), 0);
   const other = { modifiers: otherMods, modTotal: otherTotal, finalPercent: otherTotal };
 
+  // Encumbrance component — auto-calculated from the ENC derived stat.
+  // Stands alongside Pain and Stress as a core Penalty contributor
+  // (not an entry in Others; can't be edited directly). Reads ENC from
+  // the stats map populated above. Falls through to 0 if the ruleset
+  // doesn't define ENC.
+  let encumbrance = { finalPercent: 0, carried: vars.CARRIED || 0, cap: 0, lift: 0 };
+  const encEntry = stats.get('ENC');
+  if (encEntry && Number.isFinite(encEntry.value)) {
+    const encPct = Math.max(0, Math.min(100, encEntry.value));
+    const capEntry = stats.get('CAP');
+    const liftEntry = stats.get('LIFT');
+    encumbrance = {
+      finalPercent: encPct,
+      carried:      vars.CARRIED || 0,
+      cap:          (capEntry && Number.isFinite(capEntry.value)) ? capEntry.value : 0,
+      lift:         (liftEntry && Number.isFinite(liftEntry.value)) ? liftEntry.value : 0
+    };
+  }
+
   const painPct = pain ? pain.finalPercent : 0;
   const stressPct = stress ? stress.finalPercent : 0;
   const otherPct = other.finalPercent;
-  const penaltyPct = Math.max(0, Math.min(100, painPct + stressPct + otherPct));
+  const encPct = encumbrance.finalPercent;
+  const penaltyPct = Math.max(0, Math.min(100, painPct + stressPct + encPct + otherPct));
   const penalty = {
-    painPercent:   painPct,
-    stressPercent: stressPct,
-    otherPercent:  otherPct,
-    percent:       penaltyPct
+    painPercent:        painPct,
+    stressPercent:      stressPct,
+    encumbrancePercent: encPct,
+    otherPercent:       otherPct,
+    percent:            penaltyPct
   };
 
   // Post-pass: for each stat entry, compute Penalty-adjusted dice count.
@@ -1055,7 +1160,7 @@ export function computeDerivedStats(character, ruleset) {
     entry.poolBeforePenalty = poolBeforePenalty;
   });
 
-  return { stats, locations, errors, vars, body, power, san, injuries, pain, stress, other, penalty };
+  return { stats, locations, errors, vars, body, power, san, injuries, pain, stress, other, encumbrance, penalty };
 }
 
 // ─── DEGRADATION TABLE ───
