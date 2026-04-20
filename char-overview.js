@@ -1,7 +1,7 @@
 // char-overview.js
 //
 // "State of Things" dashboard tiles that live on the Overview tab.
-// Read-only summary of Body / Sanity / Power / Movement / Strain, computed
+// Read-only summary of Body / Sanity / Power / Movement / Penalty, computed
 // from the same pipeline as the Combat tab so the two views never drift.
 //
 // Split out of char-combat.js because these tiles are:
@@ -10,12 +10,12 @@
 //   • the last of the chunky render blocks sitting in combat.js
 //
 // Combat's renderAll() triggers an overview repaint on every damage tick
-// by calling overview.renderState(result, ruleset). The Strain tile is
+// by calling overview.renderState(result, ruleset). The Penalty tile is
 // ALSO reused inline on the Combat tab (top of the tab, right below Roll
-// Calc), so this module exports renderStrainTile for that caller too.
+// Calc), so this module exports renderPenaltyTile for that caller too.
 //
 // ctx shape:
-//   getCollapsedStrainValues() → Set of stat codes whose strain-reduced
+//   getCollapsedPenaltyValues() → Set of stat codes whose strain-reduced
 //      value is currently collapsed (click-to-toggle in Movement tile).
 //      Shared with combat.js so the two views stay in sync without this
 //      module needing to own the state itself.
@@ -27,7 +27,7 @@
 
 export function createOverviewSection(ctx) {
   const {
-    getCollapsedStrainValues,
+    getCollapsedPenaltyValues,
     getCharData,
     getCanEdit,
     escapeHtml,
@@ -36,7 +36,7 @@ export function createOverviewSection(ctx) {
 
   // ─── ORCHESTRATOR ───
   //
-  // Read-only summary showing Body, Sanity, Strain, Power, Movement. Lives
+  // Read-only summary showing Body, Sanity, Penalty, Power, Movement. Lives
   // on the Overview tab. No controls — players go to Combat tab to edit.
   // We compute everything from the same pipeline as the Combat tab, so
   // numbers always match between the two views.
@@ -227,8 +227,8 @@ export function createOverviewSection(ctx) {
           <span class="state-tile-label">Power</span>
           <span class="state-tile-nums">${fmt(current)}<span class="sep">/</span><span class="max">${fmt(max)}</span></span>
         </div>
-        <div class="state-strain-bar">
-          <div class="state-strain-fill" style="width:${pct}%;background:${escapeHtml(color)}"></div>
+        <div class="state-progress-bar">
+          <div class="state-progress-fill" style="width:${pct}%;background:${escapeHtml(color)}"></div>
         </div>
       </div>`;
   }
@@ -246,34 +246,34 @@ export function createOverviewSection(ctx) {
 
     // Pull the current collapse-state Set from combat.js so Overview
     // items render with the same expanded/collapsed state as the Combat
-    // tab cards. The toggleStrainValueDisplay handler (wired to window)
+    // tab cards. The togglePenaltyValueDisplay handler (wired to window)
     // flips the class on BOTH at the same time via data-code selector,
     // so we only need to read the Set here — we never mutate it.
-    const collapsedSet = getCollapsedStrainValues();
+    const collapsedSet = getCollapsedPenaltyValues();
 
     const items = movementStats.map(entry => {
       const { def, value } = entry;
       const valStr = fmt(value);
       const unit = def.unit ? `<span class="mi-unit">${escapeHtml(def.unit)}</span>` : '';
-      const reduction = entry.strainValueReduction || 0;
+      const reduction = entry.penaltyValueReduction || 0;
       const hasStrain = reduction > 0;
 
       // Strain-reduced stat — emit both display variants and wire the
       // click handler so toggling the Overview item syncs with the same
-      // toggle on the Combat tab (they share data-code + .strain-collapsed).
+      // toggle on the Combat tab (they share data-code + .penalty-collapsed).
       if (hasStrain) {
         const effective = Math.max(0, value - reduction);
         const effStr = fmt(effective);
         const redStr = fmt(reduction);
         const collapsed = collapsedSet.has(def.code);
-        const collapsedCls = collapsed ? ' strain-collapsed' : '';
-        const expandedTip = `Strain reduces to ${effStr}${def.unit ? ' ' + def.unit : ''}. Click to show effective.`;
-        const effectiveTip = `Base ${valStr} reduced by ${redStr} Strain. Click to show breakdown.`;
+        const collapsedCls = collapsed ? ' penalty-collapsed' : '';
+        const expandedTip = `Penalty reduces to ${effStr}${def.unit ? ' ' + def.unit : ''}. Click to show effective.`;
+        const effectiveTip = `Base ${valStr} reduced by ${redStr} Penalty. Click to show breakdown.`;
         return `
-          <div class="state-movement-item clickable${collapsedCls}" data-code="${escapeHtml(def.code)}" title="${escapeHtml(def.description || '')}" onclick="toggleStrainValueDisplay('${escapeHtml(def.code)}')">
+          <div class="state-movement-item clickable${collapsedCls}" data-code="${escapeHtml(def.code)}" title="${escapeHtml(def.description || '')}" onclick="togglePenaltyValueDisplay('${escapeHtml(def.code)}')">
             <span class="mi-label">${escapeHtml(def.name)}</span>
             <span class="mi-val">
-              <span class="mi-expanded" title="${escapeHtml(expandedTip)}">${valStr} <span class="mi-strain">− ${redStr}</span></span>
+              <span class="mi-expanded" title="${escapeHtml(expandedTip)}">${valStr} <span class="mi-penalty">− ${redStr}</span></span>
               <span class="mi-effective" title="${escapeHtml(effectiveTip)}">${effStr}</span>
               ${unit}
             </span>
@@ -307,8 +307,6 @@ export function createOverviewSection(ctx) {
   // this card earns its name — it's a full CRUD editor for that list,
   // inline in the card.
   //
-  // Kept under the renderStrainTile export name as well, for any caller
-  // that still uses the old name. Removed in the cleanup turn.
   function renderPenaltyTile(pain, stress, penalty, otherMods, canEdit) {
     if (!penalty) return '';
     const pct = penalty.percent;
@@ -385,26 +383,8 @@ export function createOverviewSection(ctx) {
       </div>`;
   }
 
-  // Back-compat alias — callers on older code paths still use the
-  // renderStrainTile name. Forwards to the new renderer; reconstructs
-  // a minimal penalty object from the legacy strain arg, and pulls
-  // otherModifiers + edit permission from ctx. Removed in cleanup turn.
-  function renderStrainTile(pain, stress, strain) {
-    const penalty = strain ? {
-      painPercent:   strain.painPercent || 0,
-      stressPercent: strain.stressPercent || 0,
-      otherPercent:  (strain.percent || 0) - (strain.painPercent || 0) - (strain.stressPercent || 0),
-      percent:       strain.percent || 0
-    } : null;
-    const charData = getCharData ? getCharData() : null;
-    const otherMods = charData && Array.isArray(charData.otherModifiers) ? charData.otherModifiers : [];
-    const canEdit = getCanEdit ? getCanEdit() : true;
-    return renderPenaltyTile(pain, stress, penalty, otherMods, canEdit);
-  }
-
   return {
     renderState,
-    renderPenaltyTile,
-    renderStrainTile   // back-compat alias; remove in cleanup turn
+    renderPenaltyTile
   };
 }
