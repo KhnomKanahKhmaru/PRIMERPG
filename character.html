@@ -1705,6 +1705,33 @@
     .inv-row-btn { background: transparent; border: none; color: #555; font-size: 16px; cursor: pointer; padding: 0 6px; line-height: 1; }
     .inv-row-btn:hover { color: #c84b4b; }
     .inv-row-btn-danger:hover { color: #c84b4b; }
+    .inv-row-btn-edit { font-size: 13px; color: #666; }
+    .inv-row-btn-edit:hover { color: #e0b060; }
+
+    /* ═══ INLINE ENTRY EDIT PANEL ═══
+     * Expands inline below a container/item row when the ✎ is clicked.
+     * Reuses the same field + dims-row layout as the custom-def form in
+     * the picker modal. Tinted amber-ish so the editing state stands
+     * out visually from normal browse. */
+    .inv-entry.editing { background: #141004; border: 1px solid #3a2c10; border-radius: 4px; }
+    .inv-edit-panel { background: #0d0a02; border: 1px solid #2a2010; border-radius: 4px; padding: 12px 14px; margin: 4px 16px 10px; }
+    .inv-edit-panel-title { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #caa060; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #2a2010; }
+    .inv-edit-panel-hint { font-weight: 400; letter-spacing: 0; text-transform: none; color: #776040; margin-left: 6px; font-style: italic; }
+    .inv-edit-panel .inv-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+    .inv-edit-panel .inv-field label { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; }
+    .inv-edit-panel .inv-field input, .inv-edit-panel .inv-field textarea {
+      background: #0a0a0a; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 9px;
+      border-radius: 3px; outline: none; width: 100%;
+    }
+    .inv-edit-panel .inv-field input:focus, .inv-edit-panel .inv-field textarea:focus { border-color: #5a4820; }
+    .inv-edit-panel .inv-field textarea { resize: vertical; min-height: 44px; line-height: 1.5; }
+    .inv-edit-panel .inv-dims-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .inv-edit-panel .inv-dims-row input { text-align: center; font-family: 'Consolas', 'Courier New', monospace; }
+    .inv-edit-panel .inv-pair-row { display: grid; grid-template-columns: 140px 1fr; gap: 14px; }
+    .inv-edit-panel .inv-container-block { border: 1px dashed #2a2010; border-radius: 4px; padding: 10px 12px; margin-top: 6px; background: #0a0802; }
+    .inv-edit-panel .inv-container-block-title { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #caa060; margin-bottom: 8px; }
+    .inv-edit-panel-actions { display: flex; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #2a2010; }
 
     /* Entry body (container contents) */
     .inv-entry-body { padding: 4px 0 4px 8px; border-left: 2px solid #1a1a1a; margin-left: 14px; margin-top: 2px; }
@@ -2486,6 +2513,10 @@
     invCatalogQuickAdd:      (id)                 => inventory.catalogQuickAdd(id),
     invCatalogAddTo:         (itemId, kind, tid)  => inventory.catalogAddTo(itemId, kind, tid),
     invCatalogAddToNewGroup: (id)                 => inventory.catalogAddToNewGroup(id),
+    invOpenEntryEdit:        (id)                 => inventory.openEntryEdit(id),
+    invUpdateEditDraft:      (field, value)       => inventory.updateEditDraft(field, value),
+    invSaveEntryEdit:        ()                   => inventory.saveEntryEdit(),
+    invCancelEntryEdit:      ()                   => inventory.cancelEntryEdit(),
     invTickQty:              (id, delta)          => inventory.tickQty(id, delta),
     invRemoveEntry:          (id)                 => inventory.removeEntry(id),
     // Sheet tab switcher (Overview / Combat / Inventory folder tabs)
