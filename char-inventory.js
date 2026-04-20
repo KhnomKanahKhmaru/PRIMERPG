@@ -270,8 +270,10 @@ export function createInventorySection(ctx) {
     if (!Array.isArray(inv.customDefs.equipment))  inv.customDefs.equipment  = [];
 
     // Legacy migration — old inventories had a top-level `stowed` array
-    // instead of groups. Convert it into a default Stowed group so the
-    // player's existing data is preserved and keeps working.
+    // instead of groups. Convert it into a "Stowed" group so the player's
+    // existing data is preserved and keeps working. We don't seed a fresh
+    // Stowed group for NEW characters — users add their own groups via
+    // +Add Group.
     const hadLegacyStowed = Array.isArray(inv.stowed);
     if (!Array.isArray(inv.groups)) inv.groups = [];
 
@@ -287,10 +289,10 @@ export function createInventorySection(ctx) {
       });
     }
 
-    // Stowed: default custom group. Seeded from legacy `stowed` array if
-    // one existed, otherwise created empty. Deletable like any other
-    // custom group after that.
-    if (!inv.groups.find(g => g.id === GROUP_STOWED_ID) && hadLegacyStowed) {
+    // Preserve legacy Stowed data by wrapping it in a group — only if
+    // that legacy array actually existed AND had content worth keeping.
+    // Empty legacy stowed just gets discarded.
+    if (hadLegacyStowed && inv.stowed.length > 0 && !inv.groups.find(g => g.id === GROUP_STOWED_ID)) {
       inv.groups.push({
         id: GROUP_STOWED_ID,
         name: 'Stowed',
@@ -298,20 +300,10 @@ export function createInventorySection(ctx) {
         collapsed: false,
         contents: inv.stowed.slice()
       });
-    } else if (inv.groups.length === 1) {
-      // Only On-Person — add a fresh empty Stowed so new chars aren't
-      // staring at just the body-slot row.
-      inv.groups.push({
-        id: GROUP_STOWED_ID,
-        name: 'Stowed',
-        kind: 'custom',
-        collapsed: false,
-        contents: []
-      });
     }
 
-    // Drop the legacy top-level stowed field after migrating it. Keeps
-    // the Firestore doc clean and matches the new schema.
+    // Drop the legacy top-level stowed field after migrating (or
+    // discarding) it. Keeps the Firestore doc clean.
     if (hadLegacyStowed) delete inv.stowed;
 
     // Validate every group entry and make sure custom groups have a
@@ -785,8 +777,17 @@ export function createInventorySection(ctx) {
           // Mark character-local custom defs with a distinct pill so users
           // see at a glance that an entry only exists on this character.
           const customPill = opt.source === 'custom' ? '<span class="inv-modal-custom">custom</span>' : '';
+          // Custom defs also get a × button to delete them from the
+          // character's catalog. Ruleset defs don't — those belong to
+          // the ruleset editor.
+          const deleteBtn = opt.source === 'custom'
+            ? `<button class="inv-modal-opt-delete" onclick="event.stopPropagation();invDeleteCustomDef('${escapeHtml(opt.kind)}','${escapeHtml(opt.def.id)}')" title="Delete this custom def and remove all instances of it from this character">×</button>`
+            : '';
           return `<div class="inv-modal-opt" onclick="${onPickAttr}('${escapeHtml(opt.kind)}','${escapeHtml(opt.def.id)}')">
-            <div class="inv-modal-opt-name">${escapeHtml(opt.def.name)}${cat}${dualPill}${customPill}</div>
+            <div class="inv-modal-opt-header">
+              <div class="inv-modal-opt-name">${escapeHtml(opt.def.name)}${cat}${dualPill}${customPill}</div>
+              ${deleteBtn}
+            </div>
             <div class="inv-modal-opt-meta">${fmt(d.l)}×${fmt(d.w)}×${fmt(d.h)} in · ${fmt(opt.def.weight || 0)} lb</div>
             ${opt.def.description ? `<div class="inv-modal-opt-desc">${escapeHtml(opt.def.description)}</div>` : ''}
           </div>`;
@@ -1070,6 +1071,45 @@ export function createInventorySection(ctx) {
     renderActiveModal();
   }
 
+  // Delete a custom def from the character's catalog. Also rips out
+  // every inventory entry that references it — otherwise those entries
+  // would render as "(deleted def)" and clutter the sheet. Confirms
+  // before deleting if there are live instances.
+  async function deleteCustomDef(defKind, defId) {
+    if (!getCanEdit()) return;
+    const inv = ensureInventory();
+    const bucket = defKind === 'container' ? inv.customDefs.containers : inv.customDefs.equipment;
+    const def = bucket.find(x => x.id === defId);
+    if (!def) return;
+
+    // Find every entry that uses this def so we can warn + clean up.
+    const refs = [];
+    walkTree(entry => { if (entry.defId === defId) refs.push(entry); });
+
+    const msg = refs.length > 0
+      ? `Delete "${def.name}" from this character's custom catalog? This also removes ${refs.length} instance${refs.length === 1 ? '' : 's'} of it from your inventory.`
+      : `Delete "${def.name}" from this character's custom catalog?`;
+    if (!confirm(msg)) return;
+
+    // Remove every entry referencing the def — use the same id-walk
+    // removal path as the entry × button. Collect ids first, remove
+    // after, so we're not mutating the tree mid-walk.
+    const idsToRemove = refs.map(r => r.id);
+    idsToRemove.forEach(id => {
+      removeEntry(id);
+      expandedEntries.delete(id);
+      expandedInfo.delete(id);
+    });
+
+    // Now drop the def itself.
+    const idx = bucket.findIndex(x => x.id === defId);
+    if (idx >= 0) bucket.splice(idx, 1);
+
+    renderActiveModal();   // refresh the picker so the row disappears
+    renderAll();           // refresh the sheet so removed instances vanish
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
   function updateCustomDraft(field, value) {
     if (!activeModal || !activeModal.customDraft) return;
     const d = activeModal.customDraft;
@@ -1255,6 +1295,7 @@ export function createInventorySection(ctx) {
     cancelCustomForm,
     updateCustomDraft,
     saveCustomDef,
+    deleteCustomDef,
     tickQty,
     removeEntry: removeEntryHandler
   };
