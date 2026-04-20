@@ -163,9 +163,23 @@ export function createInventorySection(ctx) {
   //   - Character custom defs follow the same rule
   //   - Legacy entries with defKind='container' (migrated defs now
   //     have containerOf synthesized from old top-level dims)
+  //
+  // FALLBACK: if the def is missing (ruleset edited out from under us,
+  // stale cache, etc.), trust the entry's own metadata — `defKind`
+  // set at add-time and/or a `contents` array on the entry itself.
+  // This keeps pre-existing containers renderable-as-containers even
+  // if their def resolution temporarily fails. Without this fallback,
+  // a stale def lookup silently flips a container into an item, which
+  // shows only a description and hides the + buttons.
   function entryIsContainer(entry) {
+    if (!entry) return false;
     const def = getDefForEntry(entry);
-    return !!(def && def.containerOf);
+    if (def && def.containerOf) return true;
+    // Fallback paths — used when the def lookup fails OR returns a
+    // def that no longer has containerOf. Trusts the entry.
+    if (entry.defKind === 'container') return true;
+    if (Array.isArray(entry.contents)) return true;
+    return false;
   }
 
   // Get the inner container spec (dimensions + packingEfficiency) from
@@ -413,9 +427,24 @@ export function createInventorySection(ctx) {
 
   // ─── MAIN RENDER ───
 
+  // Build marker — change this string when you ship a new inventory
+  // build, then check document.body.dataset.invBuild in devtools to
+  // confirm the browser is running the fresh version and not an old
+  // cached copy. Invisible to users.
+  const INV_BUILD = 'nested-container-fix-2';
+
   function renderAll() {
     const host = document.getElementById('inventory-content');
     if (!host) return;
+    // Clear the diagnostic log-set so each full render produces fresh
+    // logs for the entries it walks. Prevents "only logs the first
+    // render" gotcha during debugging.
+    _renderEntryLogged.clear();
+    // Expose the build marker on the body so it's trivially visible
+    // from the console: `document.body.dataset.invBuild`.
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.dataset.invBuild = INV_BUILD;
+    }
     const ruleset = getRuleset();
     if (!ruleset) {
       host.innerHTML = '<div class="inv-empty">No ruleset loaded.</div>';
@@ -990,11 +1019,33 @@ export function createInventorySection(ctx) {
   // row). Depth controls left indentation so nesting reads clearly.
 
   function renderEntry(entry, depth, canEdit) {
-    if (entryIsContainer(entry)) {
+    const isContainer = entryIsContainer(entry);
+    // Diagnostic: log each dispatch the first time it happens, so we
+    // can see in devtools why a container might be rendering as an
+    // item. Cleared on each full renderAll via _renderEntryLogged.
+    if (!_renderEntryLogged.has(entry.id)) {
+      _renderEntryLogged.add(entry.id);
+      const def = getDefForEntry(entry);
+      console.log('[inv render]', {
+        entryId: entry.id,
+        defId: entry.defId,
+        defKind: entry.defKind,
+        isContainer,
+        defFound: !!def,
+        defHasContainerOf: !!(def && def.containerOf),
+        hasContentsArray: Array.isArray(entry.contents),
+        willRender: isContainer ? 'container' : 'item'
+      });
+    }
+    if (isContainer) {
       return renderContainerEntry(entry, depth, canEdit);
     }
     return renderItemEntry(entry, depth, canEdit);
   }
+
+  // Tracks which entries we've already logged this renderAll cycle.
+  // Cleared at the top of renderAll. Prevents log spam on re-renders.
+  const _renderEntryLogged = new Set();
 
   function renderContainerEntry(entry, depth, canEdit) {
     const def = getDefForEntry(entry);
