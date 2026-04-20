@@ -724,7 +724,7 @@
         <div class="section-header">
           <div class="section-title">Containers</div>
         </div>
-        <div class="section-desc">Storage items with dimensions and weight. Nested freely — a container can hold other containers. Click a card to expand its editor. The longest item dimension vs. longest container dimension is a warning, not a hard limit.</div>
+        <div class="section-desc">Storage items with dimensions and weight. Nested freely — a container can hold other containers. Click a card to expand its editor. The longest item dimension vs. longest container dimension is a warning, not a hard limit. <b>Packing Efficiency</b> is how much of the container's raw cubic volume can actually hold items: 1.0 = a perfectly-fitted hard case, 0.75 = a typical duffel or backpack, 0.5 = a floppy sack or awkward shape. It accounts for wasted space between irregular items.</div>
 
         <div class="inv-list" id="container-list"></div>
 
@@ -2153,8 +2153,9 @@
             <input type="number" step="0.1" min="0" value="${q(c.weight || 0)}" oninput="updateContainerField('${q(c.id)}','weight',this.value)">
           </div>
           <div class="inv-field">
-            <label>Packing Efficiency (0.1 – 1.0)</label>
+            <label title="Fraction of the container's raw L×W×H volume that can actually hold items. 1.0 = perfectly-fitted hard case, 0.75 = typical soft bag, 0.5 = loose sack or odd shape.">Packing Efficiency (0.1 – 1.0)</label>
             <input type="number" step="0.05" min="0.1" max="1.0" value="${q(c.packingEfficiency || 0.75)}" oninput="updateContainerField('${q(c.id)}','packingEfficiency',this.value)">
+            <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">1.0 = fitted case · 0.75 = typical bag · 0.5 = loose sack</div>
           </div>
         </div>
         <div class="inv-field">
@@ -2345,9 +2346,10 @@
               <input type="number" step="0.25" min="0" value="${q(cofDims.h)}" placeholder="H" oninput="updateEquipmentCofDim('${q(e.id)}','h',this.value)">
             </div>
           </div>
-          <div class="inv-field" style="max-width:220px">
-            <label>Packing Efficiency (0.1 – 1.0)</label>
+          <div class="inv-field" style="max-width:260px">
+            <label title="Fraction of the inner L×W×H volume that can actually hold items. 1.0 = perfectly-fitted hard case, 0.75 = typical soft bag, 0.5 = loose sack or odd shape.">Packing Efficiency (0.1 – 1.0)</label>
             <input type="number" step="0.05" min="0.1" max="1.0" value="${q(cof.packingEfficiency || 0.75)}" oninput="updateEquipmentCofField('${q(e.id)}','packingEfficiency',this.value)">
+            <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">1.0 = fitted case · 0.75 = typical bag · 0.5 = loose sack</div>
           </div>
         </div>`;
       }
