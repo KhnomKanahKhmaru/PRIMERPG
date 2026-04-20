@@ -453,6 +453,13 @@ export function createInventorySection(ctx) {
           html += renderSlotSection(slot, inv.bySlot[slot.code] || [], canEdit);
         });
       } else {
+        // Description banner at the top of the group body — only shown
+        // for custom groups that have one. Whitespace-preserving so the
+        // user's line breaks survive. Sits above the contents so a long
+        // group description doesn't push the items too far down.
+        if (group.description && group.description.trim()) {
+          html += `<div class="inv-group-desc">${escapeHtml(group.description)}</div>`;
+        }
         // Custom group — flat contents list plus add buttons at the bottom.
         const entries = Array.isArray(group.contents) ? group.contents : [];
         if (entries.length === 0) {
@@ -733,6 +740,14 @@ export function createInventorySection(ctx) {
       return;
     }
 
+    // Group edit form (Add Group / Rename Group) — a simple two-field
+    // dialog for the group's name and description. Separate modal kind
+    // because it has nothing in common with the picker modals.
+    if (activeModal.kind === 'groupEdit') {
+      root.innerHTML = renderGroupEditModal();
+      return;
+    }
+
     const ruleset = getRuleset();
     const inv = ensureInventory();
     if (activeModal.kind === 'container') {
@@ -902,6 +917,49 @@ export function createInventorySection(ctx) {
     </div>`;
   }
 
+  // ─── GROUP EDIT MODAL ───
+  //
+  // Single modal shared by Add Group and Rename Group. Distinguished by
+  // activeModal.groupEditMode ('add' | 'edit') which only affects the
+  // header label and the save handler's target.
+
+  function renderGroupEditModal() {
+    const draft = activeModal.groupDraft || {};
+    const isAdd = activeModal.groupEditMode === 'add';
+    const title = isAdd ? 'New Group' : 'Edit Group';
+    const hint = isAdd
+      ? 'Groups are containers for things not on your body — e.g. Vehicle, Stash, Safe House.'
+      : '';
+
+    return `<div class="inv-modal-backdrop" onclick="invCloseModal(event)">
+      <div class="inv-modal" onclick="event.stopPropagation()">
+        <div class="inv-modal-head">
+          <div class="inv-modal-title">${escapeHtml(title)}</div>
+          ${hint ? `<div class="inv-modal-sub">${escapeHtml(hint)}</div>` : ''}
+          <button class="inv-modal-close" onclick="invCloseModal()">×</button>
+        </div>
+        <div class="inv-modal-body inv-custom-form">
+
+          <div class="inv-field">
+            <label>Name</label>
+            <input type="text" value="${escapeHtml(draft.name || '')}" placeholder="e.g. Vehicle, Safe House, Stash" oninput="invUpdateGroupDraft('name',this.value)" autofocus>
+          </div>
+
+          <div class="inv-field">
+            <label>Description</label>
+            <textarea rows="4" placeholder="Optional — what is this? Where is it? What's its purpose?" oninput="invUpdateGroupDraft('description',this.value)">${escapeHtml(draft.description || '')}</textarea>
+          </div>
+
+          <div class="inv-modal-actions">
+            <button class="inv-add-btn" onclick="invSaveGroup()">${isAdd ? 'Create' : 'Save'}</button>
+            <button class="inv-add-btn inv-add-btn-ghost" onclick="invCloseModal()">Cancel</button>
+          </div>
+
+        </div>
+      </div>
+    </div>`;
+  }
+
   // ─── HANDLERS ───
 
   function toggleSlot(slotCode) {
@@ -935,32 +993,70 @@ export function createInventorySection(ctx) {
     try { await save(); } catch (e) { console.error('inventory save failed', e); }
   }
 
-  async function addGroup() {
+  // addGroup and renameGroup are thin wrappers that open the shared
+  // Group Edit modal in the right mode. Actual persistence happens in
+  // saveGroup when the user hits Save.
+
+  function addGroup() {
     if (!getCanEdit()) return;
-    const name = prompt('Name for the new group (e.g. Vehicle, Stash, Safe House):');
-    if (!name || !name.trim()) return;
-    const inv = ensureInventory();
-    inv.groups.push({
-      id: _nextInvId('grp'),
-      name: name.trim(),
-      kind: 'custom',
-      collapsed: false,
-      contents: []
-    });
-    renderAll();
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+    activeModal = {
+      kind: 'groupEdit',
+      groupEditMode: 'add',
+      groupDraft: { name: '', description: '' }
+    };
+    renderActiveModal();
   }
 
-  async function renameGroup(groupId) {
+  function renameGroup(groupId) {
     if (!getCanEdit()) return;
     const inv = ensureInventory();
     const g = (inv.groups || []).find(x => x.id === groupId);
     if (!g || g.kind === 'onPerson') return;
-    const next = prompt('New name:', g.name || '');
-    if (next === null) return;
-    const trimmed = next.trim();
-    if (!trimmed) return;
-    g.name = trimmed;
+    activeModal = {
+      kind: 'groupEdit',
+      groupEditMode: 'edit',
+      groupEditId: groupId,
+      groupDraft: { name: g.name || '', description: g.description || '' }
+    };
+    renderActiveModal();
+  }
+
+  function updateGroupDraft(field, value) {
+    if (!activeModal || activeModal.kind !== 'groupEdit') return;
+    if (!activeModal.groupDraft) activeModal.groupDraft = {};
+    activeModal.groupDraft[field] = typeof value === 'string' ? value : '';
+    // Don't re-render — the inputs are self-updating. Re-rendering
+    // would steal focus from the field the user is typing into.
+  }
+
+  async function saveGroup() {
+    if (!activeModal || activeModal.kind !== 'groupEdit') return;
+    const draft = activeModal.groupDraft || {};
+    const name = (draft.name || '').trim();
+    if (!name) {
+      alert('Please enter a name.');
+      return;
+    }
+    const description = (draft.description || '').trim();
+    const inv = ensureInventory();
+
+    if (activeModal.groupEditMode === 'add') {
+      inv.groups.push({
+        id: _nextInvId('grp'),
+        name,
+        description,
+        kind: 'custom',
+        collapsed: false,
+        contents: []
+      });
+    } else if (activeModal.groupEditMode === 'edit') {
+      const g = (inv.groups || []).find(x => x.id === activeModal.groupEditId);
+      if (!g || g.kind === 'onPerson') { closeModal(); return; }
+      g.name = name;
+      g.description = description;
+    }
+
+    closeModal();
     renderAll();
     try { await save(); } catch (e) { console.error('inventory save failed', e); }
   }
@@ -1286,6 +1382,8 @@ export function createInventorySection(ctx) {
     addGroup,
     renameGroup,
     deleteGroup,
+    updateGroupDraft,
+    saveGroup,
     openAddContainer,
     openAddItem,
     closeModal,
