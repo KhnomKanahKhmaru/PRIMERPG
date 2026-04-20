@@ -1224,38 +1224,81 @@
 
     .ds-card-conv-panel {
       margin-top: 8px;
-      padding: 8px 10px;
+      padding: 10px 12px;
       background: #0a0a0a;
       border: 1px solid #1a1a1a;
       border-radius: 3px;
-    }
-    .ds-card-conv-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
-      gap: 6px 10px;
-    }
-    .ds-conv-cell {
       display: flex;
       flex-direction: column;
-      gap: 1px;
-      padding: 4px 6px;
-      border-radius: 2px;
-      background: #111;
+      gap: 8px;
     }
-    .ds-conv-k {
-      font-size: 9px;
-      font-weight: 600;
-      letter-spacing: .08em;
-      text-transform: uppercase;
+    /* Context line — makes the Penalty linkage explicit. "Using effective
+       7.5 ft/sec (base 10 − 25% Penalty)". Dim by default; effective
+       value itself is brighter so it reads as the source of the math. */
+    .ds-conv-ctx {
+      font-size: 10px;
+      line-height: 1.3;
       color: #777;
     }
-    .ds-conv-v {
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-size: 13px;
+    .ds-conv-ctx-k {
       font-weight: 600;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      color: #666;
+      margin-right: 4px;
+    }
+    .ds-conv-ctx-v {
+      color: #e0b870;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .ds-conv-ctx-sub {
+      color: #555;
+      font-style: italic;
+    }
+    /* Picker row — dropdown on the left, "=" separator, result on the
+       right. On narrow widths it wraps to two lines; the equals stays
+       with the result for readability. */
+    .ds-conv-picker {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 8px 10px;
+    }
+    .ds-conv-select {
+      background: #111;
+      border: 1px solid #2a2a2a;
+      color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 12px;
+      padding: 5px 8px;
+      border-radius: 3px;
+      outline: none;
+      flex: 1;
+      min-width: 180px;
+      cursor: pointer;
+    }
+    .ds-conv-select:focus {
+      border-color: #444;
+    }
+    .ds-conv-select option {
+      background: #111;
+      color: #e0e0e0;
+    }
+    .ds-conv-eq {
+      color: #555;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .ds-conv-result {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 16px;
+      font-weight: 700;
       color: #e0e0e0;
       font-variant-numeric: tabular-nums;
-      line-height: 1.2;
+      letter-spacing: .02em;
     }
     .ds-conv-u {
       font-family: 'Open Sans', sans-serif;
@@ -2730,6 +2773,7 @@
     // Strain value-display toggle
     togglePenaltyValueDisplay: (code) => combat.togglePenaltyValueDisplay(code),
     toggleSpeedConversions:    (code) => combat.toggleSpeedConversions(code),
+    setSpeedConversionChoice:  (code, choice) => combat.setSpeedConversionChoice(code, choice),
     // Roll Calculator
     rollCalcSetStat:         (key) => combat.rollCalcSetStat(key),
     rollCalcSetSkill:        (key) => combat.rollCalcSetSkill(key),
