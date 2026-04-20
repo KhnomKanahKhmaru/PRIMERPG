@@ -59,11 +59,13 @@ export function createCombatSection(ctx) {
     // actually roll?" scratch pad you reach for mid-turn. Sits ahead of
     // Movement so it's the first thing visible when you swap to Combat.
     html += rollcalc.renderTile(result, ruleset, charData);
-    // Strain summary right below — it's the biggest single factor affecting
+    // Penalty card right below — it's the biggest single factor affecting
     // the Roll Calculator, so seeing them side-by-side (top of tab) is the
     // most useful at-a-glance pairing. The detailed Pain/Stress editors
-    // still live inline in their Health and Sanity sections below.
-    html += overview.renderStrainTile(result.pain, result.stress, result.strain);
+    // still live inline in their Health and Sanity sections below;
+    // Others editor lives right inside this card.
+    const otherMods = Array.isArray(charData.otherModifiers) ? charData.otherModifiers : [];
+    html += overview.renderPenaltyTile(result.pain, result.stress, result.penalty, otherMods, ctx.getCanEdit());
     // Movement below — speed, agility, reflex. Fast-lookup info you need
     // during play, positioned ahead of the more detailed health UI.
     html += renderDerivedStatsSection(result, ruleset, { includeGroups: ['movement'] });
@@ -87,6 +89,8 @@ export function createCombatSection(ctx) {
   // same collapse state as the Combat-tab stat cards without owning it.
   const overview = createOverviewSection({
     getCollapsedStrainValues: () => collapsedStrainValues,
+    getCharData: ctx.getCharData,
+    getCanEdit:  ctx.getCanEdit,
     escapeHtml,
     fmt
   });
@@ -605,6 +609,40 @@ export function createCombatSection(ctx) {
     if (!Array.isArray(charData.stressModifiers) || !charData.stressModifiers[idx]) return;
     charData.stressModifiers.splice(idx, 1);
     await saveCharacter(ctx.getCharId(), { stressModifiers: charData.stressModifiers });
+    renderAll();
+  }
+
+  // ─── OTHER MODIFIERS (part of Penalty) ───
+  //
+  // Named ±% entries that contribute to Penalty alongside Pain and Stress.
+  // Examples: Exposure, Encumbrance, drugged, restrained, sleep-deprived.
+  // Values can be negative to model buffs that offset existing Penalty.
+  // Editor lives inline in the Penalty card; these handlers are bound to
+  // window by the combat.html glue.
+
+  async function addOtherMod() {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.otherModifiers)) charData.otherModifiers = [];
+    charData.otherModifiers.push({ name: '', value: 0 });
+    await saveCharacter(ctx.getCharId(), { otherModifiers: charData.otherModifiers });
+    renderAll();
+  }
+  async function updateOtherMod(idx, field, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.otherModifiers) || !charData.otherModifiers[idx]) return;
+    if (field === 'name') charData.otherModifiers[idx].name = typeof val === 'string' ? val : '';
+    else if (field === 'value') charData.otherModifiers[idx].value = parseInt(val) || 0;
+    await saveCharacter(ctx.getCharId(), { otherModifiers: charData.otherModifiers });
+    renderAll();
+  }
+  async function deleteOtherMod(idx) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!Array.isArray(charData.otherModifiers) || !charData.otherModifiers[idx]) return;
+    charData.otherModifiers.splice(idx, 1);
+    await saveCharacter(ctx.getCharId(), { otherModifiers: charData.otherModifiers });
     renderAll();
   }
 
@@ -2386,8 +2424,10 @@ export function createCombatSection(ctx) {
     rollCalcSetReduction:  rollcalc.setReduction,
     rollCalcToggle:        rollcalc.toggleShowRaw,
     rollCalcSetPassive:    rollcalc.setPassive,
-    // Pain / Stress (percentile modifiers feeding Strain)
+    // Pain / Stress (percentile modifiers feeding Penalty via Pain and Stress components)
     togglePainPanel, addPainMod, updatePainMod, deletePainMod,
-    toggleStressPanel, addStressMod, updateStressMod, deleteStressMod
+    toggleStressPanel, addStressMod, updateStressMod, deleteStressMod,
+    // Other modifiers (free-form ±% entries like Exposure, Encumbrance)
+    addOtherMod, updateOtherMod, deleteOtherMod
   };
 }
