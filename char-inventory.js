@@ -80,6 +80,32 @@ export function createInventorySection(ctx) {
   // }
   let activeModal = null;
 
+  // View mode: 'inventory' shows the character's actual kit (groups +
+  // slots + items they own). 'catalog' shows the read-only ruleset
+  // catalog — every item the ruleset defines, organized by category.
+  // Toggled via the header bar at the top of the panel. Not persisted
+  // across reloads; defaults to 'inventory'.
+  let viewMode = 'inventory';
+
+  // Which categories are collapsed in the catalog view. Stored BY ID.
+  // Default is all-expanded so users immediately see what's available.
+  const collapsedCatalogCats = new Set();
+
+  // Which items have their description/details expanded in the catalog
+  // view. Items render collapsed by default (just name + summary); click
+  // to expand full details. Keyed by item id.
+  const expandedCatalogItems = new Set();
+
+  // Which item's Add-target dropdown is currently open. Only one at a
+  // time (clicking a different item's ▾ closes the previous). Null when
+  // no dropdown is open. Stored as the item id.
+  let catalogAddMenuFor = null;
+
+  // Short-lived confirmation toast for catalog adds. Shows "Added
+  // Shotgun to Back" or similar after a successful add. Auto-clears
+  // on next render (so it's essentially one-render-lifetime).
+  let lastAddToast = null;
+
   // Character-scoped id counter for group/def synthesis. Prefixed so
   // ruleset ids (cont_ / eq_) and character custom ids (cust_cont_ /
   // cust_eq_) don't collide.
@@ -403,23 +429,38 @@ export function createInventorySection(ctx) {
     const inv = ensureInventory();
     const canEdit = getCanEdit();
 
-    let html = '';
+    // View toggle header: always at the top, switches between the
+    // character's actual inventory and the read-only ruleset catalog.
+    // Buttons are mutually exclusive — the active one gets the 'on' class.
+    let html = `<div class="inv-view-toggle">
+      <button class="inv-view-btn${viewMode === 'inventory' ? ' on' : ''}" onclick="invSetViewMode('inventory')">Inventory</button>
+      <button class="inv-view-btn${viewMode === 'catalog'   ? ' on' : ''}" onclick="invSetViewMode('catalog')">Catalog</button>
+    </div>`;
 
-    // Groups-first layout: On-Person (wraps slots) plus any custom
-    // groups (free-form contents array). One group header per entry
-    // in inv.groups, rendered in order. Custom groups may be renamed
-    // or deleted; On-Person cannot.
-    inv.groups.forEach(group => {
-      html += renderGroup(group, ruleset, inv, canEdit);
-    });
+    if (viewMode === 'catalog') {
+      // Toast confirming the last catalog add, if any. Fades after 3s
+      // via a timer set in catalogPlaceItem.
+      if (lastAddToast) {
+        html += `<div class="inv-add-toast">${escapeHtml(lastAddToast)}</div>`;
+      }
+      html += renderCatalogView(ruleset, inv);
+    } else {
+      // Inventory view — groups-first layout: On-Person (wraps slots)
+      // plus any custom groups. One group header per entry in inv.groups,
+      // rendered in order. Custom groups may be renamed/deleted;
+      // On-Person cannot.
+      inv.groups.forEach(group => {
+        html += renderGroup(group, ruleset, inv, canEdit);
+      });
 
-    // Add-group button at the bottom. Custom groups only — On-Person
-    // is special and always exists.
-    if (canEdit) {
-      html += `<div class="inv-add-group-row">
-        <button class="inv-add-btn inv-add-btn-ghost" onclick="invAddGroup()">+ Add Group</button>
-        <span class="inv-add-group-hint">e.g. Vehicle, Safe House, Stash — anything that isn't on your body.</span>
-      </div>`;
+      // Add-group button at the bottom of the inventory view. Custom
+      // groups only — On-Person is special and always exists.
+      if (canEdit) {
+        html += `<div class="inv-add-group-row">
+          <button class="inv-add-btn inv-add-btn-ghost" onclick="invAddGroup()">+ Add Group</button>
+          <span class="inv-add-group-hint">e.g. Vehicle, Safe House, Stash — anything that isn't on your body.</span>
+        </div>`;
+      }
     }
 
     // Modal host — only gets content when activeModal is set.
@@ -494,6 +535,373 @@ export function createInventorySection(ctx) {
     }
     html += '</div>';
     return html;
+  }
+
+  // ─── CATALOG VIEW ───
+  //
+  // Read-only browser of the ruleset's item catalog, organized by
+  // category. Mirrors the ruleset editor's structure but without any
+  // edit controls — players just see what exists in their world.
+  //
+  // Walks `ruleset.categories` as a tree via parent pointers, nests
+  // items under their categories. Items with null/missing category land
+  // under the built-in "Miscellaneous" bucket.
+  //
+  // Each item row shows name + dimensions + weight by default. Click
+  // to expand — description, container capacity (if it's a container),
+  // packing efficiency, default body slot, etc.
+
+  function renderCatalogView(ruleset, inv) {
+    const items = Array.isArray(ruleset.items) ? ruleset.items : [];
+    const categories = Array.isArray(ruleset.categories) ? ruleset.categories : [];
+
+    if (items.length === 0 && categories.length <= 1) {
+      return `<div class="inv-empty">This ruleset's catalog is empty. Open the ruleset editor's Inventory tab to add items and categories.</div>`;
+    }
+
+    // Group items by category id. Items with null or deleted categoryId
+    // fall into Miscellaneous automatically (the display-time fallback).
+    const itemsByCat = new Map();
+    const validCatIds = new Set(categories.map(c => c.id));
+    items.forEach(it => {
+      const cid = (it.categoryId && validCatIds.has(it.categoryId)) ? it.categoryId : 'cat_misc';
+      if (!itemsByCat.has(cid)) itemsByCat.set(cid, []);
+      itemsByCat.get(cid).push(it);
+    });
+
+    // Build a parent → children map so we can walk the tree.
+    const byParent = new Map();
+    categories.forEach(c => {
+      const pid = c.parentId || '__root__';
+      if (!byParent.has(pid)) byParent.set(pid, []);
+      byParent.get(pid).push(c);
+    });
+
+    // Also expose character-scoped custom defs at the top of the
+    // catalog, since the player might want to see those too. They
+    // don't live in the ruleset's categories — we synthesize a
+    // "Custom (this character only)" pseudo-section for them.
+    const customDefs = [];
+    (inv.customDefs.containers || []).forEach(d => customDefs.push(d));
+    (inv.customDefs.equipment  || []).forEach(d => customDefs.push(d));
+
+    let html = `<div class="cat-view-header">
+      <div class="cat-view-title">Ruleset Catalog</div>
+      <div class="cat-view-sub">Browse-only view of every item this ruleset defines. Add items to your character from the Inventory view.</div>
+    </div>`;
+
+    // Custom section first — the player's own one-offs. Only renders if
+    // any exist so empty charDefs don't clutter the view.
+    if (customDefs.length > 0) {
+      html += renderCatalogCustomSection(customDefs);
+    }
+
+    // Walk the ruleset's category tree. Render each category header,
+    // then its items (sorted alphabetically for browsability), then
+    // recurse into children.
+    const renderCatNode = (cat, depth) => {
+      const catItems = (itemsByCat.get(cat.id) || []).slice().sort(sortByName);
+      const children = byParent.get(cat.id) || [];
+      const collapsed = collapsedCatalogCats.has(cat.id);
+      const directCount = catItems.length;
+      // Total count through descendants — shown in the header to give
+      // a sense of how much lives under each branch without needing
+      // to expand every subcategory.
+      const totalCount = countItemsRecursive(cat, itemsByCat, byParent);
+
+      let out = `<div class="cat-view-section" style="margin-left:${depth * 18}px">
+        <div class="cat-view-section-head${children.length === 0 && directCount === 0 ? ' empty' : ''}" onclick="invToggleCatalogCat('${escapeHtml(cat.id)}')">
+          <span class="cat-view-caret">${collapsed ? '▸' : '▾'}</span>
+          <span class="cat-view-name">${escapeHtml(cat.name)}</span>
+          <span class="cat-view-count" title="${directCount} direct · ${totalCount} including subcategories">${directCount}${totalCount !== directCount ? ` / ${totalCount}` : ''}</span>
+        </div>`;
+
+      if (!collapsed) {
+        if (cat.description && cat.description.trim()) {
+          out += `<div class="cat-view-desc" style="margin-left:${(depth + 1) * 18}px">${escapeHtml(cat.description)}</div>`;
+        }
+        if (directCount === 0 && children.length === 0) {
+          out += `<div class="cat-view-empty-row" style="margin-left:${(depth + 1) * 18}px">Empty.</div>`;
+        } else {
+          catItems.forEach(it => { out += renderCatalogItem(it, depth + 1); });
+          children.forEach(ch => { out += renderCatNode(ch, depth + 1); });
+        }
+      }
+      out += `</div>`;
+      return out;
+    };
+
+    (byParent.get('__root__') || []).forEach(cat => { html += renderCatNode(cat, 0); });
+
+    return html;
+  }
+
+  // Helper: case-insensitive name sort. Used for alphabetical ordering
+  // within a category.
+  function sortByName(a, b) {
+    const an = (a.name || '').toLowerCase();
+    const bn = (b.name || '').toLowerCase();
+    return an < bn ? -1 : an > bn ? 1 : 0;
+  }
+
+  // Helper: recursively count items in a category and all descendants.
+  // Used for the "total" badge on category headers.
+  function countItemsRecursive(cat, itemsByCat, byParent) {
+    let n = (itemsByCat.get(cat.id) || []).length;
+    (byParent.get(cat.id) || []).forEach(ch => { n += countItemsRecursive(ch, itemsByCat, byParent); });
+    return n;
+  }
+
+  // The "Custom" synthetic section — character-scoped custom defs with
+  // a distinct visual treatment so users remember these aren't shared.
+  function renderCatalogCustomSection(customDefs) {
+    const sorted = customDefs.slice().sort(sortByName);
+    const collapsed = collapsedCatalogCats.has('__custom__');
+    let html = `<div class="cat-view-section cat-view-section-custom">
+      <div class="cat-view-section-head" onclick="invToggleCatalogCat('__custom__')">
+        <span class="cat-view-caret">${collapsed ? '▸' : '▾'}</span>
+        <span class="cat-view-name">Custom</span>
+        <span class="cat-view-custom-badge">this character only</span>
+        <span class="cat-view-count">${sorted.length}</span>
+      </div>`;
+    if (!collapsed) {
+      html += `<div class="cat-view-desc" style="margin-left:18px">One-off items and containers created on this character's sheet. Not visible to other characters.</div>`;
+      sorted.forEach(it => { html += renderCatalogItem(it, 1, /*isCustom=*/true); });
+    }
+    html += `</div>`;
+    return html;
+  }
+
+  // Render a single item row in the catalog view. Collapsed by default:
+  // name + container pill + dims + weight + Add button. Clicking the
+  // name region expands detail; clicking the Add button places the item
+  // on the character; clicking the Add dropdown shows target choices.
+  function renderCatalogItem(it, depth, isCustom) {
+    const dims = it.dimensions || { l: 0, w: 0, h: 0 };
+    const isContainer = !!it.containerOf;
+    const open = expandedCatalogItems.has(it.id);
+    const addMenuOpen = catalogAddMenuFor === it.id;
+    const containerPill = isContainer ? '<span class="cat-view-container-pill" title="Container — can hold other items">container</span>' : '';
+    const customPill = isCustom ? '<span class="cat-view-item-custom">custom</span>' : '';
+    const weight = it.weight || 0;
+    const hasDetail = !!(
+      (it.description && it.description.trim()) ||
+      it.containerOf ||
+      it.defaultSlot ||
+      (it.legacyCategory && it.legacyCategory.trim())
+    );
+
+    const canEdit = getCanEdit();
+
+    // Clicking the caret/name area toggles the description panel.
+    // Clicking the Add button or its dropdown trigger is stopped from
+    // propagating so those don't also expand the row.
+    let html = `<div class="cat-view-item${open ? ' open' : ''}${hasDetail ? ' expandable' : ''}" style="margin-left:${depth * 18}px">
+      <div class="cat-view-item-head">
+        <div class="cat-view-item-main" ${hasDetail ? `onclick="invToggleCatalogItem('${escapeHtml(it.id)}')"` : ''}>
+          <span class="cat-view-item-caret">${hasDetail ? (open ? '▾' : '▸') : '•'}</span>
+          <span class="cat-view-item-name">${escapeHtml(it.name || '(unnamed)')}</span>
+          ${containerPill}
+          ${customPill}
+          <span class="cat-view-item-dims">${fmt(dims.l)}×${fmt(dims.w)}×${fmt(dims.h)} in</span>
+          <span class="cat-view-item-weight">${fmt(weight)} lb</span>
+        </div>`;
+
+    // Add button — owner-only. Split into two halves:
+    //   • Left: quick-add using smart default
+    //   • Right (▾): drop-down menu of explicit targets
+    if (canEdit) {
+      html += `<div class="cat-view-add-split">
+        <button class="cat-view-add-btn" onclick="event.stopPropagation();invCatalogQuickAdd('${escapeHtml(it.id)}')" title="Add to ${escapeHtml(smartDefaultLabel(it))}">+ Add</button>
+        <button class="cat-view-add-drop${addMenuOpen ? ' open' : ''}" onclick="event.stopPropagation();invCatalogToggleAddMenu('${escapeHtml(it.id)}')" title="Choose destination…">▾</button>
+      </div>`;
+    }
+
+    html += `</div>`;
+
+    // Floating drop-down menu for target choice — rendered inline so
+    // it naturally sits below its owner button. CSS pins it absolutely
+    // relative to the row.
+    if (addMenuOpen && canEdit) {
+      html += renderCatalogAddMenu(it);
+    }
+
+    // Detail panel — description, container capacity, default slot,
+    // etc. Rendered only when open AND there's something to show.
+    if (open && hasDetail) {
+      html += `<div class="cat-view-item-detail">`;
+      if (it.description && it.description.trim()) {
+        html += `<div class="cat-view-item-desc">${escapeHtml(it.description)}</div>`;
+      }
+      if (isContainer) {
+        const cof = it.containerOf;
+        const cofDims = cof.dimensions || { l: 0, w: 0, h: 0 };
+        const rawCap = (cofDims.l || 0) * (cofDims.w || 0) * (cofDims.h || 0);
+        const usable = rawCap * (cof.packingEfficiency || 0.75);
+        html += `<div class="cat-view-item-cap">
+          <span class="cat-view-item-cap-label">Capacity:</span>
+          <span class="cat-view-item-cap-val">${fmt(cofDims.l)}×${fmt(cofDims.w)}×${fmt(cofDims.h)} in · ${fmt(cof.packingEfficiency || 0.75)} packing · <b>${fmt(usable)} in³ usable</b></span>
+        </div>`;
+      }
+      if (it.defaultSlot) {
+        const ruleset = getRuleset();
+        const slotLabel = (ruleset.bodySlots || []).find(s => s.code === it.defaultSlot);
+        html += `<div class="cat-view-item-slot">
+          <span class="cat-view-item-cap-label">Default slot:</span>
+          <span class="cat-view-item-cap-val">${escapeHtml(slotLabel ? slotLabel.label : it.defaultSlot)}</span>
+        </div>`;
+      }
+      if (it.legacyCategory && it.legacyCategory.trim()) {
+        html += `<div class="cat-view-item-legacy">
+          <span class="cat-view-item-cap-label">Legacy tag:</span>
+          <span class="cat-view-item-cap-val">${escapeHtml(it.legacyCategory)}</span>
+        </div>`;
+      }
+      html += `</div>`;
+    }
+
+    html += `</div>`;
+    return html;
+  }
+
+  // Compute the short human-readable label for the smart default target
+  // of an item — used as the `+ Add` button's tooltip.
+  //
+  //   - Container with defaultSlot → "Back" (the slot's label)
+  //   - Container without defaultSlot → "Stowed" (or "a new Stowed group")
+  //   - Non-container → "Stowed"
+  //
+  // Purely descriptive; the actual placement logic lives in
+  // smartDefaultTarget below.
+  function smartDefaultLabel(it) {
+    const target = smartDefaultTarget(it);
+    if (!target) return 'your inventory';
+    if (target.kind === 'slot') {
+      const ruleset = getRuleset();
+      const slot = (ruleset.bodySlots || []).find(s => s.code === target.code);
+      return slot ? slot.label : target.code;
+    }
+    if (target.kind === 'group') {
+      const inv = ensureInventory();
+      const g = inv.groups.find(x => x.id === target.id);
+      return g ? g.name : 'a group';
+    }
+    if (target.kind === 'newGroup') return 'a new Stowed group';
+    return 'your inventory';
+  }
+
+  // Determine where a catalog item should go when the user quick-adds.
+  // Returns { kind, ...targetRef } or null on failure.
+  //
+  // Priority order:
+  //   1. If container AND defaultSlot exists in ruleset → that slot
+  //   2. If any existing Stowed-like custom group → that group
+  //   3. Any custom group → the first one
+  //   4. Otherwise → create a new Stowed group
+  //
+  // The "any existing custom group" step prefers a group named "Stowed"
+  // if one exists (case-insensitive match) to match user intent.
+  function smartDefaultTarget(it) {
+    const ruleset = getRuleset();
+    const inv = ensureInventory();
+    const isContainer = !!it.containerOf;
+
+    if (isContainer && it.defaultSlot) {
+      const slotExists = (ruleset.bodySlots || []).some(s => s.code === it.defaultSlot);
+      if (slotExists) return { kind: 'slot', code: it.defaultSlot };
+    }
+
+    // Prefer a group named "Stowed" over arbitrary custom groups.
+    const customGroups = (inv.groups || []).filter(g => g.kind === 'custom');
+    const stowed = customGroups.find(g => (g.name || '').trim().toLowerCase() === 'stowed');
+    if (stowed) return { kind: 'group', id: stowed.id };
+    if (customGroups.length > 0) return { kind: 'group', id: customGroups[0].id };
+
+    return { kind: 'newGroup' };
+  }
+
+  // Render the Add-target dropdown menu for an item. Lists body slots,
+  // existing custom groups, and existing containers (nested under slots
+  // or groups). Sits inline under the row header; CSS positions it.
+  function renderCatalogAddMenu(it) {
+    const ruleset = getRuleset();
+    const inv = ensureInventory();
+    const isContainer = !!it.containerOf;
+
+    let html = `<div class="cat-view-add-menu">`;
+    html += `<div class="cat-view-add-menu-label">Add to:</div>`;
+
+    // Body slots section — only relevant for containers (non-containers
+    // can't sit directly on a slot; they need a container to live in).
+    // Actually — the existing data model DOES allow loose items on slots
+    // (see openAddItem with targetKind='slot' on the inventory view), so
+    // we permit it here too. UX ambiguity but matches the existing flow.
+    if (ruleset.bodySlots && ruleset.bodySlots.length > 0) {
+      html += `<div class="cat-view-add-menu-section">Body Slots</div>`;
+      ruleset.bodySlots.forEach(slot => {
+        html += `<div class="cat-view-add-menu-opt" onclick="event.stopPropagation();invCatalogAddTo('${escapeHtml(it.id)}','slot','${escapeHtml(slot.code)}')">${escapeHtml(slot.label)}</div>`;
+      });
+    }
+
+    // Custom groups
+    const customGroups = (inv.groups || []).filter(g => g.kind === 'custom');
+    if (customGroups.length > 0) {
+      html += `<div class="cat-view-add-menu-section">Groups</div>`;
+      customGroups.forEach(g => {
+        html += `<div class="cat-view-add-menu-opt" onclick="event.stopPropagation();invCatalogAddTo('${escapeHtml(it.id)}','group','${escapeHtml(g.id)}')">${escapeHtml(g.name)}</div>`;
+      });
+    }
+
+    // Existing containers — find every container in the inventory tree
+    // and offer it as a nested target. Names include the container's
+    // position for disambiguation ("Duffel Bag · Back").
+    const containerTargets = collectContainerTargets();
+    if (containerTargets.length > 0) {
+      html += `<div class="cat-view-add-menu-section">Inside Container</div>`;
+      containerTargets.forEach(c => {
+        html += `<div class="cat-view-add-menu-opt" onclick="event.stopPropagation();invCatalogAddTo('${escapeHtml(it.id)}','container','${escapeHtml(c.id)}')">${escapeHtml(c.label)}</div>`;
+      });
+    }
+
+    html += `<div class="cat-view-add-menu-divider"></div>`;
+    html += `<div class="cat-view-add-menu-opt cat-view-add-menu-opt-new" onclick="event.stopPropagation();invCatalogAddToNewGroup('${escapeHtml(it.id)}')">+ Create new group…</div>`;
+
+    html += `</div>`;
+    return html;
+  }
+
+  // Walk the inventory tree and collect every container entry as a
+  // dropdown-ready target. Each entry's label combines its name with a
+  // short position hint ("Duffel Bag · Back slot") so identical names
+  // in different places are disambiguated.
+  function collectContainerTargets() {
+    const ruleset = getRuleset();
+    const inv = ensureInventory();
+    const results = [];
+    // Helper that visits contents of an array, collecting containers,
+    // and recursing into their contents.
+    const visit = (arr, ancestorLabel) => {
+      if (!Array.isArray(arr)) return;
+      arr.forEach(entry => {
+        if (entryIsContainer(entry)) {
+          const name = entryName(entry);
+          const label = ancestorLabel
+            ? `${name} · in ${ancestorLabel}`
+            : `${name}`;
+          results.push({ id: entry.id, label });
+          visit(entry.contents, name);
+        }
+      });
+    };
+    // Body slots
+    (ruleset.bodySlots || []).forEach(slot => {
+      visit(inv.bySlot[slot.code] || [], `${slot.label} slot`);
+    });
+    // Custom groups
+    (inv.groups || []).forEach(g => {
+      if (g.kind === 'custom') visit(g.contents, g.name);
+    });
+    return results;
   }
 
   // ─── TALLY HELPERS ───
@@ -1022,6 +1430,165 @@ export function createInventorySection(ctx) {
     renderAll();
   }
 
+  // ─── CATALOG VIEW HANDLERS ───
+
+  function setViewMode(mode) {
+    if (mode !== 'inventory' && mode !== 'catalog') return;
+    if (viewMode === mode) return;
+    viewMode = mode;
+    renderAll();
+  }
+
+  function toggleCatalogCat(id) {
+    if (collapsedCatalogCats.has(id)) collapsedCatalogCats.delete(id);
+    else collapsedCatalogCats.add(id);
+    renderAll();
+  }
+
+  function toggleCatalogItem(id) {
+    if (expandedCatalogItems.has(id)) expandedCatalogItems.delete(id);
+    else expandedCatalogItems.add(id);
+    // Close any open add-menu when expanding/collapsing — keeps UI tidy.
+    catalogAddMenuFor = null;
+    renderAll();
+  }
+
+  // Toggle the "Add to..." dropdown for a specific catalog item. Only
+  // one menu is open at a time — opening a new one closes any previous.
+  function catalogToggleAddMenu(id) {
+    catalogAddMenuFor = (catalogAddMenuFor === id) ? null : id;
+    renderAll();
+  }
+
+  // Quick-add: place the catalog item using the smart default target,
+  // no dropdown. The add button's main half calls this.
+  async function catalogQuickAdd(id) {
+    const ruleset = getRuleset();
+    const def = (ruleset.items || []).find(x => x.id === id)
+             || findCustomDefById(id);
+    if (!def) return;
+    const target = smartDefaultTarget(def);
+    if (!target) return;
+    await catalogPlaceItem(def, target);
+  }
+
+  // Explicit-target add: user picked a specific destination from the
+  // dropdown. target is { kind, code?, id? } matching the row the user
+  // clicked.
+  async function catalogAddTo(itemId, targetKind, targetId) {
+    const ruleset = getRuleset();
+    const def = (ruleset.items || []).find(x => x.id === itemId)
+             || findCustomDefById(itemId);
+    if (!def) return;
+    let target;
+    if (targetKind === 'slot')      target = { kind: 'slot',      code: targetId };
+    else if (targetKind === 'group') target = { kind: 'group',     id:   targetId };
+    else if (targetKind === 'container') target = { kind: 'container', id: targetId };
+    else return;
+    await catalogPlaceItem(def, target);
+  }
+
+  // "Create new group…" option — prompts for a name, creates the group,
+  // then places the item there. Menu closes after.
+  async function catalogAddToNewGroup(itemId) {
+    const ruleset = getRuleset();
+    const def = (ruleset.items || []).find(x => x.id === itemId)
+             || findCustomDefById(itemId);
+    if (!def) return;
+    const name = prompt('Name for the new group:', 'Stowed');
+    if (!name || !name.trim()) return;
+    const inv = ensureInventory();
+    const newGroup = {
+      id: _nextInvId('grp'),
+      name: name.trim(),
+      description: '',
+      kind: 'custom',
+      collapsed: false,
+      contents: []
+    };
+    inv.groups.push(newGroup);
+    await catalogPlaceItem(def, { kind: 'group', id: newGroup.id });
+  }
+
+  // Look up a custom def by id from either customDefs bucket.
+  // Returns null if not found.
+  function findCustomDefById(id) {
+    const inv = ensureInventory();
+    return (inv.customDefs.containers || []).find(x => x.id === id)
+        || (inv.customDefs.equipment  || []).find(x => x.id === id)
+        || null;
+  }
+
+  // Unified placement path. Builds the inventory entry, routes it to
+  // the right array based on target.kind, and saves. Sets a toast
+  // message describing where it went.
+  async function catalogPlaceItem(def, target) {
+    const inv = ensureInventory();
+    const defKind = def.containerOf ? 'container' : 'equipment';
+    const newEntry = {
+      id: _nextId(),
+      defId: def.id,
+      defKind,
+      quantity: 1
+    };
+    if (def.containerOf) newEntry.contents = [];
+
+    let whereLabel = '';
+    if (target.kind === 'slot') {
+      const ruleset = getRuleset();
+      const slot = (ruleset.bodySlots || []).find(s => s.code === target.code);
+      if (!Array.isArray(inv.bySlot[target.code])) inv.bySlot[target.code] = [];
+      inv.bySlot[target.code].push(newEntry);
+      whereLabel = slot ? slot.label : target.code;
+    } else if (target.kind === 'group') {
+      const g = inv.groups.find(x => x.id === target.id);
+      if (!g || g.kind !== 'custom') return;
+      if (!Array.isArray(g.contents)) g.contents = [];
+      g.contents.push(newEntry);
+      whereLabel = g.name;
+    } else if (target.kind === 'container') {
+      const parent = findEntry(target.id);
+      if (!parent) return;
+      if (!Array.isArray(parent.contents)) parent.contents = [];
+      parent.contents.push(newEntry);
+      expandedEntries.add(parent.id);
+      whereLabel = `inside ${entryName(parent)}`;
+    } else if (target.kind === 'newGroup') {
+      // Smart default asked for a new "Stowed" group because no suitable
+      // existing target was found. Create it, then place the item.
+      const newGroup = {
+        id: _nextInvId('grp'),
+        name: 'Stowed',
+        description: '',
+        kind: 'custom',
+        collapsed: false,
+        contents: [newEntry]
+      };
+      inv.groups.push(newGroup);
+      whereLabel = newGroup.name;
+    } else {
+      return;
+    }
+
+    if (def.containerOf) expandedEntries.add(newEntry.id);
+
+    // Close any open menu and prepare the toast for the next render.
+    catalogAddMenuFor = null;
+    lastAddToast = `Added ${def.name} → ${whereLabel}`;
+
+    renderAll();
+    // Toast auto-clears after a few seconds — schedule a re-render
+    // with the toast null so the confirmation fades on its own.
+    setTimeout(() => {
+      if (lastAddToast) {
+        lastAddToast = null;
+        renderAll();
+      }
+    }, 3000);
+
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
   // ─── GROUP HANDLERS ───
 
   async function toggleGroupCollapse(groupId) {
@@ -1435,7 +2002,15 @@ export function createInventorySection(ctx) {
     saveCustomDef,
     deleteCustomDef,
     tickQty,
-    removeEntry: removeEntryHandler
+    removeEntry: removeEntryHandler,
+    // Catalog view
+    setViewMode,
+    toggleCatalogCat,
+    toggleCatalogItem,
+    catalogToggleAddMenu,
+    catalogQuickAdd,
+    catalogAddTo,
+    catalogAddToNewGroup
   };
 }
 
