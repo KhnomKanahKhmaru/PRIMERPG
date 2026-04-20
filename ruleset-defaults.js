@@ -370,7 +370,59 @@ window.RULESET_DEFAULTS = {
       { powmod:  9, value: 9   },
       { powmod: 10, value: 10  }
     ]
-  }
+  },
+
+  // ─── INVENTORY ──────────────────────────────────────────────────────
+  //
+  // The inventory system is informational only — dimensions, weight, and
+  // overflow are computed and displayed but don't enforce anything at the
+  // data layer. The GM adjudicates: "yes you can strap five rifles to that
+  // backpack, it's just ridiculous and the dice penalty is on you."
+  //
+  // Three catalogs make up the ruleset side:
+  //
+  //   bodySlots   — named positions on the character where worn containers
+  //                 go. Purely labels; no per-slot capacity enforced.
+  //                 Rulesets can add/rename/remove to taste (mech hardpoints,
+  //                 cloak slots, etc.).
+  //
+  //   containers  — storage items with L×W×H dimensions and a weight. Items
+  //                 go inside them. Containers can themselves go inside
+  //                 other containers (recursive; no depth limit). A
+  //                 character's top-level containers attach to a bodySlot
+  //                 or live in a synthetic "Stowed" bucket.
+  //
+  //   equipment   — anything non-container a character can carry. Has
+  //                 dimensions and weight for packing math. Optionally
+  //                 links back to the weapon catalog (when added later) via
+  //                 weaponId so inventory items can surface combat stats.
+  //
+  // Dimensions are inches (L×W×H), weight is pounds. These match what the
+  // sheet displays; we don't convert to metric.
+  //
+  // packingEfficiency lets a messy-packed container waste some of its
+  // volume. A duffel bag at 0.75 means 75% of its cubic volume can actually
+  // be used for items — the rest is lost to lumps, odd shapes, and the
+  // bag's own material. The longest-dimension check (item longest ≤
+  // container longest) runs independently of this.
+
+  bodySlots: [
+    { code: 'head',      label: 'Head'      },
+    { code: 'shoulders', label: 'Shoulders' },
+    { code: 'back',      label: 'Back'      },
+    { code: 'chest',     label: 'Chest'     },
+    { code: 'waist',     label: 'Waist'     },
+    { code: 'arms',      label: 'Arms'      },
+    { code: 'legs',      label: 'Legs'      },
+    { code: 'feet',      label: 'Feet'      }
+  ],
+
+  // Container and equipment catalogs ship empty — ruleset authors fill
+  // them in the ruleset editor. Basic Set may get seeded with a starter
+  // set later (duffel bag, backpack, belt pouch) but we don't hardcode
+  // them in the defaults so rulesets stay lean.
+  containers: [],
+  equipment:  []
 };
 
 // Normalize any ruleset doc by filling in missing fields from defaults.
@@ -737,6 +789,140 @@ window.normalizeRuleset = function(rs) {
       })()
     };
   }
+
+  // ─── INVENTORY NORMALIZATION ─────────────────────────────────────────
+  //
+  // bodySlots / containers / equipment are all arrays of small records.
+  // We re-shape each entry to enforce the schema — drop fields we don't
+  // recognize, coerce types, default anything missing. Empty / invalid
+  // entries are filtered out so downstream code never sees garbage.
+
+  // Slot entries need a stable `code` (used as a key in character data's
+  // inventory.bySlot map) plus a human `label`. Code gets slugified so a
+  // user-entered "Back Left" works as a key.
+  const slugSlotCode = (s) => String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+  if (!Array.isArray(out.bodySlots)) out.bodySlots = [];
+  out.bodySlots = out.bodySlots
+    .map(s => {
+      if (!s || typeof s !== 'object') return null;
+      const code  = slugSlotCode(s.code || s.label || '');
+      const label = (typeof s.label === 'string' && s.label.trim()) ? s.label.trim()
+                  : (typeof s.code  === 'string' && s.code.trim())  ? s.code.trim()
+                  : '';
+      if (!code || !label) return null;
+      return { code, label };
+    })
+    .filter(Boolean);
+  // Dedupe by code — if two entries collide, first wins.
+  {
+    const seen = new Set();
+    out.bodySlots = out.bodySlots.filter(s => {
+      if (seen.has(s.code)) return false;
+      seen.add(s.code);
+      return true;
+    });
+  }
+  // If the author wiped the slot list, fall back to defaults — an inventory
+  // system with no slots available to attach things to would just be
+  // broken. You have to actively choose zero slots by deleting the last
+  // one AND saving empty, which no legitimate path does today.
+  if (out.bodySlots.length === 0) {
+    out.bodySlots = JSON.parse(JSON.stringify(d.bodySlots));
+  }
+
+  // Container / equipment catalog entries share most of their schema —
+  // a display name, optional description, dimensions (L×W×H inches), and
+  // weight (lbs). Containers additionally define packingEfficiency.
+  // Equipment can carry a weaponId linking to the weapons catalog (not
+  // built yet; reserved for later) and a containerOf block making the
+  // equipment ALSO function as a container (ammo pouch, quiver, etc.).
+  //
+  // We don't slugify IDs — rulesets generate stable ids client-side when
+  // adding entries and pass them in verbatim. Missing ids get synthesized
+  // so legacy data doesn't break.
+  const nextSynthId = (() => {
+    let n = 0;
+    return (prefix) => `${prefix}_${Date.now().toString(36)}_${(n++).toString(36)}`;
+  })();
+
+  const coerceFiniteNonNeg = (v, fallback) => {
+    const n = typeof v === 'number' ? v : parseFloat(v);
+    return Number.isFinite(n) && n >= 0 ? n : fallback;
+  };
+  const coerceDimensions = (raw) => {
+    const d2 = (raw && typeof raw === 'object') ? raw : {};
+    return {
+      l: coerceFiniteNonNeg(d2.l, 0),
+      w: coerceFiniteNonNeg(d2.w, 0),
+      h: coerceFiniteNonNeg(d2.h, 0)
+    };
+  };
+  const coerceContainerBlock = (raw) => {
+    if (!raw || typeof raw !== 'object') return null;
+    const dims = coerceDimensions(raw.dimensions);
+    // packingEfficiency defaults to 0.75 — a reasonable "soft packed"
+    // number. Clamped to [0.1, 1.0] so nobody sets it to 0 (container
+    // can't hold anything) or negative.
+    let eff = coerceFiniteNonNeg(raw.packingEfficiency, 0.75);
+    if (eff < 0.1) eff = 0.1;
+    if (eff > 1.0) eff = 1.0;
+    return { dimensions: dims, packingEfficiency: eff };
+  };
+
+  if (!Array.isArray(out.containers)) out.containers = [];
+  out.containers = out.containers
+    .map(c => {
+      if (!c || typeof c !== 'object') return null;
+      const name = (typeof c.name === 'string' && c.name.trim()) ? c.name.trim() : '';
+      if (!name) return null;
+      const block = coerceContainerBlock(c) || coerceContainerBlock({});
+      return {
+        id:                 (typeof c.id === 'string' && c.id) ? c.id : nextSynthId('cont'),
+        name,
+        description:        (typeof c.description === 'string') ? c.description : '',
+        dimensions:         block.dimensions,
+        weight:             coerceFiniteNonNeg(c.weight, 0),
+        packingEfficiency:  block.packingEfficiency,
+        // defaultSlot is a hint: when a player adds this container to
+        // their character, which body slot should it pre-select? null =
+        // prompt the player. Must match a slot code in bodySlots to be
+        // useful, but we don't validate here since catalogs can be edited
+        // independently of each other.
+        defaultSlot:        (typeof c.defaultSlot === 'string' && c.defaultSlot) ? c.defaultSlot : null
+      };
+    })
+    .filter(Boolean);
+
+  if (!Array.isArray(out.equipment)) out.equipment = [];
+  out.equipment = out.equipment
+    .map(e => {
+      if (!e || typeof e !== 'object') return null;
+      const name = (typeof e.name === 'string' && e.name.trim()) ? e.name.trim() : '';
+      if (!name) return null;
+      return {
+        id:           (typeof e.id === 'string' && e.id) ? e.id : nextSynthId('eq'),
+        name,
+        description:  (typeof e.description === 'string') ? e.description : '',
+        dimensions:   coerceDimensions(e.dimensions),
+        weight:       coerceFiniteNonNeg(e.weight, 0),
+        // Free-form categorization. Just a display hint, no enforcement.
+        // Common values: 'firearm', 'melee', 'ammo', 'tool', 'consumable',
+        // 'armor', 'clothing', 'misc'. Blank means "misc".
+        category:     (typeof e.category === 'string') ? e.category.trim() : '',
+        // Reserved for the future weapons catalog linkage. Present now so
+        // data created today stays forward-compatible.
+        weaponId:     (typeof e.weaponId === 'string' && e.weaponId) ? e.weaponId : null,
+        // If set, this equipment ALSO behaves as a container (ammo pouch,
+        // quiver, holster). Character-side code reads this and lets
+        // players drop items inside the equipment instance.
+        containerOf:  coerceContainerBlock(e.containerOf)
+      };
+    })
+    .filter(Boolean);
 
   return out;
 };
