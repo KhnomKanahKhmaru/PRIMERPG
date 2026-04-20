@@ -614,13 +614,21 @@ export function createInventorySection(ctx) {
       ? Math.min(999, Math.round((stats.usedVolume / stats.availableVolume) * 100))
       : 0;
 
+    // Build an explanatory tooltip for the capacity cell so players
+    // hovering over "1200/3024 in³" can see what those numbers mean.
+    // Shows the raw volume and packing efficiency that produced the
+    // "available" figure.
+    const rawVolume = (dims.l || 0) * (dims.w || 0) * (dims.h || 0);
+    const pkEff = spec ? (spec.packingEfficiency || 0.75) : 0.75;
+    const capTip = `Used / usable volume.\nUsable = ${fmt(dims.l)}×${fmt(dims.w)}×${fmt(dims.h)} (${fmt(rawVolume)} in³ raw) × ${fmt(pkEff)} packing efficiency = ${fmt(stats.availableVolume)} in³.\nPacking efficiency accounts for wasted space between irregular items.`;
+
     let html = `<div class="inv-entry inv-entry-container${open ? ' open' : ''}" style="margin-left:${depth * 16}px">
       <div class="inv-entry-head" onclick="invToggleEntry('${escapeHtml(entry.id)}')">
         <span class="inv-entry-caret">${open ? '▾' : '▸'}</span>
         <span class="inv-entry-icon" title="Container">▣</span>
         <span class="inv-entry-name">${escapeHtml(name)}</span>
         <span class="inv-entry-dims">${fmt(outerDims.l)}×${fmt(outerDims.w)}×${fmt(outerDims.h)} in</span>
-        <span class="inv-entry-capacity">${fmt(stats.usedVolume)}/${fmt(stats.availableVolume)} in³ (${pct}%)</span>
+        <span class="inv-entry-capacity" title="${escapeHtml(capTip)}">${fmt(stats.usedVolume)}/${fmt(stats.availableVolume)} in³ (${pct}%)</span>
         <span class="inv-entry-weight">${fmt(stats.totalWeight)} lb</span>
         ${badge}
         ${canEdit ? `<button class="inv-row-btn inv-row-btn-danger" onclick="event.stopPropagation();invRemoveEntry('${escapeHtml(entry.id)}')" title="Remove this container (and everything inside)">×</button>` : ''}
@@ -883,9 +891,10 @@ export function createInventorySection(ctx) {
             <input type="number" step="0.1" min="0" value="${escapeHtml(String(draft.weight || 0))}" oninput="invUpdateCustomDraft('weight',this.value)" style="max-width:140px">
           </div>
 
-          ${isContainer ? `<div class="inv-field">
-            <label>Packing Efficiency (0.1 – 1.0)</label>
-            <input type="number" step="0.05" min="0.1" max="1.0" value="${escapeHtml(String(draft.packingEfficiency || 0.75))}" oninput="invUpdateCustomDraft('packingEfficiency',this.value)" style="max-width:140px">
+          ${isContainer ? `<div class="inv-field" style="max-width:260px">
+            <label title="Fraction of the container's raw L×W×H volume that can actually hold items. 1.0 = perfectly-fitted hard case, 0.75 = typical soft bag, 0.5 = loose sack or odd shape.">Packing Efficiency (0.1 – 1.0)</label>
+            <input type="number" step="0.05" min="0.1" max="1.0" value="${escapeHtml(String(draft.packingEfficiency || 0.75))}" oninput="invUpdateCustomDraft('packingEfficiency',this.value)">
+            <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">1.0 = fitted case · 0.75 = typical bag · 0.5 = loose sack</div>
           </div>` : `
           <div class="inv-toggle-row">
             <span class="inv-toggle${isContainerDual ? ' on' : ''}" onclick="invUpdateCustomDraft('alsoContainer',${!isContainerDual})">${isContainerDual ? '✓ Also a container' : 'Also a container'}</span>
@@ -901,9 +910,10 @@ export function createInventorySection(ctx) {
                 <input type="number" step="0.25" min="0" value="${escapeHtml(String(draft.innerH || 0))}" placeholder="H" oninput="invUpdateCustomDraft('innerH',this.value)">
               </div>
             </div>
-            <div class="inv-field" style="max-width:220px">
-              <label>Packing Efficiency (0.1 – 1.0)</label>
+            <div class="inv-field" style="max-width:260px">
+              <label title="Fraction of the inner L×W×H volume that can actually hold items. 1.0 = perfectly-fitted hard case, 0.75 = typical soft bag, 0.5 = loose sack or odd shape.">Packing Efficiency (0.1 – 1.0)</label>
               <input type="number" step="0.05" min="0.1" max="1.0" value="${escapeHtml(String(draft.innerPacking || 0.75))}" oninput="invUpdateCustomDraft('innerPacking',this.value)">
+              <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">1.0 = fitted case · 0.75 = typical bag · 0.5 = loose sack</div>
             </div>
           </div>` : ''}`}
 
