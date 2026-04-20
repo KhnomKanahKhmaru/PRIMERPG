@@ -1746,8 +1746,7 @@ export function createInventorySection(ctx) {
         description,
         dimensions: { l: innerDims.l || dims.l || 0, w: innerDims.w || dims.w || 0, h: innerDims.h || dims.h || 0 },
         weight,
-        packingEfficiency: innerPacking,
-        defaultSlot: null
+        packingEfficiency: innerPacking
       };
       inv.customDefs.containers.push(def);
     } else {
@@ -2238,8 +2237,7 @@ export function createInventorySection(ctx) {
         description: (d.description || '').trim(),
         dimensions: { l: d.l || 0, w: d.w || 0, h: d.h || 0 },
         weight: d.weight || 0,
-        packingEfficiency: clampEff(d.innerPacking, 0.75),
-        defaultSlot: null
+        packingEfficiency: clampEff(d.innerPacking, 0.75)
       };
       // Container dimensions double as inner dims in the legacy schema.
       // If the user entered different innerDims, prefer those.
