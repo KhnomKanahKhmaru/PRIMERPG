@@ -203,9 +203,10 @@ window.RULESET_DEFAULTS = {
       trackDamage: false,
       keepDecimals: true,     // 2.5 * DEX naturally fractional
       unit: 'ft/sec',
-      // Strain reduces movement values linearly — a character at 25% Strain
-      // moves at 75% of their base speed. Shown inline as "10 − 2.5 ft/sec".
-      strainReducesValue: true
+      // Penalty reduces movement values linearly — a character at 25%
+      // Penalty moves at 75% of their base speed. Shown inline as
+      // "10 − 2.5 ft/sec".
+      penaltyReducesValue: true
     },
     {
       code: 'SPDUP',
@@ -216,7 +217,7 @@ window.RULESET_DEFAULTS = {
       trackDamage: false,
       keepDecimals: false,
       unit: 'ft',
-      strainReducesValue: true
+      penaltyReducesValue: true
     },
     {
       code: 'AGL',
@@ -557,16 +558,18 @@ window.normalizeRuleset = function(rs) {
           // a signed badge indicating which stat modifier the player rolls
           // with when making resistance checks for this stat.
           rollModifier: (typeof s.rollModifier === 'string') ? s.rollModifier : '',
-          // Passive rolls are exempt from Strain dice penalties. Defaults
-          // to false so new stats are treated as active (Strain applies) —
-          // only explicitly-marked passive stats skip it.
+          // Passive rolls are exempt from Penalty dice reductions.
+          // Defaults to false so new stats are treated as active (Penalty
+          // applies) — only explicitly-marked passive stats skip it.
           passiveRoll: s.passiveRoll === true,
-          // Strain reduces the displayed VALUE of this stat instead of the
-          // dice pool — used for movement-style stats where the value isn't
-          // rolled but still suffers when the character is hurt/stressed.
+          // Penalty reduces the displayed VALUE of this stat instead of
+          // the dice pool — used for movement-style stats where the value
+          // isn't rolled but still suffers when the character is hurt/stressed.
           // Mutually coherent with passiveRoll: a stat with passiveRoll=true
-          // is strain-immune, so strainReducesValue has no effect on it.
-          strainReducesValue: s.strainReducesValue === true,
+          // is Penalty-immune, so penaltyReducesValue has no effect on it.
+          // Legacy field `strainReducesValue` still read as a fallback so
+          // saved rulesets from before the rename auto-migrate.
+          penaltyReducesValue: s.penaltyReducesValue === true || s.strainReducesValue === true,
           trackDamage: s.trackDamage === true,
           keepDecimals: s.keepDecimals === true,
           unit: (typeof s.unit === 'string') ? s.unit : ''
@@ -655,12 +658,12 @@ window.normalizeRuleset = function(rs) {
           s.passiveRoll = true;
         }
       }
-      // Same one-way backfill for strainReducesValue — if the default says
-      // true but the saved stat is still unset/false, inherit the default.
-      if (s.strainReducesValue !== true) {
+      // Same one-way backfill for penaltyReducesValue — if the default
+      // says true but the saved stat is still unset/false, inherit it.
+      if (s.penaltyReducesValue !== true) {
         const defaultStat = d.derivedStats.find(ds => ds.code === s.code);
-        if (defaultStat && defaultStat.strainReducesValue === true) {
-          s.strainReducesValue = true;
+        if (defaultStat && defaultStat.penaltyReducesValue === true) {
+          s.penaltyReducesValue = true;
         }
       }
     });
