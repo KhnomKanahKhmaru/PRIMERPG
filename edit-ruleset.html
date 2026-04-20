@@ -284,6 +284,34 @@
 
     .inv-add-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #ccc; font-family: 'Open Sans', sans-serif; font-size: 12px; font-weight: 500; padding: 7px 16px; border-radius: 3px; cursor: pointer; }
     .inv-add-btn:hover { background: #222; border-color: #3a3a3a; }
+
+    /* ── Category tree editor ──
+     * Each category is a flat row with caret / name / description /
+     * item count / delete. Indentation represents parent → child depth.
+     * Built-in Misc category gets a badge instead of a delete button. */
+    .cat-row { display: grid; grid-template-columns: 18px 180px 1fr 40px 70px; gap: 8px; align-items: center; background: #111; border: 1px solid #1a1a1a; border-radius: 4px; padding: 6px 8px; margin-bottom: 4px; }
+    .cat-caret { font-size: 11px; color: #888; text-align: center; user-select: none; }
+    .cat-name { background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; font-weight: 500; padding: 5px 8px; border-radius: 3px; outline: none; }
+    .cat-name:focus { border-color: #444; }
+    .cat-desc { background: #0a0a0a; border: 1px solid #222; color: #ccc; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 5px 8px; border-radius: 3px; outline: none; }
+    .cat-desc:focus { border-color: #444; }
+    .cat-count { font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; color: #888; text-align: center; background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 3px; padding: 4px 6px; font-variant-numeric: tabular-nums; cursor: help; }
+    .cat-badge { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #777; background: #0a0a0a; border: 1px solid #222; padding: 3px 6px; border-radius: 2px; text-align: center; }
+    .cat-delete { color: #555; font-size: 18px; cursor: pointer; text-align: center; line-height: 1; user-select: none; }
+    .cat-delete:hover { color: #c84b4b; }
+
+    /* ── Items list with category headers ──
+     * Items render as the same collapsible .inv-card used for containers
+     * previously. Category headers sit between blocks of items, indented
+     * to match the tree. Empty categories still show a header so authors
+     * know where new items will go. */
+    .item-cat-header { display: flex; align-items: center; gap: 10px; margin: 12px 0 6px; padding: 5px 10px; background: #0d0d0d; border-left: 2px solid #2a2a2a; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #888; }
+    .item-cat-name { flex: 1; }
+    .item-cat-count { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #666; font-variant-numeric: tabular-nums; }
+    .item-cat-badge { font-size: 8px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #666; background: #0a0a0a; border: 1px solid #1a1a1a; padding: 1px 4px; border-radius: 2px; margin-left: 6px; }
+
+    /* Container pill in item card header */
+    .item-container-pill { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #6a9; background: #0a1a0a; border: 1px solid #2a4a2a; padding: 1px 6px; border-radius: 2px; margin-left: 8px; vertical-align: middle; }
   </style>
 </head>
 <body>
@@ -722,24 +750,33 @@
 
       <div class="section">
         <div class="section-header">
-          <div class="section-title">Containers</div>
+          <div class="section-title">Categories</div>
         </div>
-        <div class="section-desc">Storage items with dimensions and weight. Nested freely — a container can hold other containers. Click a card to expand its editor. The longest item dimension vs. longest container dimension is a warning, not a hard limit. <b>Packing Efficiency</b> is how much of the container's raw cubic volume can actually hold items: 1.0 = a perfectly-fitted hard case, 0.75 = a typical duffel or backpack, 0.5 = a floppy sack or awkward shape. It accounts for wasted space between irregular items.</div>
+        <div class="section-desc">Organize your items into a category tree. Nest categories as deep as you want — e.g. Weapons → Firearms → Pistols. Items without a category fall into <b>Miscellaneous</b> automatically. The tree mirrors what players see when browsing the catalog on their character sheet.</div>
 
-        <div class="inv-list" id="container-list"></div>
+        <div id="category-tree"></div>
 
-        <button class="inv-add-btn" onclick="addContainer()">+ Add Container</button>
+        <div class="slot-add-row" style="grid-template-columns:1fr 1fr auto;margin-top:10px">
+          <input type="text" id="new-category-name" placeholder="New category name (e.g. Weapons, Tools)" onkeydown="if(event.key==='Enter')addCategory()">
+          <select id="new-category-parent">
+            <option value="">— Top level —</option>
+          </select>
+          <button class="inv-add-btn" onclick="addCategory()">+ Add Category</button>
+        </div>
       </div>
 
       <div class="section">
         <div class="section-header">
-          <div class="section-title">Equipment</div>
+          <div class="section-title">Items</div>
         </div>
-        <div class="section-desc">Anything non-container a character can carry. Dimensions and weight feed the packing math on the character sheet. Toggle <b>Also a container</b> for dual-role items like ammo pouches or holsters that hold other things while being worn themselves.</div>
+        <div class="section-desc">Everything carryable: weapons, tools, armor, consumables, containers. An item becomes a container when its <b>Also a container</b> toggle is on — ammo pouches, backpacks, and weapon holsters all live here as items with a capacity block. Dimensions and weight feed the packing math on the character sheet. <b>Packing Efficiency</b> (on containers): 1.0 = perfectly-fitted hard case, 0.75 = typical soft bag, 0.5 = loose sack or odd shape.</div>
 
-        <div class="inv-list" id="equipment-list"></div>
+        <div id="item-list"></div>
 
-        <button class="inv-add-btn" onclick="addEquipment()">+ Add Equipment</button>
+        <div class="slot-add-row" style="grid-template-columns:1fr auto;margin-top:10px">
+          <input type="text" id="new-item-name" placeholder="New item name (e.g. Shotgun, Bandage)" onkeydown="if(event.key==='Enter')addItem()">
+          <button class="inv-add-btn" onclick="addItem()">+ Add Item</button>
+        </div>
       </div>
 
     </div><!-- /top-panel-inv -->
@@ -918,8 +955,9 @@
 
     // Inventory tab
     renderBodySlots();
-    renderContainerCards();
-    renderEquipmentCards();
+    renderCategoryTree();
+    renderItemList();
+    refreshCategorySelects();
 
     renderScaleSummary();
 
@@ -1892,8 +1930,8 @@
     state.powerPool         = JSON.parse(JSON.stringify(src.powerPool));
     // Inventory
     state.bodySlots         = JSON.parse(JSON.stringify(src.bodySlots || []));
-    state.containers        = JSON.parse(JSON.stringify(src.containers || []));
-    state.equipment         = JSON.parse(JSON.stringify(src.equipment  || []));
+    state.items             = JSON.parse(JSON.stringify(src.items || []));
+    state.categories        = JSON.parse(JSON.stringify(src.categories || []));
     initUI();
   }
 
@@ -1954,8 +1992,8 @@
       powerPool:         state.powerPool,
       // Inventory
       bodySlots:         state.bodySlots,
-      containers:        state.containers,
-      equipment:         state.equipment
+      items:             state.items,
+      categories:        state.categories
     };
 
     try {
@@ -2065,7 +2103,7 @@
     input.value = '';
     input.focus();
     renderBodySlots();
-    renderContainerCards();   // default-slot dropdowns need to refresh
+    renderItemList();   // item default-slot dropdowns need to refresh
   };
 
   window.updateBodySlotLabel = function(i, value) {
@@ -2093,289 +2131,365 @@
     if (!state.bodySlots[i]) return;
     state.bodySlots.splice(i, 1);
     renderBodySlots();
-    renderContainerCards();   // default-slot dropdowns need to refresh
+    renderItemList();   // item default-slot dropdowns need to refresh
   };
 
-  // ── CONTAINERS ──
-  //
-  // Collapsible cards. Header shows the name + dims + weight; clicking
-  // toggles the full editor. The editor has name, description, dims
-  // (L×W×H), weight, packing efficiency, and a dropdown to set the
-  // default slot. New containers auto-expand so you can start editing
-  // immediately.
 
-  function renderContainerCards() {
-    const host = document.getElementById('container-list');
+  // ── CATEGORIES ──
+  //
+  // Flat array of { id, name, description, parentId, builtIn }. Rendered
+  // as a tree by walking parent → children links. Arbitrary nesting
+  // depth is allowed. "Miscellaneous" (builtIn=true, id='cat_misc') is
+  // always present; can be renamed/described but not deleted.
+  //
+  // Pattern: each category row has an inline editable name, an inline
+  // description field, and a delete × (hidden on builtIn). Indentation
+  // reflects depth. The "+ Add Category" row has a parent dropdown so
+  // you can slot new categories anywhere in the tree.
+
+  // Which categories are collapsed in the editor view. Collapsing hides
+  // child categories (and their items, in the Items list below).
+  const collapsedCategories = new Set();
+
+  function renderCategoryTree() {
+    const host = document.getElementById('category-tree');
     if (!host) return;
-    if (!Array.isArray(state.containers) || state.containers.length === 0) {
-      host.innerHTML = '<div class="empty" style="font-size:12px;color:#555;padding:10px">No containers defined yet. Click "Add Container" to start your catalog.</div>';
+    if (!Array.isArray(state.categories) || state.categories.length === 0) {
+      host.innerHTML = '<div class="empty" style="font-size:12px;color:#555;padding:10px">No categories yet. Add one below.</div>';
       return;
     }
-    host.innerHTML = state.containers.map((c, i) => renderContainerCard(c, i)).join('');
-  }
 
-  function renderContainerCard(c, i) {
-    const open = openInvCards.has(c.id);
-    const dims = c.dimensions || { l: 0, w: 0, h: 0 };
-    const dimsStr = `${dims.l} × ${dims.w} × ${dims.h}`;
-    const weightStr = `${c.weight || 0} lb${c.weight === 1 ? '' : 's'}`;
-    const nameCls = c.name && c.name.trim() ? '' : ' empty';
-    const nameText = c.name && c.name.trim() ? qText(c.name) : '(unnamed)';
-    let html = `<div class="inv-card${open ? ' open' : ''}">
-      <div class="inv-card-head" onclick="toggleContainerOpen('${q(c.id)}', event)">
-        <div class="inv-card-name${nameCls}"><span class="inv-card-caret">${open ? '▾' : '▸'}</span>${nameText}</div>
-        <div class="inv-card-dims">${qText(dimsStr)} in</div>
-        <div class="inv-card-weight">${qText(weightStr)}</div>
-        <span class="delete-x" onclick="event.stopPropagation();deleteContainer('${q(c.id)}')" title="Remove container">×</span>
+    // Build a parent → children map for tree rendering.
+    const byParent = new Map();
+    state.categories.forEach(c => {
+      const pid = c.parentId || '__root__';
+      if (!byParent.has(pid)) byParent.set(pid, []);
+      byParent.get(pid).push(c);
+    });
+
+    let html = '';
+    const renderNode = (c, depth) => {
+      const children = byParent.get(c.id) || [];
+      const collapsed = collapsedCategories.has(c.id);
+      const hasChildren = children.length > 0;
+      const itemCount = state.items.filter(i => (i.categoryId || null) === c.id).length;
+      const caret = hasChildren ? (collapsed ? '▸' : '▾') : '•';
+
+      html += `<div class="cat-row" style="padding-left:${depth * 18}px">
+        <span class="cat-caret" onclick="toggleCategoryCollapse('${q(c.id)}')" ${hasChildren ? 'style="cursor:pointer"' : 'style="cursor:default;color:#333"'}>${caret}</span>
+        <input type="text" class="cat-name" value="${q(c.name || '')}" placeholder="Category name" oninput="updateCategoryField('${q(c.id)}','name',this.value)" ${c.builtIn ? 'title="Built-in category (Miscellaneous). Name can be edited but the category cannot be deleted."' : ''}>
+        <input type="text" class="cat-desc" value="${q(c.description || '')}" placeholder="Optional description (what lives here?)" oninput="updateCategoryField('${q(c.id)}','description',this.value)">
+        <span class="cat-count" title="${itemCount} direct item${itemCount === 1 ? '' : 's'} in this category (excludes subcategories)">${itemCount}</span>
+        ${c.builtIn ? '<span class="cat-badge">built-in</span>' : `<span class="cat-delete" onclick="deleteCategory('${q(c.id)}')" title="Delete this category (items inside reassign to Miscellaneous)">×</span>`}
       </div>`;
 
-    if (open) {
-      html += `<div class="inv-card-body">
-        <div class="inv-field">
-          <label>Name</label>
-          <input type="text" value="${q(c.name || '')}" placeholder="Duffel Bag, Backpack, ..." oninput="updateContainerField('${q(c.id)}','name',this.value)">
-        </div>
-        <div class="inv-field">
-          <label>Description</label>
-          <textarea rows="2" placeholder="Optional — flavor text, construction, special notes." oninput="updateContainerField('${q(c.id)}','description',this.value)">${qText(c.description || '')}</textarea>
-        </div>
-        <div class="inv-field">
-          <label>Dimensions (L × W × H, inches)</label>
-          <div class="inv-dims-row">
-            <input type="number" step="0.25" min="0" value="${q(dims.l)}" placeholder="L" oninput="updateContainerDim('${q(c.id)}','l',this.value)">
-            <input type="number" step="0.25" min="0" value="${q(dims.w)}" placeholder="W" oninput="updateContainerDim('${q(c.id)}','w',this.value)">
-            <input type="number" step="0.25" min="0" value="${q(dims.h)}" placeholder="H" oninput="updateContainerDim('${q(c.id)}','h',this.value)">
-          </div>
-        </div>
-        <div class="inv-pair-row">
-          <div class="inv-field">
-            <label>Weight (lbs, empty)</label>
-            <input type="number" step="0.1" min="0" value="${q(c.weight || 0)}" oninput="updateContainerField('${q(c.id)}','weight',this.value)">
-          </div>
-          <div class="inv-field">
-            <label title="Fraction of the container's raw L×W×H volume that can actually hold items. 1.0 = perfectly-fitted hard case, 0.75 = typical soft bag, 0.5 = loose sack or odd shape.">Packing Efficiency (0.1 – 1.0)</label>
-            <input type="number" step="0.05" min="0.1" max="1.0" value="${q(c.packingEfficiency || 0.75)}" oninput="updateContainerField('${q(c.id)}','packingEfficiency',this.value)">
-            <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">1.0 = fitted case · 0.75 = typical bag · 0.5 = loose sack</div>
-          </div>
-        </div>
-        <div class="inv-field">
-          <label>Default Body Slot (optional)</label>
-          <select onchange="updateContainerField('${q(c.id)}','defaultSlot',this.value)">
-            <option value="">— None (stowed) —</option>
-            ${state.bodySlots.map(s => `<option value="${q(s.code)}"${s.code === c.defaultSlot ? ' selected' : ''}>${qText(s.label)}</option>`).join('')}
-          </select>
-        </div>
-      </div>`;
-    }
-    html += '</div>';
-    return html;
-  }
-
-  window.addContainer = function() {
-    const c = {
-      id: _invNextId('cont'),
-      name: '',
-      description: '',
-      dimensions: { l: 12, w: 8, h: 6 },
-      weight: 1,
-      packingEfficiency: 0.75,
-      defaultSlot: null
+      if (!collapsed) children.forEach(child => renderNode(child, depth + 1));
     };
-    state.containers.push(c);
-    openInvCards.add(c.id);
-    renderContainerCards();
-    // Drop focus into the name field of the freshly-opened card so the
-    // user can start typing immediately. The browser may paint first,
-    // so defer to next tick.
-    setTimeout(() => {
-      const cards = document.querySelectorAll('#container-list .inv-card');
-      const last = cards[cards.length - 1];
-      if (last) {
-        const nameInput = last.querySelector('.inv-card-body input[type="text"]');
-        if (nameInput) nameInput.focus();
-      }
-    }, 0);
-  };
 
-  window.toggleContainerOpen = function(id, ev) {
-    // Ignore clicks that originated from the delete × (it stops propagation
-    // already, but defensively guard anyway).
-    if (ev && ev.target && ev.target.classList && ev.target.classList.contains('delete-x')) return;
-    if (openInvCards.has(id)) openInvCards.delete(id);
-    else openInvCards.add(id);
-    renderContainerCards();
-  };
-
-  window.updateContainerField = function(id, field, value) {
-    const c = state.containers.find(x => x.id === id);
-    if (!c) return;
-    if (field === 'weight' || field === 'packingEfficiency') {
-      const n = parseFloat(value);
-      c[field] = Number.isFinite(n) ? n : 0;
-    } else if (field === 'defaultSlot') {
-      c.defaultSlot = (typeof value === 'string' && value) ? value : null;
-    } else {
-      c[field] = typeof value === 'string' ? value : '';
-    }
-    // Update the card header's name/dims/weight cells in place — re-rendering
-    // the whole card would lose input focus mid-type.
-    updateContainerCardHeader(c);
-  };
-
-  window.updateContainerDim = function(id, axis, value) {
-    const c = state.containers.find(x => x.id === id);
-    if (!c) return;
-    if (!c.dimensions) c.dimensions = { l: 0, w: 0, h: 0 };
-    const n = parseFloat(value);
-    c.dimensions[axis] = Number.isFinite(n) && n >= 0 ? n : 0;
-    updateContainerCardHeader(c);
-  };
-
-  // Refresh just the header row of a container card so the summary line
-  // (name, dims, weight) stays in sync with edits without stealing focus.
-  function updateContainerCardHeader(c) {
-    const cards = document.querySelectorAll('#container-list .inv-card');
-    const i = state.containers.indexOf(c);
-    if (i < 0 || !cards[i]) return;
-    const head = cards[i].querySelector('.inv-card-head');
-    if (!head) return;
-    const dims = c.dimensions || { l: 0, w: 0, h: 0 };
-    const nameEl = head.querySelector('.inv-card-name');
-    if (nameEl) {
-      const hasName = c.name && c.name.trim();
-      nameEl.classList.toggle('empty', !hasName);
-      // Preserve the caret span, update only the trailing text node.
-      const caret = nameEl.querySelector('.inv-card-caret');
-      nameEl.innerHTML = '';
-      if (caret) nameEl.appendChild(caret);
-      nameEl.appendChild(document.createTextNode(hasName ? c.name : '(unnamed)'));
-    }
-    const dimsEl = head.querySelector('.inv-card-dims');
-    if (dimsEl) dimsEl.textContent = `${dims.l} × ${dims.w} × ${dims.h} in`;
-    const wEl = head.querySelector('.inv-card-weight');
-    if (wEl) wEl.textContent = `${c.weight || 0} lb${c.weight === 1 ? '' : 's'}`;
+    (byParent.get('__root__') || []).forEach(c => renderNode(c, 0));
+    host.innerHTML = html;
   }
 
-  window.deleteContainer = function(id) {
-    const i = state.containers.findIndex(c => c.id === id);
-    if (i < 0) return;
-    state.containers.splice(i, 1);
-    openInvCards.delete(id);
-    renderContainerCards();
+  // Populate both parent selects (the Add-Category row and the per-item
+  // category select) with the current category tree. Called whenever
+  // categories change or items re-render.
+  function refreshCategorySelects() {
+    const parentSel = document.getElementById('new-category-parent');
+    if (!parentSel) return;
+
+    // Build nested-label strings for each category showing its depth —
+    // e.g. "  — Firearms" under "Weapons". Walk the tree to compute
+    // paths.
+    const byParent = new Map();
+    state.categories.forEach(c => {
+      const pid = c.parentId || '__root__';
+      if (!byParent.has(pid)) byParent.set(pid, []);
+      byParent.get(pid).push(c);
+    });
+    const options = [];
+    const walk = (c, depth) => {
+      options.push({ id: c.id, label: '— '.repeat(depth) + c.name });
+      (byParent.get(c.id) || []).forEach(child => walk(child, depth + 1));
+    };
+    (byParent.get('__root__') || []).forEach(c => walk(c, 0));
+
+    // Refresh the "new category parent" select.
+    const currentVal = parentSel.value;
+    parentSel.innerHTML = '<option value="">— Top level —</option>'
+      + options.map(o => `<option value="${q(o.id)}">${qText(o.label)}</option>`).join('');
+    // Preserve selection if possible.
+    if ([...parentSel.options].some(o => o.value === currentVal)) parentSel.value = currentVal;
+  }
+
+  window.toggleCategoryCollapse = function(id) {
+    if (collapsedCategories.has(id)) collapsedCategories.delete(id);
+    else collapsedCategories.add(id);
+    renderCategoryTree();
+    renderItemList();
   };
 
-  // ── EQUIPMENT ──
-  //
-  // Same shape as containers, plus a category field and a "Also a
-  // container" toggle. When toggled on, a nested block appears with
-  // the containerOf dimensions + packing efficiency (weight is shared
-  // with the outer equipment; a pouch's weight IS the pouch, not a
-  // separate thing).
+  window.updateCategoryField = function(id, field, value) {
+    const c = state.categories.find(x => x.id === id);
+    if (!c) return;
+    c[field] = typeof value === 'string' ? value : '';
+    // Refresh just the selects — the category name appearing in the
+    // dropdowns needs to match. Don't re-render the tree (would steal
+    // focus from the input the user is typing in).
+    if (field === 'name') refreshCategorySelects();
+  };
 
-  function renderEquipmentCards() {
-    const host = document.getElementById('equipment-list');
+  window.addCategory = function() {
+    const nameInput = document.getElementById('new-category-name');
+    const parentSel = document.getElementById('new-category-parent');
+    if (!nameInput || !parentSel) return;
+    const name = (nameInput.value || '').trim();
+    if (!name) { nameInput.focus(); return; }
+    const parentId = parentSel.value || null;
+    const id = nextStateId('cat');
+    state.categories.push({ id, name, description: '', parentId, builtIn: false });
+    nameInput.value = '';
+    nameInput.focus();
+    renderCategoryTree();
+    refreshCategorySelects();
+    renderItemList();
+  };
+
+  window.deleteCategory = function(id) {
+    const c = state.categories.find(x => x.id === id);
+    if (!c || c.builtIn) return;
+    // Reparent any children of this category to the deleted category's
+    // parent — so a mid-tree delete doesn't orphan whole branches. Items
+    // that point at this category become uncategorized (will display
+    // under Miscellaneous).
+    const childCats = state.categories.filter(x => x.parentId === id);
+    const itemsHere = state.items.filter(i => i.categoryId === id);
+    const total = childCats.length + itemsHere.length;
+    if (total > 0) {
+      const msg = `Delete "${c.name}"?\n${childCats.length} sub-categor${childCats.length === 1 ? 'y moves' : 'ies move'} up to its parent.\n${itemsHere.length} item${itemsHere.length === 1 ? '' : 's'} become${itemsHere.length === 1 ? 's' : ''} uncategorized.`;
+      if (!confirm(msg)) return;
+    } else {
+      if (!confirm(`Delete "${c.name}"?`)) return;
+    }
+    childCats.forEach(ch => { ch.parentId = c.parentId; });
+    itemsHere.forEach(it => { it.categoryId = null; });
+    const idx = state.categories.findIndex(x => x.id === id);
+    if (idx >= 0) state.categories.splice(idx, 1);
+    collapsedCategories.delete(id);
+    renderCategoryTree();
+    refreshCategorySelects();
+    renderItemList();
+  };
+
+  // Small ID synth for inline new-entry buttons. Doesn't need to be
+  // cryptographically unique — just unique within this editor session.
+  function nextStateId(prefix) {
+    return `${prefix}_${Date.now().toString(36)}_${Math.floor(Math.random()*1e6).toString(36)}`;
+  }
+
+  // ── ITEMS ──
+  //
+  // Unified list. Each item: name, description, dimensions, weight,
+  // category, default slot, and an optional containerOf block (making
+  // it a container). Rendered as collapsible cards grouped under their
+  // category headers. Categories with no direct items still show (so
+  // authors can see where to add) unless collapsed in the tree above.
+
+  function renderItemList() {
+    const host = document.getElementById('item-list');
     if (!host) return;
-    if (!Array.isArray(state.equipment) || state.equipment.length === 0) {
-      host.innerHTML = '<div class="empty" style="font-size:12px;color:#555;padding:10px">No equipment defined yet. Click "Add Equipment" to start your catalog.</div>';
+
+    // Build category tree map so we can walk it in display order.
+    const byParent = new Map();
+    state.categories.forEach(c => {
+      const pid = c.parentId || '__root__';
+      if (!byParent.has(pid)) byParent.set(pid, []);
+      byParent.get(pid).push(c);
+    });
+
+    // Group items by categoryId (null → show under Miscellaneous).
+    const itemsByCat = new Map();
+    state.items.forEach(i => {
+      const cid = i.categoryId || 'cat_misc';
+      if (!itemsByCat.has(cid)) itemsByCat.set(cid, []);
+      itemsByCat.get(cid).push(i);
+    });
+
+    if (state.items.length === 0 && state.categories.length <= 1) {
+      host.innerHTML = '<div class="empty" style="font-size:12px;color:#555;padding:10px">No items yet. Click "Add Item" below to start your catalog.</div>';
       return;
     }
-    host.innerHTML = state.equipment.map((e, i) => renderEquipmentCard(e, i)).join('');
+
+    // Walk the category tree in the same order as the tree editor, with
+    // items listed under each category. Skip sections when the category
+    // is collapsed (parent collapse hides everything nested).
+    let html = '';
+    const renderCatSection = (c, depth) => {
+      const collapsed = collapsedCategories.has(c.id);
+      const items = itemsByCat.get(c.id) || [];
+      const children = byParent.get(c.id) || [];
+      const hasAnything = items.length > 0 || children.some(ch => anyItemsAt(ch, itemsByCat, byParent));
+
+      // Category header row — mirrors the category tree visual.
+      html += `<div class="item-cat-header" style="padding-left:${depth * 18}px">
+        <span class="item-cat-name">${qText(c.name)}${c.builtIn ? ' <span class="item-cat-badge">built-in</span>' : ''}</span>
+        <span class="item-cat-count">${items.length}</span>
+      </div>`;
+
+      if (!collapsed) {
+        items.forEach(i => { html += renderItemCard(i, depth); });
+        children.forEach(ch => renderCatSection(ch, depth + 1));
+      }
+    };
+
+    (byParent.get('__root__') || []).forEach(c => renderCatSection(c, 0));
+
+    // Orphan check: items whose categoryId points at a deleted category
+    // land under Miscellaneous at display time (handled by the null
+    // fallback above) — so no separate orphan bucket needed.
+    host.innerHTML = html;
   }
 
-  function renderEquipmentCard(e, i) {
-    const open = openInvCards.has(e.id);
-    const dims = e.dimensions || { l: 0, w: 0, h: 0 };
-    const dimsStr = `${dims.l} × ${dims.w} × ${dims.h}`;
-    const weightStr = `${e.weight || 0} lb${e.weight === 1 ? '' : 's'}`;
-    const nameCls = e.name && e.name.trim() ? '' : ' empty';
-    const nameText = e.name && e.name.trim() ? qText(e.name) : '(unnamed)';
-    const isContainer = !!e.containerOf;
-    const cof = e.containerOf || { dimensions: { l: 0, w: 0, h: 0 }, packingEfficiency: 0.75 };
-    const cofDims = cof.dimensions || { l: 0, w: 0, h: 0 };
+  // Helper: does this category or any descendant hold at least one item?
+  // Used to dim empty branches. Currently unused in the render but kept
+  // for potential future "hide empty branches" toggle.
+  function anyItemsAt(cat, itemsByCat, byParent) {
+    if ((itemsByCat.get(cat.id) || []).length > 0) return true;
+    return (byParent.get(cat.id) || []).some(ch => anyItemsAt(ch, itemsByCat, byParent));
+  }
 
-    let html = `<div class="inv-card${open ? ' open' : ''}">
-      <div class="inv-card-head" onclick="toggleEquipmentOpen('${q(e.id)}', event)">
-        <div class="inv-card-name${nameCls}"><span class="inv-card-caret">${open ? '▾' : '▸'}</span>${nameText}</div>
+  function renderItemCard(it, depth) {
+    const open = openInvCards.has(it.id);
+    const dims = it.dimensions || { l: 0, w: 0, h: 0 };
+    const dimsStr = `${dims.l} × ${dims.w} × ${dims.h}`;
+    const weightStr = `${it.weight || 0} lb${it.weight === 1 ? '' : 's'}`;
+    const nameCls = it.name && it.name.trim() ? '' : ' empty';
+    const nameText = it.name && it.name.trim() ? qText(it.name) : '(unnamed)';
+    const isContainer = !!it.containerOf;
+    const cof = it.containerOf || { dimensions: { l: 0, w: 0, h: 0 }, packingEfficiency: 0.75 };
+    const cofDims = cof.dimensions || { l: 0, w: 0, h: 0 };
+    const containerPill = isContainer ? '<span class="item-container-pill" title="This item is also a container">container</span>' : '';
+    const indentPx = (depth + 1) * 18;   // one level deeper than the category header
+
+    let html = `<div class="inv-card${open ? ' open' : ''}" style="margin-left:${indentPx}px">
+      <div class="inv-card-head" onclick="toggleItemOpen('${q(it.id)}', event)">
+        <div class="inv-card-name${nameCls}"><span class="inv-card-caret">${open ? '▾' : '▸'}</span>${nameText}${containerPill}</div>
         <div class="inv-card-dims">${qText(dimsStr)} in</div>
         <div class="inv-card-weight">${qText(weightStr)}</div>
-        <span class="delete-x" onclick="event.stopPropagation();deleteEquipment('${q(e.id)}')" title="Remove equipment">×</span>
+        <span class="delete-x" onclick="event.stopPropagation();deleteItem('${q(it.id)}')" title="Remove item">×</span>
       </div>`;
 
     if (open) {
       html += `<div class="inv-card-body">
         <div class="inv-field">
           <label>Name</label>
-          <input type="text" value="${q(e.name || '')}" placeholder="Shotgun, Rope, Lockpick, ..." oninput="updateEquipmentField('${q(e.id)}','name',this.value)">
+          <input type="text" value="${q(it.name || '')}" placeholder="e.g. Shotgun, Bandage, Duffel Bag" oninput="updateItemField('${q(it.id)}','name',this.value)">
         </div>
         <div class="inv-field">
           <label>Description</label>
-          <textarea rows="2" placeholder="Optional — flavor text, notes on use." oninput="updateEquipmentField('${q(e.id)}','description',this.value)">${qText(e.description || '')}</textarea>
+          <textarea rows="2" placeholder="Optional — flavor text, special properties, notes." oninput="updateItemField('${q(it.id)}','description',this.value)">${qText(it.description || '')}</textarea>
         </div>
+
         <div class="inv-pair-row">
           <div class="inv-field">
-            <label>Category (optional)</label>
-            <input type="text" value="${q(e.category || '')}" placeholder="firearm, melee, ammo, tool, armor, misc" oninput="updateEquipmentField('${q(e.id)}','category',this.value)">
+            <label>Category</label>
+            <select onchange="updateItemField('${q(it.id)}','categoryId',this.value)">
+              ${buildCategoryOptions(it.categoryId)}
+            </select>
           </div>
           <div class="inv-field">
             <label>Weight (lbs)</label>
-            <input type="number" step="0.1" min="0" value="${q(e.weight || 0)}" oninput="updateEquipmentField('${q(e.id)}','weight',this.value)">
+            <input type="number" step="0.1" min="0" value="${q(it.weight || 0)}" oninput="updateItemField('${q(it.id)}','weight',this.value)">
           </div>
         </div>
+
         <div class="inv-field">
           <label>Dimensions (L × W × H, inches)</label>
           <div class="inv-dims-row">
-            <input type="number" step="0.25" min="0" value="${q(dims.l)}" placeholder="L" oninput="updateEquipmentDim('${q(e.id)}','l',this.value)">
-            <input type="number" step="0.25" min="0" value="${q(dims.w)}" placeholder="W" oninput="updateEquipmentDim('${q(e.id)}','w',this.value)">
-            <input type="number" step="0.25" min="0" value="${q(dims.h)}" placeholder="H" oninput="updateEquipmentDim('${q(e.id)}','h',this.value)">
+            <input type="number" step="0.25" min="0" value="${q(dims.l)}" placeholder="L" oninput="updateItemDim('${q(it.id)}','l',this.value)">
+            <input type="number" step="0.25" min="0" value="${q(dims.w)}" placeholder="W" oninput="updateItemDim('${q(it.id)}','w',this.value)">
+            <input type="number" step="0.25" min="0" value="${q(dims.h)}" placeholder="H" oninput="updateItemDim('${q(it.id)}','h',this.value)">
           </div>
         </div>
 
         <div class="inv-toggle-row">
-          <span class="inv-toggle${isContainer ? ' on' : ''}" onclick="toggleEquipmentContainerOf('${q(e.id)}')">${isContainer ? '✓ Also a container' : 'Also a container'}</span>
-          <span class="inv-toggle-hint">Turn on for ammo pouches, quivers, holsters — things that are both carried AND hold other items.</span>
-        </div>`;
+          <span class="inv-toggle${isContainer ? ' on' : ''}" onclick="toggleItemContainer('${q(it.id)}')">${isContainer ? '✓ Also a container' : 'Also a container'}</span>
+          <span class="inv-toggle-hint">Turn on to let this item hold other items (backpacks, pouches, holsters, weapon cases).</span>
+        </div>
 
-      if (isContainer) {
-        html += `<div class="inv-container-block">
+        ${isContainer ? `<div class="inv-container-block">
           <div class="inv-container-block-title">Container Capacity</div>
           <div class="inv-field">
             <label>Inner Dimensions (L × W × H, inches)</label>
             <div class="inv-dims-row">
-              <input type="number" step="0.25" min="0" value="${q(cofDims.l)}" placeholder="L" oninput="updateEquipmentCofDim('${q(e.id)}','l',this.value)">
-              <input type="number" step="0.25" min="0" value="${q(cofDims.w)}" placeholder="W" oninput="updateEquipmentCofDim('${q(e.id)}','w',this.value)">
-              <input type="number" step="0.25" min="0" value="${q(cofDims.h)}" placeholder="H" oninput="updateEquipmentCofDim('${q(e.id)}','h',this.value)">
+              <input type="number" step="0.25" min="0" value="${q(cofDims.l)}" placeholder="L" oninput="updateItemCofDim('${q(it.id)}','l',this.value)">
+              <input type="number" step="0.25" min="0" value="${q(cofDims.w)}" placeholder="W" oninput="updateItemCofDim('${q(it.id)}','w',this.value)">
+              <input type="number" step="0.25" min="0" value="${q(cofDims.h)}" placeholder="H" oninput="updateItemCofDim('${q(it.id)}','h',this.value)">
             </div>
           </div>
-          <div class="inv-field" style="max-width:260px">
-            <label title="Fraction of the inner L×W×H volume that can actually hold items. 1.0 = perfectly-fitted hard case, 0.75 = typical soft bag, 0.5 = loose sack or odd shape.">Packing Efficiency (0.1 – 1.0)</label>
-            <input type="number" step="0.05" min="0.1" max="1.0" value="${q(cof.packingEfficiency || 0.75)}" oninput="updateEquipmentCofField('${q(e.id)}','packingEfficiency',this.value)">
-            <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">1.0 = fitted case · 0.75 = typical bag · 0.5 = loose sack</div>
+          <div class="inv-pair-row">
+            <div class="inv-field" style="max-width:260px">
+              <label title="Fraction of the inner L×W×H volume that can actually hold items.">Packing Efficiency (0.1 – 1.0)</label>
+              <input type="number" step="0.05" min="0.1" max="1.0" value="${q(cof.packingEfficiency || 0.75)}" oninput="updateItemCofField('${q(it.id)}','packingEfficiency',this.value)">
+              <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">1.0 = fitted case · 0.75 = typical bag · 0.5 = loose sack</div>
+            </div>
+            <div class="inv-field">
+              <label>Default Body Slot (optional)</label>
+              <select onchange="updateItemField('${q(it.id)}','defaultSlot',this.value)">
+                <option value="">— None (stowed) —</option>
+                ${state.bodySlots.map(s => `<option value="${q(s.code)}"${s.code === it.defaultSlot ? ' selected' : ''}>${qText(s.label)}</option>`).join('')}
+              </select>
+            </div>
           </div>
-        </div>`;
-      }
-
-      html += `</div>`;
+        </div>` : ''}
+      </div>`;
     }
     html += '</div>';
     return html;
   }
 
-  window.addEquipment = function() {
-    const e = {
-      id: _invNextId('eq'),
-      name: '',
+  // Build the category select options for an item, flagging the current
+  // category as selected. "None (Miscellaneous)" is always first —
+  // writes null as the categoryId, which displays under Misc.
+  function buildCategoryOptions(currentId) {
+    const byParent = new Map();
+    state.categories.forEach(c => {
+      const pid = c.parentId || '__root__';
+      if (!byParent.has(pid)) byParent.set(pid, []);
+      byParent.get(pid).push(c);
+    });
+    let out = '<option value=""' + (!currentId ? ' selected' : '') + '>— Miscellaneous —</option>';
+    const walk = (c, depth) => {
+      out += `<option value="${q(c.id)}"${currentId === c.id ? ' selected' : ''}>${qText('— '.repeat(depth) + c.name)}</option>`;
+      (byParent.get(c.id) || []).forEach(child => walk(child, depth + 1));
+    };
+    (byParent.get('__root__') || []).forEach(c => walk(c, 0));
+    return out;
+  }
+
+  window.addItem = function() {
+    const input = document.getElementById('new-item-name');
+    const name = (input && input.value) ? input.value.trim() : '';
+    const it = {
+      id: nextStateId('item'),
+      name: name || '',
       description: '',
       dimensions: { l: 6, w: 3, h: 1 },
       weight: 0.5,
-      category: '',
+      categoryId: null,
+      legacyCategory: '',
       weaponId: null,
+      defaultSlot: null,
       containerOf: null
     };
-    state.equipment.push(e);
-    openInvCards.add(e.id);
-    renderEquipmentCards();
+    state.items.push(it);
+    openInvCards.add(it.id);
+    if (input) input.value = '';
+    renderItemList();
+    // Drop focus into the name field of the freshly-opened card so the
+    // user can start typing immediately. The browser may paint first,
+    // so defer to next tick.
     setTimeout(() => {
-      const cards = document.querySelectorAll('#equipment-list .inv-card');
+      const cards = document.querySelectorAll('#item-list .inv-card');
       const last = cards[cards.length - 1];
       if (last) {
         const nameInput = last.querySelector('.inv-card-body input[type="text"]');
@@ -2384,71 +2498,77 @@
     }, 0);
   };
 
-  window.toggleEquipmentOpen = function(id, ev) {
+  window.toggleItemOpen = function(id, ev) {
     if (ev && ev.target && ev.target.classList && ev.target.classList.contains('delete-x')) return;
     if (openInvCards.has(id)) openInvCards.delete(id);
     else openInvCards.add(id);
-    renderEquipmentCards();
+    renderItemList();
   };
 
-  window.updateEquipmentField = function(id, field, value) {
-    const e = state.equipment.find(x => x.id === id);
-    if (!e) return;
+  window.updateItemField = function(id, field, value) {
+    const it = state.items.find(x => x.id === id);
+    if (!it) return;
     if (field === 'weight') {
       const n = parseFloat(value);
-      e.weight = Number.isFinite(n) && n >= 0 ? n : 0;
-    } else if (field === 'weaponId') {
-      e.weaponId = (typeof value === 'string' && value) ? value : null;
+      it.weight = Number.isFinite(n) && n >= 0 ? n : 0;
+    } else if (field === 'categoryId') {
+      it.categoryId = (typeof value === 'string' && value) ? value : null;
+      // Moving an item between categories needs a full re-render since
+      // it changes which header it sits under.
+      renderItemList();
+      return;
+    } else if (field === 'defaultSlot') {
+      it.defaultSlot = (typeof value === 'string' && value) ? value : null;
     } else {
-      e[field] = typeof value === 'string' ? value : '';
+      it[field] = typeof value === 'string' ? value : '';
     }
-    updateEquipmentCardHeader(e);
+    updateItemCardHeader(it);
   };
 
-  window.updateEquipmentDim = function(id, axis, value) {
-    const e = state.equipment.find(x => x.id === id);
-    if (!e) return;
-    if (!e.dimensions) e.dimensions = { l: 0, w: 0, h: 0 };
+  window.updateItemDim = function(id, axis, value) {
+    const it = state.items.find(x => x.id === id);
+    if (!it) return;
+    if (!it.dimensions) it.dimensions = { l: 0, w: 0, h: 0 };
     const n = parseFloat(value);
-    e.dimensions[axis] = Number.isFinite(n) && n >= 0 ? n : 0;
-    updateEquipmentCardHeader(e);
+    it.dimensions[axis] = Number.isFinite(n) && n >= 0 ? n : 0;
+    updateItemCardHeader(it);
   };
 
-  function updateEquipmentCardHeader(e) {
-    const cards = document.querySelectorAll('#equipment-list .inv-card');
-    const i = state.equipment.indexOf(e);
-    if (i < 0 || !cards[i]) return;
-    const head = cards[i].querySelector('.inv-card-head');
+  function updateItemCardHeader(it) {
+    // Find the card matching this id without re-rendering — preserves
+    // focus in the input the user is typing into.
+    const head = document.querySelector(`#item-list .inv-card-head[onclick*="'${it.id}'"]`);
     if (!head) return;
-    const dims = e.dimensions || { l: 0, w: 0, h: 0 };
+    const dims = it.dimensions || { l: 0, w: 0, h: 0 };
     const nameEl = head.querySelector('.inv-card-name');
     if (nameEl) {
-      const hasName = e.name && e.name.trim();
+      const hasName = it.name && it.name.trim();
       nameEl.classList.toggle('empty', !hasName);
+      // Preserve caret + container pill spans, rebuild name text between.
       const caret = nameEl.querySelector('.inv-card-caret');
+      const pill = nameEl.querySelector('.item-container-pill');
       nameEl.innerHTML = '';
       if (caret) nameEl.appendChild(caret);
-      nameEl.appendChild(document.createTextNode(hasName ? e.name : '(unnamed)'));
+      nameEl.appendChild(document.createTextNode(hasName ? it.name : '(unnamed)'));
+      if (pill) nameEl.appendChild(pill);
     }
     const dimsEl = head.querySelector('.inv-card-dims');
     if (dimsEl) dimsEl.textContent = `${dims.l} × ${dims.w} × ${dims.h} in`;
     const wEl = head.querySelector('.inv-card-weight');
-    if (wEl) wEl.textContent = `${e.weight || 0} lb${e.weight === 1 ? '' : 's'}`;
+    if (wEl) wEl.textContent = `${it.weight || 0} lb${it.weight === 1 ? '' : 's'}`;
   }
 
-  // Toggle the dual-role container block on/off. Turning it on seeds a
-  // reasonable default block; turning it off nulls out containerOf
-  // entirely so save payload stays clean.
-  window.toggleEquipmentContainerOf = function(id) {
-    const e = state.equipment.find(x => x.id === id);
-    if (!e) return;
-    if (e.containerOf) {
-      e.containerOf = null;
+  // Toggle the dual-role container block on an item. Turning it on
+  // seeds a reasonable default (80% of outer dims, 0.75 packing);
+  // turning it off nulls the containerOf block entirely.
+  window.toggleItemContainer = function(id) {
+    const it = state.items.find(x => x.id === id);
+    if (!it) return;
+    if (it.containerOf) {
+      it.containerOf = null;
     } else {
-      // Default inner dims to 80% of outer dims so the author has a
-      // sensible starting point. They'll tweak it anyway.
-      const d = e.dimensions || { l: 0, w: 0, h: 0 };
-      e.containerOf = {
+      const d = it.dimensions || { l: 0, w: 0, h: 0 };
+      it.containerOf = {
         dimensions: {
           l: +(d.l * 0.8).toFixed(2),
           w: +(d.w * 0.8).toFixed(2),
@@ -2457,36 +2577,36 @@
         packingEfficiency: 0.75
       };
     }
-    renderEquipmentCards();
+    renderItemList();
   };
 
-  window.updateEquipmentCofField = function(id, field, value) {
-    const e = state.equipment.find(x => x.id === id);
-    if (!e || !e.containerOf) return;
+  window.updateItemCofField = function(id, field, value) {
+    const it = state.items.find(x => x.id === id);
+    if (!it || !it.containerOf) return;
     if (field === 'packingEfficiency') {
       const n = parseFloat(value);
-      if (Number.isFinite(n)) {
-        // Let the normalizer clamp on save; accept whatever they type for now.
-        e.containerOf.packingEfficiency = n;
-      }
+      if (Number.isFinite(n)) it.containerOf.packingEfficiency = n;
     }
   };
 
-  window.updateEquipmentCofDim = function(id, axis, value) {
-    const e = state.equipment.find(x => x.id === id);
-    if (!e || !e.containerOf) return;
-    if (!e.containerOf.dimensions) e.containerOf.dimensions = { l: 0, w: 0, h: 0 };
+  window.updateItemCofDim = function(id, axis, value) {
+    const it = state.items.find(x => x.id === id);
+    if (!it || !it.containerOf) return;
+    if (!it.containerOf.dimensions) it.containerOf.dimensions = { l: 0, w: 0, h: 0 };
     const n = parseFloat(value);
-    e.containerOf.dimensions[axis] = Number.isFinite(n) && n >= 0 ? n : 0;
+    it.containerOf.dimensions[axis] = Number.isFinite(n) && n >= 0 ? n : 0;
   };
 
-  window.deleteEquipment = function(id) {
-    const i = state.equipment.findIndex(e => e.id === id);
+  window.deleteItem = function(id) {
+    const i = state.items.findIndex(it => it.id === id);
     if (i < 0) return;
-    state.equipment.splice(i, 1);
+    const it = state.items[i];
+    if (!confirm(`Delete "${it.name || '(unnamed)'}"?`)) return;
+    state.items.splice(i, 1);
     openInvCards.delete(id);
-    renderEquipmentCards();
+    renderItemList();
   };
+
 
   window.deleteRuleset = async function() {
     if (!rulesetId || existingDoc.isBasicSet) return;
