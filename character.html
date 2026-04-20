@@ -1767,6 +1767,11 @@
     /* "custom" pill — shown on character-local defs in the picker modal */
     .inv-modal-custom { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #c8a; background: #1a0a1a; border: 1px solid #3a2a3a; padding: 1px 6px; border-radius: 2px; }
 
+    /* Picker row: flex header so the × delete button sits on the right */
+    .inv-modal-opt-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 3px; }
+    .inv-modal-opt-delete { background: transparent; border: 1px solid #3a1a1a; color: #8a3a3a; font-family: 'Open Sans', sans-serif; font-size: 14px; width: 22px; height: 22px; border-radius: 3px; cursor: pointer; padding: 0; line-height: 1; flex-shrink: 0; }
+    .inv-modal-opt-delete:hover { background: #2a0a0a; border-color: #6a2a2a; color: #c85a5a; }
+
     /* Item description panel — shown when the row is clicked open */
     .inv-entry-name-clickable { cursor: pointer; }
     .inv-entry-name-clickable:hover { color: #fff; }
@@ -2369,6 +2374,7 @@
     invCancelCustomForm:     ()                   => inventory.cancelCustomForm(),
     invUpdateCustomDraft:    (field, value)       => inventory.updateCustomDraft(field, value),
     invSaveCustomDef:        ()                   => inventory.saveCustomDef(),
+    invDeleteCustomDef:      (kind, defId)        => inventory.deleteCustomDef(kind, defId),
     invTickQty:              (id, delta)          => inventory.tickQty(id, delta),
     invRemoveEntry:          (id)                 => inventory.removeEntry(id),
     // Sheet tab switcher (Overview / Combat / Inventory folder tabs)
