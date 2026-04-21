@@ -509,7 +509,36 @@ window.RULESET_DEFAULTS = {
     // the bucket for items whose categoryId is null or points to a
     // deleted category. Can be renamed/described but not deleted.
     { id: 'cat_misc', name: 'Miscellaneous', description: '', parentId: null, builtIn: true }
-  ]
+  ],
+
+  // ═══ WEAPONS ═══
+  //
+  // Weapon integration is ruleset-level. A ruleset defines:
+  //   1. The four roll formulas (melee/ranged × attack/damage) — these
+  //      use the same formula engine char-derived.js uses for derived
+  //      stats, so expressions can reference stats (DEX, STR),
+  //      stat mods (DEXMOD, STRMOD), skills (Melee, Ranged),
+  //      weapon constants (DMG = dice count, ATK = attack roll result,
+  //      DMGMOD = ranged damage bonus), and operators.
+  //   2. A shared tag catalogue — short labels players can apply to
+  //      their weapons (Silenced, Two-Handed, Bleeding, etc.). Tags
+  //      are descriptive for now; later passes may add auto-computed
+  //      effects but the base schema is just {id, name, description}.
+  //
+  // Individual weapons live on catalogue ITEMS (item.weapon = {...}),
+  // not in the ruleset itself. This keeps the ruleset lean and lets
+  // players define custom weapons in their personal catalogue.
+  weapons: {
+    meleeAttackFormula:  'DEX + Melee + DEXMOD',
+    meleeDamageFormula:  'STR + DMG + ATK + STRMOD',
+    rangedAttackFormula: 'DEX + Ranged + DEXMOD',
+    rangedDamageFormula: 'DEX + DMG + ATK + DMGMOD'
+  },
+
+  // Tag catalogue. Order matters for display but not behavior. Each
+  // entry is { id, name, description }. IDs follow the `t_` prefix
+  // convention to avoid collisions with item ids elsewhere.
+  weaponTags: []
 };
 
 // Normalize any ruleset doc by filling in missing fields from defaults.
@@ -1029,6 +1058,93 @@ window.normalizeRuleset = function(rs) {
     return { dimensions: dims, packingEfficiency: eff };
   };
 
+  // Weapon block — optional. Items that aren't weapons omit this field
+  // entirely (null return). The schema is split by `kind`:
+  //
+  //   shared:   dice (number), pen (number), tags (string[] of tag ids)
+  //   melee:    ranges ([{s,e}, ...] in feet) — each band is an object
+  //             with start/end in feet. Stored as objects NOT nested
+  //             arrays because Firestore rejects arrays-of-arrays. The
+  //             UI uses the count of bands to assign Difficulty (+0 for
+  //             band 0, +1 for band 1, etc). Empty/missing ranges means
+  //             "all ranges are +0" (trivial weapon).
+  //   ranged:   range (base feet), ammo (string formula OR number),
+  //             rof (string formula OR number), dmgmod (number — ranged
+  //             weapons carry a DMG bonus woven into the damage formula)
+  //
+  // `ammo` and `rof` accept a formula string so rulesets can author
+  // weapons like "AMMO = STR" or "ROF = (DEXMOD/2)-1". Resolution
+  // happens at render time against the character's live stats; the
+  // snapshot on inventory entries stores the original formula text so
+  // later stat changes update the effective value while the weapon def
+  // stays frozen.
+  const coerceWeapon = (raw) => {
+    if (!raw || typeof raw !== 'object') return null;
+    const kindRaw = (typeof raw.kind === 'string') ? raw.kind.toLowerCase() : '';
+    if (kindRaw !== 'melee' && kindRaw !== 'ranged') return null;
+
+    const dice = coerceFiniteNonNeg(raw.dice, 0);
+    const pen  = coerceFiniteNonNeg(raw.pen,  0);
+
+    // Tags: array of tag ids (strings). Anything non-string gets dropped.
+    // Deduped by string-equality. Bad tags (referencing deleted ruleset
+    // tags) are tolerated — the display layer silently skips unknown
+    // ids and shows only the resolvable ones.
+    let tags = [];
+    if (Array.isArray(raw.tags)) {
+      const seen = new Set();
+      raw.tags.forEach(t => {
+        if (typeof t !== 'string' || !t) return;
+        if (seen.has(t)) return;
+        seen.add(t);
+        tags.push(t);
+      });
+    }
+
+    if (kindRaw === 'melee') {
+      // Range bands. Stored as an array of {s, e} objects (NOT nested
+      // arrays — Firestore doesn't support those). Legacy data
+      // may still have the old [[s,e], ...] shape from before this
+      // schema change; we accept either and normalize to the object
+      // form. Invalid entries (missing numbers, e < s, negative) are
+      // dropped silently.
+      let ranges = [];
+      if (Array.isArray(raw.ranges)) {
+        raw.ranges.forEach(band => {
+          let s, e;
+          if (Array.isArray(band) && band.length >= 2) {
+            s = Number(band[0]);
+            e = Number(band[1]);
+          } else if (band && typeof band === 'object') {
+            s = Number(band.s);
+            e = Number(band.e);
+          } else {
+            return;
+          }
+          if (!Number.isFinite(s) || !Number.isFinite(e)) return;
+          if (s < 0 || e < s) return;
+          ranges.push({ s, e });
+        });
+      }
+      return { kind: 'melee', dice, pen, tags, ranges };
+    }
+
+    // ranged
+    const range  = coerceFiniteNonNeg(raw.range,  0);
+    const dmgmod = Number.isFinite(Number(raw.dmgmod)) ? Number(raw.dmgmod) : 0;
+    // ammo / rof accept either a number OR a formula string. We keep
+    // whatever the author provided — the resolver at use-time decides
+    // whether to eval a formula or use a literal.
+    const coerceNumOrFormula = (v, fallback) => {
+      if (typeof v === 'number' && Number.isFinite(v)) return v;
+      if (typeof v === 'string' && v.trim()) return v.trim();
+      return fallback;
+    };
+    const ammo = coerceNumOrFormula(raw.ammo, 1);
+    const rof  = coerceNumOrFormula(raw.rof,  0);
+    return { kind: 'ranged', dice, pen, tags, range, dmgmod, ammo, rof };
+  };
+
   // Normalize a single item record. Shared by the migration path
   // (legacy entry → item) and the validation path (existing item → item).
   // `sourceKind` is 'container' when coming from the old containers
@@ -1078,6 +1194,11 @@ window.normalizeRuleset = function(rs) {
       legacyCategory: (typeof raw.category === 'string' && raw.category) ? raw.category : '',
       // Future weapon-catalog linkage (not built yet).
       weaponId:     (typeof raw.weaponId === 'string' && raw.weaponId) ? raw.weaponId : null,
+      // Weapon block — present when the item is a weapon. Null/omitted
+      // otherwise. Structure depends on `weapon.kind` ('melee' or
+      // 'ranged'). Added to the catalogue item's def; snapshot-copied
+      // onto inventory entries at add-time (see char-inventory.js).
+      weapon:       coerceWeapon(raw.weapon),
       // Default body slot — set on containers so adding one to a
       // character pre-selects the right slot.
       defaultSlot:  (typeof raw.defaultSlot === 'string' && raw.defaultSlot) ? raw.defaultSlot : null,
@@ -1169,6 +1290,45 @@ window.normalizeRuleset = function(rs) {
       c.parentId = null;
     }
   });
+
+  // ── WEAPONS ──
+  // Ruleset-level roll formulas. A missing `weapons` object, or any
+  // individual missing formula, falls back to Standard Set defaults.
+  // Missing/blank formulas at runtime would be a silent roll bug, so
+  // we always resolve each one to a non-empty string.
+  if (!out.weapons || typeof out.weapons !== 'object') out.weapons = {};
+  const defFormulas = d.weapons || {
+    meleeAttackFormula:  'DEX + Melee + DEXMOD',
+    meleeDamageFormula:  'STR + DMG + ATK + STRMOD',
+    rangedAttackFormula: 'DEX + Ranged + DEXMOD',
+    rangedDamageFormula: 'DEX + DMG + ATK + DMGMOD'
+  };
+  ['meleeAttackFormula','meleeDamageFormula','rangedAttackFormula','rangedDamageFormula'].forEach(f => {
+    if (typeof out.weapons[f] !== 'string' || !out.weapons[f].trim()) {
+      out.weapons[f] = defFormulas[f];
+    }
+  });
+
+  // Weapon tags — shared tag catalogue used across all weapons in this
+  // ruleset. Each tag is {id, name, description}. Tags without a usable
+  // name are dropped. Missing descriptions become empty strings. IDs
+  // autogenerate with the `t_` prefix if absent (or invalid).
+  if (!Array.isArray(out.weaponTags)) out.weaponTags = [];
+  const tagSeen = new Set();
+  out.weaponTags = out.weaponTags.map(t => {
+    if (!t || typeof t !== 'object') return null;
+    const name = (typeof t.name === 'string') ? t.name.trim() : '';
+    if (!name) return null;
+    let id = (typeof t.id === 'string' && t.id) ? t.id : nextSynthId('t');
+    // Avoid duplicate ids — if two tags share, the later one gets a new id.
+    while (tagSeen.has(id)) id = nextSynthId('t');
+    tagSeen.add(id);
+    return {
+      id,
+      name,
+      description: (typeof t.description === 'string') ? t.description : ''
+    };
+  }).filter(Boolean);
 
   return out;
 };
