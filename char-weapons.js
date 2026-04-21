@@ -9,20 +9,24 @@
 //   {
 //     kind: 'melee' | 'ranged',
 //     attack: {
-//       formula:  string,     // raw ruleset formula, unsubstituted
-//       value:    number,     // evaluated total
-//       slots:    [{ label, value, rawContribution }, ...],  // for Roll Calc
-//       error:    string|null
+//       formula:          string,  // formula after any override substitutions
+//       dicePool:         number,  // STAT + SKILL terms summed, pre-penalty
+//       flatBonus:        number,  // MOD terms summed, pre-penalty
+//       dicePoolReduced:  number,  // dicePool with penalty applied to stat/statmod terms
+//       flatBonusReduced: number,  // flatBonus with penalty applied
+//       diceSlots:        [{ label, value, valueReduced, category, statCode, skillName, skillTier, ... }, ...],
+//       flatSlots:        [{ ...same shape... }, ...],
+//       error:            string|null
 //     },
 //     damage: { ... same shape ... },
 //     dice:   number,         // weapon's damage dice count (the D10s)
 //     pen:    number,
-//     tags:   [{ id, name, description }, ...],  // resolved against ruleset.weaponTags
+//     tags:   [{ id, name, description }, ...],
 //     // Melee-only:
-//     ranges: [[s,e], ...],   // pass-through from snapshot
+//     ranges: [{s,e}, ...],   // pass-through from snapshot
 //     // Ranged-only:
 //     range:       number,    // base range in feet
-//     ammo:        { raw, resolved, error },  // raw string/number, resolved number
+//     ammo:        { raw, resolved, error },
 //     rof:         { raw, resolved, error },
 //     dmgmod:      number
 //   }
@@ -88,10 +92,11 @@ function isFlatVar(name) {
   return typeof name === 'string' && /MOD$/.test(name);
 }
 
-function resolveRollFormula(formulaStr, symbols, weaponSymbols) {
+function resolveRollFormula(formulaStr, symbols, weaponSymbols, character, ruleset, penaltyPct) {
   if (!formulaStr || typeof formulaStr !== 'string') {
     return {
       formula: '', dicePool: 0, flatBonus: 0,
+      dicePoolReduced: 0, flatBonusReduced: 0,
       diceSlots: [], flatSlots: [], error: 'Missing formula'
     };
   }
@@ -100,11 +105,10 @@ function resolveRollFormula(formulaStr, symbols, weaponSymbols) {
   if (compiled.error) {
     return {
       formula: formulaStr, dicePool: 0, flatBonus: 0,
+      dicePoolReduced: 0, flatBonusReduced: 0,
       diceSlots: [], flatSlots: [], error: compiled.message || 'Parse error'
     };
   }
-  // Sanity eval to catch unresolved variables up front — clearer error
-  // than just returning 0 in the slot breakdown.
   const total = evalFormula(compiled, mergedSymbols);
   if (total == null) {
     const missing = listMissingVars(compiled, mergedSymbols);
@@ -112,37 +116,59 @@ function resolveRollFormula(formulaStr, symbols, weaponSymbols) {
       formula:   formulaStr,
       dicePool:  0,
       flatBonus: 0,
+      dicePoolReduced: 0,
+      flatBonusReduced: 0,
       diceSlots: [],
       flatSlots: [],
       error:     missing.length > 0 ? 'Missing: ' + missing.join(', ') : 'Eval error'
     };
   }
-  // Decompose into additive terms, then bucket by flat vs dice based
-  // on whether any referenced variable name ends in MOD. Compound
-  // terms like "SOMETHING + OTHERMOD" wouldn't normally occur at a
-  // single leaf, but if they do we classify the whole leaf as flat
-  // (conservative — MOD-flavored leaves go flat).
-  const terms = extractAdditiveTerms(compiled, mergedSymbols);
+  const terms = extractAdditiveTerms(compiled, mergedSymbols, character, ruleset);
   const diceSlots = [];
   const flatSlots = [];
   let dicePool  = 0;
   let flatBonus = 0;
+  // Penalty-reduced versions. Only stat and statmod terms get reduced —
+  // skills, weapon constants (DMG/PEN/ATK), and literals pass through
+  // unchanged. This matches the game rule "Penalty reduces stats used
+  // in the roll, not skills or flat weapon numbers." Penalty applies
+  // per-term and is floored (matches Roll Calc's Math.floor behavior).
+  let dicePoolReduced  = 0;
+  let flatBonusReduced = 0;
+  const pen = Number.isFinite(penaltyPct) ? Math.max(0, Math.min(100, penaltyPct)) : 0;
   terms.forEach(term => {
+    // Annotate each term with its reduced value so the UI can show the
+    // per-slot breakdown with/without penalty.
+    const affectedByPenalty = (term.category === 'stat' || term.category === 'statmod');
+    if (affectedByPenalty && pen > 0) {
+      // Math.floor(abs * pen) preserves sign. The reduction magnitude is
+      // subtracted from the absolute value, then re-signed.
+      const mag = Math.abs(term.value);
+      const reducedMag = Math.max(0, mag - Math.floor(mag * pen / 100));
+      term.valueReduced = term.sign * reducedMag;
+    } else {
+      term.valueReduced = term.value;
+    }
     if (term.isFlat) {
       flatBonus += term.value;
+      flatBonusReduced += term.valueReduced;
       flatSlots.push(term);
     } else {
       dicePool += term.value;
+      dicePoolReduced += term.valueReduced;
       diceSlots.push(term);
     }
   });
-  // Dice pool is a count — clamp to non-negative integer so the Roll
-  // Calc never gets a -2 dice input. Flat bonus stays signed.
-  dicePool = Math.max(0, Math.floor(dicePool));
+  dicePool        = Math.max(0, Math.floor(dicePool));
+  dicePoolReduced = Math.max(0, Math.floor(dicePoolReduced));
+  // Flat bonus stays signed (can be negative), but penalty can't flip
+  // its sign — if it's +2 and reduced it's still +something or 0.
   return {
     formula:   formulaStr,
     dicePool,
     flatBonus,
+    dicePoolReduced,
+    flatBonusReduced,
     diceSlots,
     flatSlots,
     error:     null
@@ -162,11 +188,67 @@ function listMissingVars(compiled, symbols) {
         break;
       case 'unary': walk(node.arg); break;
       case 'binop': walk(node.left); walk(node.right); break;
-      case 'call':  node.args.forEach(walk); break;
+      case 'call':  node.args.forEach(a => walk(a)); break;
     }
   };
   walk(compiled.ast);
   return Array.from(missing);
+}
+
+// Look up a variable name against the character + ruleset to figure
+// out what category it is. Categories drive UI behavior — stats get
+// penalty-reduced, skills contribute Difficulty mitigation based on
+// tier, weapon constants (DMG/PEN/ATK) stay raw, MOD-suffixed vars
+// are flat-bonus.
+//
+// Returns an object:
+//   { category: 'stat'|'statmod'|'skill'|'weaponConst'|'literal'|'unknown',
+//     statCode:    string,   // when category === 'stat' or 'statmod', the STAT code (STR/DEX/etc)
+//     skillName:   string,   // when category === 'skill', the skill name as stored in char
+//     skillTier:   'primary'|'secondary'|'specialty'|null  // only for skills
+//   }
+//
+// The lookup is case-sensitive for skill names (character.skills entries
+// use their canonical casing from the ruleset definition) but matches
+// stat codes uppercase.
+function classifyVar(name, character, ruleset) {
+  if (!name) return { category: 'literal' };
+  // Weapon constants — injected by resolveWeapon before evaluation.
+  if (name === 'DMG' || name === 'PEN' || name === 'ATK' || name === 'WEAPONDMGMOD') {
+    return { category: 'weaponConst' };
+  }
+  // MOD-suffixed. Could be a stat-MOD (DEXMOD) or a freestanding MOD var
+  // (DMGMOD on ranged weapons, which we alias to WEAPONDMGMOD). We
+  // classify both as 'statmod' for UI purposes — flat bonus, derived
+  // from an underlying stat if one exists.
+  if (/MOD$/.test(name)) {
+    const stripped = name.replace(/MOD$/, '').toUpperCase();
+    const baseStat = (ruleset && Array.isArray(ruleset.stats))
+      ? ruleset.stats.find(s => s && (s.code || '').toUpperCase() === stripped)
+      : null;
+    return {
+      category: 'statmod',
+      statCode: baseStat ? baseStat.code.toUpperCase() : stripped
+    };
+  }
+  // Base stat — case-insensitive match against ruleset.stats.
+  if (ruleset && Array.isArray(ruleset.stats)) {
+    const match = ruleset.stats.find(s => s && (s.code || '').toUpperCase() === name.toUpperCase());
+    if (match) return { category: 'stat', statCode: match.code.toUpperCase() };
+  }
+  // Skills — check primary, then secondary, then specialty.
+  const skills = (character && character.skills) || {};
+  const primarySkills = (ruleset && Array.isArray(ruleset.primarySkills)) ? ruleset.primarySkills : [];
+  if (primarySkills.some(s => s && s.name === name)) {
+    return { category: 'skill', skillName: name, skillTier: 'primary' };
+  }
+  if (Array.isArray(skills.secondary) && skills.secondary.some(s => s && s.name === name)) {
+    return { category: 'skill', skillName: name, skillTier: 'secondary' };
+  }
+  if (Array.isArray(skills.specialty) && skills.specialty.some(s => s && s.name === name)) {
+    return { category: 'skill', skillName: name, skillTier: 'specialty' };
+  }
+  return { category: 'unknown' };
 }
 
 // Break a compiled additive expression into human-readable terms for
@@ -175,11 +257,22 @@ function listMissingVars(compiled, symbols) {
 // a single opaque "formula" slot. This is fine because the four
 // ruleset weapon formulas are all simple sums in practice.
 //
-// Each term carries an `isFlat` boolean: true if the term's expression
-// references a variable ending in MOD (STATMOD, DEXMOD, etc), false
-// otherwise. Callers use this to bucket terms into dice pool vs flat
-// bonus for the Roll Calculator.
-function extractAdditiveTerms(compiled, symbols) {
+// Each term carries:
+//   label       — human-readable name for the leaf (usually the variable)
+//   value       — evaluated numeric value (signed by the containing +/- chain)
+//   sign        — +1 or -1
+//   isFlat      — true if the leaf references any MOD-suffixed variable
+//   category    — 'stat'|'statmod'|'skill'|'weaponConst'|'literal'|'unknown'
+//                 (from classifyVar on the first var ref in the leaf)
+//   statCode    — populated when category is 'stat' or 'statmod'
+//   skillName   — populated when category is 'skill'
+//   skillTier   — 'primary'|'secondary'|'specialty'|null when skill
+//
+// The category info lets the readout UI distinguish "reduce this by
+// Penalty" (stat/statmod) from "leave alone" (skill/weaponConst) and
+// apply Difficulty mitigation when a secondary/specialty skill is in
+// the slot.
+function extractAdditiveTerms(compiled, symbols, character, ruleset) {
   const terms = [];
   const walk = (node, sign) => {
     if (!node) return;
@@ -197,18 +290,25 @@ function extractAdditiveTerms(compiled, symbols) {
     // mini-expression and stash.
     const v = evalFormula({ ast: node }, symbols);
     const label = termLabel(node);
-    // Gather all variable references inside this leaf; if ANY of them
-    // is MOD-suffixed, the whole leaf is classified as flat. This
-    // conservative rule handles edge cases like `2 * STRMOD` correctly
-    // (whole expression is treated as flat because STRMOD is flat).
     const varRefs = [];
     collectVarRefs(node, varRefs);
     const isFlat = varRefs.some(isFlatVar);
+    // Classify using the FIRST variable reference in the leaf. In the
+    // common case every leaf is a single variable — edge cases like
+    // "2 * STR" still classify as 'stat' because STR is the first ref.
+    const firstVar = varRefs[0];
+    const classification = firstVar
+      ? classifyVar(firstVar, character, ruleset)
+      : { category: 'literal' };
     terms.push({
       label,
       value: (v == null ? 0 : v) * sign,
       sign,
-      isFlat
+      isFlat,
+      category:  classification.category,
+      statCode:  classification.statCode  || null,
+      skillName: classification.skillName || null,
+      skillTier: classification.skillTier || null
     });
   };
   walk(compiled.ast, 1);
@@ -237,6 +337,39 @@ function termLabel(node) {
   return '(expr)';
 }
 
+// Rewrite variable names in a formula string using a substitution map.
+// Whole-identifier match only — swapping 'DEX' to 'INT' won't touch
+// 'DEXMOD' or 'INDEX' (boundaries \b on each side). Used to apply
+// per-instance slot overrides without needing to re-parse the formula.
+//
+// mapping: { [fromVar]: toVar, ... } — keys are original var names,
+//          values are the replacements. Empty/nullable mapping returns
+//          the formula unchanged.
+//
+// The formula engine's identifier grammar only accepts [A-Za-z0-9_]+,
+// so replacement values are sanitized (non-alphanumeric stripped) to
+// match the variable-safe version that char-derived.js writes into
+// the symbol table. A skill named "Knife Fighting" becomes
+// "KnifeFighting" in the formula, which resolves correctly because
+// buildSymbolTable() aliases it under both the original and sanitized
+// names.
+function applyOverrides(formula, mapping) {
+  if (typeof formula !== 'string') return formula;
+  if (!mapping || typeof mapping !== 'object') return formula;
+  const sanitize = (s) => String(s).replace(/[^A-Za-z0-9_]+/g, '');
+  let out = formula;
+  Object.keys(mapping).forEach(fromVar => {
+    const toVar = mapping[fromVar];
+    if (!fromVar || !toVar) return;
+    const safeTo = sanitize(toVar);
+    if (!safeTo || fromVar === safeTo) return;
+    const esc = fromVar.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`\\b${esc}\\b`, 'g');
+    out = out.replace(re, safeTo);
+  });
+  return out;
+}
+
 // MAIN ENTRY POINT.
 //
 // weapon     — the weapon snapshot object from an inventory entry.
@@ -244,10 +377,28 @@ function termLabel(node) {
 //              produces: { kind, dice, pen, tags, ranges?|range?, ... }.
 // character  — live character doc (charData).
 // ruleset    — active ruleset.
+// overrides  — optional per-instance slot substitutions to customize
+//              which stat/skill each formula slot uses. Shape:
+//                {
+//                  attack: { [fromVar]: toVar, ... },
+//                  damage: { [fromVar]: toVar, ... }
+//                }
+//              Example: { attack: { DEX: 'INT', Melee: 'Stealth' } }
+//              rewrites "DEX + Melee + DEXMOD" to
+//              "INT + Stealth + DEXMOD" before evaluation. The DEXMOD
+//              stays because the override only touched DEX/Melee.
+//              Null/missing means no override.
+// atkResult  — optional contested attack result (number). When provided,
+//              ATK resolves to this value in the damage formula instead
+//              of 0. Lets the damage readout show the actual total once
+//              the player has rolled their attack.
+// penaltyPct — optional penalty percentage (0-100) to apply to stat and
+//              statmod terms. Skills, weapon constants, and literals
+//              are not reduced. Missing or 0 means no penalty.
 //
 // Returns the readout object described at the top of this file. If the
 // weapon argument is null/undefined or has no kind, returns null.
-export function resolveWeapon(weapon, character, ruleset) {
+export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, penaltyPct) {
   if (!weapon || (weapon.kind !== 'melee' && weapon.kind !== 'ranged')) return null;
 
   const symbols = buildSymbolTable(character || {}, ruleset || {});
@@ -262,32 +413,30 @@ export function resolveWeapon(weapon, character, ruleset) {
   const weaponSymbols = {
     DMG: Number.isFinite(weapon.dice)   ? weapon.dice   : 0,
     PEN: Number.isFinite(weapon.pen)    ? weapon.pen    : 0,
-    ATK: 0   // placeholder — see resolveRollFormula comment
+    ATK: Number.isFinite(atkResult) ? Math.floor(atkResult) : 0
   };
-  // Ranged weapons contribute a dmgmod bonus to the damage formula.
-  // Melee weapons don't have one, but the formula engine expects a
-  // number; default to 0 so a shared formula works for both. Authors
-  // who need to distinguish weapon-dmgmod from stat-DMGMOD should use
-  // WEAPONDMGMOD in the formula explicitly.
   if (weapon.kind === 'ranged') {
     weaponSymbols.WEAPONDMGMOD = Number.isFinite(weapon.dmgmod) ? weapon.dmgmod : 0;
-    // Also override DMGMOD for ranged weapons so the default formula
-    // `DEX + DMG + ATK + DMGMOD` behaves as the user expects (the
-    // DMGMOD in that formula is the weapon's, not the DEX stat-mod).
     weaponSymbols.DMGMOD = weaponSymbols.WEAPONDMGMOD;
   } else {
     weaponSymbols.WEAPONDMGMOD = 0;
   }
 
-  const attackFormula = (weapon.kind === 'melee')
+  const rawAttackFormula = (weapon.kind === 'melee')
     ? (rsWeapons.meleeAttackFormula  || 'DEX + Melee + DEXMOD')
     : (rsWeapons.rangedAttackFormula || 'DEX + Ranged + DEXMOD');
-  const damageFormula = (weapon.kind === 'melee')
+  const rawDamageFormula = (weapon.kind === 'melee')
     ? (rsWeapons.meleeDamageFormula  || 'STR + DMG + ATK + STRMOD')
     : (rsWeapons.rangedDamageFormula || 'DEX + DMG + ATK + DMGMOD');
 
-  const attack = resolveRollFormula(attackFormula, symbols, weaponSymbols);
-  const damage = resolveRollFormula(damageFormula, symbols, weaponSymbols);
+  // Apply per-instance slot overrides by rewriting variable names in
+  // the formula string. Only whole-word substitutions are made, so
+  // overriding 'DEX' to 'INT' won't accidentally rewrite 'DEXMOD'.
+  const attackFormula = applyOverrides(rawAttackFormula, overrides && overrides.attack);
+  const damageFormula = applyOverrides(rawDamageFormula, overrides && overrides.damage);
+
+  const attack = resolveRollFormula(attackFormula, symbols, weaponSymbols, character, ruleset, penaltyPct);
+  const damage = resolveRollFormula(damageFormula, symbols, weaponSymbols, character, ruleset, penaltyPct);
 
   // Resolve tags against the ruleset catalogue. Unknown ids are
   // silently dropped (the author may have deleted a tag after a
