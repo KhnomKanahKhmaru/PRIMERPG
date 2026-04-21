@@ -557,28 +557,28 @@
         </div>
       </div>
 
-      <!-- CONDITIONS (Physical / Mental preset library) -->
+      <!-- AFFLICTIONS (Conditions / Circumstances preset library) -->
       <div class="section">
         <div class="section-header">
-          <div class="section-title">Conditions</div>
+          <div class="section-title">Afflictions</div>
         </div>
-        <div class="section-desc">Preset traumas, disorders, diseases, and ailments for the Physical and Mental trackers. Characters pick from these in their Conditions tile, or promote their own custom entries to their Personal Catalogue.</div>
+        <div class="section-desc">Preset traumas, disorders, diseases, ailments, and situational effects for the Afflictions tile. <b>Conditions</b> are ongoing states of the character ("you have X"); <b>Circumstances</b> are external or situational ("you are in X"). Characters pick from these in their Afflictions tile, or promote their own custom entries to their Personal Catalogue.</div>
         <div class="sub-tabs" style="margin-bottom: 12px;">
-          <div class="sub-tab active" id="sub-tab-cond-physical" onclick="switchCondTab('physical')">Physical</div>
-          <div class="sub-tab"        id="sub-tab-cond-mental"   onclick="switchCondTab('mental')">Mental</div>
+          <div class="sub-tab active" id="sub-tab-cond-conditions"    onclick="switchCondTab('conditions')">Conditions</div>
+          <div class="sub-tab"        id="sub-tab-cond-circumstances" onclick="switchCondTab('circumstances')">Circumstances</div>
         </div>
-        <div id="cond-panel-physical" class="cond-panel">
-          <div class="cond-rs-list" id="cond-rs-list-physical"></div>
+        <div id="cond-panel-conditions" class="cond-panel">
+          <div class="cond-rs-list" id="cond-rs-list-conditions"></div>
           <div class="add-row">
-            <input type="text" id="new-cond-physical-name" placeholder="Name (e.g. Broken Arm)" style="max-width:180px">
-            <button class="btn small" onclick="addRulesetCondition('physical')">+ Add</button>
+            <input type="text" id="new-cond-conditions-name" placeholder="Name (e.g. Broken Arm)" style="max-width:180px">
+            <button class="btn small" onclick="addRulesetCondition('conditions')">+ Add</button>
           </div>
         </div>
-        <div id="cond-panel-mental" class="cond-panel" style="display:none;">
-          <div class="cond-rs-list" id="cond-rs-list-mental"></div>
+        <div id="cond-panel-circumstances" class="cond-panel" style="display:none;">
+          <div class="cond-rs-list" id="cond-rs-list-circumstances"></div>
           <div class="add-row">
-            <input type="text" id="new-cond-mental-name" placeholder="Name (e.g. PTSD)" style="max-width:180px">
-            <button class="btn small" onclick="addRulesetCondition('mental')">+ Add</button>
+            <input type="text" id="new-cond-circumstances-name" placeholder="Name (e.g. In Darkness)" style="max-width:180px">
+            <button class="btn small" onclick="addRulesetCondition('circumstances')">+ Add</button>
           </div>
         </div>
       </div>
@@ -1018,8 +1018,8 @@
     renderSkillXpTables();
     renderPrimarySkills();
     renderMorals();
-    renderConditions('physical');
-    renderConditions('mental');
+    renderConditions('conditions');
+    renderConditions('circumstances');
 
     // A/D
     renderTierTable('adv');
@@ -1363,20 +1363,21 @@
   }
   window.removeMoral = function(i) { state.morals.splice(i, 1); renderMorals(); }
 
-  // ── CONDITIONS PRESET LIBRARY ──
-  // Two sub-tabs (physical / mental), each with a list of {id, name,
-  // description, system} entries. The id is generated on creation and
-  // never changed, so characters with a linked defId keep working even
-  // after a rename.
+  // ── AFFLICTIONS PRESET LIBRARY (Conditions / Circumstances) ──
+  // Two sub-tabs (conditions / circumstances), each with a list of
+  // {id, name, description, system} entries. The id is generated on
+  // creation and never changed, so characters with a linked defId keep
+  // working even after a rename.
   //
-  // Condition sub-tab state — tracks which of the two lists is currently
-  // visible. Doesn't persist; the Physical tab is always active on load.
-  let condActiveTab = 'physical';
+  // Sub-tab state — tracks which of the two lists is currently visible.
+  // Doesn't persist; the Conditions tab is always active on load.
+  const CONDITION_CATEGORIES = ['conditions', 'circumstances'];
+  let condActiveTab = 'conditions';
 
   window.switchCondTab = function(cat) {
-    if (cat !== 'physical' && cat !== 'mental') return;
+    if (!CONDITION_CATEGORIES.includes(cat)) return;
     condActiveTab = cat;
-    ['physical', 'mental'].forEach(c => {
+    CONDITION_CATEGORIES.forEach(c => {
       const tab   = document.getElementById('sub-tab-cond-' + c);
       const panel = document.getElementById('cond-panel-' + c);
       if (tab)   tab.classList.toggle('active', c === cat);
@@ -1388,21 +1389,45 @@
     return 'cond_' + Math.random().toString(36).slice(2, 10);
   }
 
+  // Guard/migrate state.conditions into the current shape in one place,
+  // so every read/write in this handler block can assume the new
+  // {conditions, circumstances} keys exist. Legacy {physical, mental}
+  // data gets folded in silently on first touch — matches the migration
+  // behavior in ruleset-defaults.js's normalizer.
+  function ensureStateConditions() {
+    if (!state.conditions || typeof state.conditions !== 'object') {
+      state.conditions = { conditions: [], circumstances: [] };
+      return;
+    }
+    // Migrate from legacy keys if present.
+    if (Array.isArray(state.conditions.physical) && !Array.isArray(state.conditions.conditions)) {
+      state.conditions.conditions = state.conditions.physical;
+    }
+    if (Array.isArray(state.conditions.mental) && !Array.isArray(state.conditions.circumstances)) {
+      state.conditions.circumstances = state.conditions.mental;
+    }
+    delete state.conditions.physical;
+    delete state.conditions.mental;
+    if (!Array.isArray(state.conditions.conditions))    state.conditions.conditions    = [];
+    if (!Array.isArray(state.conditions.circumstances)) state.conditions.circumstances = [];
+  }
+
   function renderConditions(cat) {
-    if (!state.conditions) state.conditions = { physical: [], mental: [] };
-    if (!Array.isArray(state.conditions[cat])) state.conditions[cat] = [];
+    if (!CONDITION_CATEGORIES.includes(cat)) return;
+    ensureStateConditions();
     const list = document.getElementById('cond-rs-list-' + cat);
     if (!list) return;
     const entries = state.conditions[cat];
     if (entries.length === 0) {
-      list.innerHTML = '<div class="empty">No ' + cat + ' conditions defined yet. Add one below to start building the library.</div>';
+      const which = cat === 'conditions' ? 'conditions' : 'circumstances';
+      list.innerHTML = '<div class="empty">No ' + which + ' defined yet. Add one below to start building the library.</div>';
       return;
     }
     const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     list.innerHTML = entries.map((c, i) => `
       <div class="cond-rs-row">
         <div class="cond-rs-row-head">
-          <input type="text" placeholder="Name (e.g. Broken Arm)"
+          <input type="text" placeholder="Name"
                  value="${esc(c.name || '')}"
                  oninput="updateRulesetCondition('${cat}', ${i}, 'name', this.value)">
           <button class="cond-rs-del" onclick="removeRulesetCondition('${cat}', ${i})" title="Remove">×</button>
@@ -1415,7 +1440,7 @@
           </div>
           <div class="cond-rs-row-field">
             <label>System</label>
-            <textarea placeholder="Mechanical effects. e.g. −2d to physical rolls using the arm."
+            <textarea placeholder="Mechanical effects. e.g. −2d to rolls of a certain type."
                       oninput="updateRulesetCondition('${cat}', ${i}, 'system', this.value)">${esc(c.system || '')}</textarea>
           </div>
         </div>
@@ -1423,13 +1448,12 @@
   }
 
   window.addRulesetCondition = function(cat) {
-    if (cat !== 'physical' && cat !== 'mental') return;
+    if (!CONDITION_CATEGORIES.includes(cat)) return;
     const input = document.getElementById('new-cond-' + cat + '-name');
     if (!input) return;
     const name = (input.value || '').trim();
     if (!name) return;
-    if (!state.conditions) state.conditions = { physical: [], mental: [] };
-    if (!Array.isArray(state.conditions[cat])) state.conditions[cat] = [];
+    ensureStateConditions();
     state.conditions[cat].push({
       id: genCondId(),
       name,
@@ -1441,7 +1465,8 @@
   };
 
   window.updateRulesetCondition = function(cat, i, field, value) {
-    if (!state.conditions || !Array.isArray(state.conditions[cat])) return;
+    if (!CONDITION_CATEGORIES.includes(cat)) return;
+    ensureStateConditions();
     const entry = state.conditions[cat][i];
     if (!entry) return;
     if (field === 'name' || field === 'description' || field === 'system') {
@@ -1450,7 +1475,8 @@
   };
 
   window.removeRulesetCondition = function(cat, i) {
-    if (!state.conditions || !Array.isArray(state.conditions[cat])) return;
+    if (!CONDITION_CATEGORIES.includes(cat)) return;
+    ensureStateConditions();
     state.conditions[cat].splice(i, 1);
     renderConditions(cat);
   };
