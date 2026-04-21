@@ -42,6 +42,7 @@
 
 import { saveCharacter } from './char-firestore.js';
 import { computeDerivedStats } from './char-derived.js';
+import { wrapCollapsibleSection } from './char-util.js';
 
 export function createInventorySection(ctx) {
   const { getCharId, getCharData, getCanEdit, getRuleset } = ctx;
@@ -872,10 +873,14 @@ export function createInventorySection(ctx) {
                  : encPct >= 25 ? ' carry-light'
                  : ' carry-zero';
 
-    let html = '<div class="inv-carry-cards">';
+    // Build the row body inline. The wrapper/head are added by
+    // wrapCollapsibleSection below so the whole row can be collapsed
+    // as a unit (click the "Carry" header). Storage:
+    //   prime.collapse.inventory.carry   (per-browser localStorage)
+    let row_html = '<div class="inv-carry-cards">';
 
     // ── CAP CARD ──
-    html += renderCarryCard({
+    row_html += renderCarryCard({
       key:        'cap',
       label:      'Carrying Capacity',
       code:       'CAP',
@@ -895,9 +900,6 @@ export function createInventorySection(ctx) {
     });
 
     // ── ENC CARD ──
-    // ENC shows current % + the ratio that produced it. The card is
-    // "informational" — you can still add named mods (Exhausted: +10%)
-    // but the raw ENC from carried/CAP flows in automatically.
     const ratio = carry.cap > 0
       ? `${fmt(carry.carried)} / ${fmt(carry.cap)} lbs`
       : `${fmt(carry.carried)} lbs (no CAP)`;
@@ -905,7 +907,7 @@ export function createInventorySection(ctx) {
     const ratioSub = overBy > 0
       ? `<span class="inv-carry-base">over by ${fmt(overBy)} lbs</span>`
       : `<span class="inv-carry-base">within CAP</span>`;
-    html += renderCarryCard({
+    row_html += renderCarryCard({
       key:        'enc',
       label:      'Encumbrance',
       code:       'ENC',
@@ -922,19 +924,11 @@ export function createInventorySection(ctx) {
       severityCls: encSev
     });
 
-    // LIFT banner + card highlight. Two tiers:
-    //   at LIFT exactly — an "at LIFT" warning
-    //   over LIFT — a "cannot carry" danger banner with the overflow
-    // The ENC card's own severity tint already hits red at 100%, so
-    // this banner adds the actionable detail: how much over, and what
-    // it means mechanically. We also add a severity class to the card
-    // itself so its border glows to draw the eye.
     let liftBanner = '';
     let liftSeverityCls = '';
     if (carry.lift > 0) {
       const over = carry.carried - carry.lift;
       if (over >= 0) {
-        // At or over LIFT.
         if (over === 0) {
           liftBanner = `<div class="inv-carry-banner inv-carry-banner-warn">
             <span class="inv-carry-banner-icon">⚠</span>
@@ -949,7 +943,6 @@ export function createInventorySection(ctx) {
           liftSeverityCls = ' carry-crit';
         }
       } else if (carry.carried >= carry.lift * 0.9) {
-        // Approaching LIFT — within 10% of max. Soft heads-up.
         const remaining = carry.lift - carry.carried;
         liftBanner = `<div class="inv-carry-banner inv-carry-banner-note">
           <span class="inv-carry-banner-icon">◉</span>
@@ -959,9 +952,6 @@ export function createInventorySection(ctx) {
       }
     }
 
-    // LIFT base sub-line. Shows base value and — if there's any
-    // adjustment — the breakdown: "+N% from CAP" (propagated) and
-    // "+M% from LIFT" (own modifiers). If neither, just the base.
     const fmtPct = (n) => `${n > 0 ? '+' : '−'}${Math.abs(n)}%`;
     const liftParts = [];
     if (carry.liftFromCapPct !== 0) liftParts.push(`${fmtPct(carry.liftFromCapPct)} from CAP`);
@@ -971,7 +961,7 @@ export function createInventorySection(ctx) {
       : `<span class="inv-carry-base">base ${fmt(carry.rawLift)} · ${liftParts.join(' · ')}</span>`;
 
     // ── LIFT CARD ──
-    html += renderCarryCard({
+    row_html += renderCarryCard({
       key:        'lift',
       label:      'Maximum Lift',
       code:       'LIFT',
@@ -989,8 +979,18 @@ export function createInventorySection(ctx) {
       banner:     liftBanner
     });
 
-    html += '</div>';
-    return html;
+    row_html += '</div>';
+
+    // Wrap the whole row in a collapsible section so the player can
+    // hide the full Carry block. Inventory groups below this row have
+    // their own per-group collapses (group.collapsed in the char doc);
+    // this one is separate and persists per-browser.
+    return wrapCollapsibleSection(
+      'prime.collapse.inventory.carry',
+      '<span class="inv-carry-head-text">Carry</span>',
+      row_html,
+      { wrapperClass: 'inv-carry-wrap', collapsibleClass: 'inv-carry-head', rerenderHandler: 'inventoryToggleCollapse' }
+    );
   }
 
   // One carry card. Shared markup for CAP / ENC / LIFT — they all have
