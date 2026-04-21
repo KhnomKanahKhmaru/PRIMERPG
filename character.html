@@ -531,6 +531,141 @@
     .rc-num[type=number] { -moz-appearance: textfield; }
     .rc-field-row .rc-num { flex: 0 0 auto; width: 60px; }
 
+    /* Penalty toggles panel — collapsible, sits between grid and output.
+       Head row is always visible (shows summary "Applying X% of Y%");
+       body appears when expanded with one row per component. Each row
+       is a clickable label; checkbox state + strike-through convey ON/OFF. */
+    .rc-pen-panel {
+      margin-top: 10px;
+      padding: 0;
+      background: #0c0c0c;
+      border: 1px solid #1a1a1a;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .rc-pen-panel.open { border-color: #2a2a2a; }
+    .rc-pen-panel.rc-pen-passive { opacity: 0.75; }
+    .rc-pen-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 7px 12px;
+      background: transparent;
+      border: none;
+      color: inherit;
+      cursor: pointer;
+      text-align: left;
+      font-family: inherit;
+      font-size: 11px;
+      transition: background .1s;
+    }
+    .rc-pen-head:hover { background: #111; }
+    .rc-pen-caret {
+      color: #666;
+      font-size: 9px;
+      width: 10px;
+      flex-shrink: 0;
+    }
+    .rc-pen-head-label {
+      font-weight: 600;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      color: #888;
+      font-size: 10px;
+    }
+    .rc-pen-summary {
+      flex: 1;
+      color: #999;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-variant-numeric: tabular-nums;
+      font-size: 11px;
+      text-align: right;
+    }
+    .rc-pen-summary b { color: #ccc; font-weight: 700; }
+    .rc-pen-body {
+      padding: 8px 12px 10px;
+      border-top: 1px solid #151515;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .rc-pen-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .rc-pen-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 6px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: background .08s;
+      user-select: none;
+    }
+    .rc-pen-row:hover { background: #141414; }
+    .rc-pen-check {
+      flex-shrink: 0;
+      accent-color: #888;
+      cursor: pointer;
+    }
+    .rc-pen-row-off .rc-pen-check { accent-color: #444; }
+    .rc-pen-name {
+      flex: 1;
+      color: #ccc;
+      font-family: 'Open Sans', sans-serif;
+    }
+    .rc-pen-row-off .rc-pen-name {
+      color: #555;
+      text-decoration: line-through;
+    }
+    .rc-pen-row-zero .rc-pen-name {
+      color: #666;
+      font-style: italic;
+    }
+    .rc-pen-row-zero .rc-pen-val {
+      color: #555;
+    }
+    .rc-pen-row-other .rc-pen-name {
+      font-style: italic;
+    }
+    .rc-pen-val {
+      color: #ccc;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      font-size: 12px;
+      min-width: 48px;
+      text-align: right;
+    }
+    .rc-pen-row-off .rc-pen-val {
+      color: #555;
+      text-decoration: line-through;
+    }
+    .rc-pen-reset {
+      align-self: flex-start;
+      background: transparent;
+      border: 1px solid #2a2a2a;
+      color: #888;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 3px;
+      cursor: pointer;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      transition: all .1s;
+    }
+    .rc-pen-reset:hover {
+      background: #141414;
+      border-color: #3a3a3a;
+      color: #ccc;
+    }
+
     /* Output block — big number summary + breakdown details below. */
     .rc-output {
       display: flex;
@@ -3183,6 +3318,9 @@
     rollCalcSetReduction:    (v)   => combat.rollCalcSetReduction(v),
     rollCalcToggle:          ()    => combat.rollCalcToggle(),
     rollCalcSetPassive:      (f)   => combat.rollCalcSetPassive(f),
+    rollCalcTogglePenalty:       (key) => combat.rollCalcTogglePenalty(key),
+    rollCalcTogglePenaltyPanel:  ()    => combat.rollCalcTogglePenaltyPanel(),
+    rollCalcResetPenalty:        ()    => combat.rollCalcResetPenalty(),
     // Pain / Stress (percentile modifiers feeding Pain% and Stress%
     // components of the aggregate Penalty)
     togglePainPanel:      () => combat.togglePainPanel(),
