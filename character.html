@@ -2260,6 +2260,51 @@
       font-style: italic;
     }
 
+    /* Banner — warning/notice callout inside a carry card. Sits between
+       the head and the description. Three severity tiers use different
+       border/background tints to match the rest of the severity scale.
+       Icon is rendered inline; the text explains the condition in
+       mechanical terms ("cannot carry without a roll" etc.). */
+    .inv-carry-banner {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 7px 12px;
+      margin: 2px 10px 6px;
+      border-radius: 3px;
+      font-size: 11px;
+      line-height: 1.4;
+      border: 1px solid;
+    }
+    .inv-carry-banner-icon {
+      font-size: 13px;
+      line-height: 1.3;
+      flex-shrink: 0;
+    }
+    .inv-carry-banner-txt { flex: 1; }
+    .inv-carry-banner-txt strong {
+      font-weight: 700;
+      letter-spacing: .02em;
+    }
+    .inv-carry-banner-note {
+      background: #0f1208;
+      border-color: #2a3a18;
+      color: #a0c080;
+    }
+    .inv-carry-banner-warn {
+      background: #181208;
+      border-color: #3a2c10;
+      color: #e0b870;
+    }
+    .inv-carry-banner-danger {
+      background: #1a0a0a;
+      border-color: #4a1a1a;
+      color: #e09090;
+    }
+    .inv-carry-banner-danger .inv-carry-banner-txt strong {
+      color: #e07878;
+    }
+
     /* ENC severity tint — mirrors the Pain/Stress pill color scale.
        Applies to the big numeric value only; base/desc stay neutral. */
     .inv-carry-card.carry-zero  .inv-carry-value { color: #e0e0e0; }
