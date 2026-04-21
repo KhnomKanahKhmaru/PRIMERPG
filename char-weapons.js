@@ -310,7 +310,20 @@ export function resolveWeapon(weapon, character, ruleset) {
   };
 
   if (weapon.kind === 'melee') {
-    out.ranges = Array.isArray(weapon.ranges) ? weapon.ranges.map(r => r.slice()) : [];
+    // Normalize ranges to {s, e} objects even if the snapshot came
+    // from the old [s,e]-array format. Downstream display code (range
+    // chips, meleeBandFor) expects {s, e}.
+    out.ranges = Array.isArray(weapon.ranges)
+      ? weapon.ranges.map(r => {
+          if (r && typeof r === 'object' && !Array.isArray(r)) {
+            return { s: Number(r.s) || 0, e: Number(r.e) || 0 };
+          }
+          if (Array.isArray(r) && r.length >= 2) {
+            return { s: Number(r[0]) || 0, e: Number(r[1]) || 0 };
+          }
+          return { s: 0, e: 0 };
+        })
+      : [];
   } else {
     out.range  = Number.isFinite(weapon.range) ? weapon.range : 0;
     out.dmgmod = weaponSymbols.WEAPONDMGMOD;
@@ -368,26 +381,38 @@ export function rangedBandFor(baseRange, distance) {
   return { band, label: '+' + band + ' (longshot)' };
 }
 
-// Given a melee weapon's ranges array ([[s,e],...]) and a distance in
-// feet, return the band (0-indexed) and a label. If the distance is
-// past the last band's end, the difficulty keeps stepping up by 1 per
-// additional band-length past the max, capped at +10. Returns
-// { band, label } so the UI can display a consistent string.
+// Given a melee weapon's ranges array ([{s,e},...] — or legacy
+// [[s,e],...]) and a distance in feet, return the band (0-indexed)
+// and a label. If the distance is past the last band's end, the
+// difficulty keeps stepping up by 1 per additional band-length past
+// the max, capped at +10. Returns { band, label } so the UI can
+// display a consistent string.
 export function meleeBandFor(ranges, distance) {
   if (!Array.isArray(ranges) || ranges.length === 0) return { band: 0, label: '+0' };
   if (!Number.isFinite(distance) || distance < 0) distance = 0;
-  for (let i = 0; i < ranges.length; i++) {
-    const [s, e] = ranges[i];
+  // Normalize band shape on the fly — accept {s,e} or [s,e].
+  const readBand = (b) => {
+    if (b && typeof b === 'object' && !Array.isArray(b)) {
+      return { s: Number(b.s) || 0, e: Number(b.e) || 0 };
+    }
+    if (Array.isArray(b) && b.length >= 2) {
+      return { s: Number(b[0]) || 0, e: Number(b[1]) || 0 };
+    }
+    return { s: 0, e: 0 };
+  };
+  const normalized = ranges.map(readBand);
+  for (let i = 0; i < normalized.length; i++) {
+    const { s, e } = normalized[i];
     if (distance >= s && distance <= e) return { band: i, label: '+' + i };
   }
   // Past the last band's end: extrapolate using the final band's width.
-  const last = ranges[ranges.length - 1];
-  const lastEnd = last[1];
-  if (distance < ranges[0][0]) return { band: 0, label: '+0 (inside minimum)' };
+  const last = normalized[normalized.length - 1];
+  const lastEnd = last.e;
+  if (distance < normalized[0].s) return { band: 0, label: '+0 (inside minimum)' };
   if (distance > lastEnd) {
-    const lastWidth = Math.max(1, lastEnd - last[0]);
+    const lastWidth = Math.max(1, lastEnd - last.s);
     const extra = Math.ceil((distance - lastEnd) / lastWidth);
-    const band = Math.min(10, ranges.length - 1 + extra);
+    const band = Math.min(10, normalized.length - 1 + extra);
     return { band, label: '+' + band + ' (beyond max)' };
   }
   // Fallback — shouldn't normally hit.
