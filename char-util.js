@@ -156,3 +156,101 @@ export function toggleCollapsed(key) {
   setCollapsed(key, next);
   return next;
 }
+
+// Wire up a generic collapsible section.
+//
+// Prepends a ▸/▾ caret to the header, adds a click handler that toggles
+// the persisted collapse flag, and show/hides the body elements based
+// on the current state. Idempotent — calling twice on the same header
+// is safe; subsequent calls just refresh the visual state without re-
+// binding handlers.
+//
+// Parameters:
+//   header   — the element whose inside gets a caret prepended and
+//              which receives the click/keyboard listener. Should be a
+//              text-bearing element (e.g. a title div or span).
+//   bodies   — array of elements that hide when collapsed. Nulls are
+//              silently skipped. Uses inline style.display so the
+//              initial display value is preserved when expanding.
+//   key      — localStorage key used to persist the flag.
+//   opts     — optional:
+//                onToggle: function(newCollapsedState) called after
+//                         each toggle. Use it to refresh computed UI
+//                         (e.g. re-run skills render to re-wire).
+//                caretColor: override '#555' default for the caret.
+//
+// Returns a refresh() function that re-reads the current state from
+// storage and re-applies UI — useful when a re-render has replaced
+// the body elements and you want to re-hide them without a toggle.
+export function attachCollapsible(header, bodies, key, opts) {
+  if (!header) return () => {};
+  opts = opts || {};
+  bodies = (bodies || []).filter(Boolean);
+
+  // Store the current binding on the header element itself so re-attach
+  // calls can refresh bodies/opts/key without losing handler state.
+  // Handlers reference `_ccBinding` which we keep current — even a
+  // re-attach with new bodies or a new key takes effect the next time
+  // apply() runs. This solves the stale-closure problem we'd hit with
+  // naïve one-shot binding.
+  const binding = header._ccBinding || {};
+  binding.bodies = bodies;
+  binding.key = key;
+  binding.opts = opts;
+  header._ccBinding = binding;
+
+  // Inject caret once. On subsequent calls, we just find and reuse it.
+  let caret = header.querySelector(':scope > .ad-caret, :scope > .cc-caret');
+  if (!caret) {
+    caret = document.createElement('span');
+    caret.className = 'cc-caret';
+    caret.style.flexShrink = '0';
+    caret.style.marginRight = '6px';
+    caret.style.fontSize = '10px';
+    caret.style.color = opts.caretColor || '#555';
+    caret.style.transition = 'color .1s';
+    header.insertBefore(caret, header.firstChild);
+  }
+  binding.caret = caret;
+
+  // Mark header as clickable. One-time attribute setup. Handlers read
+  // header._ccBinding every time they fire, so always see latest state.
+  if (!header.dataset.collapseBound) {
+    header.classList.add('cc-collapsible');
+    header.setAttribute('role', 'button');
+    header.setAttribute('tabindex', '0');
+    header.addEventListener('click', () => _ccToggle(header));
+    header.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _ccToggle(header); }
+    });
+    header.dataset.collapseBound = '1';
+  }
+
+  function apply() {
+    const b = header._ccBinding;
+    if (!b) return;
+    const collapsed = getCollapsed(b.key);
+    b.caret.textContent = collapsed ? '▸ ' : '▾ ';
+    header.title = collapsed ? 'Expand section' : 'Collapse section';
+    b.bodies.forEach(el => {
+      if (!el) return;
+      // Preserve any non-'none' inline display value by blanking instead
+      // of forcing 'block' — lets CSS defaults take over when expanded.
+      el.style.display = collapsed ? 'none' : '';
+    });
+  }
+  binding.apply = apply;
+
+  apply();
+  return apply;   // refresh() — caller can re-invoke after a re-render
+}
+
+// Internal toggle — uses the live binding on the header so re-attach
+// calls that replaced opts/key/bodies are respected.
+function _ccToggle(header) {
+  const b = header._ccBinding;
+  if (!b) return;
+  const now = toggleCollapsed(b.key);
+  if (b.apply) b.apply();
+  if (b.opts && typeof b.opts.onToggle === 'function') b.opts.onToggle(now);
+}
