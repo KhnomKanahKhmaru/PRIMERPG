@@ -343,8 +343,8 @@ export function createOverviewSection(ctx) {
           const name = (m && m.name) || '';
           const val = (m && Number.isFinite(parseInt(m.value))) ? parseInt(m.value) : 0;
           othersEditor += `<div class="state-penalty-other-row">
-            <input type="text" class="state-penalty-other-name" value="${escapeHtml(name)}" placeholder="Name (e.g. Exposure)" ${canEdit ? '' : 'readonly'} oninput="updateOtherModifier(${i}, 'name', this.value)">
-            <input type="number" class="state-penalty-other-val" value="${val}" step="1" ${canEdit ? '' : 'readonly'} oninput="updateOtherModifier(${i}, 'value', this.value)">
+            <input type="text" class="state-penalty-other-name" value="${escapeHtml(name)}" placeholder="Name (e.g. Exposure)" ${canEdit ? '' : 'readonly'} onchange="updateOtherModifier(${i}, 'name', this.value)">
+            <input type="number" class="state-penalty-other-val" value="${val}" step="1" ${canEdit ? '' : 'readonly'} onchange="updateOtherModifier(${i}, 'value', this.value)">
             <span class="state-penalty-other-unit">%</span>
             ${canEdit ? `<span class="state-penalty-other-del" title="Remove modifier" onclick="deleteOtherModifier(${i})">×</span>` : '<span class="state-penalty-other-del-ph"></span>'}
           </div>`;
