@@ -402,6 +402,7 @@ export function createStatsSection(ctx) {
   // ─── MODIFIER HANDLERS ───
 
   async function addModifier(key) {
+    if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     const name = document.getElementById('modname-' + key).value.trim();
     const val = parseInt(document.getElementById('modval-' + key).value) || 0;
@@ -416,6 +417,7 @@ export function createStatsSection(ctx) {
   }
 
   async function deleteModifier(key, i) {
+    if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     charData.statModifiers[key].splice(i, 1);
     await saveCharacter(ctx.getCharId(), { statModifiers: charData.statModifiers });
