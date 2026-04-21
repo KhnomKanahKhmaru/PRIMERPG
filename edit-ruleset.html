@@ -820,6 +820,52 @@
         </div>
       </div>
 
+      <!-- WEAPONS — roll formulas + tag catalogue -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Weapons</div>
+        </div>
+        <div class="section-desc">
+          Roll formulas for weapon attacks and damage. These use the standard formula engine and can reference stats (<code>DEX</code>, <code>STR</code>), stat mods (<code>DEXMOD</code>, <code>STRMOD</code>), primary skills by name (<code>Melee</code>, <code>Ranged</code>), and weapon constants: <code>DMG</code> (weapon damage dice), <code>PEN</code> (armor pierced), <code>ATK</code> (attack result — 0 at display time, replaced when chained from an attack roll), and <code>DMGMOD</code> (weapon's own dmg bonus, ranged only).<br>
+          <b>Split rule:</b> any variable ending in <code>MOD</code> is added as a flat bonus to the roll result; everything else contributes to the D10 dice pool. So <code>DEX + Melee + DEXMOD</code> means roll <code>DEX + Melee</code> dice, then add <code>DEXMOD</code> successes at the end.
+        </div>
+        <div class="row" style="margin-bottom:12px">
+          <div class="field">
+            <label>Melee Attack Formula</label>
+            <input type="text" id="rs-weapon-meleeAttack" placeholder="DEX + Melee + DEXMOD">
+          </div>
+          <div class="field">
+            <label>Melee Damage Formula</label>
+            <input type="text" id="rs-weapon-meleeDamage" placeholder="STR + DMG + ATK + STRMOD">
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>Ranged Attack Formula</label>
+            <input type="text" id="rs-weapon-rangedAttack" placeholder="DEX + Ranged + DEXMOD">
+          </div>
+          <div class="field">
+            <label>Ranged Damage Formula</label>
+            <input type="text" id="rs-weapon-rangedDamage" placeholder="DEX + DMG + ATK + DMGMOD">
+          </div>
+        </div>
+      </div>
+
+      <!-- WEAPON TAGS — free-text tag catalogue assignable to any weapon -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Weapon Tags</div>
+        </div>
+        <div class="section-desc">
+          Short descriptive labels players can assign to individual weapons (e.g. <b>Silenced</b>, <b>Two-Handed</b>, <b>Bleeding</b>). Tags don't auto-apply mechanics — they're informational for now and act as lookup keys for later QoL features. Describe each tag here so players know what it does when they see it on a weapon card.
+        </div>
+        <div class="cond-rs-list" id="weapon-tag-list"></div>
+        <div class="add-row">
+          <input type="text" id="new-weapon-tag-name" placeholder="Tag name (e.g. Silenced)" style="max-width:220px">
+          <button class="btn small" onclick="addWeaponTag()">+ Add</button>
+        </div>
+      </div>
+
     </div><!-- /top-panel-combat -->
 
     <div class="top-panel" id="top-panel-inv">
@@ -1047,6 +1093,8 @@
     renderHitLocations();
     renderDamageThresholds();
     renderPowerPool();
+    renderWeaponFormulas();
+    renderWeaponTags();
 
     // Inventory tab
     renderCategoryTree();
@@ -1491,6 +1539,106 @@
     ensureStateConditions();
     state.conditions[cat].splice(i, 1);
     renderConditions(cat);
+  };
+
+  // ── WEAPONS ──
+  //
+  // Section renders the four roll-formula inputs plus the weapon tag
+  // CRUD list. Data lives under state.weapons (object of formulas) and
+  // state.weaponTags (array of {id, name, description}). Both fields
+  // are guaranteed to exist and be well-formed by normalizeRuleset at
+  // load time — any edits here write back directly to state and get
+  // persisted on the next save.
+  //
+  // Design notes:
+  // - Formula inputs don't validate syntax live; the formula engine
+  //   does that at render time on the character sheet. The worst a bad
+  //   formula can do is show "Missing: FOO" on a weapon's roll
+  //   readout.
+  // - Tags reuse the cond-rs-list CSS so they look visually consistent
+  //   with Afflictions/Conditions without needing new styles.
+
+  function genWeaponTagId() {
+    return 't_' + Math.random().toString(36).slice(2, 10);
+  }
+
+  function renderWeaponFormulas() {
+    // Defensive — normalizer should have already handled this, but
+    // fresh rulesets / legacy docs may slip through.
+    if (!state.weapons || typeof state.weapons !== 'object') state.weapons = {};
+    const fields = [
+      ['rs-weapon-meleeAttack',  'meleeAttackFormula'],
+      ['rs-weapon-meleeDamage',  'meleeDamageFormula'],
+      ['rs-weapon-rangedAttack', 'rangedAttackFormula'],
+      ['rs-weapon-rangedDamage', 'rangedDamageFormula']
+    ];
+    fields.forEach(([elId, key]) => {
+      const el = document.getElementById(elId);
+      if (!el) return;
+      el.value = state.weapons[key] || '';
+      // Bind once. Re-attach only if not already bound — renderUI can
+      // re-call this on normalize, but the oninput handler doesn't
+      // care about the current value, only future edits.
+      el.oninput = (e) => { state.weapons[key] = e.target.value; };
+    });
+  }
+
+  function renderWeaponTags() {
+    if (!Array.isArray(state.weaponTags)) state.weaponTags = [];
+    const list = document.getElementById('weapon-tag-list');
+    if (!list) return;
+    const entries = state.weaponTags;
+    if (entries.length === 0) {
+      list.innerHTML = '<div class="empty">No weapon tags defined yet. Add one below to start building the tag catalogue.</div>';
+      return;
+    }
+    const esc = s => String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    list.innerHTML = entries.map((t, i) => `
+      <div class="cond-rs-row">
+        <div class="cond-rs-row-head">
+          <input type="text" placeholder="Tag name"
+                 value="${esc(t.name || '')}"
+                 oninput="updateWeaponTag(${i}, 'name', this.value)">
+          <button class="cond-rs-del" onclick="removeWeaponTag(${i})" title="Remove">×</button>
+        </div>
+        <div class="cond-rs-row-fields">
+          <div class="cond-rs-row-field" style="grid-column: 1 / -1;">
+            <label>Description</label>
+            <textarea placeholder="What does this tag mean? Displayed on weapon cards that use this tag."
+                      oninput="updateWeaponTag(${i}, 'description', this.value)">${esc(t.description || '')}</textarea>
+          </div>
+        </div>
+      </div>`).join('');
+  }
+
+  window.addWeaponTag = function() {
+    const input = document.getElementById('new-weapon-tag-name');
+    if (!input) return;
+    const name = (input.value || '').trim();
+    if (!name) return;
+    if (!Array.isArray(state.weaponTags)) state.weaponTags = [];
+    state.weaponTags.push({
+      id: genWeaponTagId(),
+      name,
+      description: ''
+    });
+    input.value = '';
+    renderWeaponTags();
+  };
+
+  window.updateWeaponTag = function(i, field, value) {
+    if (!Array.isArray(state.weaponTags)) return;
+    const t = state.weaponTags[i];
+    if (!t) return;
+    if (field === 'name' || field === 'description') t[field] = value;
+  };
+
+  window.removeWeaponTag = function(i) {
+    if (!Array.isArray(state.weaponTags)) return;
+    state.weaponTags.splice(i, 1);
+    renderWeaponTags();
   };
 
   // ── A/D: TIER TABLE ──
@@ -2208,6 +2356,11 @@
       damageThresholds:  state.damageThresholds,
       fortitudeTable:    state.fortitudeTable,
       powerPool:         state.powerPool,
+      // Weapons — roll formulas + tag catalogue. The per-item weapon
+      // block lives on each catalogue item (state.items[i].weapon), so
+      // these two fields are the only ruleset-level weapon data.
+      weapons:           state.weapons,
+      weaponTags:        state.weaponTags,
       // Inventory
       bodySlots:         state.bodySlots,
       items:             state.items,
