@@ -2725,10 +2725,159 @@
             <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">1.0 = fitted case · 0.75 = typical bag · 0.5 = loose sack</div>
           </div>
         </div>` : ''}
+
+        ${renderItemWeaponBlock(it)}
       </div>`;
     }
     html += '</div>';
     return html;
+  }
+
+  // Weapon block — rendered inside the item card body. Shows a toggle
+  // to mark the item as a weapon; when on, reveals the weapon-kind
+  // picker and the kind-specific fields (dice/PEN/tags common, plus
+  // ranges for melee or range/dmgmod/ammo/rof for ranged). Snapshots
+  // to character entries are handled elsewhere (char-inventory.js) —
+  // this just edits the ruleset-level catalogue definition.
+  function renderItemWeaponBlock(it) {
+    const hasWeapon = !!it.weapon;
+    const kind = hasWeapon ? (it.weapon.kind || 'melee') : '';
+    const toggleLbl = hasWeapon ? '✓ Also a weapon' : 'Also a weapon';
+    const toggleCls = hasWeapon ? ' on' : '';
+
+    let body = '';
+    if (hasWeapon) {
+      const w = it.weapon || {};
+      const dice = Number.isFinite(w.dice) ? w.dice : 0;
+      const pen  = Number.isFinite(w.pen)  ? w.pen  : 0;
+      // Shared header — kind picker + dice/pen fields.
+      body += `<div class="inv-container-block">
+        <div class="inv-container-block-title">Weapon Properties</div>
+
+        <div class="inv-pair-row">
+          <div class="inv-field" style="max-width:200px">
+            <label>Kind</label>
+            <select onchange="updateItemWeaponField('${q(it.id)}','kind',this.value)">
+              <option value="melee"${kind === 'melee' ? ' selected' : ''}>Melee</option>
+              <option value="ranged"${kind === 'ranged' ? ' selected' : ''}>Ranged</option>
+            </select>
+          </div>
+          <div class="inv-field" style="max-width:120px">
+            <label>Damage Dice</label>
+            <input type="number" step="1" min="0" value="${q(dice)}"
+                   oninput="updateItemWeaponField('${q(it.id)}','dice',this.value)">
+          </div>
+          <div class="inv-field" style="max-width:120px">
+            <label>PEN</label>
+            <input type="number" step="1" min="0" value="${q(pen)}"
+                   oninput="updateItemWeaponField('${q(it.id)}','pen',this.value)">
+          </div>
+        </div>`;
+
+      if (kind === 'melee') {
+        // Range bands as editable [start, end] pairs. Each row has
+        // Start/End inputs + a remove button. "Add band" appends a
+        // new [0,0] pair that the author then fills in.
+        const ranges = Array.isArray(w.ranges) ? w.ranges : [];
+        body += `<div class="inv-field">
+          <label>Range Bands (feet)</label>
+          <div style="font-size:10px;color:#666;line-height:1.4;margin-bottom:4px">
+            Each band defines Difficulty. Band 0 = +0 Difficulty, Band 1 = +1, etc. Distances past the last band extrapolate by that band's width. Leave empty for a trivial-range weapon (always +0).
+          </div>
+          <div id="weapon-ranges-${q(it.id)}">`;
+        if (ranges.length === 0) {
+          body += '<div style="font-size:11px;color:#666;padding:4px 0">No range bands defined.</div>';
+        } else {
+          ranges.forEach((band, bi) => {
+            const s = Number.isFinite(band[0]) ? band[0] : 0;
+            const e = Number.isFinite(band[1]) ? band[1] : 0;
+            body += `<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
+              <span style="font-size:11px;color:#888;min-width:58px">Band ${bi} (+${bi})</span>
+              <input type="number" step="0.5" min="0" value="${q(s)}" placeholder="Start"
+                     style="max-width:80px"
+                     oninput="updateItemWeaponRange('${q(it.id)}',${bi},'start',this.value)">
+              <span style="color:#666">–</span>
+              <input type="number" step="0.5" min="0" value="${q(e)}" placeholder="End"
+                     style="max-width:80px"
+                     oninput="updateItemWeaponRange('${q(it.id)}',${bi},'end',this.value)">
+              <span style="color:#666;font-size:11px">ft</span>
+              <span class="delete-x" style="margin-left:6px"
+                    onclick="removeItemWeaponRange('${q(it.id)}',${bi})"
+                    title="Remove band">×</span>
+            </div>`;
+          });
+        }
+        body += `</div>
+          <button class="btn small" style="margin-top:4px"
+                  onclick="addItemWeaponRange('${q(it.id)}')">+ Add Band</button>
+        </div>`;
+      } else if (kind === 'ranged') {
+        const range   = Number.isFinite(w.range)   ? w.range   : 0;
+        const dmgmod  = Number.isFinite(w.dmgmod)  ? w.dmgmod  : 0;
+        // ammo/rof may be a literal number OR a formula string. We
+        // always stringify for the UI — the resolver handles the
+        // dual-shape at evaluate time.
+        const ammoVal = (w.ammo == null) ? '' : String(w.ammo);
+        const rofVal  = (w.rof  == null) ? '' : String(w.rof);
+        body += `<div class="inv-pair-row">
+          <div class="inv-field" style="max-width:140px">
+            <label>Base Range (ft)</label>
+            <input type="number" step="1" min="0" value="${q(range)}"
+                   oninput="updateItemWeaponField('${q(it.id)}','range',this.value)">
+            <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">+0 within base, +1 (R→2R), +2 (2R→3R), longshot scales ×3 per band after that.</div>
+          </div>
+          <div class="inv-field" style="max-width:120px">
+            <label>Weapon DMGMOD</label>
+            <input type="number" step="1" value="${q(dmgmod)}"
+                   oninput="updateItemWeaponField('${q(it.id)}','dmgmod',this.value)">
+            <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">Flat bonus added to the damage roll result. Also sets Recoil STR requirement.</div>
+          </div>
+        </div>
+        <div class="inv-pair-row">
+          <div class="inv-field">
+            <label>AMMO (number or formula)</label>
+            <input type="text" value="${q(ammoVal)}" placeholder="e.g. 6  or  STR"
+                   oninput="updateItemWeaponField('${q(it.id)}','ammo',this.value)">
+            <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">Literal magazine size, or a formula evaluated per-character (e.g. <code>STR</code>, <code>DEXMOD + 2</code>).</div>
+          </div>
+          <div class="inv-field">
+            <label>ROF (number or formula)</label>
+            <input type="text" value="${q(rofVal)}" placeholder="e.g. 1  or  (DEXMOD/2)-1"
+                   oninput="updateItemWeaponField('${q(it.id)}','rof',this.value)">
+            <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">-1 Single-Fire, 0 Action Fire, 1 Semi-Auto, 2 Auto, 3 Full-Auto, 4 Chain-Auto.</div>
+          </div>
+        </div>`;
+      }
+
+      // Tag assignment — checkbox list against ruleset.weaponTags.
+      // Empty ruleset tag catalogue shows a hint pointing to the
+      // Weapon Tags section above so authors know where to define them.
+      const tagIds = Array.isArray(w.tags) ? w.tags : [];
+      const rsTags = Array.isArray(state.weaponTags) ? state.weaponTags : [];
+      body += `<div class="inv-field">
+        <label>Tags</label>`;
+      if (rsTags.length === 0) {
+        body += `<div style="font-size:11px;color:#888;padding:4px 0">No weapon tags defined in this ruleset yet. Add them in the <b>Weapon Tags</b> section (Derived Stats &amp; Combat tab) to make them available here.</div>`;
+      } else {
+        body += `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">`;
+        rsTags.forEach(t => {
+          const checked = tagIds.includes(t.id) ? ' checked' : '';
+          const escName = qText(t.name || t.id);
+          const escDesc = qText(t.description || '');
+          body += `<label style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:4px;font-size:11px;cursor:pointer" title="${escDesc}">
+            <input type="checkbox"${checked} onchange="toggleItemWeaponTag('${q(it.id)}','${q(t.id)}',this.checked)">
+            ${escName}
+          </label>`;
+        });
+        body += `</div>`;
+      }
+      body += `</div></div>`;  // /inv-container-block
+    }
+
+    return `<div class="inv-toggle-row">
+      <span class="inv-toggle${toggleCls}" onclick="toggleItemWeapon('${q(it.id)}')">${toggleLbl}</span>
+      <span class="inv-toggle-hint">Turn on to make this item a weapon — reveals damage, range, tags, and the roll formulas that apply to it.</span>
+    </div>${body}`;
   }
 
   // Build the category select options for an item, flagging the current
@@ -2876,6 +3025,127 @@
     if (!it.containerOf.dimensions) it.containerOf.dimensions = { l: 0, w: 0, h: 0 };
     const n = parseFloat(value);
     it.containerOf.dimensions[axis] = Number.isFinite(n) && n >= 0 ? n : 0;
+  };
+
+  // ── WEAPON block on catalogue items ──
+  //
+  // Handlers mutating state.items[i].weapon. Always called from the
+  // render pass's onclick/oninput in renderItemWeaponBlock. Each
+  // handler re-renders the item list (kind changes / toggle / range
+  // add-remove need a full re-render because the DOM shape changes;
+  // simple field edits could skip it but we re-render anyway for
+  // consistency — cost is negligible).
+  //
+  // Defaults when toggling ON:
+  //   kind: 'melee' (pick first; author picks ranged if wanted)
+  //   dice: 1, pen: 0, tags: []
+  //   melee:  ranges = [] (author adds bands as needed)
+  //   ranged: range = 30, dmgmod = 0, ammo = 1, rof = 0
+
+  window.toggleItemWeapon = function(id) {
+    const it = state.items.find(x => x.id === id);
+    if (!it) return;
+    if (it.weapon) {
+      if (!confirm('Remove weapon properties from this item?')) return;
+      it.weapon = null;
+    } else {
+      it.weapon = {
+        kind: 'melee',
+        dice: 1,
+        pen: 0,
+        tags: [],
+        ranges: []
+      };
+    }
+    renderItemList();
+  };
+
+  window.updateItemWeaponField = function(id, field, value) {
+    const it = state.items.find(x => x.id === id);
+    if (!it || !it.weapon) return;
+    const w = it.weapon;
+
+    if (field === 'kind') {
+      // Kind swap — preserve common fields (dice/pen/tags) but rebuild
+      // kind-specific fields. Going melee→ranged or ranged→melee
+      // wipes the old kind's data, which is intentional — otherwise
+      // old melee ranges would persist on a ranged weapon's def.
+      if (value !== 'melee' && value !== 'ranged') return;
+      const common = { dice: w.dice || 0, pen: w.pen || 0, tags: w.tags || [] };
+      if (value === 'melee') {
+        it.weapon = Object.assign({ kind: 'melee' }, common, { ranges: [] });
+      } else {
+        it.weapon = Object.assign({ kind: 'ranged' }, common, {
+          range: 30, dmgmod: 0, ammo: 1, rof: 0
+        });
+      }
+      renderItemList();
+      return;
+    }
+
+    if (field === 'dice' || field === 'pen' || field === 'range') {
+      const n = parseFloat(value);
+      w[field] = Number.isFinite(n) && n >= 0 ? n : 0;
+      return;
+    }
+    if (field === 'dmgmod') {
+      // dmgmod can be negative (penalty weapon).
+      const n = parseFloat(value);
+      w.dmgmod = Number.isFinite(n) ? n : 0;
+      return;
+    }
+    if (field === 'ammo' || field === 'rof') {
+      // Accept either a pure-number string (store as number) or a
+      // formula string (store as string). Empty input clears to 0.
+      const raw = (value == null) ? '' : String(value).trim();
+      if (!raw) { w[field] = 0; return; }
+      const asNum = Number(raw);
+      w[field] = Number.isFinite(asNum) && raw === String(asNum) ? asNum : raw;
+      return;
+    }
+  };
+
+  window.addItemWeaponRange = function(id) {
+    const it = state.items.find(x => x.id === id);
+    if (!it || !it.weapon || it.weapon.kind !== 'melee') return;
+    if (!Array.isArray(it.weapon.ranges)) it.weapon.ranges = [];
+    // Continue the previous band's end, or start at 0. Makes chained
+    // range bands (0-1, 1-2, 2-3) quick to enter.
+    const prev = it.weapon.ranges[it.weapon.ranges.length - 1];
+    const start = prev ? (Number(prev[1]) || 0) : 0;
+    it.weapon.ranges.push([start, start + 1]);
+    renderItemList();
+  };
+
+  window.removeItemWeaponRange = function(id, bandIdx) {
+    const it = state.items.find(x => x.id === id);
+    if (!it || !it.weapon || !Array.isArray(it.weapon.ranges)) return;
+    it.weapon.ranges.splice(bandIdx, 1);
+    renderItemList();
+  };
+
+  window.updateItemWeaponRange = function(id, bandIdx, which, value) {
+    const it = state.items.find(x => x.id === id);
+    if (!it || !it.weapon || !Array.isArray(it.weapon.ranges)) return;
+    const band = it.weapon.ranges[bandIdx];
+    if (!Array.isArray(band)) return;
+    const n = parseFloat(value);
+    const safe = Number.isFinite(n) && n >= 0 ? n : 0;
+    if (which === 'start') band[0] = safe;
+    else if (which === 'end') band[1] = safe;
+    // Deliberately NOT re-rendering — the user might still be typing
+    // in the other side of the pair. They'll hit the +Add or toggle
+    // later which re-renders.
+  };
+
+  window.toggleItemWeaponTag = function(id, tagId, on) {
+    const it = state.items.find(x => x.id === id);
+    if (!it || !it.weapon) return;
+    if (!Array.isArray(it.weapon.tags)) it.weapon.tags = [];
+    const idx = it.weapon.tags.indexOf(tagId);
+    if (on && idx < 0) it.weapon.tags.push(tagId);
+    else if (!on && idx >= 0) it.weapon.tags.splice(idx, 1);
+    // No re-render — checkbox visual state is handled by the browser.
   };
 
   window.deleteItem = function(id) {
