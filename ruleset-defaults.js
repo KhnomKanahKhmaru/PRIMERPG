@@ -94,6 +94,24 @@ window.RULESET_DEFAULTS = {
     { name:'Technology',   description:'Knowledge, and operation, of technology.' }
   ],
 
+  // ── CONDITIONS ──
+  // Traumas, diseases, mental disorders, physical ailments — anything
+  // that's ongoing about the character and belongs in the "state of
+  // things" display. Two categories (physical, mental) with independent
+  // preset lists. Characters attach entries from either preset list OR
+  // create one-offs.
+  //
+  // Preset entry shape:
+  //   { id: 'cond_xxx', name, description, system }
+  // `id` is the stable reference characters use via their condition
+  // entry's defId; `name` / `description` / `system` are the authored
+  // content. Default library is empty — GMs add entries via the ruleset
+  // editor or characters promote their own one-offs.
+  conditions: {
+    physical: [],
+    mental:   []
+  },
+
   // Morals — plain string list. "" (blank) = Custom wildcard entry.
   morals: [],
 
@@ -513,6 +531,35 @@ window.normalizeRuleset = function(rs) {
   if (!out.defaultPowerLevel) out.defaultPowerLevel = d.defaultPowerLevel;
   if (!Array.isArray(out.primarySkills) || out.primarySkills.length === 0) out.primarySkills = JSON.parse(JSON.stringify(d.primarySkills));
   if (!Array.isArray(out.morals)) out.morals = [];
+
+  // ── CONDITIONS ──
+  // Two preset lists (physical, mental). Each preset entry is {id,
+  // name, description, system}. The normalizer coerces missing arrays
+  // into empty ones and drops any malformed entries silently.
+  const normalizeConditionList = (arr) => {
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .map(c => {
+        if (!c || typeof c !== 'object') return null;
+        const id = (typeof c.id === 'string' && c.id) ? c.id : null;
+        if (!id) return null;
+        return {
+          id,
+          name:        (typeof c.name === 'string')        ? c.name        : '',
+          description: (typeof c.description === 'string') ? c.description : '',
+          system:      (typeof c.system === 'string')      ? c.system      : ''
+        };
+      })
+      .filter(Boolean);
+  };
+  if (!out.conditions || typeof out.conditions !== 'object') {
+    out.conditions = { physical: [], mental: [] };
+  } else {
+    out.conditions = {
+      physical: normalizeConditionList(out.conditions.physical),
+      mental:   normalizeConditionList(out.conditions.mental)
+    };
+  }
 
   // ── A/D TIERS ──
   // Keep 7 entries; fill any missing slots with defaults. Any existing
