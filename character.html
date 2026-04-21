@@ -4145,6 +4145,18 @@
     rollCalcToggle:          ()    => combat.rollCalcToggle(),
     rollCalcSetPassive:      (f)   => combat.rollCalcSetPassive(f),
     overviewToggleTile:      (slug) => combat.overviewToggleTile(slug),
+    // Tile-level collapse for tiles rendered on the Combat tab (like
+    // the inline Penalty tile). Writes to the SAME storage namespace
+    // as wrapCollapsibleTile in char-overview.js reads from (which is
+    // `prime.collapse.overview-tile.<slug>` — yes, even for Combat
+    // tiles; that key namespace is owned by the tile wrapper, not the
+    // tab). The difference from overviewToggleTile is this re-renders
+    // the Combat tab, not the Overview tab — so clicks on a Combat-
+    // tab tile repaint the tab that actually contains the caret.
+    combatToggleTile:        (slug) => {
+      toggleCollapsed('prime.collapse.overview-tile.' + slug);
+      combat.renderAll();
+    },
     // Render-aware collapse for the Combat and Inventory tabs. The
     // wrapCollapsibleSection helper (char-util.js) emits onclick calls
     // to these names. Each toggles the persisted flag then re-renders
