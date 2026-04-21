@@ -1129,7 +1129,16 @@ export function computeDerivedStats(character, ruleset) {
   const rawLift = (liftEntry && Number.isFinite(liftEntry.value)) ? liftEntry.value : 0;
 
   const finalCap  = Math.max(0, Math.round(applyPctMods(rawCap,  capMods)));
-  const finalLift = Math.max(0, Math.round(applyPctMods(rawLift, liftMods)));
+  // LIFT = CAP × 11 by formula, so CAP modifiers MUST propagate to LIFT —
+  // otherwise a "+50% Carrying Capacity" ability would raise CAP but
+  // leave your absolute-max unchanged, which is incoherent. Chain order:
+  //   1. Start from rawLift (formula output, which was rawCap × 11)
+  //   2. Scale by the CAP-modifier total so LIFT tracks CAP
+  //   3. Apply LIFT's own mods on top (independent buffs like
+  //      "Deadlift Champ: +50% LIFT only")
+  const capModTotalPct = capMods.reduce((a, m) => a + (parseFloat(m && m.value) || 0), 0);
+  const liftAfterCapProp = rawLift * (1 + capModTotalPct / 100);
+  const finalLift = Math.max(0, Math.round(applyPctMods(liftAfterCapProp, liftMods)));
 
   // Recompute ENC using the adjusted CAP so CAP modifiers propagate
   // naturally. Without this, a +50% CAP mod would still be measured
@@ -1156,11 +1165,16 @@ export function computeDerivedStats(character, ruleset) {
     cap:         finalCap,
     rawCap,
     capModifiers:  capMods,
-    capModTotal:   capMods.reduce((a, m) => a + (parseFloat(m && m.value) || 0), 0),
+    capModTotal:   capModTotalPct,
     lift:        finalLift,
     rawLift,
     liftModifiers: liftMods,
     liftModTotal:  liftMods.reduce((a, m) => a + (parseFloat(m && m.value) || 0), 0),
+    // LIFT tracks CAP mods too; expose this so the UI can show the
+    // chain ("base 220 +50% from CAP +0% from LIFT"). When a reader
+    // just wants "the total percent adjustment applied to LIFT" they
+    // can use liftEffectivePct = capModTotal + liftModTotal.
+    liftFromCapPct: capModTotalPct,
     encPercent:  finalEncPct,
     rawEncPercent: rawEncPct,
     encModifiers:  encMods,
