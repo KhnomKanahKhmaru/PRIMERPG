@@ -94,22 +94,31 @@ window.RULESET_DEFAULTS = {
     { name:'Technology',   description:'Knowledge, and operation, of technology.' }
   ],
 
-  // ── CONDITIONS ──
-  // Traumas, diseases, mental disorders, physical ailments — anything
-  // that's ongoing about the character and belongs in the "state of
-  // things" display. Two categories (physical, mental) with independent
-  // preset lists. Characters attach entries from either preset list OR
-  // create one-offs.
+  // ── AFFLICTIONS (Conditions & Circumstances) ──
+  // Two preset libraries:
+  //   conditions   — ongoing states OF the character (traumas, diseases,
+  //                  disorders, injuries). "You have X."
+  //   circumstances — ongoing external / situational effects (weather,
+  //                  lighting, being hunted). "You are in X."
+  //
+  // Both use the same entry shape and render the same way; the split is
+  // semantic only, so players can categorize their afflictions clearly.
   //
   // Preset entry shape:
   //   { id: 'cond_xxx', name, description, system }
-  // `id` is the stable reference characters use via their condition
-  // entry's defId; `name` / `description` / `system` are the authored
-  // content. Default library is empty — GMs add entries via the ruleset
-  // editor or characters promote their own one-offs.
+  // `id` is the stable reference characters use via their entry's defId;
+  // `name` / `description` / `system` are the authored content. Default
+  // library is empty — GMs add entries via the ruleset editor, or
+  // characters promote their own one-offs into their personal catalogue.
+  //
+  // NOTE: The outer key is still called `conditions` for storage-
+  // compatibility with data saved before the Conditions/Circumstances
+  // rename; the sub-keys were `physical`/`mental` in v1 and are now
+  // `conditions`/`circumstances`. The normalizer migrates old data
+  // transparently on load.
   conditions: {
-    physical: [],
-    mental:   []
+    conditions:    [],
+    circumstances: []
   },
 
   // Morals — plain string list. "" (blank) = Custom wildcard entry.
@@ -553,11 +562,17 @@ window.normalizeRuleset = function(rs) {
       .filter(Boolean);
   };
   if (!out.conditions || typeof out.conditions !== 'object') {
-    out.conditions = { physical: [], mental: [] };
+    out.conditions = { conditions: [], circumstances: [] };
   } else {
+    // Migrate legacy keys: physical → conditions, mental → circumstances.
+    // Prefer new keys if both somehow exist (shouldn't happen in practice).
+    const legacyPhysical = Array.isArray(out.conditions.physical) ? out.conditions.physical : [];
+    const legacyMental   = Array.isArray(out.conditions.mental)   ? out.conditions.mental   : [];
+    const newConditions    = Array.isArray(out.conditions.conditions)    ? out.conditions.conditions    : null;
+    const newCircumstances = Array.isArray(out.conditions.circumstances) ? out.conditions.circumstances : null;
     out.conditions = {
-      physical: normalizeConditionList(out.conditions.physical),
-      mental:   normalizeConditionList(out.conditions.mental)
+      conditions:    normalizeConditionList(newConditions    != null ? newConditions    : legacyPhysical),
+      circumstances: normalizeConditionList(newCircumstances != null ? newCircumstances : legacyMental)
     };
   }
 
