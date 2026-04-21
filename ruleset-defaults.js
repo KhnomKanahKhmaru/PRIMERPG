@@ -637,6 +637,21 @@ window.normalizeRuleset = function(rs) {
       .filter(Boolean);
     if (out.derivedStatGroups.length === 0) {
       out.derivedStatGroups = JSON.parse(JSON.stringify(d.derivedStatGroups));
+    } else {
+      // Ensure every default group exists — missing groups would cause
+      // their stats to orphan into an "Other" bucket in the Combat tab.
+      // Older saved rulesets pre-date the 'carry' group, so without this
+      // back-fill, CAP / LIFT / ENC stats were rendering under a stray
+      // "Other" section on the Combat tab. New rulesets are unaffected.
+      d.derivedStatGroups.forEach(defaultGroup => {
+        if (!seenGroups.has(defaultGroup.code)) {
+          out.derivedStatGroups.push({
+            code: defaultGroup.code,
+            label: defaultGroup.label
+          });
+          seenGroups.add(defaultGroup.code);
+        }
+      });
     }
   }
 
