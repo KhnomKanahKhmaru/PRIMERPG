@@ -3600,7 +3600,7 @@
           </div>
           <div class="char-quip-box" id="char-quip" onclick="editQuip()"></div>
         </div>
-        <div class="section-title">Profile <span id="bio-edit-btn" class="edit-btn" style="display:none" onclick="editBio()">Edit</span></div>
+        <div class="section-title">Profile <span id="bio-edit-btn" class="edit-btn" style="display:none" onclick="event.stopPropagation();editBio()">Edit</span></div>
         <div id="bio-view"><div class="bio-prose" id="bio-prose"></div></div>
         <div id="bio-edit" style="display:none">
           <div class="field"><label>Name</label><input type="text" id="e-name" oninput="updatePreview()"></div>
@@ -3641,7 +3641,7 @@
               <p>If you choose to abandon an Obligation, you must reroll the original Mental Health Check at +1 Difficulty, and allocate a number of Break Points as normal, with an additional amount equal to what was spent on the abandoned Obligation.</p>
             </div>
           </div>
-          <span class="edit-btn" id="obligations-edit-btn" style="display:none" onclick="editObligations()">Edit</span>
+          <span class="edit-btn" id="obligations-edit-btn" style="display:none" onclick="event.stopPropagation();editObligations()">Edit</span>
         </div>
         <div id="obligations-view"></div>
         <div id="obligations-edit-mode" style="display:none">
@@ -3662,7 +3662,7 @@
               <p>When you create your Character, you must allocate "10 Moral points" in Morals, with a Minor Moral being worth 1, a Moderate Moral 2, and so-on so-forth, based on how important each Moral is to your Character; there is no limit to the amount of Morals you may take, so long as you meet your spending limit for Moral Points.</p>
             </div>
           </div>
-          <span class="edit-btn" id="morals-edit-btn" style="display:none" onclick="editMorals()">Edit</span>
+          <span class="edit-btn" id="morals-edit-btn" style="display:none" onclick="event.stopPropagation();editMorals()">Edit</span>
         </div>
         <div id="morals-view"><div class="moral-cards" id="moral-cards-display"></div></div>
         <div id="morals-edit-mode" style="display:none">
@@ -3681,7 +3681,7 @@
               <p>Based on your roll, you must allocate 6 − Result points to your selection of SAN loss, and/or a breakdown based on your "if triggered" with severity based on allocated points; 1 point is a minor breakdown, 2 points is moderate, 3 is major, etc.</p>
             </div>
           </div>
-          <span class="edit-btn" id="disorders-edit-btn" style="display:none" onclick="editDisorders()">Edit</span>
+          <span class="edit-btn" id="disorders-edit-btn" style="display:none" onclick="event.stopPropagation();editDisorders()">Edit</span>
         </div>
         <div id="disorders-view"></div>
         <div id="disorders-edit-mode" style="display:none">
@@ -3696,7 +3696,7 @@
       <div class="stats-col">
         <div class="stats-col-header">
           <div class="stats-col-title">Stats</div>
-          <span class="edit-btn" id="stats-edit-btn" style="display:none" onclick="toggleStatsEdit()">Edit</span>
+          <span class="edit-btn" id="stats-edit-btn" style="display:none" onclick="event.stopPropagation();toggleStatsEdit()">Edit</span>
         </div>
         <div id="stats-list"></div>
       </div>
@@ -3704,7 +3704,7 @@
         <div class="skills-section">
           <div class="skills-section-header">
             <div class="skills-section-title">Primary Skills</div>
-            <span class="edit-btn" id="skills-edit-btn" style="display:none" onclick="toggleSkillsEdit()">Edit</span>
+            <span class="edit-btn" id="skills-edit-btn" style="display:none" onclick="event.stopPropagation();toggleSkillsEdit()">Edit</span>
           </div>
           <div class="skills-grid" id="primary-skills-grid"></div>
         </div>
