@@ -128,22 +128,17 @@ function resolveRollFormula(formulaStr, symbols, weaponSymbols, character, rules
   const flatSlots = [];
   let dicePool  = 0;
   let flatBonus = 0;
-  // Penalty-reduced versions. Penalty applies to things representing
-  // "the character rolling" — stat, statmod, and skill contributions.
-  // It does NOT apply to weapon constants (DMG, PEN, ATK) or literals,
-  // since those come from the weapon or from an already-rolled result
-  // (ATK contested result), not from the character's current condition.
-  // Penalty applies per-term and is floored (matches Roll Calc's
-  // Math.floor behavior).
+  // Penalty-reduced versions. Penalty reduces DICE POOLS — stat and
+  // skill contributions. It does NOT reduce STATMOD (a flat success
+  // bonus, not a dice pool), weapon constants (DMG/PEN/ATK), or
+  // literals. STATMOD has its own separate coupling to Difficulty
+  // (handled in the UI layer, not here). Penalty applies per-term
+  // and is floored (matches Roll Calc's Math.floor behavior).
   let dicePoolReduced  = 0;
   let flatBonusReduced = 0;
   const pen = Number.isFinite(penaltyPct) ? Math.max(0, Math.min(100, penaltyPct)) : 0;
   terms.forEach(term => {
-    // Annotate each term with its reduced value so the UI can show the
-    // per-slot breakdown with/without penalty.
-    const affectedByPenalty = (term.category === 'stat'
-                               || term.category === 'statmod'
-                               || term.category === 'skill');
+    const affectedByPenalty = (term.category === 'stat' || term.category === 'skill');
     if (affectedByPenalty && pen > 0) {
       // Math.floor(abs * pen) preserves sign. The reduction magnitude is
       // subtracted from the absolute value, then re-signed.
