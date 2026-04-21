@@ -922,6 +922,43 @@ export function createInventorySection(ctx) {
       severityCls: encSev
     });
 
+    // LIFT banner + card highlight. Two tiers:
+    //   at LIFT exactly — an "at LIFT" warning
+    //   over LIFT — a "cannot carry" danger banner with the overflow
+    // The ENC card's own severity tint already hits red at 100%, so
+    // this banner adds the actionable detail: how much over, and what
+    // it means mechanically. We also add a severity class to the card
+    // itself so its border glows to draw the eye.
+    let liftBanner = '';
+    let liftSeverityCls = '';
+    if (carry.lift > 0) {
+      const over = carry.carried - carry.lift;
+      if (over >= 0) {
+        // At or over LIFT.
+        if (over === 0) {
+          liftBanner = `<div class="inv-carry-banner inv-carry-banner-warn">
+            <span class="inv-carry-banner-icon">⚠</span>
+            <span class="inv-carry-banner-txt"><strong>At LIFT.</strong> ENC is 100%. You cannot move without rolling to lift.</span>
+          </div>`;
+          liftSeverityCls = ' carry-heavy';
+        } else {
+          liftBanner = `<div class="inv-carry-banner inv-carry-banner-danger">
+            <span class="inv-carry-banner-icon">⛔</span>
+            <span class="inv-carry-banner-txt"><strong>Over LIFT by ${fmt(over)} lbs.</strong> You cannot carry this weight without a successful lift roll — drop something, or test STR to hoist it.</span>
+          </div>`;
+          liftSeverityCls = ' carry-crit';
+        }
+      } else if (carry.carried >= carry.lift * 0.9) {
+        // Approaching LIFT — within 10% of max. Soft heads-up.
+        const remaining = carry.lift - carry.carried;
+        liftBanner = `<div class="inv-carry-banner inv-carry-banner-note">
+          <span class="inv-carry-banner-icon">◉</span>
+          <span class="inv-carry-banner-txt">Nearing LIFT — ${fmt(remaining)} lbs until max.</span>
+        </div>`;
+        liftSeverityCls = ' carry-light';
+      }
+    }
+
     // ── LIFT CARD ──
     html += renderCarryCard({
       key:        'lift',
@@ -939,7 +976,8 @@ export function createInventorySection(ctx) {
       addFn:      'invAddLiftMod',
       updateFn:   'invUpdateLiftMod',
       deleteFn:   'invDeleteLiftMod',
-      severityCls:''
+      severityCls: liftSeverityCls,
+      banner:     liftBanner
     });
 
     html += '</div>';
@@ -948,11 +986,13 @@ export function createInventorySection(ctx) {
 
   // One carry card. Shared markup for CAP / ENC / LIFT — they all have
   // the same visual shape: big value, base/ratio sub-line, description,
-  // and an expandable modifier editor.
+  // an optional banner (warnings/notices), and an expandable modifier
+  // editor.
   function renderCarryCard(opts) {
     const {
       key, label, code, open, canEdit, valueHtml, baseHtml,
-      description, modifiers, modUnit, addFn, updateFn, deleteFn, severityCls
+      description, modifiers, modUnit, addFn, updateFn, deleteFn, severityCls,
+      banner
     } = opts;
     const mods = Array.isArray(modifiers) ? modifiers : [];
     const modsClass = mods.length > 0 ? ' has-mods' : '';
@@ -966,6 +1006,7 @@ export function createInventorySection(ctx) {
         <div class="inv-carry-value">${valueHtml}</div>
         <div class="inv-carry-sub">${baseHtml || ''}</div>
       </div>
+      ${banner || ''}
       <div class="inv-carry-desc">${escapeHtml(description || '')}</div>`;
 
     if (open) {
