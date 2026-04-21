@@ -254,3 +254,72 @@ function _ccToggle(header) {
   if (b.apply) b.apply();
   if (b.opts && typeof b.opts.onToggle === 'function') b.opts.onToggle(now);
 }
+
+// ── RENDER-AWARE COLLAPSIBLE SECTION ──
+//
+// For modules that rebuild HTML strings on every render (combat.js,
+// inventory.js), it's easier to emit collapse-aware markup inline than
+// to re-wire DOM after the fact. This helper returns a self-contained
+// HTML string that respects the persisted collapse state AND dispatches
+// clicks back to a global toggle handler.
+//
+// Parameters:
+//   key       — localStorage key, e.g. 'prime.collapse.combat.movement'.
+//               Also used as the data-collapse-key so the click handler
+//               can find it.
+//   headHtml  — HTML string for the header content (excluding caret).
+//               Rendered INSIDE the clickable header; the caret is
+//               prepended automatically.
+//   bodyHtml  — HTML string for the body. Hidden when collapsed.
+//   opts      — optional:
+//                 rerenderHandler: name of a `window.X(key)` function to
+//                                 call when the header is clicked. It
+//                                 should toggle state + re-render the
+//                                 parent tab. Defaults to 'collapsibleToggle'.
+//                 wrapperClass:    extra class on the outer wrapper div,
+//                                 e.g. 'combat-section'
+//                 collapsibleClass: extra class on the collapsible head,
+//                                  e.g. 'combat-section-title' so it
+//                                  inherits existing styling.
+//                 headTag:          tag for the head element (default 'div')
+//
+// Output shape (collapsed=false):
+//   <div class="cc-wrap <wrapperClass>" data-ccwrap="<key>">
+//     <div class="cc-collapsible cc-head <collapsibleClass>"
+//          role="button" tabindex="0"
+//          data-collapse-key="<key>"
+//          onclick="<rerenderHandler>('<key>')"
+//          onkeydown="...if Enter/Space, toggle..."><span class="cc-caret">▾ </span><headHtml></div>
+//     <div class="cc-body"><bodyHtml></div>
+//   </div>
+//
+// When collapsed=true, the body div gets class `cc-body cc-body-hidden`
+// (display:none via CSS) and the caret glyph switches to ▸.
+export function wrapCollapsibleSection(key, headHtml, bodyHtml, opts) {
+  opts = opts || {};
+  const collapsed = getCollapsed(key);
+  const caret = collapsed ? '▸ ' : '▾ ';
+  const handler = opts.rerenderHandler || 'collapsibleToggle';
+  const wrapperCls = ['cc-wrap', opts.wrapperClass || ''].filter(Boolean).join(' ');
+  const collapsibleCls = ['cc-collapsible', 'cc-head', opts.collapsibleClass || ''].filter(Boolean).join(' ');
+  const bodyCls = collapsed ? 'cc-body cc-body-hidden' : 'cc-body';
+  const title = collapsed ? 'Expand section' : 'Collapse section';
+  const headTag = opts.headTag || 'div';
+  // Quote the key for inline JS — keys are internally-authored and
+  // contain no quotes, but escape anyway for safety.
+  const keyJs = String(key).replace(/'/g, "\\'");
+  return `<div class="${wrapperCls}" data-ccwrap="${escapeAttr(key)}">
+    <${headTag} class="${collapsibleCls}" role="button" tabindex="0"
+      data-collapse-key="${escapeAttr(key)}"
+      onclick="${handler}('${keyJs}')"
+      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();${handler}('${keyJs}')}"
+      title="${title}"><span class="cc-caret">${caret}</span>${headHtml}</${headTag}>
+    <div class="${bodyCls}">${bodyHtml}</div>
+  </div>`;
+}
+
+function escapeAttr(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
