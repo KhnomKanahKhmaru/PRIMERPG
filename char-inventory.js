@@ -753,7 +753,12 @@ export function createInventorySection(ctx) {
 
   // ─── PERSISTENCE ───
 
+  // Central choke point for all inventory writes. Every mutating
+  // handler calls this (add/move/delete item, group ops, carry mods).
+  // Gating here stops every write path at once without having to
+  // decorate each caller. Owners + GMs pass; everyone else is a no-op.
   async function save() {
+    if (!getCanEdit()) return;
     const inv = ensureInventory();
     await saveCharacter(getCharId(), { inventory: inv });
   }
