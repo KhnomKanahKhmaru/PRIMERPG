@@ -60,7 +60,11 @@ export function createSituationsSection(ctx) {
 
   // Persist the entire situations array in one write. Small list, so the
   // simpler overwrite-everything pattern is fine here.
+  // Central write for situations list. Owner + GM only. Other handlers
+  // (saveEdit, etc.) have their own isGM guards; this backstops any
+  // that might be missed, and covers the general "modify + save" flow.
   async function save() {
+    if (!ctx.getCanEdit() && !ctx.getIsGM()) return;
     const charData = ctx.getCharData();
     await saveCharacter(ctx.getCharId(), { situations: charData.situations || [] });
   }
