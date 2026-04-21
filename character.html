@@ -253,6 +253,72 @@
     }
     .cc-synthetic-head:first-child { margin-top: 0; }
     .cc-synthetic-head:hover { color: #bbb; }
+
+    /* Render-aware collapsible wrapper (wrapCollapsibleSection in
+       char-util.js). Applied by combat / inventory modules that emit
+       HTML strings. Structure:
+         .cc-wrap
+           .cc-head (the header — also gets module-specific class
+                     like .combat-section-title so it inherits the
+                     existing section header styling)
+           .cc-body (everything below the head; hidden when collapsed)
+       The existing .combat-section border/padding rules keep applying
+       because wrapperClass adds that class on .cc-wrap itself.
+
+       When collapsed we strip the title's bottom padding/border/margin
+       so the collapsed header sits flush inside the section padding
+       and there's no dangling divider line below a visually-empty head.
+    */
+    .cc-wrap { }
+    .cc-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .cc-body { }
+    .cc-body-hidden { display: none; }
+
+    /* When the body is hidden (section collapsed), tighten the head so
+       it doesn't leave a lonely divider line. Uses the sibling selector
+       against .cc-body-hidden. */
+    .cc-wrap:has(> .cc-body-hidden) > .cc-head.combat-section-title {
+      margin-bottom: 0;
+      padding-bottom: 0;
+      border-bottom: none;
+    }
+    .cc-wrap:has(> .cc-body-hidden) {
+      padding-bottom: 12px;
+    }
+
+    /* When the section head contains an action button (e.g. Sanity's
+       Edit Modifiers), let the title text take the left side and push
+       the button to the right. combat-section-head already did this;
+       preserve it now that .cc-head is flex. */
+    .cc-head .combat-section-title-text { flex: 1; }
+    .cc-head.combat-section-head { /* already flex via the combined class */ }
+
+    /* Inventory Carry row collapsible. Matches the visual tone of
+       other inventory group headers (muted caps label) and sits just
+       above the three CAP/ENC/LIFT cards. */
+    .inv-carry-wrap { margin-bottom: 14px; }
+    .inv-carry-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 2px;
+      margin-bottom: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: #aaa;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .inv-carry-head-text { flex: 1; }
+    .inv-carry-wrap:has(> .cc-body-hidden) > .inv-carry-head {
+      margin-bottom: 0;
+      padding-bottom: 6px;
+    }
     .state-tile-label {
       font-size: 10px; font-weight: 700; letter-spacing: .14em;
       text-transform: uppercase; color: #888;
@@ -3714,7 +3780,7 @@
   import { createCombatSection } from './char-combat.js';
   import { createInventorySection } from './char-inventory.js';
   import { createConditionsSection } from './char-conditions.js';
-  import { attachCollapsible } from './char-util.js';
+  import { attachCollapsible, toggleCollapsed } from './char-util.js';
 
   // All imports resolved — module body executes from here.
   if (window.__logStep) window.__logStep('all modules imported');
@@ -4079,6 +4145,12 @@
     rollCalcToggle:          ()    => combat.rollCalcToggle(),
     rollCalcSetPassive:      (f)   => combat.rollCalcSetPassive(f),
     overviewToggleTile:      (slug) => combat.overviewToggleTile(slug),
+    // Render-aware collapse for the Combat and Inventory tabs. The
+    // wrapCollapsibleSection helper (char-util.js) emits onclick calls
+    // to these names. Each toggles the persisted flag then re-renders
+    // the parent tab so the caret flips and the body shows/hides.
+    combatToggleCollapse:    (key) => { toggleCollapsed(key); combat.renderAll(); },
+    inventoryToggleCollapse: (key) => { toggleCollapsed(key); inventory.renderAll(); },
     rollCalcTogglePenalty:       (key) => combat.rollCalcTogglePenalty(key),
     rollCalcTogglePenaltyPanel:  ()    => combat.rollCalcTogglePenaltyPanel(),
     rollCalcResetPenalty:        ()    => combat.rollCalcResetPenalty(),
