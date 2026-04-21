@@ -4081,11 +4081,15 @@
     removeMoralByIndex: mental.removeMoralByIndex,
     toggleMoral: mental.toggleMoral,
     editMorals: () => {
-      // Auto-expand this mental column if it was collapsed. Otherwise
-      // clicking Edit while collapsed hides the Edit button (editMorals
-      // does that) and leaves the Done button buried inside the
-      // collapsed body, stranding the user.
-      ensureExpanded('prime.collapse.overview.mental-morals');
+      // Order matters: if section was collapsed, ensureExpanded flips
+      // the flag + refreshOverviewCollapse() applies it, which clears
+      // the stashed display values on the body panels. ONLY THEN do
+      // we run mental.editMorals(), whose display changes would
+      // otherwise get clobbered by the stash-restore logic. Then a
+      // final refresh to sync the caret/title — state doesn't change,
+      // but keeps handlers idempotent.
+      const wasCollapsed = ensureExpanded('prime.collapse.overview.mental-morals');
+      if (wasCollapsed && window.refreshOverviewCollapse) window.refreshOverviewCollapse();
       mental.editMorals();
       if (window.refreshOverviewCollapse) window.refreshOverviewCollapse();
     },
@@ -4095,7 +4099,8 @@
     saveObligation: mental.saveObligation,
     deleteObligation: mental.deleteObligation,
     editObligations: () => {
-      ensureExpanded('prime.collapse.overview.mental-obligations');
+      const wasCollapsed = ensureExpanded('prime.collapse.overview.mental-obligations');
+      if (wasCollapsed && window.refreshOverviewCollapse) window.refreshOverviewCollapse();
       mental.editObligations();
       if (window.refreshOverviewCollapse) window.refreshOverviewCollapse();
     },
@@ -4105,7 +4110,8 @@
     saveDisorder: mental.saveDisorder,
     deleteDisorder: mental.deleteDisorder,
     editDisorders: () => {
-      ensureExpanded('prime.collapse.overview.mental-conditions');
+      const wasCollapsed = ensureExpanded('prime.collapse.overview.mental-conditions');
+      if (wasCollapsed && window.refreshOverviewCollapse) window.refreshOverviewCollapse();
       mental.editDisorders();
       if (window.refreshOverviewCollapse) window.refreshOverviewCollapse();
     },
@@ -4117,11 +4123,10 @@
     toggleSkillsEdit: (...a) => {
       // Skills Edit spans all three skill subsections. Auto-expand the
       // outer Stats & Skills card if collapsed, and the Primary
-      // Skills subsection where the Edit button actually lives (the
-      // Edit button is only in the Primary Skills header — Secondary
-      // and Specialty have their own Add-row controls instead).
-      ensureExpanded('prime.collapse.overview.statsSkills');
-      ensureExpanded('prime.collapse.overview.skills-primary-skills');
+      // Skills subsection where the Edit button actually lives.
+      const outer = ensureExpanded('prime.collapse.overview.statsSkills');
+      const inner = ensureExpanded('prime.collapse.overview.skills-primary-skills');
+      if ((outer || inner) && window.refreshOverviewCollapse) window.refreshOverviewCollapse();
       skills.toggleSkillsEdit(...a);
       if (window.refreshOverviewCollapse) window.refreshOverviewCollapse();
     },
@@ -4136,8 +4141,9 @@
     deleteSpecSkill: async (...a) => { await skills.deleteSpecSkill(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
     // Stats
     toggleStatsEdit: (...a) => {
-      ensureExpanded('prime.collapse.overview.statsSkills');
-      ensureExpanded('prime.collapse.overview.stats');
+      const outer = ensureExpanded('prime.collapse.overview.statsSkills');
+      const inner = ensureExpanded('prime.collapse.overview.stats');
+      if ((outer || inner) && window.refreshOverviewCollapse) window.refreshOverviewCollapse();
       stats.toggleStatsEdit(...a);
       if (window.refreshOverviewCollapse) window.refreshOverviewCollapse();
     },
@@ -4148,7 +4154,12 @@
     addModifier: stats.addModifier,
     deleteModifier: stats.deleteModifier,
     // Bio
-    editBio: () => { ensureExpanded('prime.collapse.overview.bio'); bio.editBio(); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
+    editBio: () => {
+      const wasCollapsed = ensureExpanded('prime.collapse.overview.bio');
+      if (wasCollapsed && window.refreshOverviewCollapse) window.refreshOverviewCollapse();
+      bio.editBio();
+      if (window.refreshOverviewCollapse) window.refreshOverviewCollapse();
+    },
     cancelBio: bio.cancelBio,
     updatePreview: bio.updatePreview,
     saveBio: bio.saveBio,
