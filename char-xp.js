@@ -88,6 +88,7 @@ export function createXpBar(ctx) {
   }
 
   async function savePowerField(field, val) {
+    if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     const v = field === 'powerLevel' ? val : Math.max(0, parseInt(val) || 0);
     charData[field] = v;
