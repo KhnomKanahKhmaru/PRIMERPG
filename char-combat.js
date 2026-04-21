@@ -2637,6 +2637,8 @@ export function createCombatSection(ctx) {
     rollCalcSetReduction:   rollcalc.setReduction,
     rollCalcToggle:         rollcalc.toggleShowRaw,
     rollCalcSetPassive:     rollcalc.setPassive,
+    // Overview tile collapse — click handler on state-tile headers
+    overviewToggleTile:     (slug) => overview.toggleTile(slug),
     // Per-roll Penalty component toggles
     rollCalcTogglePenalty:      rollcalc.togglePenaltyComponent,
     rollCalcTogglePenaltyPanel: rollcalc.togglePenaltyPanel,
