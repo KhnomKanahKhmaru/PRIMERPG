@@ -43,6 +43,7 @@
 import { saveCharacter } from './char-firestore.js';
 import { computeDerivedStats } from './char-derived.js';
 import { wrapCollapsibleSection } from './char-util.js';
+import { resolveWeapon, rofFlavor, rangedBandFor, meleeBandFor } from './char-weapons.js';
 
 export function createInventorySection(ctx) {
   const { getCharId, getCharData, getCanEdit, getRuleset } = ctx;
@@ -1850,8 +1851,160 @@ export function createInventorySection(ctx) {
       html += `</div>`;
     }
 
+    // Weapon readout — only rendered when the entry's snapshot carries
+    // a weapon object (set by getDefForEntry → snapshot builders when
+    // the source def has def.weapon). Non-weapon items skip this
+    // block entirely, so the regular item-entry UI is unaffected.
+    html += renderWeaponReadout(entry);
+
     html += `</div>`;
     return html;
+  }
+
+  // Weapon readout block — attack/damage breakdown, range info, ammo
+  // tracker, tags, ROF flavor. All pulled from resolveWeapon() in
+  // char-weapons.js which handles the dice-pool-vs-flat-bonus split.
+  //
+  // Rendering is intentionally compact so a weapon row doesn't balloon
+  // the inventory list. Hovering a tag shows its description; clicking
+  // "Send to Roll Calc" (wired in the next turn) will pre-fill the
+  // Roll Calculator's slots with the dice pool + flat bonus.
+  function renderWeaponReadout(entry) {
+    const snap = entry && entry.snapshot;
+    const weapon = snap && snap.weapon;
+    if (!weapon || (weapon.kind !== 'melee' && weapon.kind !== 'ranged')) return '';
+
+    const character = ctx.getCharData();
+    const ruleset   = ctx.getRuleset();
+    const resolved = resolveWeapon(weapon, character, ruleset);
+    if (!resolved) return '';
+
+    const kindLabel = resolved.kind === 'melee' ? 'Melee' : 'Ranged';
+    let html = `<div class="inv-weapon">
+      <div class="inv-weapon-title">
+        <span>Weapon</span>
+        <span class="inv-weapon-kind-pill">${kindLabel}</span>
+      </div>
+      <div class="inv-weapon-grid">
+        ${renderWeaponRollBlock(entry, 'Attack', resolved.attack)}
+        ${renderWeaponRollBlock(entry, 'Damage', resolved.damage)}
+      </div>`;
+
+    // Row of inline chips: DMG, PEN, range/ranges. Ranged weapons also
+    // get DMGMOD, AMMO tracker, ROF flavor.
+    const chips = [];
+    chips.push(`<span class="inv-weapon-chip"><span class="inv-weapon-chip-label">DMG</span><span class="inv-weapon-chip-val">${resolved.dice}D10</span></span>`);
+    chips.push(`<span class="inv-weapon-chip"><span class="inv-weapon-chip-label">PEN</span><span class="inv-weapon-chip-val">${resolved.pen}</span></span>`);
+
+    if (resolved.kind === 'ranged') {
+      chips.push(`<span class="inv-weapon-chip"><span class="inv-weapon-chip-label">Range</span><span class="inv-weapon-chip-val">${resolved.range}ft</span></span>`);
+      chips.push(`<span class="inv-weapon-chip"><span class="inv-weapon-chip-label">DMGMOD</span><span class="inv-weapon-chip-val">${resolved.dmgmod >= 0 ? '+' : ''}${resolved.dmgmod}</span></span>`);
+      chips.push(renderAmmoTracker(entry, resolved));
+      chips.push(renderRofChip(resolved));
+    }
+
+    html += `<div class="inv-weapon-row">${chips.join('')}</div>`;
+
+    // Melee range bands — shown as a strip of "+0: 0-1ft · +1: 1-2ft · ..."
+    if (resolved.kind === 'melee' && Array.isArray(resolved.ranges) && resolved.ranges.length > 0) {
+      html += `<div class="inv-weapon-ranges">`;
+      resolved.ranges.forEach((band, i) => {
+        const s = Number.isFinite(band[0]) ? band[0] : 0;
+        const e = Number.isFinite(band[1]) ? band[1] : 0;
+        html += `<span class="inv-weapon-range"><span class="inv-weapon-range-label">+${i}</span>${fmt(s)}–${fmt(e)}ft</span>`;
+      });
+      html += `</div>`;
+    }
+
+    // Tags — shown as pills with a tooltip carrying the description.
+    if (Array.isArray(resolved.tags) && resolved.tags.length > 0) {
+      html += `<div class="inv-weapon-tags">`;
+      resolved.tags.forEach(t => {
+        const desc = t.description ? escapeHtml(t.description) : escapeHtml(t.name || '');
+        html += `<span class="inv-weapon-tag" title="${desc}">${escapeHtml(t.name || '')}</span>`;
+      });
+      html += `</div>`;
+    }
+
+    html += `</div>`;
+    return html;
+  }
+
+  // Single Attack / Damage roll block. Shows the dice pool + flat bonus
+  // prominently, the per-term breakdown underneath, and a "Send to
+  // Roll Calc" button. Errors surface as a small italic line so the
+  // author can see which variable their formula is missing.
+  function renderWeaponRollBlock(entry, label, roll) {
+    if (!roll) return '';
+    const which = label.toLowerCase();
+    if (roll.error) {
+      return `<div class="inv-weapon-roll">
+        <div class="inv-weapon-roll-label">${label}</div>
+        <div class="inv-weapon-roll-error">${escapeHtml(roll.error)}</div>
+      </div>`;
+    }
+    const flatStr = roll.flatBonus === 0 ? '' :
+                    (roll.flatBonus > 0 ? ` + ${roll.flatBonus}` : ` − ${Math.abs(roll.flatBonus)}`);
+    const dicePart = `<span class="inv-weapon-roll-pool">${roll.dicePool}D10</span>`;
+    const flatPart = roll.flatBonus !== 0
+      ? `<span class="inv-weapon-roll-flat">${flatStr}</span>`
+      : '';
+    const diceSlotsStr = roll.diceSlots.length > 0
+      ? roll.diceSlots.map(s => `<span class="inv-weapon-roll-slot">${escapeHtml(s.label)}:${s.sign < 0 ? '−' : ''}${Math.abs(s.value)}</span>`).join('')
+      : '<span class="inv-weapon-roll-slot" style="color:#555">(no dice terms)</span>';
+    const flatSlotsStr = roll.flatSlots.length > 0
+      ? '<br>' + roll.flatSlots.map(s => `<span class="inv-weapon-roll-slot" style="color:#b88860">${escapeHtml(s.label)}:${s.value >= 0 ? '+' : ''}${s.value}</span>`).join('')
+      : '';
+    return `<div class="inv-weapon-roll">
+      <div class="inv-weapon-roll-label">${label}</div>
+      <div class="inv-weapon-roll-main">${dicePart}${flatPart}</div>
+      <div class="inv-weapon-roll-slots">${diceSlotsStr}${flatSlotsStr}</div>
+      <button class="inv-weapon-roll-send" onclick="invWeaponToRollCalc('${escapeHtml(entry.id)}','${which}')" title="Send this roll to the Roll Calculator">→ Roll Calc</button>
+    </div>`;
+  }
+
+  // AMMO tracker chip — shows "current / max" with +/- buttons. The
+  // max comes from the resolved AMMO formula; current is stored on
+  // entry.currentAmmo (lazy-init to max on first interaction so melee
+  // entries and freshly-added ranged ones don't litter with initial
+  // currentAmmo values). Decrement fires invWeaponDecAmmo which
+  // writes entry.currentAmmo and saves.
+  function renderAmmoTracker(entry, resolved) {
+    const ammo = resolved.ammo || { resolved: 0, raw: 0, error: null };
+    if (ammo.error) {
+      return `<span class="inv-weapon-chip" title="${escapeHtml(ammo.error)}"><span class="inv-weapon-chip-label">AMMO</span><span class="inv-weapon-chip-val" style="color:#cc6666">err</span></span>`;
+    }
+    const max = Number.isFinite(ammo.resolved) ? ammo.resolved : 0;
+    // Lazy-init: entry.currentAmmo absent → treat as max.
+    const cur = (typeof entry.currentAmmo === 'number')
+      ? Math.max(0, Math.min(max, entry.currentAmmo))
+      : max;
+    const canEdit = getCanEdit();
+    const formulaTip = (typeof ammo.raw === 'string' && ammo.raw !== String(ammo.resolved))
+      ? ` (${ammo.raw})` : '';
+    return `<span class="inv-weapon-ammo" title="AMMO ${cur}/${max}${formulaTip}">
+      <span class="inv-weapon-chip-label">AMMO</span>
+      ${canEdit ? `<button class="inv-weapon-ammo-btn" onclick="invWeaponAdjustAmmo('${escapeHtml(entry.id)}',-1)" ${cur <= 0 ? 'disabled' : ''} title="Spend 1 AMMO">−</button>` : ''}
+      <span class="inv-weapon-ammo-val">${cur}</span>
+      <span class="inv-weapon-ammo-sep">/</span>
+      <span class="inv-weapon-ammo-max">${max}</span>
+      ${canEdit ? `<button class="inv-weapon-ammo-btn" onclick="invWeaponAdjustAmmo('${escapeHtml(entry.id)}',1)" ${cur >= max ? 'disabled' : ''} title="Reload 1 AMMO">+</button>` : ''}
+      ${canEdit ? `<button class="inv-weapon-ammo-btn" onclick="invWeaponReloadAmmo('${escapeHtml(entry.id)}')" title="Reload to max" style="width:auto;padding:0 6px;font-size:9px;letter-spacing:.05em">FULL</button>` : ''}
+    </span>`;
+  }
+
+  // ROF chip — shows the level + flavor label. rofFlavor maps -1..4
+  // to Single-Fire / Action / Semi / Auto / Full / Chain.
+  function renderRofChip(resolved) {
+    const rof = resolved.rof || { resolved: 0, raw: 0, error: null };
+    if (rof.error) {
+      return `<span class="inv-weapon-chip" title="${escapeHtml(rof.error)}"><span class="inv-weapon-chip-label">ROF</span><span class="inv-weapon-chip-val" style="color:#cc6666">err</span></span>`;
+    }
+    const level = Number.isFinite(rof.resolved) ? rof.resolved : 0;
+    const flavor = rofFlavor(level);
+    const label = flavor ? `${level} · ${flavor.label}` : String(level);
+    const tip = flavor ? `${flavor.label} — approx ${flavor.perAmmo} projectile${flavor.perAmmo === 1 ? '' : 's'} per ammo` : '';
+    return `<span class="inv-weapon-chip" title="${escapeHtml(tip)}"><span class="inv-weapon-chip-label">ROF</span><span class="inv-weapon-chip-val">${escapeHtml(label)}</span></span>`;
   }
 
   // Truncate a string to a max length, adding "…" if truncated. Avoids
@@ -3583,6 +3736,87 @@ export function createInventorySection(ctx) {
     try { await save(); } catch (e) { console.error('inventory save failed', e); }
   }
 
+  // ── WEAPON HANDLERS ──
+  //
+  // AMMO bookkeeping lives on the entry itself (entry.currentAmmo) so
+  // it's per-instance state rather than per-def. Lazy-init: if the
+  // entry doesn't have currentAmmo yet, treat as full (max) on first
+  // adjustment. This keeps snapshots clean for ranged weapons the
+  // player hasn't interacted with, and means melee entries never
+  // accidentally carry a currentAmmo number.
+
+  // Compute the resolved AMMO max for a weapon entry. Returns null
+  // when the entry isn't a ranged weapon or when the ammo formula
+  // errors out (unresolved variables, parse failure). Callers should
+  // treat null as "don't touch currentAmmo."
+  function resolvedAmmoMax(entry) {
+    const snap = entry && entry.snapshot;
+    const weapon = snap && snap.weapon;
+    if (!weapon || weapon.kind !== 'ranged') return null;
+    const resolved = resolveWeapon(weapon, getCharData(), getRuleset());
+    if (!resolved || !resolved.ammo || resolved.ammo.error) return null;
+    const n = resolved.ammo.resolved;
+    return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : null;
+  }
+
+  async function weaponAdjustAmmo(id, delta) {
+    if (!getCanEdit()) return;
+    const entry = findEntry(id);
+    if (!entry) return;
+    const max = resolvedAmmoMax(entry);
+    if (max == null) return;
+    // Lazy init: first interaction treats current as max.
+    const cur = (typeof entry.currentAmmo === 'number')
+      ? Math.max(0, Math.min(max, entry.currentAmmo))
+      : max;
+    const next = Math.max(0, Math.min(max, cur + delta));
+    if (next === cur) return;
+    entry.currentAmmo = next;
+    renderAll();
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
+  async function weaponReloadAmmo(id) {
+    if (!getCanEdit()) return;
+    const entry = findEntry(id);
+    if (!entry) return;
+    const max = resolvedAmmoMax(entry);
+    if (max == null) return;
+    if (entry.currentAmmo === max) return;
+    entry.currentAmmo = max;
+    renderAll();
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
+  // Placeholder for Turn 6 — sends the weapon's resolved dice pool +
+  // flat bonus to the Roll Calculator. For now just logs so the
+  // button does something visible when clicked; the actual Roll Calc
+  // integration lands in the next turn.
+  function weaponToRollCalc(id, which) {
+    const entry = findEntry(id);
+    if (!entry) return;
+    const snap = entry && entry.snapshot;
+    const weapon = snap && snap.weapon;
+    if (!weapon) return;
+    const resolved = resolveWeapon(weapon, getCharData(), getRuleset());
+    if (!resolved) return;
+    const roll = which === 'damage' ? resolved.damage : resolved.attack;
+    if (!roll || roll.error) {
+      alert('Weapon roll has an error: ' + (roll && roll.error ? roll.error : 'unknown'));
+      return;
+    }
+    // TODO Turn 6: fill Roll Calc slots from roll.dicePool + roll.flatBonus.
+    // For now, console.log so developers see the signal and users get
+    // a soft no-op rather than a silent dead button.
+    console.log('[weaponToRollCalc]', which, entry.id, {
+      dicePool: roll.dicePool,
+      flatBonus: roll.flatBonus,
+      diceSlots: roll.diceSlots,
+      flatSlots: roll.flatSlots
+    });
+    alert(`Would send to Roll Calc: ${roll.dicePool}D10${roll.flatBonus >= 0 ? ' + ' : ' − '}${Math.abs(roll.flatBonus)}\n\n(Roll Calc wiring comes in the next update.)`);
+  }
+
   async function removeEntryHandler(id) {
     if (!getCanEdit()) return;
     const entry = findEntry(id);
@@ -3622,6 +3856,10 @@ export function createInventorySection(ctx) {
     saveCustomDef,
     deleteCustomDef,
     tickQty,
+    // Weapon readout — AMMO tracker and Roll Calc send
+    weaponAdjustAmmo,
+    weaponReloadAmmo,
+    weaponToRollCalc,
     removeEntry: removeEntryHandler,
     // Catalog view
     setViewMode,
