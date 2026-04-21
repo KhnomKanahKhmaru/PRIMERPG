@@ -25,6 +25,8 @@
 //   getCanEdit() → boolean; whether the user can edit this character
 //   escapeHtml, fmt → shared formatting helpers
 
+import { getCollapsed, toggleCollapsed } from './char-util.js';
+
 export function createOverviewSection(ctx) {
   const {
     getCollapsedPenaltyValues,
@@ -35,6 +37,58 @@ export function createOverviewSection(ctx) {
     conditionsSection   // optional: char-conditions.js instance for the Afflictions tile (Conditions / Circumstances)
   } = ctx;
 
+  // ─── TILE COLLAPSE ───
+  //
+  // Per-browser persistence of which Overview tiles are collapsed. Keys:
+  //   prime.collapse.overview-tile.<slug>
+  // where <slug> is a stable identifier per tile (body, sanity, penalty,
+  // power, movement, afflictions). Absent = expanded (default).
+  //
+  // Tile renderers wrap their HTML via wrapCollapsibleTile(slug, head, body)
+  // which injects the caret, collapsed class, and click handler. The
+  // body markup is NOT hidden via `display: none` inline; a CSS rule
+  // (.state-tile.collapsed > *:not(.state-tile-head)) does that
+  // centrally so every tile behaves the same.
+  function tileCollapseKey(slug) { return `prime.collapse.overview-tile.${slug}`; }
+  function isTileCollapsed(slug) { return getCollapsed(tileCollapseKey(slug)); }
+
+  // Wrap a tile's HTML so it participates in collapse. The `head` and
+  // `body` arguments are already-rendered HTML fragments. `head` goes
+  // inside a clickable container (caret + existing head content);
+  // `body` is the everything-else (bars, pills, numbers, etc).
+  //
+  // `classes` is additional CSS classes on the tile wrapper
+  // (e.g. "state-tile-wide state-tile-penalty").
+  //
+  // Returns a full `.state-tile` element HTML string.
+  function wrapCollapsibleTile(slug, classes, headInnerHtml, bodyHtml) {
+    const collapsed = isTileCollapsed(slug);
+    const caret = collapsed ? '▸' : '▾';
+    const extraCls = classes ? ` ${classes}` : '';
+    const collapsedCls = collapsed ? ' collapsed' : '';
+    return `
+      <div class="state-tile${extraCls}${collapsedCls}" data-tile="${escapeHtml(slug)}">
+        <div class="state-tile-head state-tile-collapsible" role="button" tabindex="0"
+             onclick="overviewToggleTile('${escapeHtml(slug)}')"
+             onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();overviewToggleTile('${escapeHtml(slug)}')}"
+             title="${collapsed ? 'Expand' : 'Collapse'} tile">
+          <span class="state-tile-caret">${caret}</span>${headInnerHtml}
+        </div>
+        ${bodyHtml}
+      </div>`;
+  }
+
+  // Toggle handler called from the inline onclick. Flips the flag and
+  // re-renders state. We need a reference to the last-computed result
+  // for the re-render; renderState stashes it onto this closure-held
+  // pair so toggleTile can call renderState(result, ruleset) with the
+  // same args.
+  let lastResult = null, lastRuleset = null;
+  function toggleTile(slug) {
+    toggleCollapsed(tileCollapseKey(slug));
+    if (lastResult && lastRuleset) renderState(lastResult, lastRuleset);
+  }
+
   // ─── ORCHESTRATOR ───
   //
   // Read-only summary showing Body, Sanity, Penalty, Power, Movement. Lives
@@ -42,6 +96,10 @@ export function createOverviewSection(ctx) {
   // We compute everything from the same pipeline as the Combat tab, so
   // numbers always match between the two views.
   function renderState(result, ruleset) {
+    // Stash last-render args so toggleTile() can re-render without
+    // the caller having to invoke renderState again.
+    lastResult = result;
+    lastRuleset = ruleset;
     const host = document.getElementById('state-body');
     if (!host) return;
 
@@ -78,7 +136,7 @@ export function createOverviewSection(ctx) {
     const charData = getCharData ? getCharData() : null;
     const otherMods = charData && Array.isArray(charData.otherModifiers) ? charData.otherModifiers : [];
     const canEdit = getCanEdit ? getCanEdit() : true;
-    tiles.push(renderPenaltyTile(result.pain, result.stress, result.penalty, otherMods, canEdit));
+    tiles.push(renderPenaltyTile(result.pain, result.stress, result.penalty, otherMods, canEdit, { collapsible: true }));
 
     // Afflictions tile — Conditions & Circumstances split. Renders
     // directly after the Penalty tile so "what's wrong / what's affecting
@@ -106,14 +164,11 @@ export function createOverviewSection(ctx) {
   // The inner module renders two columns: "Conditions" (ongoing states
   // of the character) and "Circumstances" (external / situational).
   function renderConditionsTile() {
-    return `
-      <div class="state-tile state-tile-wide state-tile-conditions">
-        <div class="state-tile-head">
-          <span class="state-tile-label">Afflictions</span>
-          <span class="state-tile-sub">Conditions &amp; Circumstances · traumas, disorders, external effects</span>
-        </div>
-        <div class="state-tile-body">${conditionsSection.renderTileBody()}</div>
-      </div>`;
+    const headInner = `
+      <span class="state-tile-label">Afflictions</span>
+      <span class="state-tile-sub">Conditions &amp; Circumstances · traumas, disorders, external effects</span>`;
+    const body = `<div class="state-tile-body">${conditionsSection.renderTileBody()}</div>`;
+    return wrapCollapsibleTile('afflictions', 'state-tile-wide state-tile-conditions', headInner, body);
   }
 
   // ─── BODY TILE ───
@@ -142,15 +197,13 @@ export function createOverviewSection(ctx) {
     }
 
     const segHtml = renderBodySegments(body.max, body.damage, Math.min(body.max, 40), body.destroyed);
-    return `
-      <div class="state-tile">
-        <div class="state-tile-head">
-          <span class="state-tile-label">Body</span>
-          <span class="state-tile-nums">${body.current}<span class="sep">/</span><span class="max">${body.max}</span></span>
-        </div>
-        <div class="state-bar">${segHtml}</div>
-        <span class="state-tile-status ${statusClass}">${escapeHtml(label)}</span>
-      </div>`;
+    const headInner = `
+      <span class="state-tile-label">Body</span>
+      <span class="state-tile-nums">${body.current}<span class="sep">/</span><span class="max">${body.max}</span></span>`;
+    const bodyHtml = `
+      <div class="state-bar">${segHtml}</div>
+      <span class="state-tile-status ${statusClass}">${escapeHtml(label)}</span>`;
+    return wrapCollapsibleTile('body', '', headInner, bodyHtml);
   }
 
   function renderBodySegments(maxHP, damage, segCount, destroyed) {
@@ -206,15 +259,13 @@ export function createOverviewSection(ctx) {
     const tier = tierMap[san.status] || tierMap.healthy;
     const segCount = Math.min(san.max, 40);
     const segHtml = renderSanOverviewSegments(san.max, san.damage, segCount);
-    return `
-      <div class="state-tile">
-        <div class="state-tile-head">
-          <span class="state-tile-label">Sanity</span>
-          <span class="state-tile-nums">${san.current}<span class="sep">/</span><span class="max">${san.max}</span></span>
-        </div>
-        <div class="state-bar">${segHtml}</div>
-        <span class="state-tile-status ${tier.cls}">${escapeHtml(tier.label)}</span>
-      </div>`;
+    const headInner = `
+      <span class="state-tile-label">Sanity</span>
+      <span class="state-tile-nums">${san.current}<span class="sep">/</span><span class="max">${san.max}</span></span>`;
+    const bodyHtml = `
+      <div class="state-bar">${segHtml}</div>
+      <span class="state-tile-status ${tier.cls}">${escapeHtml(tier.label)}</span>`;
+    return wrapCollapsibleTile('sanity', '', headInner, bodyHtml);
   }
 
   function renderSanOverviewSegments(sanMax, damage, segCount) {
@@ -253,16 +304,14 @@ export function createOverviewSection(ctx) {
     const color = (power.color && typeof power.color === 'string' && power.color.trim())
       ? power.color
       : '#6a4a9a';
-    return `
-      <div class="state-tile">
-        <div class="state-tile-head">
-          <span class="state-tile-label">Power</span>
-          <span class="state-tile-nums">${fmt(current)}<span class="sep">/</span><span class="max">${fmt(max)}</span></span>
-        </div>
-        <div class="state-progress-bar">
-          <div class="state-progress-fill" style="width:${pct}%;background:${escapeHtml(color)}"></div>
-        </div>
+    const headInner = `
+      <span class="state-tile-label">Power</span>
+      <span class="state-tile-nums">${fmt(current)}<span class="sep">/</span><span class="max">${fmt(max)}</span></span>`;
+    const bodyHtml = `
+      <div class="state-progress-bar">
+        <div class="state-progress-fill" style="width:${pct}%;background:${escapeHtml(color)}"></div>
       </div>`;
+    return wrapCollapsibleTile('power', '', headInner, bodyHtml);
   }
 
   // ─── MOVEMENT TILE ───
@@ -320,13 +369,9 @@ export function createOverviewSection(ctx) {
         </div>`;
     }).join('');
 
-    return `
-      <div class="state-tile state-tile-wide">
-        <div class="state-tile-head">
-          <span class="state-tile-label">Movement</span>
-        </div>
-        <div class="state-movement-row">${items}</div>
-      </div>`;
+    const headInner = `<span class="state-tile-label">Movement</span>`;
+    const bodyHtml = `<div class="state-movement-row">${items}</div>`;
+    return wrapCollapsibleTile('movement', 'state-tile-wide', headInner, bodyHtml);
   }
 
   // ─── STRAIN TILE ───
@@ -339,8 +384,16 @@ export function createOverviewSection(ctx) {
   // this card earns its name — it's a full CRUD editor for that list,
   // inline in the card.
   //
-  function renderPenaltyTile(pain, stress, penalty, otherMods, canEdit) {
+  // opts.collapsible: when true (Overview tab use), the tile gets a
+  // caret and can be collapsed. When false (inline use on the Combat
+  // tab, where the tile is always visible anyway), the wrapper is
+  // skipped entirely and the markup stays unchanged from its pre-
+  // collapse form. Defaults to false so the existing Combat-tab call
+  // site (renderPenaltyTile from combat.js) doesn't need to change.
+  function renderPenaltyTile(pain, stress, penalty, otherMods, canEdit, opts) {
     if (!penalty) return '';
+    opts = opts || {};
+    const collapsible = opts.collapsible === true;
     const pct = penalty.percent;
     let pctColor;
     if (pct <= 0)      pctColor = '#666';
@@ -403,36 +456,46 @@ export function createOverviewSection(ctx) {
       ? `${encPct}%`
       : `${Math.round(encPct * 10) / 10}%`;
 
+    const headInner = `
+      <span class="state-tile-label">Penalty</span>
+      <span class="state-penalty-big" style="color:${pctColor}">${pct}%</span>`;
+    const bodyHtml = `
+      <div class="state-penalty-rows-inline">
+        <div class="state-penalty-row">
+          <span class="state-penalty-k">Pain</span>
+          <span class="state-penalty-v">${painPct}%</span>
+        </div>
+        <div class="state-penalty-row">
+          <span class="state-penalty-k">Stress</span>
+          <span class="state-penalty-v">${stressPct}%</span>
+        </div>
+        <div class="state-penalty-row state-penalty-row-locked" title="${escapeHtml(encTip)}">
+          <span class="state-penalty-k">Encumbrance <span class="state-penalty-lock">🔒</span></span>
+          <span class="state-penalty-v">${encDisplay}</span>
+        </div>
+        <div class="state-penalty-row">
+          <span class="state-penalty-k">Others</span>
+          <span class="state-penalty-v">${escapeHtml(otherSummaryPct)}%</span>
+        </div>
+      </div>
+      ${othersEditor}`;
+
+    if (collapsible) {
+      return wrapCollapsibleTile('penalty', 'state-tile-wide state-tile-penalty', headInner, bodyHtml);
+    }
+    // Non-collapsible (inline on Combat tab) — keep the original markup
+    // shape so combat.js's repaint logic and any CSS selectors that
+    // depend on it continue to match. No caret, no click wiring.
     return `
       <div class="state-tile state-tile-wide state-tile-penalty">
-        <div class="state-tile-head">
-          <span class="state-tile-label">Penalty</span>
-          <span class="state-penalty-big" style="color:${pctColor}">${pct}%</span>
-        </div>
-        <div class="state-penalty-rows-inline">
-          <div class="state-penalty-row">
-            <span class="state-penalty-k">Pain</span>
-            <span class="state-penalty-v">${painPct}%</span>
-          </div>
-          <div class="state-penalty-row">
-            <span class="state-penalty-k">Stress</span>
-            <span class="state-penalty-v">${stressPct}%</span>
-          </div>
-          <div class="state-penalty-row state-penalty-row-locked" title="${escapeHtml(encTip)}">
-            <span class="state-penalty-k">Encumbrance <span class="state-penalty-lock">🔒</span></span>
-            <span class="state-penalty-v">${encDisplay}</span>
-          </div>
-          <div class="state-penalty-row">
-            <span class="state-penalty-k">Others</span>
-            <span class="state-penalty-v">${escapeHtml(otherSummaryPct)}%</span>
-          </div>
-        </div>
-        ${othersEditor}
+        <div class="state-tile-head">${headInner}</div>
+        ${bodyHtml}
       </div>`;
   }
 
   return {
     renderState,
-    renderPenaltyTile
+    renderPenaltyTile,
+    toggleTile
   };
 }
