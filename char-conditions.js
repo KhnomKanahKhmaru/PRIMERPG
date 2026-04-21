@@ -237,6 +237,7 @@ export function createConditionsSection(ctx) {
   // ─── SAVE ───
 
   async function save() {
+    if (!getCanEdit()) return;
     const c = getCharData();
     if (!c) return;
     // Persist both the entry list and the personal catalogue together —
