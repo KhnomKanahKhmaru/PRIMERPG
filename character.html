@@ -4113,6 +4113,19 @@
   const combat = createCombatSection(sectionCtx);
   const inventory = createInventorySection(sectionCtx);
 
+  // Bridge inventory → combat's Roll Calc. Can't wire this in the
+  // initial sectionCtx because `combat` doesn't exist yet when
+  // sectionCtx is built. Since char-inventory.js reads
+  // ctx.sendWeaponToRollCalc at call-time (not construction-time) via
+  // typeof-check, mutating sectionCtx post-hoc is safe — the inventory
+  // module captured ctx by reference and picks up new keys the next
+  // time weaponToRollCalc fires.
+  sectionCtx.sendWeaponToRollCalc = (payload) => {
+    if (combat && typeof combat.rollCalcLoadWeapon === 'function') {
+      combat.rollCalcLoadWeapon(payload);
+    }
+  };
+
   // Expose section handlers on window so inline onclick handlers in the
   // HTML (and in dynamically-generated markup) can reach them. These go
   // away once we migrate to event delegation.
