@@ -3836,7 +3836,7 @@
   import { createCombatSection } from './char-combat.js';
   import { createInventorySection } from './char-inventory.js';
   import { createConditionsSection } from './char-conditions.js';
-  import { attachCollapsible, toggleCollapsed } from './char-util.js';
+  import { attachCollapsible, toggleCollapsed, ensureExpanded } from './char-util.js';
 
   // All imports resolved — module body executes from here.
   if (window.__logStep) window.__logStep('all modules imported');
@@ -4080,25 +4080,51 @@
     addCustomMoral: mental.addCustomMoral,
     removeMoralByIndex: mental.removeMoralByIndex,
     toggleMoral: mental.toggleMoral,
-    editMorals: () => { mental.editMorals(); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
+    editMorals: () => {
+      // Auto-expand this mental column if it was collapsed. Otherwise
+      // clicking Edit while collapsed hides the Edit button (editMorals
+      // does that) and leaves the Done button buried inside the
+      // collapsed body, stranding the user.
+      ensureExpanded('prime.collapse.overview.mental-morals');
+      mental.editMorals();
+      if (window.refreshOverviewCollapse) window.refreshOverviewCollapse();
+    },
     doneMorals: async (...a) => { await mental.doneMorals(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
     // Obligations
     addObligation: mental.addObligation,
     saveObligation: mental.saveObligation,
     deleteObligation: mental.deleteObligation,
-    editObligations: () => { mental.editObligations(); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
+    editObligations: () => {
+      ensureExpanded('prime.collapse.overview.mental-obligations');
+      mental.editObligations();
+      if (window.refreshOverviewCollapse) window.refreshOverviewCollapse();
+    },
     doneObligations: async (...a) => { await mental.doneObligations(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
     // Conditions
     addDisorder: mental.addDisorder,
     saveDisorder: mental.saveDisorder,
     deleteDisorder: mental.deleteDisorder,
-    editDisorders: () => { mental.editDisorders(); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
+    editDisorders: () => {
+      ensureExpanded('prime.collapse.overview.mental-conditions');
+      mental.editDisorders();
+      if (window.refreshOverviewCollapse) window.refreshOverviewCollapse();
+    },
     doneDisorders: async (...a) => { await mental.doneDisorders(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
     rerenderDisorderHeader: mental.rerenderDisorderHeader,
     // XP bar
     savePowerField: xpBar.savePowerField,
     // Skills
-    toggleSkillsEdit: (...a) => { skills.toggleSkillsEdit(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
+    toggleSkillsEdit: (...a) => {
+      // Skills Edit spans all three skill subsections. Auto-expand the
+      // outer Stats & Skills card if collapsed, and the Primary
+      // Skills subsection where the Edit button actually lives (the
+      // Edit button is only in the Primary Skills header — Secondary
+      // and Specialty have their own Add-row controls instead).
+      ensureExpanded('prime.collapse.overview.statsSkills');
+      ensureExpanded('prime.collapse.overview.skills-primary-skills');
+      skills.toggleSkillsEdit(...a);
+      if (window.refreshOverviewCollapse) window.refreshOverviewCollapse();
+    },
     saveSkill: skills.saveSkill,
     addSecondarySkill: async (...a) => { await skills.addSecondarySkill(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
     saveSecSkill: skills.saveSecSkill,
@@ -4109,7 +4135,12 @@
     renameSpecSkill: skills.renameSpecSkill,
     deleteSpecSkill: async (...a) => { await skills.deleteSpecSkill(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
     // Stats
-    toggleStatsEdit: (...a) => { stats.toggleStatsEdit(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
+    toggleStatsEdit: (...a) => {
+      ensureExpanded('prime.collapse.overview.statsSkills');
+      ensureExpanded('prime.collapse.overview.stats');
+      stats.toggleStatsEdit(...a);
+      if (window.refreshOverviewCollapse) window.refreshOverviewCollapse();
+    },
     toggleModPanel: stats.toggleModPanel,
     onStatInput: stats.onStatInput,
     adjustStat: stats.adjustStat,
@@ -4117,7 +4148,7 @@
     addModifier: stats.addModifier,
     deleteModifier: stats.deleteModifier,
     // Bio
-    editBio: bio.editBio,
+    editBio: () => { ensureExpanded('prime.collapse.overview.bio'); bio.editBio(); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
     cancelBio: bio.cancelBio,
     updatePreview: bio.updatePreview,
     saveBio: bio.saveBio,
