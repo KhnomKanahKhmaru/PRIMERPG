@@ -359,6 +359,44 @@ export function buildSymbolTable(character, ruleset) {
   }
   table.FORT = fortValue;
 
+  // Skills — primary, secondary, specialty. All three tiers are exposed
+  // by name as symbols so ruleset formulas (especially weapon attack
+  // formulas like "DEX + Melee + DEXMOD") can reference them directly.
+  //
+  // Primary skills are keyed by the canonical skill name from the
+  // ruleset (e.g. "Melee", "Ranged", "Athletics"). Secondaries and
+  // specialties use the player-authored name. All names get stripped
+  // of whitespace+punctuation to produce variable-safe symbols — so
+  // "Hand-to-Hand" becomes HandToHand, spaces collapse. Original name
+  // also stored as-is so verbatim-name lookups work for the formula
+  // parser if it supports quoted identifiers later.
+  //
+  // Value resolution: skill.value or 0 if missing. No MOD derivation —
+  // skills add linearly into dice pools (that's what the Roll
+  // Calculator does too). A missing skill resolves to 0 silently so
+  // formulas don't throw when a character has never set the value.
+  const skills = character.skills || {};
+  const addSkill = (name, value) => {
+    if (!name) return;
+    const v = (typeof value === 'number' && Number.isFinite(value)) ? value : 0;
+    // Exact name — works for single-word skills like "Melee".
+    table[name] = v;
+    // Variable-safe version (strip non-alphanumeric, preserve camel case).
+    const safe = String(name).replace(/[^A-Za-z0-9]+/g, '');
+    if (safe && safe !== name) table[safe] = v;
+  };
+  // Primary skills from ruleset definitions — the value is keyed by
+  // name, not by skill object. If the character has never set it, 0.
+  const primarySkills = (ruleset.primarySkills || []);
+  const charPrimary = skills.primary || {};
+  primarySkills.forEach(s => {
+    const name = s.name || s.code;
+    addSkill(name, charPrimary[name]);
+  });
+  // Secondary + specialty skills are free-form on the character doc.
+  (skills.secondary || []).forEach(sec => addSkill(sec.name, sec.value));
+  (skills.specialty || []).forEach(spec => addSkill(spec.name, spec.value));
+
   return table;
 }
 
