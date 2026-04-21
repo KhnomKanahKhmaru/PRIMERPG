@@ -1023,11 +1023,11 @@ export function createInventorySection(ctx) {
             html += `
               <input type="text" class="inv-carry-mod-name"
                      value="${escapeHtml(name)}"
-                     oninput="${updateFn}(${idx}, 'name', this.value)"
+                     onchange="${updateFn}(${idx}, 'name', this.value)"
                      placeholder="Name (e.g. Brawny Trait)"/>
               <input type="number" class="inv-carry-mod-value"
                      value="${value}" step="1"
-                     oninput="${updateFn}(${idx}, 'value', this.value)"/>
+                     onchange="${updateFn}(${idx}, 'value', this.value)"/>
               <span class="inv-carry-mod-unit">${escapeHtml(modUnit)}</span>
               <button class="inv-carry-mod-del" onclick="${deleteFn}(${idx})" title="Remove modifier">×</button>`;
           } else {
