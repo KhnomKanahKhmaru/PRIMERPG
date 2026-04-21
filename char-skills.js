@@ -232,6 +232,7 @@ export function createSkillsSection(ctx) {
   // ─── PRIMARY SKILLS HANDLERS ───
 
   async function saveSkill(name, val) {
+    if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     if (!charData.skills) charData.skills = {};
     if (!charData.skills.primary) charData.skills.primary = {};
@@ -245,6 +246,7 @@ export function createSkillsSection(ctx) {
   // ─── SECONDARY SKILLS HANDLERS ───
 
   async function addSecondarySkill() {
+    if (!ctx.getCanEdit()) return;
     const name = document.getElementById('sec-skill-name').value.trim();
     const under = document.getElementById('sec-skill-under').value;
     if (!name || !under) return;
@@ -258,6 +260,7 @@ export function createSkillsSection(ctx) {
   }
 
   async function saveSecSkill(i, val) {
+    if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     const skillMax = getSkillMax();
     const sec = charData.skills.secondary[i];
@@ -273,6 +276,7 @@ export function createSkillsSection(ctx) {
   }
 
   async function renameSecSkill(i, val) {
+    if (!ctx.getCanEdit()) return;
     const name = (val || '').trim();
     if (!name) { alert('Skill name cannot be empty.'); renderSecondarySkills(); return; }
     const charData = ctx.getCharData();
@@ -290,6 +294,7 @@ export function createSkillsSection(ctx) {
   }
 
   async function deleteSecSkill(i) {
+    if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     charData.skills.secondary.splice(i, 1);
     await saveCharacter(ctx.getCharId(), { 'skills.secondary': charData.skills.secondary });
@@ -300,6 +305,7 @@ export function createSkillsSection(ctx) {
   // ─── SPECIALTY SKILLS HANDLERS ───
 
   async function addSpecialtySkill() {
+    if (!ctx.getCanEdit()) return;
     const name = document.getElementById('spec-skill-name').value.trim();
     const under = document.getElementById('spec-skill-under').value;
     if (!name || !under) return;
@@ -313,6 +319,7 @@ export function createSkillsSection(ctx) {
   }
 
   async function saveSpecSkill(i, val) {
+    if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     const skillMax = getSkillMax();
     const spec = charData.skills.specialty[i];
@@ -328,6 +335,7 @@ export function createSkillsSection(ctx) {
   }
 
   async function renameSpecSkill(i, val) {
+    if (!ctx.getCanEdit()) return;
     const name = (val || '').trim();
     if (!name) { alert('Skill name cannot be empty.'); renderSpecialtySkills(); return; }
     const charData = ctx.getCharData();
@@ -337,6 +345,7 @@ export function createSkillsSection(ctx) {
   }
 
   async function deleteSpecSkill(i) {
+    if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     charData.skills.specialty.splice(i, 1);
     await saveCharacter(ctx.getCharId(), { 'skills.specialty': charData.skills.specialty });
