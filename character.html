@@ -214,6 +214,45 @@
        nothing below the head. */
     .state-tile.collapsed > *:not(.state-tile-head) { display: none; }
     .state-tile.collapsed { padding-bottom: 10px; }
+
+    /* Generic collapsible header helper — used by attachCollapsible()
+       in char-util.js to retrofit arbitrary section headers. The
+       caret is injected as a <span class="cc-caret"> before any
+       existing content so the header's original layout is preserved.
+       Hover/focus affordances match the in-tile carets. */
+    .cc-collapsible { cursor: pointer; user-select: none; }
+    .cc-collapsible:hover .cc-caret { color: #aaa; }
+    .cc-collapsible:focus-visible {
+      outline: 2px solid #444;
+      outline-offset: 2px;
+      border-radius: 2px;
+    }
+    .cc-caret {
+      display: inline-block;
+      color: #555;
+      font-size: 10px;
+      transition: color .1s;
+    }
+    /* Synthetic headers injected above content that didn't originally
+       have a dedicated title bar (Bio card, Mental card, Stats-card).
+       Visually match the section-title conventions elsewhere on the
+       sheet — small caps, letter-spaced, muted color. Spacing sits
+       above the host element it governs. */
+    .cc-synthetic-head {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: #888;
+      margin: 14px 0 6px;
+      padding: 4px 6px;
+      border-bottom: 1px solid #1a1a1a;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .cc-synthetic-head:first-child { margin-top: 0; }
+    .cc-synthetic-head:hover { color: #bbb; }
     .state-tile-label {
       font-size: 10px; font-weight: 700; letter-spacing: .14em;
       text-transform: uppercase; color: #888;
@@ -3675,6 +3714,7 @@
   import { createCombatSection } from './char-combat.js';
   import { createInventorySection } from './char-inventory.js';
   import { createConditionsSection } from './char-conditions.js';
+  import { attachCollapsible } from './char-util.js';
 
   // All imports resolved — module body executes from here.
   if (window.__logStep) window.__logStep('all modules imported');
@@ -3702,6 +3742,150 @@
 
   // Legacy global — older oninput handlers reference this directly.
   window.SKILL_LABELS_GLOBAL = SKILL_LABELS;
+
+  // ─── OVERVIEW TAB COLLAPSE ──────────────────────────────────────
+  // Wires every major section on the Overview tab for click-to-collapse.
+  // Called once after the initial full render, and again after dynamic
+  // re-renders (skills edit mode, mental-section edit mode) so the
+  // carets survive DOM replacements.
+  //
+  // Header convention:
+  //   - Sections with an existing obvious title element (State of Things,
+  //     Situations, the mental-card columns) reuse that element as the
+  //     clickable header.
+  //   - Sections WITHOUT a natural header (Bio card, Mental card outer,
+  //     Stats-card outer) get a synthetic header injected once, using
+  //     the `cc-synthetic-head` class for consistent styling.
+  //
+  // Storage keys all live under the `prime.collapse.overview.*` namespace
+  // so they're easy to find and clear in browser devtools.
+  function ensureSyntheticHeader(hostSelector, titleText, headerId) {
+    const host = document.querySelector(hostSelector);
+    if (!host) return null;
+    let header = document.getElementById(headerId);
+    if (header) return header;
+    header = document.createElement('div');
+    header.id = headerId;
+    header.className = 'cc-synthetic-head';
+    header.textContent = titleText;
+    host.parentNode.insertBefore(header, host);
+    return header;
+  }
+
+  // Track every collapsible's refresh() callback so re-renders can
+  // re-apply state without re-binding handlers. Keyed by a stable
+  // descriptor so duplicate calls replace rather than accumulate.
+  const collapseRefreshers = new Map();
+
+  function wire(descriptor, header, bodies, storageKey, opts) {
+    if (!header) return;
+    const refresh = attachCollapsible(header, bodies, storageKey, opts);
+    collapseRefreshers.set(descriptor, refresh);
+  }
+
+  function initOverviewCollapse() {
+    // ── BIO CARD ──
+    // Inject a synthetic "Profile & Notes" header above .char-card and
+    // collapse the entire card (including the edit buttons inside it —
+    // per spec, when collapsed the Edit Bio button disappears with
+    // everything else).
+    const bioCard = document.querySelector('#panel-overview .char-card');
+    if (bioCard) {
+      const bioHead = ensureSyntheticHeader('#panel-overview .char-card', 'Profile', 'overview-bio-head');
+      wire('bio', bioHead, [bioCard], 'prime.collapse.overview.bio');
+    }
+
+    // ── MENTAL CARD ──
+    // Inject outer header. Also wire each of the three inner columns
+    // using their existing .mental-col-header elements.
+    const mentalCard = document.querySelector('#panel-overview .mental-card');
+    if (mentalCard) {
+      const mentalHead = ensureSyntheticHeader('#panel-overview .mental-card', 'Mental Health', 'overview-mental-head');
+      wire('mental', mentalHead, [mentalCard], 'prime.collapse.overview.mental');
+
+      // Per-column collapse. Body = everything after the header within
+      // the column. We select them fresh each time in case the column
+      // re-renders.
+      const cols = mentalCard.querySelectorAll(':scope > .mental-col');
+      const colKeys = ['obligations', 'morals', 'conditions'];
+      cols.forEach((col, i) => {
+        const head = col.querySelector(':scope > .mental-col-header');
+        const bodyEls = Array.from(col.children).filter(el => el !== head);
+        const key = colKeys[i] || `col${i}`;
+        wire(`mental-col-${key}`, head, bodyEls, `prime.collapse.overview.mental-${key}`);
+      });
+    }
+
+    // ── STATS & SKILLS CARD ──
+    // Inject outer header. Wire the Stats column and each of the three
+    // Skills subsections individually.
+    const statsCard = document.querySelector('#panel-overview .stats-card');
+    if (statsCard) {
+      const statsHead = ensureSyntheticHeader('#panel-overview .stats-card', 'Stats & Skills', 'overview-stats-head');
+      wire('stats-skills', statsHead, [statsCard], 'prime.collapse.overview.statsSkills');
+
+      // Stats column — .stats-col-header is the title row.
+      const statsCol = statsCard.querySelector(':scope > .stats-col');
+      if (statsCol) {
+        const head = statsCol.querySelector(':scope > .stats-col-header');
+        const bodyEls = Array.from(statsCol.children).filter(el => el !== head);
+        wire('stats-col', head, bodyEls, 'prime.collapse.overview.stats');
+      }
+
+      // Skills subsections — each .skills-section has a .skills-section-header
+      // and its body (grid + add-row).
+      const skillSections = statsCard.querySelectorAll(':scope > .skills-col > .skills-section');
+      skillSections.forEach((sec, i) => {
+        const head = sec.querySelector(':scope > .skills-section-header');
+        const bodyEls = Array.from(sec.children).filter(el => el !== head);
+        // Identify by the title label so storage keys survive reorder.
+        const titleEl = sec.querySelector('.skills-section-title');
+        const title = (titleEl && titleEl.textContent.trim().toLowerCase().replace(/\s+/g, '-')) || `sec${i}`;
+        wire(`skill-sec-${title}`, head, bodyEls, `prime.collapse.overview.skills-${title}`);
+      });
+    }
+
+    // ── STATE OF THINGS ──
+    // The #state-of-things container has a .state-title text div. Master
+    // collapse hides the tile grid. Per-tile collapses (already wired
+    // via wrapCollapsibleTile in char-overview.js) continue to work
+    // inside the expanded dashboard.
+    const sot = document.getElementById('state-of-things');
+    if (sot) {
+      const sotHead = sot.querySelector(':scope > .state-title');
+      const sotBody = document.getElementById('state-body');
+      wire('state-of-things', sotHead, [sotBody], 'prime.collapse.overview.stateOfThings');
+    }
+
+    // ── SITUATIONS ──
+    // .sit-block-header exists with a title. Body = the list + the add
+    // form container. Add-button stays inside the header so it hides
+    // along with the rest of the section.
+    const sitBlock = document.querySelector('#panel-overview .sit-block');
+    if (sitBlock) {
+      const head = sitBlock.querySelector(':scope > .sit-block-header');
+      const bodyEls = [
+        sitBlock.querySelector(':scope > .sit-list'),
+        sitBlock.querySelector(':scope > #situations-add-form')
+      ];
+      wire('situations', head, bodyEls, 'prime.collapse.overview.situations');
+    }
+  }
+
+  // Re-apply all wired collapsibles after a section has re-rendered.
+  // Called by dynamic render paths (skills edit toggle, mental-section
+  // save, etc) so carets persist across DOM replacements. Any section
+  // whose host element still exists gets refreshed; sections that
+  // dropped out of the DOM are silently skipped.
+  function refreshOverviewCollapse() {
+    // A full re-init is cheaper and more correct than trying to track
+    // which sub-sections got replaced — attachCollapsible is idempotent,
+    // so re-binding on the same element just refreshes the visual state.
+    initOverviewCollapse();
+  }
+  window.refreshOverviewCollapse = refreshOverviewCollapse;
+  // Expose init too in case any code path needs to force it.
+  window.initOverviewCollapse = initOverviewCollapse;
 
   const params = new URLSearchParams(window.location.search);
   const charId = params.get('id');
@@ -3774,36 +3958,36 @@
     addCustomMoral: mental.addCustomMoral,
     removeMoralByIndex: mental.removeMoralByIndex,
     toggleMoral: mental.toggleMoral,
-    editMorals: mental.editMorals,
-    doneMorals: mental.doneMorals,
+    editMorals: () => { mental.editMorals(); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
+    doneMorals: async (...a) => { await mental.doneMorals(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
     // Obligations
     addObligation: mental.addObligation,
     saveObligation: mental.saveObligation,
     deleteObligation: mental.deleteObligation,
-    editObligations: mental.editObligations,
-    doneObligations: mental.doneObligations,
+    editObligations: () => { mental.editObligations(); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
+    doneObligations: async (...a) => { await mental.doneObligations(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
     // Conditions
     addDisorder: mental.addDisorder,
     saveDisorder: mental.saveDisorder,
     deleteDisorder: mental.deleteDisorder,
-    editDisorders: mental.editDisorders,
-    doneDisorders: mental.doneDisorders,
+    editDisorders: () => { mental.editDisorders(); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
+    doneDisorders: async (...a) => { await mental.doneDisorders(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
     rerenderDisorderHeader: mental.rerenderDisorderHeader,
     // XP bar
     savePowerField: xpBar.savePowerField,
     // Skills
-    toggleSkillsEdit: skills.toggleSkillsEdit,
+    toggleSkillsEdit: (...a) => { skills.toggleSkillsEdit(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
     saveSkill: skills.saveSkill,
-    addSecondarySkill: skills.addSecondarySkill,
+    addSecondarySkill: async (...a) => { await skills.addSecondarySkill(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
     saveSecSkill: skills.saveSecSkill,
     renameSecSkill: skills.renameSecSkill,
-    deleteSecSkill: skills.deleteSecSkill,
-    addSpecialtySkill: skills.addSpecialtySkill,
+    deleteSecSkill: async (...a) => { await skills.deleteSecSkill(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
+    addSpecialtySkill: async (...a) => { await skills.addSpecialtySkill(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
     saveSpecSkill: skills.saveSpecSkill,
     renameSpecSkill: skills.renameSpecSkill,
-    deleteSpecSkill: skills.deleteSpecSkill,
+    deleteSpecSkill: async (...a) => { await skills.deleteSpecSkill(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
     // Stats
-    toggleStatsEdit: stats.toggleStatsEdit,
+    toggleStatsEdit: (...a) => { stats.toggleStatsEdit(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
     toggleModPanel: stats.toggleModPanel,
     onStatInput: stats.onStatInput,
     adjustStat: stats.adjustStat,
@@ -4316,6 +4500,12 @@
     await safeRender('Situations', () => situations.renderAll());
     await safeRender('Combat',     () => combat.renderAll());
     await safeRender('Inventory',  () => inventory.renderAll());
+
+    // Wire collapsible affordances onto the Overview tab sections. Runs
+    // AFTER all renders so dynamic content (skills grids, mental-col
+    // lists) exists in the DOM by the time we bind headers. See
+    // initOverviewCollapse() below for which sections get what.
+    initOverviewCollapse();
 
     // Owner-only UI elements.
     if (canEdit) {
