@@ -12,6 +12,7 @@ import { computeDerivedStats, powerPoolXpCost, TRAUMA_TIERS } from './char-deriv
 import { createRollCalc } from './char-rollcalc.js';
 import { createPowerSection } from './char-power.js';
 import { createOverviewSection } from './char-overview.js';
+import { createConditionsSection } from './char-conditions.js';
 
 export function createCombatSection(ctx) {
   // ctx shape:
@@ -87,12 +88,28 @@ export function createCombatSection(ctx) {
   //
   // We inject getCollapsedPenaltyValues so Movement tile can read the
   // same collapse state as the Combat-tab stat cards without owning it.
+  // ─── CONDITIONS SECTION ───
+  // Extracted to char-conditions.js. Renders inside the Overview tile
+  // grid (via the overview section's renderConditionsTile wrapper).
+  // We pass a requestRerender callback so the module can trigger a
+  // fresh renderAll() when its state changes (entry added/edited/etc).
+  const conditionsSection = createConditionsSection({
+    getCharId:   ctx.getCharId,
+    getCharData: ctx.getCharData,
+    getCanEdit:  ctx.getCanEdit,
+    getRuleset:  ctx.getRuleset,
+    escapeHtml,
+    fmt,
+    requestRerender: () => renderAll()
+  });
+
   const overview = createOverviewSection({
     getCollapsedPenaltyValues: () => collapsedPenaltyValues,
     getCharData: ctx.getCharData,
     getCanEdit:  ctx.getCanEdit,
     escapeHtml,
-    fmt
+    fmt,
+    conditionsSection
   });
 
 
@@ -2623,6 +2640,18 @@ export function createCombatSection(ctx) {
     togglePainPanel, addPainMod, updatePainMod, deletePainMod,
     toggleStressPanel, addStressMod, updateStressMod, deleteStressMod,
     // Other modifiers (free-form ±% entries like Exposure, Encumbrance)
-    addOtherMod, updateOtherMod, deleteOtherMod
+    addOtherMod, updateOtherMod, deleteOtherMod,
+    // Conditions (Physical / Mental tracker on Overview tab)
+    condOpenAdd:       conditionsSection.openAdd,
+    condStartCustom:   conditionsSection.startCustom,
+    condPickPreset:    conditionsSection.pickPreset,
+    condSaveCustom:    conditionsSection.saveCustom,
+    condOpenEdit:      conditionsSection.openEdit,
+    condSaveEdit:      conditionsSection.saveEdit,
+    condDraft:         conditionsSection.draft,
+    condCloseModal:    conditionsSection.closeModal,
+    condSwapCategory:  conditionsSection.swapCategory,
+    condRemove:        conditionsSection.remove,
+    condToggleEntry:   conditionsSection.toggleEntry
   };
 }
