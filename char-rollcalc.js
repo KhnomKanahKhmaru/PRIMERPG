@@ -920,6 +920,57 @@ export function createRollCalc(ctx) {
     repaintOutput();
   }
 
+  // Bulk-load a weapon's resolved roll into the calculator. Called by
+  // the inventory tab's "→ Roll Calc" buttons (see char-inventory.js
+  // → weaponToRollCalc). Overwrites slots and statmod in one atomic
+  // operation so the UI repaints once, not four times.
+  //
+  // Shape of the argument:
+  //   { dicePool:   <number>,   // total D10s from STAT+SKILL+DMG+ATK-ish
+  //     flatBonus:  <number>,   // total STATMOD-style flat bonus
+  //     label:      <string>    // e.g. "Longsword · Attack" (currently
+  //                                only console-logged; future turns
+  //                                can surface it in the tile header) }
+  //
+  // Loadout: slot 0 becomes a 'custom' slot holding the dice pool as
+  // its override. Slots 1 and 2 are cleared to 'none'. statmodOverride
+  // takes the flat bonus. Difficulty / mitigation / reduction / passive
+  // are deliberately left untouched so GM-set per-roll modifiers from
+  // the current Combat tab state survive — e.g. if the player already
+  // set Difficulty to 8 for a long-range shot, sending another weapon
+  // to Roll Calc keeps that 8.
+  function loadWeaponRoll(payload) {
+    if (!payload || typeof payload !== 'object') return;
+    const dicePool  = Number.isFinite(payload.dicePool)  ? payload.dicePool  : 0;
+    const flatBonus = Number.isFinite(payload.flatBonus) ? payload.flatBonus : 0;
+
+    // Slot 0 — the single "weapon pool" lump. Using 'custom' kind so
+    // the override field shows the number plainly and the player can
+    // edit it in-place. statKey/skillKey/derivedKey get preserved so
+    // the dropdowns remember the last pick when the user flips back
+    // to a stat/skill kind.
+    state.slots[0] = Object.assign({}, state.slots[0], {
+      kind: 'custom',
+      override: dicePool
+    });
+    // Slots 1 and 2 — clear. Otherwise a previous stat/skill pick
+    // would pollute the weapon roll and throw the dice count off.
+    state.slots[1] = Object.assign({}, state.slots[1], {
+      kind: 'none',
+      override: null
+    });
+    state.slots[2] = Object.assign({}, state.slots[2], {
+      kind: 'none',
+      override: null
+    });
+    state.statmodOverride = flatBonus;
+    // Optional label surfacing — future turn might wire this into the
+    // tile title; for now just emit a console breadcrumb so devs can
+    // see what fired.
+    if (payload.label) console.log('[rollcalc] loaded weapon roll:', payload.label);
+    repaintTile();
+  }
+
   // Per-roll Penalty-component toggle. Flips whether a given component
   // (pain / stress / encumbrance / a named Other) contributes to THIS
   // roll's dice reduction. The main Penalty tile elsewhere in the UI
@@ -979,7 +1030,9 @@ export function createRollCalc(ctx) {
     setDifficulty, setMitigation, setReduction,
     toggleShowRaw, setPassive,
     // Per-roll Penalty component toggles
-    togglePenaltyComponent, togglePenaltyPanel, resetPenaltyToggles
+    togglePenaltyComponent, togglePenaltyPanel, resetPenaltyToggles,
+    // External bulk-load (weapon → Roll Calc button)
+    loadWeaponRoll
   };
 }
 
