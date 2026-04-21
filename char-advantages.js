@@ -25,6 +25,7 @@
 // description, system, and category locally.
 
 import { saveCharacter } from './char-firestore.js';
+import { getCollapsed, setCollapsed, toggleCollapsed } from './char-util.js';
 
 export function createAdvantagesSection(ctx) {
   // ctx shape:
@@ -47,33 +48,14 @@ export function createAdvantagesSection(ctx) {
   ];
 
   // ─── COLLAPSE STATE ───
-  // Per-browser persistence via localStorage. Keys:
+  // Per-browser persistence via localStorage through the shared
+  // getCollapsed/setCollapsed helpers in char-util.js. Keys:
   //   prime.collapse.ad-side.<side>              — outer side (Advantages/Disadvantages)
   //   prime.collapse.ad-cat.<side>.<category>    — category within a side
-  //
-  // Both are booleans stored as '1' (collapsed) / '0' (expanded). Absent
-  // values default to expanded — that's the low-friction first-visit
-  // behavior. Reading/writing tolerates environments where localStorage
-  // is unavailable (private-mode browsers) by silently falling back to
-  // an in-memory map for the session.
-  const memoryCollapse = new Map();
-  function collapseStorageGet(key) {
-    try {
-      const v = window.localStorage.getItem(key);
-      if (v !== null) return v === '1';
-    } catch (_) { /* fall through */ }
-    return memoryCollapse.get(key) === true;
-  }
-  function collapseStorageSet(key, value) {
-    const v = value ? '1' : '0';
-    try { window.localStorage.setItem(key, v); return; }
-    catch (_) { /* fall through to in-memory */ }
-    memoryCollapse.set(key, !!value);
-  }
   function sideCollapseKey(side)            { return `prime.collapse.ad-side.${side}`; }
   function categoryCollapseKey(side, code)  { return `prime.collapse.ad-cat.${side}.${code}`; }
-  function isSideCollapsed(side)            { return collapseStorageGet(sideCollapseKey(side)); }
-  function isCategoryCollapsed(side, code)  { return collapseStorageGet(categoryCollapseKey(side, code)); }
+  function isSideCollapsed(side)            { return getCollapsed(sideCollapseKey(side)); }
+  function isCategoryCollapsed(side, code)  { return getCollapsed(categoryCollapseKey(side, code)); }
 
   // ─── RULESET LOOKUPS ───
 
@@ -275,14 +257,12 @@ export function createAdvantagesSection(ctx) {
   }
 
   function toggleSide(side) {
-    const key = sideCollapseKey(side);
-    collapseStorageSet(key, !collapseStorageGet(key));
+    toggleCollapsed(sideCollapseKey(side));
     renderSide(side);
   }
 
   function toggleCategory(side, categoryCode) {
-    const key = categoryCollapseKey(side, categoryCode);
-    collapseStorageSet(key, !collapseStorageGet(key));
+    toggleCollapsed(categoryCollapseKey(side, categoryCode));
     renderSide(side);
   }
 
