@@ -234,9 +234,32 @@ export function attachCollapsible(header, bodies, key, opts) {
     header.title = collapsed ? 'Expand section' : 'Collapse section';
     b.bodies.forEach(el => {
       if (!el) return;
-      // Preserve any non-'none' inline display value by blanking instead
-      // of forcing 'block' — lets CSS defaults take over when expanded.
-      el.style.display = collapsed ? 'none' : '';
+      if (collapsed) {
+        // About to hide. Stash whatever inline display value was set
+        // by OTHER code paths (edit-mode show/hide handlers, etc.) so
+        // we can restore it when expanding. If no prior inline value
+        // existed, stash an empty string — that's "use CSS default".
+        //
+        // Only stash the first time we collapse; subsequent collapses
+        // without an intervening expand would overwrite the real
+        // original with our own 'none'.
+        if (el.dataset.ccDisplayStash === undefined) {
+          el.dataset.ccDisplayStash = el.style.display || '';
+        }
+        el.style.display = 'none';
+      } else {
+        // Expanding. Restore the stashed value if we have one; if the
+        // element was never collapsed by us, leave its display alone
+        // entirely. This is crucial: without this guard, calling
+        // apply() during a re-render would clobber display values set
+        // by imperative handlers like doneObligations / editDisorders
+        // that toggle view-mode vs edit-mode by hand, causing both
+        // panels to show simultaneously or the wrong one to show.
+        if (el.dataset.ccDisplayStash !== undefined) {
+          el.style.display = el.dataset.ccDisplayStash;
+          delete el.dataset.ccDisplayStash;
+        }
+      }
     });
   }
   binding.apply = apply;
