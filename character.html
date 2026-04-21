@@ -3012,6 +3012,48 @@
     .inv-entry-info-notes { margin-top: 6px; padding-top: 6px; border-top: 1px solid #1a1a1a; color: #999; white-space: pre-wrap; }
     .inv-entry-info-label { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #777; margin-right: 4px; }
 
+    /* Weapon readout block — shown on inventory entries that have a
+       snapshotted weapon. Sits below the info panel and visually
+       distinct from it (a subtle accent border and title). Layout is
+       two-column so Attack/Damage read side by side on wider sheets
+       and stack on mobile. */
+    .inv-weapon { background: #0c0c0c; border: 1px solid #1e1e1e; border-top: none; padding: 10px 12px; font-size: 12px; color: #c8c8c8; }
+    .inv-weapon-title { display: flex; align-items: center; gap: 8px; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #d4a574; margin-bottom: 8px; }
+    .inv-weapon-kind-pill { background: #2a2016; color: #d4a574; font-size: 9px; font-weight: 600; letter-spacing: .08em; padding: 2px 6px; border-radius: 3px; }
+    .inv-weapon-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+    @media (max-width: 720px) { .inv-weapon-grid { grid-template-columns: 1fr; } }
+    .inv-weapon-roll { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 3px; padding: 7px 10px; }
+    .inv-weapon-roll-label { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #888; margin-bottom: 3px; }
+    .inv-weapon-roll-main { font-family: 'Courier New', monospace; font-size: 14px; font-weight: 600; color: #e8e8e8; margin-bottom: 3px; }
+    .inv-weapon-roll-pool { color: #a8c4de; }
+    .inv-weapon-roll-flat { color: #d4a574; }
+    .inv-weapon-roll-slots { font-size: 10px; color: #888; line-height: 1.5; }
+    .inv-weapon-roll-slot { display: inline-block; margin-right: 8px; }
+    .inv-weapon-roll-error { font-size: 10px; color: #cc6666; font-style: italic; }
+    .inv-weapon-roll-send { background: #1a1a1a; border: 1px solid #2a2a2a; color: #aaa; font-size: 10px; font-weight: 500; padding: 3px 8px; border-radius: 3px; cursor: pointer; margin-top: 5px; }
+    .inv-weapon-roll-send:hover { background: #2a2a2a; color: #d4a574; border-color: #3a3a2a; }
+
+    /* Ranged-specific: AMMO tracker + ROF line. AMMO has +/- buttons
+       mirroring the quantity-tick pattern used elsewhere. */
+    .inv-weapon-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 6px; font-size: 11px; color: #aaa; }
+    .inv-weapon-chip { display: inline-flex; align-items: center; gap: 4px; background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 3px; padding: 2px 8px; }
+    .inv-weapon-chip-label { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #777; }
+    .inv-weapon-chip-val { color: #e0e0e0; font-weight: 500; }
+    .inv-weapon-ammo { display: inline-flex; align-items: center; gap: 3px; background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 3px; padding: 2px 4px; }
+    .inv-weapon-ammo-btn { background: #151515; border: 1px solid #2a2a2a; color: #aaa; font-size: 11px; font-weight: 600; width: 18px; height: 18px; border-radius: 2px; cursor: pointer; padding: 0; line-height: 1; }
+    .inv-weapon-ammo-btn:hover:not(:disabled) { background: #2a2a2a; color: #d4a574; }
+    .inv-weapon-ammo-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .inv-weapon-ammo-val { font-size: 12px; font-weight: 600; color: #e8e8e8; min-width: 28px; text-align: center; }
+    .inv-weapon-ammo-sep { color: #555; font-size: 11px; }
+    .inv-weapon-ammo-max { color: #888; font-size: 11px; }
+
+    .inv-weapon-ranges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+    .inv-weapon-range { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 3px; padding: 2px 8px; font-size: 10px; color: #bbb; }
+    .inv-weapon-range-label { color: #777; font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin-right: 3px; }
+
+    .inv-weapon-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .inv-weapon-tag { background: #1a1515; border: 1px solid #3a2a1a; color: #d4a574; font-size: 10px; padding: 2px 8px; border-radius: 3px; cursor: help; }
+
     /* Custom-def form inside the modal — same field shape as edit-ruleset */
     .inv-custom-form .inv-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
     .inv-custom-form .inv-field label { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; }
@@ -4358,6 +4400,10 @@
     invCatMgrSaveNew:        ()                   => inventory.catMgrSaveNew(),
     invTickQty:              (id, delta)          => inventory.tickQty(id, delta),
     invRemoveEntry:          (id)                 => inventory.removeEntry(id),
+    // Weapon readout — AMMO tracker buttons and "Send to Roll Calc"
+    invWeaponAdjustAmmo:     (id, delta)          => inventory.weaponAdjustAmmo(id, delta),
+    invWeaponReloadAmmo:     (id)                 => inventory.weaponReloadAmmo(id),
+    invWeaponToRollCalc:     (id, which)          => inventory.weaponToRollCalc(id, which),
     // Carry cards (CAP / ENC / LIFT) + group-level encumbrance toggle
     invToggleCarryCard:      (key)                => inventory.toggleCarryCard(key),
     invAddCapMod:            ()                   => inventory.addCapMod(),
