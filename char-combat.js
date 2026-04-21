@@ -2641,7 +2641,7 @@ export function createCombatSection(ctx) {
     toggleStressPanel, addStressMod, updateStressMod, deleteStressMod,
     // Other modifiers (free-form ±% entries like Exposure, Encumbrance)
     addOtherMod, updateOtherMod, deleteOtherMod,
-    // Conditions (Physical / Mental tracker on Overview tab)
+    // Afflictions tile (Conditions / Circumstances tracker on Overview tab)
     condOpenAdd:       conditionsSection.openAdd,
     condStartCustom:   conditionsSection.startCustom,
     condPickPreset:    conditionsSection.pickPreset,
