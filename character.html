@@ -4411,6 +4411,19 @@
     invCatMgrCancelNew:      ()                   => inventory.catMgrCancelNew(),
     invCatMgrNewDraft:       (field, value)       => inventory.catMgrNewDraft(field, value),
     invCatMgrSaveNew:        ()                   => inventory.catMgrSaveNew(),
+    // Personal catalogue — weapon range-bands + tag toggles. Edit-form
+    // variants take a def id; new-form variants operate on the
+    // singleton newDraft. Wired here so the catalogue manager modal's
+    // dynamically-rendered forms can reach these handlers without
+    // each form needing a custom closure.
+    invCatMgrWeaponAddRange:       (id)                     => inventory.catMgrWeaponAddRange(id),
+    invCatMgrWeaponRemoveRange:    (id, bi)                 => inventory.catMgrWeaponRemoveRange(id, bi),
+    invCatMgrWeaponUpdateRange:    (id, bi, which, v)       => inventory.catMgrWeaponUpdateRange(id, bi, which, v),
+    invCatMgrWeaponToggleTag:      (id, tagId, on)          => inventory.catMgrWeaponToggleTag(id, tagId, on),
+    invCatMgrNewWeaponAddRange:    ()                       => inventory.catMgrNewWeaponAddRange(),
+    invCatMgrNewWeaponRemoveRange: (bi)                     => inventory.catMgrNewWeaponRemoveRange(bi),
+    invCatMgrNewWeaponUpdateRange: (bi, which, v)           => inventory.catMgrNewWeaponUpdateRange(bi, which, v),
+    invCatMgrNewWeaponToggleTag:   (tagId, on)              => inventory.catMgrNewWeaponToggleTag(tagId, on),
     invTickQty:              (id, delta)          => inventory.tickQty(id, delta),
     invRemoveEntry:          (id)                 => inventory.removeEntry(id),
     // Weapon readout — AMMO tracker buttons and "Send to Roll Calc"
