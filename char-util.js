@@ -157,6 +157,21 @@ export function toggleCollapsed(key) {
   return next;
 }
 
+// Force a collapsible section open. If currently collapsed, flips the
+// stored flag to expanded. Returns true if a change was made, false
+// if already expanded. Caller should typically follow up with whatever
+// re-render or refresh their collapse system uses to repaint the UI
+// (for the Overview tab: window.refreshOverviewCollapse). Useful for
+// edit-mode handlers that want to guarantee their panel is visible
+// before swapping view/edit displays — otherwise the user can click
+// Edit on a collapsed section, the Edit button hides, but the edit
+// form is buried inside the collapsed body with no visible way out.
+export function ensureExpanded(key) {
+  if (!getCollapsed(key)) return false;
+  setCollapsed(key, false);
+  return true;
+}
+
 // Wire up a generic collapsible section.
 //
 // Prepends a ▸/▾ caret to the header, adds a click handler that toggles
