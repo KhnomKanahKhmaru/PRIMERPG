@@ -196,6 +196,75 @@
     .moral-tag .x { cursor: pointer; color: #555; font-size: 14px; line-height: 1; }
     .moral-tag .x:hover { color: #c84b4b; }
 
+    /* Condition preset editor — list of authoring rows, one per preset.
+       Each row has name (compact), description (flexible), system
+       (flexible) inputs plus a remove button. Two textareas stack below
+       the name row so longer content isn't cramped. */
+    .cond-rs-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+    .cond-rs-row {
+      background: #111;
+      border: 1px solid #1a1a1a;
+      border-radius: 4px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .cond-rs-row-head { display: flex; gap: 8px; align-items: center; }
+    .cond-rs-row-head input {
+      flex: 1;
+      background: #0a0a0a;
+      border: 1px solid #222;
+      color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 5px 8px;
+      border-radius: 3px;
+      outline: none;
+    }
+    .cond-rs-row-head input:focus { border-color: #444; }
+    .cond-rs-row-fields { display: flex; gap: 8px; }
+    .cond-rs-row-field { display: flex; flex-direction: column; gap: 3px; flex: 1; }
+    .cond-rs-row-field label {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #666;
+    }
+    .cond-rs-row textarea {
+      background: #0a0a0a;
+      border: 1px solid #222;
+      color: #ccc;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 12px;
+      padding: 5px 8px;
+      border-radius: 3px;
+      outline: none;
+      resize: vertical;
+      min-height: 50px;
+    }
+    .cond-rs-row textarea:focus { border-color: #444; }
+    .cond-rs-del {
+      flex-shrink: 0;
+      background: transparent;
+      border: 1px solid #2a1a1a;
+      color: #a06060;
+      font-size: 14px;
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      cursor: pointer;
+      border-radius: 3px;
+      line-height: 1;
+    }
+    .cond-rs-del:hover {
+      background: #2a1212;
+      border-color: #4a2828;
+      color: #d07070;
+    }
+
     .add-row { display: flex; gap: 6px; margin-bottom: 10px; }
     .add-row input {
       flex: 1; background: #111; border: 1px solid #222; color: #e0e0e0;
@@ -485,6 +554,32 @@
           <input type="text" id="new-moral" placeholder="Add a moral..." onkeydown="if(event.key==='Enter')addMoral()">
           <button class="btn small" onclick="addMoral()">+ Add</button>
           <button class="btn small" onclick="addWildcardMoral()" title="Add a Custom wildcard slot">+ Wildcard</button>
+        </div>
+      </div>
+
+      <!-- CONDITIONS (Physical / Mental preset library) -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Conditions</div>
+        </div>
+        <div class="section-desc">Preset traumas, disorders, diseases, and ailments for the Physical and Mental trackers. Characters pick from these in their Conditions tile, or promote their own custom entries to their Personal Catalogue.</div>
+        <div class="sub-tabs" style="margin-bottom: 12px;">
+          <div class="sub-tab active" id="sub-tab-cond-physical" onclick="switchCondTab('physical')">Physical</div>
+          <div class="sub-tab"        id="sub-tab-cond-mental"   onclick="switchCondTab('mental')">Mental</div>
+        </div>
+        <div id="cond-panel-physical" class="cond-panel">
+          <div class="cond-rs-list" id="cond-rs-list-physical"></div>
+          <div class="add-row">
+            <input type="text" id="new-cond-physical-name" placeholder="Name (e.g. Broken Arm)" style="max-width:180px">
+            <button class="btn small" onclick="addRulesetCondition('physical')">+ Add</button>
+          </div>
+        </div>
+        <div id="cond-panel-mental" class="cond-panel" style="display:none;">
+          <div class="cond-rs-list" id="cond-rs-list-mental"></div>
+          <div class="add-row">
+            <input type="text" id="new-cond-mental-name" placeholder="Name (e.g. PTSD)" style="max-width:180px">
+            <button class="btn small" onclick="addRulesetCondition('mental')">+ Add</button>
+          </div>
         </div>
       </div>
 
@@ -923,6 +1018,8 @@
     renderSkillXpTables();
     renderPrimarySkills();
     renderMorals();
+    renderConditions('physical');
+    renderConditions('mental');
 
     // A/D
     renderTierTable('adv');
@@ -1265,6 +1362,98 @@
     renderMorals();
   }
   window.removeMoral = function(i) { state.morals.splice(i, 1); renderMorals(); }
+
+  // ── CONDITIONS PRESET LIBRARY ──
+  // Two sub-tabs (physical / mental), each with a list of {id, name,
+  // description, system} entries. The id is generated on creation and
+  // never changed, so characters with a linked defId keep working even
+  // after a rename.
+  //
+  // Condition sub-tab state — tracks which of the two lists is currently
+  // visible. Doesn't persist; the Physical tab is always active on load.
+  let condActiveTab = 'physical';
+
+  window.switchCondTab = function(cat) {
+    if (cat !== 'physical' && cat !== 'mental') return;
+    condActiveTab = cat;
+    ['physical', 'mental'].forEach(c => {
+      const tab   = document.getElementById('sub-tab-cond-' + c);
+      const panel = document.getElementById('cond-panel-' + c);
+      if (tab)   tab.classList.toggle('active', c === cat);
+      if (panel) panel.style.display = (c === cat) ? '' : 'none';
+    });
+  };
+
+  function genCondId() {
+    return 'cond_' + Math.random().toString(36).slice(2, 10);
+  }
+
+  function renderConditions(cat) {
+    if (!state.conditions) state.conditions = { physical: [], mental: [] };
+    if (!Array.isArray(state.conditions[cat])) state.conditions[cat] = [];
+    const list = document.getElementById('cond-rs-list-' + cat);
+    if (!list) return;
+    const entries = state.conditions[cat];
+    if (entries.length === 0) {
+      list.innerHTML = '<div class="empty">No ' + cat + ' conditions defined yet. Add one below to start building the library.</div>';
+      return;
+    }
+    const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    list.innerHTML = entries.map((c, i) => `
+      <div class="cond-rs-row">
+        <div class="cond-rs-row-head">
+          <input type="text" placeholder="Name (e.g. Broken Arm)"
+                 value="${esc(c.name || '')}"
+                 oninput="updateRulesetCondition('${cat}', ${i}, 'name', this.value)">
+          <button class="cond-rs-del" onclick="removeRulesetCondition('${cat}', ${i})" title="Remove">×</button>
+        </div>
+        <div class="cond-rs-row-fields">
+          <div class="cond-rs-row-field">
+            <label>Description</label>
+            <textarea placeholder="Flavor / narrative details."
+                      oninput="updateRulesetCondition('${cat}', ${i}, 'description', this.value)">${esc(c.description || '')}</textarea>
+          </div>
+          <div class="cond-rs-row-field">
+            <label>System</label>
+            <textarea placeholder="Mechanical effects. e.g. −2d to physical rolls using the arm."
+                      oninput="updateRulesetCondition('${cat}', ${i}, 'system', this.value)">${esc(c.system || '')}</textarea>
+          </div>
+        </div>
+      </div>`).join('');
+  }
+
+  window.addRulesetCondition = function(cat) {
+    if (cat !== 'physical' && cat !== 'mental') return;
+    const input = document.getElementById('new-cond-' + cat + '-name');
+    if (!input) return;
+    const name = (input.value || '').trim();
+    if (!name) return;
+    if (!state.conditions) state.conditions = { physical: [], mental: [] };
+    if (!Array.isArray(state.conditions[cat])) state.conditions[cat] = [];
+    state.conditions[cat].push({
+      id: genCondId(),
+      name,
+      description: '',
+      system: ''
+    });
+    input.value = '';
+    renderConditions(cat);
+  };
+
+  window.updateRulesetCondition = function(cat, i, field, value) {
+    if (!state.conditions || !Array.isArray(state.conditions[cat])) return;
+    const entry = state.conditions[cat][i];
+    if (!entry) return;
+    if (field === 'name' || field === 'description' || field === 'system') {
+      entry[field] = value;
+    }
+  };
+
+  window.removeRulesetCondition = function(cat, i) {
+    if (!state.conditions || !Array.isArray(state.conditions[cat])) return;
+    state.conditions[cat].splice(i, 1);
+    renderConditions(cat);
+  };
 
   // ── A/D: TIER TABLE ──
   // side = 'adv' or 'dis'. The state key is advantageTiers / disadvantageTiers.
@@ -1904,6 +2093,9 @@
     state.defaultPowerLevel = src.defaultPowerLevel;
     state.primarySkills = JSON.parse(JSON.stringify(src.primarySkills));
     state.morals = src.morals.slice();
+    // Conditions preset library — the normalizer guarantees shape
+    // (physical + mental arrays), so a deep clone is safe here.
+    state.conditions = JSON.parse(JSON.stringify(src.conditions || { physical: [], mental: [] }));
     // A/D
     state.advantageTiers    = JSON.parse(JSON.stringify(src.advantageTiers));
     state.disadvantageTiers = JSON.parse(JSON.stringify(src.disadvantageTiers));
@@ -1965,6 +2157,7 @@
       defaultPowerLevel: state.defaultPowerLevel,
       primarySkills: state.primarySkills,
       morals: state.morals,
+      conditions: state.conditions,
       // A/D
       advantageTiers:    state.advantageTiers,
       disadvantageTiers: state.disadvantageTiers,
