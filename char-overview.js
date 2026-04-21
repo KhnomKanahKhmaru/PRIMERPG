@@ -390,10 +390,16 @@ export function createOverviewSection(ctx) {
   // skipped entirely and the markup stays unchanged from its pre-
   // collapse form. Defaults to false so the existing Combat-tab call
   // site (renderPenaltyTile from combat.js) doesn't need to change.
+  //
+  // opts.slug: override the storage slug. Defaults to 'penalty', which
+  // produces storage key `prime.collapse.overview-tile.penalty`. The
+  // Combat tab passes 'penalty-combat' so its copy collapses
+  // independently of the Overview copy.
   function renderPenaltyTile(pain, stress, penalty, otherMods, canEdit, opts) {
     if (!penalty) return '';
     opts = opts || {};
     const collapsible = opts.collapsible === true;
+    const slug = opts.slug || 'penalty';
     const pct = penalty.percent;
     let pctColor;
     if (pct <= 0)      pctColor = '#666';
@@ -481,7 +487,7 @@ export function createOverviewSection(ctx) {
       ${othersEditor}`;
 
     if (collapsible) {
-      return wrapCollapsibleTile('penalty', 'state-tile-wide state-tile-penalty', headInner, bodyHtml);
+      return wrapCollapsibleTile(slug, 'state-tile-wide state-tile-penalty', headInner, bodyHtml);
     }
     // Non-collapsible (inline on Combat tab) — keep the original markup
     // shape so combat.js's repaint logic and any CSS selectors that
