@@ -82,6 +82,24 @@ export function createConditionsSection(ctx) {
     return c.conditions;
   }
 
+  // Per-character catalogue of custom-authored condition definitions.
+  // Parallel structure to charData.inventory.customDefs — lets the
+  // player build up a reusable list of conditions specific to this
+  // character (e.g. a unique curse, a recurring illness) without
+  // polluting the ruleset's shared preset library.
+  //
+  // Shape: { physical: [{id,name,description,system}], mental: [...] }
+  function ensureConditionDefs() {
+    const c = getCharData();
+    if (!c) return null;
+    if (!c.conditionDefs || typeof c.conditionDefs !== 'object') {
+      c.conditionDefs = { physical: [], mental: [] };
+    }
+    if (!Array.isArray(c.conditionDefs.physical)) c.conditionDefs.physical = [];
+    if (!Array.isArray(c.conditionDefs.mental))   c.conditionDefs.mental   = [];
+    return c.conditionDefs;
+  }
+
   function genId() {
     return 'cond_' + Math.random().toString(36).slice(2, 10);
   }
@@ -97,9 +115,9 @@ export function createConditionsSection(ctx) {
   }
 
   // Pull the display data for an entry. Snapshot-first (entries are the
-  // source of truth); if snapshot is missing we fall back to the defId
-  // preset (compatibility path for old entries that predate the snapshot
-  // migration, should any exist).
+  // source of truth); if snapshot is missing we fall back to the defId —
+  // which might live in either the ruleset preset library OR the
+  // per-character personal catalogue. Both are searched.
   function entryDisplay(entry) {
     if (!entry) return { name: '', description: '', system: '' };
     if (entry.snapshot && typeof entry.snapshot === 'object') {
@@ -110,18 +128,36 @@ export function createConditionsSection(ctx) {
       };
     }
     if (entry.defId) {
-      const ruleset = getRuleset();
-      const presets = (ruleset && ruleset.conditions) || {};
-      for (const cat of ['physical', 'mental']) {
-        const def = (presets[cat] || []).find(d => d && d.id === entry.defId);
-        if (def) return {
-          name: def.name || '',
-          description: def.description || '',
-          system: def.system || ''
-        };
-      }
+      const def = findDefById(entry.defId);
+      if (def) return {
+        name:        def.name        || '',
+        description: def.description || '',
+        system:      def.system      || ''
+      };
     }
     return { name: '', description: '', system: '' };
+  }
+
+  // Search both preset pools (ruleset + personal catalogue) for a def.
+  // Returns the def object (with an added `source` discriminator) or
+  // null if nothing matches. The source is used by the picker to label
+  // where a preset came from.
+  function findDefById(defId) {
+    if (!defId) return null;
+    const ruleset = getRuleset();
+    const rulesetConds = (ruleset && ruleset.conditions) || {};
+    for (const cat of ['physical', 'mental']) {
+      const rsHit = (rulesetConds[cat] || []).find(d => d && d.id === defId);
+      if (rsHit) return { ...rsHit, source: 'ruleset', category: cat };
+    }
+    const defs = ensureConditionDefs();
+    if (defs) {
+      for (const cat of ['physical', 'mental']) {
+        const catHit = defs[cat].find(d => d && d.id === defId);
+        if (catHit) return { ...catHit, source: 'catalogue', category: cat };
+      }
+    }
+    return null;
   }
 
   // ─── SAVE ───
@@ -129,7 +165,13 @@ export function createConditionsSection(ctx) {
   async function save() {
     const c = getCharData();
     if (!c) return;
-    await saveCharacter(getCharId(), { conditions: c.conditions });
+    // Persist both the entry list and the personal catalogue together —
+    // they're conceptually linked (entries can reference catalogue defs)
+    // so a split save could leave the sheet briefly inconsistent.
+    await saveCharacter(getCharId(), {
+      conditions:    c.conditions,
+      conditionDefs: c.conditionDefs || { physical: [], mental: [] }
+    });
   }
 
   // ─── PUBLIC RENDER ───
@@ -255,32 +297,31 @@ export function createConditionsSection(ctx) {
     const { category, view } = activeModal;
     const catLabel = category === 'physical' ? 'Physical' : 'Mental';
     const ruleset = getRuleset();
-    const presets = ((ruleset && ruleset.conditions) || {})[category] || [];
+    const rulesetPresets = ((ruleset && ruleset.conditions) || {})[category] || [];
+    const catalogue = (ensureConditionDefs() || {})[category] || [];
 
     let body;
     if (view === 'custom') {
       body = renderCustomForm(activeModal.draft);
     } else {
-      // Picker view — list of presets + a "+ Custom" option at the bottom.
-      let list;
-      if (presets.length === 0) {
-        list = `<div class="cond-modal-empty">
-          No ${catLabel.toLowerCase()} presets in this ruleset yet.
-          Click <b>+ Custom</b> below to create a one-off entry for this character.
+      // Picker view — two sections (Ruleset, Catalogue) followed by a
+      // custom fallback button. Hide each section header when its list
+      // is empty so the picker stays compact for sparse setups.
+      let sections = '';
+      if (rulesetPresets.length > 0) {
+        sections += renderPickerSection('Ruleset Presets', 'ruleset', rulesetPresets);
+      }
+      if (catalogue.length > 0) {
+        sections += renderPickerSection('Personal Catalogue', 'catalogue', catalogue);
+      }
+      if (!sections) {
+        sections = `<div class="cond-modal-empty">
+          No ${catLabel.toLowerCase()} presets yet — neither the ruleset nor this character's catalogue has any.
+          Click <b>+ Custom</b> below to create a one-off entry.
         </div>`;
-      } else {
-        list = '<div class="cond-picker-list">';
-        presets.forEach(p => {
-          const blurb = p.description || p.system || '';
-          list += `<button type="button" class="cond-picker-row" onclick="condPickPreset('${escapeHtml(p.id)}')" title="Add this preset">
-            <span class="cond-picker-name">${escapeHtml(p.name || '(unnamed)')}</span>
-            ${blurb ? `<span class="cond-picker-blurb">${escapeHtml(blurb.length > 100 ? blurb.slice(0, 97) + '…' : blurb)}</span>` : ''}
-          </button>`;
-        });
-        list += '</div>';
       }
       body = `
-        ${list}
+        ${sections}
         <div class="cond-modal-foot">
           <button type="button" class="cond-modal-custom-btn" onclick="condStartCustom()">+ Custom entry</button>
         </div>`;
@@ -298,6 +339,27 @@ export function createConditionsSection(ctx) {
         <div class="cond-modal-body">${body}</div>
       </div>
     </div>`;
+  }
+
+  // One section within the picker — a labelled group of preset rows.
+  // Each row dispatches to pickPreset with the def id; the resolver
+  // finds it in whichever pool it lives.
+  function renderPickerSection(label, source, presets) {
+    let html = `<div class="cond-picker-section">
+      <div class="cond-picker-section-head">
+        <span class="cond-picker-section-label">${escapeHtml(label)}</span>
+        <span class="cond-picker-section-count">${presets.length}</span>
+      </div>
+      <div class="cond-picker-list">`;
+    presets.forEach(p => {
+      const blurb = p.description || p.system || '';
+      html += `<button type="button" class="cond-picker-row" onclick="condPickPreset('${escapeHtml(p.id)}')" title="Add this preset">
+        <span class="cond-picker-name">${escapeHtml(p.name || '(unnamed)')}</span>
+        ${blurb ? `<span class="cond-picker-blurb">${escapeHtml(blurb.length > 100 ? blurb.slice(0, 97) + '…' : blurb)}</span>` : ''}
+      </button>`;
+    });
+    html += '</div></div>';
+    return html;
   }
 
   function renderEditModal() {
@@ -364,7 +426,14 @@ export function createConditionsSection(ctx) {
       `<option value="${k}"${draft.scale === k ? ' selected' : ''}>${SCALE_LABELS[k]}</option>`
     ).join('');
     const presetBadge = isPreset
-      ? `<div class="cond-preset-note">${hasCustomDivergence ? '✎ Edited from preset. Saving keeps this instance detached from the original preset.' : '🔗 Linked to ruleset preset. Editing fields below will detach this instance.'}</div>`
+      ? `<div class="cond-preset-note">${hasCustomDivergence ? '✎ Edited from preset. Saving keeps this instance detached from the original preset.' : '🔗 Linked to a preset. Editing fields below will detach this instance.'}</div>`
+      : '';
+    // Promote button — only shown for pure custom entries (defId === null).
+    // Saving it to the catalogue creates a new reusable def and
+    // re-links this entry to point at it, so editing the catalogue
+    // later won't update already-placed entries (snapshot-first).
+    const promoteBtn = !isPreset
+      ? `<button type="button" class="cond-modal-promote" onclick="condPromote()" title="Save this custom entry to your Personal Catalogue so you can reuse it later.">★ Save to Catalogue</button>`
       : '';
     return `
       <div class="cond-form">
@@ -393,6 +462,8 @@ export function createConditionsSection(ctx) {
           <textarea rows="2" oninput="condDraft('notes', this.value)">${escapeHtml(draft.notes || '')}</textarea>
         </div>
         <div class="cond-form-foot">
+          ${promoteBtn}
+          <div class="cond-form-foot-spacer"></div>
           <button type="button" class="cond-modal-cancel" onclick="condCloseModal()">Cancel</button>
           <button type="button" class="cond-modal-save" onclick="condSaveEdit()">Save</button>
         </div>
@@ -428,13 +499,17 @@ export function createConditionsSection(ctx) {
     requestHostRerender();
   }
 
-  // Pick a preset. Creates a snapshot-linked entry and commits.
+  // Pick a preset. Creates a snapshot-linked entry and commits. The
+  // preset can live in the ruleset or in the character's personal
+  // catalogue — both are searched by findDefById.
   async function pickPreset(defId) {
     if (!activeModal || activeModal.mode !== 'add') return;
-    const ruleset = getRuleset();
-    const presets = ((ruleset && ruleset.conditions) || {})[activeModal.category] || [];
-    const def = presets.find(d => d && d.id === defId);
+    const def = findDefById(defId);
     if (!def) return;
+    // Only allow picking a def from the category we're adding into —
+    // prevents cross-category contamination if a def id happened to
+    // exist in both lists.
+    if (def.category !== activeModal.category) return;
     const conds = ensureConditions();
     if (!conds) return;
     conds[activeModal.category].push({
@@ -530,6 +605,51 @@ export function createConditionsSection(ctx) {
     requestHostRerender();
   }
 
+  // Promote the current edit-modal's entry to the personal catalogue.
+  // Only valid for custom entries (defId === null) — preset-linked
+  // entries don't need promoting, they already have a def somewhere.
+  //
+  // Saves the current draft values into a new catalogue def, then
+  // re-links the entry's defId to the new def. Stays in edit mode so
+  // the player can see the confirmation banner flip from "custom" to
+  // "preset-linked" before closing.
+  async function promote() {
+    if (!activeModal || activeModal.mode !== 'edit') return;
+    const found = findEntry(activeModal.entryId);
+    if (!found) return;
+    if (found.entry.defId) return;   // already preset-linked, shouldn't happen
+    const d = activeModal.draft;
+    const name = (d.name || '').trim();
+    if (!name) return;
+    const defs = ensureConditionDefs();
+    if (!defs) return;
+    // Create a new def in the SAME category the entry currently lives
+    // in. A later swapCategory on the entry won't move its catalogue
+    // def — that's intentional (the def is about the concept, the
+    // entry is about this character's state).
+    const newDef = {
+      id: genId(),
+      name,
+      description: d.description || '',
+      system:      d.system      || ''
+    };
+    defs[found.category].push(newDef);
+    // Re-link the entry and update its snapshot so both sides agree.
+    found.entry.defId = newDef.id;
+    found.entry.snapshot = {
+      name,
+      description: newDef.description,
+      system:      newDef.system
+    };
+    // Update draft's source-* fields so divergence detection correctly
+    // reports "linked, not diverged" now.
+    d.sourceName        = name;
+    d.sourceDescription = newDef.description;
+    d.sourceSystem      = newDef.system;
+    await save();
+    requestHostRerender();
+  }
+
   // Draft field update — mutate activeModal.draft without re-rendering
   // (onkeystroke focus preservation, same reason we switched other mods
   // to onchange).
@@ -600,7 +720,7 @@ export function createConditionsSection(ctx) {
     renderModal,
     toggleEntry,
     openAdd, startCustom, pickPreset, saveCustom,
-    openEdit, saveEdit,
+    openEdit, saveEdit, promote,
     draft, closeModal,
     swapCategory, remove
   };
