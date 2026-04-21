@@ -1,16 +1,24 @@
 // char-conditions.js
 //
-// Conditions section — Physical / Mental ailments, traumas, disorders,
-// diseases, whatever ongoing state needs tracking. Lives on the Overview
-// tab in the State of Things grid, directly under the Penalty tile.
+// Conditions / Circumstances section — traumas, diseases, disorders,
+// ailments ("Conditions") and external / situational effects like
+// weather, lighting, being hunted ("Circumstances"). Lives on the
+// Overview tab in the State of Things grid, directly under the
+// Penalty tile.
 //
 // Data model (mirrors inventory's snapshot-first pattern so promoting
 // a one-off to the personal catalogue is cheap):
 //
 //   charData.conditions = {
-//     physical: [entry, ...],
-//     mental:   [entry, ...]
+//     conditions:    [entry, ...],
+//     circumstances: [entry, ...]
 //   }
+//
+// NOTE on keys: the outer container is still called `conditions` (it
+// holds all entries regardless of category); the two sub-keys are
+// `conditions` (character-state) and `circumstances` (external). Keys
+// used to be `physical` and `mental` — a migration shim in
+// ensureConditions() transparently upgrades old data on first read.
 //
 //   entry = {
 //     id:        'cond_<rand>',     // per-instance unique id
@@ -52,6 +60,36 @@ const SCALE_LABELS = {
   mythical:   'Mythical'
 };
 
+// Category keys — the two buckets entries live in. Both user-facing
+// labels and internal data keys use these names. Legacy data (from
+// before the rename) used 'physical' and 'mental'; the migration
+// shim in migrateCategoryKeys() upgrades such data on first read.
+const CATEGORIES = ['conditions', 'circumstances'];
+const CATEGORY_LABELS = {
+  conditions:    'Conditions',
+  circumstances: 'Circumstances'
+};
+// Maps legacy → current so we can migrate without losing data.
+const LEGACY_CATEGORY_MAP = { physical: 'conditions', mental: 'circumstances' };
+
+// Convert an object keyed by old category names into one keyed by
+// new names. Preserves any arrays already stored under new keys
+// (takes precedence if both exist — shouldn't happen, but safe).
+function migrateCategoryKeys(obj) {
+  if (!obj || typeof obj !== 'object') return { conditions: [], circumstances: [] };
+  const out = { conditions: [], circumstances: [] };
+  // Pull from new keys first so they win any conflict.
+  if (Array.isArray(obj.conditions))    out.conditions    = obj.conditions.slice();
+  if (Array.isArray(obj.circumstances)) out.circumstances = obj.circumstances.slice();
+  // Merge in legacy keys for anything that wasn't already present.
+  for (const [legacy, current] of Object.entries(LEGACY_CATEGORY_MAP)) {
+    if (Array.isArray(obj[legacy]) && out[current].length === 0) {
+      out[current] = obj[legacy].slice();
+    }
+  }
+  return out;
+}
+
 export function createConditionsSection(ctx) {
   const { getCharId, getCharData, getCanEdit, getRuleset } = ctx;
   const escapeHtml = ctx.escapeHtml || defaultEscapeHtml;
@@ -65,8 +103,8 @@ export function createConditionsSection(ctx) {
   // flow (picking from presets / creating custom) or the "edit" flow.
   //
   // Shape:
-  //   { mode: 'add',  category: 'physical'|'mental', view: 'picker'|'custom', draft }
-  //   { mode: 'edit', category: 'physical'|'mental', entryId, draft }
+  //   { mode: 'add',  category: 'conditions'|'circumstances', view: 'picker'|'custom', draft }
+  //   { mode: 'edit', category: 'conditions'|'circumstances', entryId, draft }
   let activeModal = null;
 
   // ─── HELPERS ───
@@ -74,11 +112,25 @@ export function createConditionsSection(ctx) {
   function ensureConditions() {
     const c = getCharData();
     if (!c) return null;
+    // Migrate legacy { physical, mental } → { conditions, circumstances }
+    // on first read. The migrated object is written back onto charData
+    // so subsequent reads skip the migration path and the next save
+    // persists the new keys. Legacy keys are cleared to avoid double
+    // bookkeeping on the next Firestore save.
     if (!c.conditions || typeof c.conditions !== 'object') {
-      c.conditions = { physical: [], mental: [] };
+      c.conditions = { conditions: [], circumstances: [] };
+    } else if (Array.isArray(c.conditions.physical) || Array.isArray(c.conditions.mental)) {
+      c.conditions = migrateCategoryKeys(c.conditions);
     }
-    if (!Array.isArray(c.conditions.physical)) c.conditions.physical = [];
-    if (!Array.isArray(c.conditions.mental))   c.conditions.mental   = [];
+    if (!Array.isArray(c.conditions.conditions))    c.conditions.conditions    = [];
+    if (!Array.isArray(c.conditions.circumstances)) c.conditions.circumstances = [];
+    // Also migrate the personal catalogue in the same pass. The two
+    // are always loaded and saved together, so migrating them in
+    // lockstep prevents a scenario where a player loads a legacy
+    // sheet, doesn't open the picker, then saves — which would ship
+    // migrated `conditions` but legacy `conditionDefs` back to
+    // Firestore and create a split-schema record.
+    ensureConditionDefs();
     return c.conditions;
   }
 
@@ -88,15 +140,18 @@ export function createConditionsSection(ctx) {
   // character (e.g. a unique curse, a recurring illness) without
   // polluting the ruleset's shared preset library.
   //
-  // Shape: { physical: [{id,name,description,system}], mental: [...] }
+  // Shape: { conditions: [{id,name,description,system}], circumstances: [...] }
+  // Legacy data with { physical, mental } keys is migrated on first read.
   function ensureConditionDefs() {
     const c = getCharData();
     if (!c) return null;
     if (!c.conditionDefs || typeof c.conditionDefs !== 'object') {
-      c.conditionDefs = { physical: [], mental: [] };
+      c.conditionDefs = { conditions: [], circumstances: [] };
+    } else if (Array.isArray(c.conditionDefs.physical) || Array.isArray(c.conditionDefs.mental)) {
+      c.conditionDefs = migrateCategoryKeys(c.conditionDefs);
     }
-    if (!Array.isArray(c.conditionDefs.physical)) c.conditionDefs.physical = [];
-    if (!Array.isArray(c.conditionDefs.mental))   c.conditionDefs.mental   = [];
+    if (!Array.isArray(c.conditionDefs.conditions))    c.conditionDefs.conditions    = [];
+    if (!Array.isArray(c.conditionDefs.circumstances)) c.conditionDefs.circumstances = [];
     return c.conditionDefs;
   }
 
@@ -107,7 +162,7 @@ export function createConditionsSection(ctx) {
   function findEntry(entryId) {
     const conds = ensureConditions();
     if (!conds) return null;
-    for (const cat of ['physical', 'mental']) {
+    for (const cat of CATEGORIES) {
       const found = conds[cat].find(e => e && e.id === entryId);
       if (found) return { entry: found, category: cat };
     }
@@ -138,6 +193,25 @@ export function createConditionsSection(ctx) {
     return { name: '', description: '', system: '' };
   }
 
+  // Read a category-keyed object (from either a ruleset or a character's
+  // conditionDefs), returning a view with new-key access. Handles legacy
+  // { physical, mental } shapes without mutating the source. This is a
+  // read-only migration — for character data we mutate in
+  // ensureConditions/ensureConditionDefs; for ruleset data we don't own
+  // the object, so we synthesize a migrated view.
+  function viewByCategory(obj) {
+    if (!obj || typeof obj !== 'object') return { conditions: [], circumstances: [] };
+    const out = {
+      conditions:    Array.isArray(obj.conditions)    ? obj.conditions    : [],
+      circumstances: Array.isArray(obj.circumstances) ? obj.circumstances : []
+    };
+    // Merge legacy keys in only if new-key slot is empty; new keys win
+    // conflicts (matches migrateCategoryKeys() semantics).
+    if (out.conditions.length === 0 && Array.isArray(obj.physical))  out.conditions    = obj.physical;
+    if (out.circumstances.length === 0 && Array.isArray(obj.mental)) out.circumstances = obj.mental;
+    return out;
+  }
+
   // Search both preset pools (ruleset + personal catalogue) for a def.
   // Returns the def object (with an added `source` discriminator) or
   // null if nothing matches. The source is used by the picker to label
@@ -145,14 +219,14 @@ export function createConditionsSection(ctx) {
   function findDefById(defId) {
     if (!defId) return null;
     const ruleset = getRuleset();
-    const rulesetConds = (ruleset && ruleset.conditions) || {};
-    for (const cat of ['physical', 'mental']) {
+    const rulesetConds = viewByCategory((ruleset && ruleset.conditions) || {});
+    for (const cat of CATEGORIES) {
       const rsHit = (rulesetConds[cat] || []).find(d => d && d.id === defId);
       if (rsHit) return { ...rsHit, source: 'ruleset', category: cat };
     }
     const defs = ensureConditionDefs();
     if (defs) {
-      for (const cat of ['physical', 'mental']) {
+      for (const cat of CATEGORIES) {
         const catHit = defs[cat].find(d => d && d.id === defId);
         if (catHit) return { ...catHit, source: 'catalogue', category: cat };
       }
@@ -170,7 +244,7 @@ export function createConditionsSection(ctx) {
     // so a split save could leave the sheet briefly inconsistent.
     await saveCharacter(getCharId(), {
       conditions:    c.conditions,
-      conditionDefs: c.conditionDefs || { physical: [], mental: [] }
+      conditionDefs: c.conditionDefs || { conditions: [], circumstances: [] }
     });
   }
 
@@ -185,8 +259,8 @@ export function createConditionsSection(ctx) {
     if (!conds) return '';
     const canEdit = getCanEdit();
     let html = '<div class="cond-columns">';
-    html += renderColumn('physical', 'Physical', conds.physical, canEdit);
-    html += renderColumn('mental',   'Mental',   conds.mental,   canEdit);
+    html += renderColumn('conditions',    CATEGORY_LABELS.conditions,    conds.conditions,    canEdit);
+    html += renderColumn('circumstances', CATEGORY_LABELS.circumstances, conds.circumstances, canEdit);
     html += '</div>';
     // Modal root — always rendered so openAddModal/openEditModal have a
     // mount point when triggered. If activeModal is null, the host's
@@ -197,7 +271,7 @@ export function createConditionsSection(ctx) {
 
   function renderColumn(category, label, entries, canEdit) {
     const addBtn = canEdit
-      ? `<button class="cond-add-btn" onclick="condOpenAdd('${category}')" title="Add a ${label.toLowerCase()} condition">+ Add</button>`
+      ? `<button class="cond-add-btn" onclick="condOpenAdd('${category}')" title="Add a ${label.toLowerCase()} entry">+ Add</button>`
       : '';
     let html = `<div class="cond-col cond-col-${category}">
       <div class="cond-col-head">
@@ -207,7 +281,10 @@ export function createConditionsSection(ctx) {
       </div>
       <div class="cond-list">`;
     if (entries.length === 0) {
-      html += `<div class="cond-empty">${canEdit ? 'No conditions. Click + Add to track one.' : 'No conditions.'}</div>`;
+      const emptyText = canEdit
+        ? `No ${label.toLowerCase()}. Click + Add to track one.`
+        : `No ${label.toLowerCase()}.`;
+      html += `<div class="cond-empty">${escapeHtml(emptyText)}</div>`;
     } else {
       entries.forEach(entry => {
         html += renderEntry(entry, category, canEdit);
@@ -231,12 +308,12 @@ export function createConditionsSection(ctx) {
       ? `<span class="cond-blurb">${escapeHtml(blurb.length > 80 ? blurb.slice(0, 77) + '…' : blurb)}</span>`
       : '';
 
-    // Per-entry actions. Swap-category toggles between physical and
-    // mental. Edit opens the edit modal. Delete removes with no
-    // confirmation (entries are cheap to re-add; adding a confirm dialog
-    // would be over-cautious for a low-stakes tracker).
-    const otherCategory = category === 'physical' ? 'mental' : 'physical';
-    const swapTitle = `Move to ${otherCategory === 'physical' ? 'Physical' : 'Mental'}`;
+    // Per-entry actions. Swap-category toggles between the two buckets
+    // (Conditions ↔ Circumstances). Edit opens the edit modal. Delete
+    // removes with no confirmation (entries are cheap to re-add; adding
+    // a confirm dialog would be over-cautious for a low-stakes tracker).
+    const otherCategory = category === 'conditions' ? 'circumstances' : 'conditions';
+    const swapTitle = `Move to ${CATEGORY_LABELS[otherCategory]}`;
     const actions = canEdit
       ? `<div class="cond-entry-actions">
           <button class="cond-entry-btn" onclick="event.stopPropagation();condSwapCategory('${escapeHtml(entry.id)}')" title="${escapeHtml(swapTitle)}">↔</button>
@@ -295,9 +372,10 @@ export function createConditionsSection(ctx) {
 
   function renderAddModal() {
     const { category, view } = activeModal;
-    const catLabel = category === 'physical' ? 'Physical' : 'Mental';
+    const catLabel = CATEGORY_LABELS[category] || category;
     const ruleset = getRuleset();
-    const rulesetPresets = ((ruleset && ruleset.conditions) || {})[category] || [];
+    const rulesetByCat = viewByCategory((ruleset && ruleset.conditions) || {});
+    const rulesetPresets = rulesetByCat[category] || [];
     const catalogue = (ensureConditionDefs() || {})[category] || [];
 
     let body;
@@ -328,8 +406,8 @@ export function createConditionsSection(ctx) {
     }
 
     const title = view === 'custom'
-      ? `Custom ${catLabel} Condition`
-      : `Add ${catLabel} Condition`;
+      ? `Custom ${catLabel} Entry`
+      : `Add ${catLabel} Entry`;
     return `<div class="cond-modal-backdrop" onclick="condCloseModal(event)">
       <div class="cond-modal" onclick="event.stopPropagation()">
         <div class="cond-modal-head">
@@ -366,7 +444,7 @@ export function createConditionsSection(ctx) {
     const { category, entryId } = activeModal;
     const found = findEntry(entryId);
     if (!found) return '';
-    const catLabel = category === 'physical' ? 'Physical' : 'Mental';
+    const catLabel = CATEGORY_LABELS[category] || category;
     const draft = activeModal.draft;
     const isPreset = !!found.entry.defId;
     const hasCustomDivergence = draft.name !== draft.sourceName
@@ -377,7 +455,7 @@ export function createConditionsSection(ctx) {
     return `<div class="cond-modal-backdrop" onclick="condCloseModal(event)">
       <div class="cond-modal" onclick="event.stopPropagation()">
         <div class="cond-modal-head">
-          <span class="cond-modal-title">Edit ${escapeHtml(catLabel)} Condition</span>
+          <span class="cond-modal-title">Edit ${escapeHtml(catLabel)} Entry</span>
           <button type="button" class="cond-modal-close" onclick="condCloseModal()" title="Close">×</button>
         </div>
         <div class="cond-modal-body">${body}</div>
@@ -482,7 +560,13 @@ export function createConditionsSection(ctx) {
   // Begin adding: opens the picker modal scoped to a category.
   function openAdd(category) {
     if (!getCanEdit()) return;
-    if (category !== 'physical' && category !== 'mental') return;
+    // Accept legacy values from stale window handlers if the caller
+    // hasn't been fully rewired yet (belt-and-suspenders — the handler
+    // maps already translate, but inline onclick attributes on tile
+    // rendering eventually get here too).
+    if (category === 'physical') category = 'conditions';
+    else if (category === 'mental') category = 'circumstances';
+    if (!CATEGORIES.includes(category)) return;
     activeModal = {
       mode: 'add',
       category,
@@ -673,7 +757,7 @@ export function createConditionsSection(ctx) {
     if (!found) return;
     const conds = ensureConditions();
     const src = found.category;
-    const dst = src === 'physical' ? 'mental' : 'physical';
+    const dst = src === 'conditions' ? 'circumstances' : 'conditions';
     // Remove from source, push to destination. Keep the ID so any open
     // edit panels don't lose their reference.
     conds[src] = conds[src].filter(e => e.id !== entryId);
