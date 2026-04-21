@@ -223,7 +223,12 @@ export function createInventorySection(ctx) {
         dimensions:   def.dimensions || { l: 0, w: 0, h: 0 },
         weight:       def.weight || 0,
         containerOf:  def.containerOf || null,
-        legacyCategory: def.legacyCategory || def.category || ''
+        legacyCategory: def.legacyCategory || def.category || '',
+        // Weapon snapshot — copied at add-time so later def changes
+        // don't retroactively alter existing character entries. Null
+        // when the source def isn't a weapon. Deep-clone so range
+        // arrays / tag arrays are owned by the entry.
+        weapon:       def.weapon ? JSON.parse(JSON.stringify(def.weapon)) : null
       };
     }
     return {
@@ -232,7 +237,8 @@ export function createInventorySection(ctx) {
       dimensions: { l: 0, w: 0, h: 0 },
       weight: 0,
       containerOf: null,
-      legacyCategory: ''
+      legacyCategory: '',
+      weapon: null
     };
   }
 
@@ -628,7 +634,10 @@ export function createInventorySection(ctx) {
         // Legacy category string preserved so weapon-linkage etc. can
         // still resolve if needed. defaultSlot NOT snapshotted because
         // it's only useful during catalog-add.
-        legacyCategory: def.legacyCategory || def.category || ''
+        legacyCategory: def.legacyCategory || def.category || '',
+        // Weapon snapshot — deep clone so mutations on the entry
+        // don't leak back to the def.
+        weapon:        def.weapon ? JSON.parse(JSON.stringify(def.weapon)) : null
       };
     }
     // Def is missing entirely — build a minimal placeholder snapshot
@@ -638,11 +647,9 @@ export function createInventorySection(ctx) {
       description:   '',
       dimensions:    { l: 0, w: 0, h: 0 },
       weight:        0,
-      containerOf:   entry.defKind === 'container' || Array.isArray(entry.contents) ? {
-        dimensions: { l: 0, w: 0, h: 0 },
-        packingEfficiency: 0.75
-      } : null,
-      legacyCategory: ''
+      containerOf:   null,
+      legacyCategory: '',
+      weapon:        null
     };
   }
 
