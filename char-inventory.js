@@ -765,9 +765,47 @@ export function createInventorySection(ctx) {
   // handler calls this (add/move/delete item, group ops, carry mods).
   // Gating here stops every write path at once without having to
   // decorate each caller. Owners + GMs pass; everyone else is a no-op.
+  // Recursively sanitize any entry snapshots' weapon ranges so nested
+  // arrays ([s,e] tuples) never hit Firestore. Converts to {s,e}
+  // objects on the fly. Walks bySlot groups and stowed, descending
+  // into container contents. This is defensive — new entries come
+  // through fresh resolver/coercer paths that already produce
+  // objects, but legacy snapshots from earlier versions may still be
+  // in the stored character doc. Run on every save so Firestore
+  // accepts the write.
+  function _sanitizeEntryRangesInPlace(entry) {
+    if (!entry) return;
+    const snap = entry.snapshot;
+    if (snap && snap.weapon && snap.weapon.kind === 'melee' && Array.isArray(snap.weapon.ranges)) {
+      snap.weapon.ranges = snap.weapon.ranges.map(b => {
+        if (b && typeof b === 'object' && !Array.isArray(b)) {
+          return { s: Number(b.s) || 0, e: Number(b.e) || 0 };
+        }
+        if (Array.isArray(b) && b.length >= 2) {
+          return { s: Number(b[0]) || 0, e: Number(b[1]) || 0 };
+        }
+        return { s: 0, e: 0 };
+      });
+    }
+    if (Array.isArray(entry.contents)) {
+      entry.contents.forEach(_sanitizeEntryRangesInPlace);
+    }
+  }
+
   async function save() {
     if (!getCanEdit()) return;
     const inv = ensureInventory();
+    // Walk every entry and normalize weapon.ranges to {s,e} objects
+    // so Firestore (which rejects nested arrays) accepts the write.
+    // Mutates in place — cheap, and future reads see the clean shape.
+    if (inv && inv.bySlot && typeof inv.bySlot === 'object') {
+      Object.values(inv.bySlot).forEach(arr => {
+        if (Array.isArray(arr)) arr.forEach(_sanitizeEntryRangesInPlace);
+      });
+    }
+    if (Array.isArray(inv && inv.stowed)) {
+      inv.stowed.forEach(_sanitizeEntryRangesInPlace);
+    }
     await saveCharacter(getCharId(), { inventory: inv });
   }
 
@@ -1909,8 +1947,13 @@ export function createInventorySection(ctx) {
     if (resolved.kind === 'melee' && Array.isArray(resolved.ranges) && resolved.ranges.length > 0) {
       html += `<div class="inv-weapon-ranges">`;
       resolved.ranges.forEach((band, i) => {
-        const s = Number.isFinite(band[0]) ? band[0] : 0;
-        const e = Number.isFinite(band[1]) ? band[1] : 0;
+        // Resolver normalizes to {s, e}, but defensive reads in case.
+        const s = (band && typeof band === 'object' && !Array.isArray(band))
+          ? (Number.isFinite(band.s) ? band.s : 0)
+          : (Array.isArray(band) && Number.isFinite(band[0]) ? band[0] : 0);
+        const e = (band && typeof band === 'object' && !Array.isArray(band))
+          ? (Number.isFinite(band.e) ? band.e : 0)
+          : (Array.isArray(band) && Number.isFinite(band[1]) ? band[1] : 0);
         html += `<span class="inv-weapon-range"><span class="inv-weapon-range-label">+${i}</span>${fmt(s)}–${fmt(e)}ft</span>`;
       });
       html += `</div>`;
@@ -2562,7 +2605,9 @@ export function createInventorySection(ctx) {
   //   weaponKind:     'melee' | 'ranged'
   //   weaponDice:     number   — D10 count for damage dice
   //   weaponPen:      number   — armor pierced
-  //   weaponRanges:   [[s,e],...]  — melee only
+  //   weaponRanges:   [{s,e},...]  — melee only. Stored as objects
+  //                                    not [s,e] tuples because
+  //                                    Firestore rejects nested arrays.
   //   weaponRange:    number   — ranged only, base range in feet
   //   weaponDmgmod:   number   — ranged only, flat damage bonus + recoil req
   //   weaponAmmo:     string   — number OR formula (preserved as-entered)
@@ -2636,8 +2681,14 @@ export function createInventorySection(ctx) {
         html += `<div style="font-size:11px;color:#666;padding:4px 0">No range bands defined.</div>`;
       } else {
         ranges.forEach((band, bi) => {
-          const s = Number.isFinite(band[0]) ? band[0] : 0;
-          const e = Number.isFinite(band[1]) ? band[1] : 0;
+          // Support both {s,e} (new) and [s,e] (legacy). Defensive reads
+          // so half-migrated data still renders.
+          const s = (band && typeof band === 'object' && !Array.isArray(band))
+            ? (Number.isFinite(band.s) ? band.s : 0)
+            : (Array.isArray(band) && Number.isFinite(band[0]) ? band[0] : 0);
+          const e = (band && typeof band === 'object' && !Array.isArray(band))
+            ? (Number.isFinite(band.e) ? band.e : 0)
+            : (Array.isArray(band) && Number.isFinite(band[1]) ? band[1] : 0);
           html += `<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
             <span style="font-size:11px;color:#888;min-width:58px">Band ${bi} (+${bi})</span>
             <input type="number" step="0.5" min="0" value="${escapeHtml(String(s))}" placeholder="Start"
@@ -2753,10 +2804,21 @@ export function createInventorySection(ctx) {
       weaponDice:     w && Number.isFinite(w.dice)   ? w.dice   : 1,
       weaponPen:      w && Number.isFinite(w.pen)    ? w.pen    : 0,
       weaponRanges:   w && Array.isArray(w.ranges)
-                        ? w.ranges.map(b => [
-                            Number.isFinite(b[0]) ? b[0] : 0,
-                            Number.isFinite(b[1]) ? b[1] : 0
-                          ])
+                        ? w.ranges.map(b => {
+                            if (b && typeof b === 'object' && !Array.isArray(b)) {
+                              return {
+                                s: Number.isFinite(b.s) ? b.s : 0,
+                                e: Number.isFinite(b.e) ? b.e : 0
+                              };
+                            }
+                            if (Array.isArray(b) && b.length >= 2) {
+                              return {
+                                s: Number.isFinite(b[0]) ? b[0] : 0,
+                                e: Number.isFinite(b[1]) ? b[1] : 0
+                              };
+                            }
+                            return { s: 0, e: 0 };
+                          })
                         : [],
       weaponRange:    w && Number.isFinite(w.range)  ? w.range  : 30,
       weaponDmgmod:   w && Number.isFinite(w.dmgmod) ? w.dmgmod : 0,
@@ -2858,12 +2920,19 @@ export function createInventorySection(ctx) {
   }
 
   // Helpers working on any draft (edit or new) — pass the draft in.
+  // Range bands are stored as {s, e} objects because Firestore doesn't
+  // support nested arrays. Legacy [s, e] entries get converted in
+  // place on first touch.
   function _weaponAddRange(d) {
     if (!d) return;
     if (!Array.isArray(d.weaponRanges)) d.weaponRanges = [];
     const prev = d.weaponRanges[d.weaponRanges.length - 1];
-    const start = prev ? (Number(prev[1]) || 0) : 0;
-    d.weaponRanges.push([start, start + 1]);
+    const prevEnd = prev
+      ? (prev && typeof prev === 'object' && !Array.isArray(prev)
+          ? (Number(prev.e) || 0)
+          : (Array.isArray(prev) ? (Number(prev[1]) || 0) : 0))
+      : 0;
+    d.weaponRanges.push({ s: prevEnd, e: prevEnd + 1 });
     renderCatalogManager();
   }
   function _weaponRemoveRange(d, bandIdx) {
@@ -2873,12 +2942,17 @@ export function createInventorySection(ctx) {
   }
   function _weaponUpdateRange(d, bandIdx, which, value) {
     if (!d || !Array.isArray(d.weaponRanges)) return;
-    const band = d.weaponRanges[bandIdx];
-    if (!Array.isArray(band)) return;
+    let band = d.weaponRanges[bandIdx];
+    if (!band) return;
+    // Convert legacy [s, e] in place to the {s, e} shape.
+    if (Array.isArray(band)) {
+      band = { s: Number(band[0]) || 0, e: Number(band[1]) || 0 };
+      d.weaponRanges[bandIdx] = band;
+    }
     const n = parseFloat(value);
     const safe = Number.isFinite(n) && n >= 0 ? n : 0;
-    if (which === 'start') band[0] = safe;
-    else if (which === 'end') band[1] = safe;
+    if (which === 'start') band.s = safe;
+    else if (which === 'end') band.e = safe;
     // No re-render — user might still be typing the other side.
   }
   function _weaponToggleTag(d, tagId, on) {
@@ -2957,14 +3031,23 @@ export function createInventorySection(ctx) {
     const pen  = Number.isFinite(d.weaponPen)  ? Math.max(0, Math.floor(d.weaponPen))  : 0;
     const tags = Array.isArray(d.weaponTags) ? d.weaponTags.slice() : [];
     if (kind === 'melee') {
+      // Bands as {s, e} objects — Firestore doesn't accept nested
+      // arrays. Accept either shape on input (legacy drafts may still
+      // have [s, e]), normalize to objects on output.
       const ranges = Array.isArray(d.weaponRanges)
-        ? d.weaponRanges
-            .filter(b => Array.isArray(b) && b.length >= 2)
-            .map(b => [
-              Number.isFinite(b[0]) ? b[0] : 0,
-              Number.isFinite(b[1]) ? b[1] : 0
-            ])
-            .filter(b => b[1] >= b[0])
+        ? d.weaponRanges.map(b => {
+            let s, e;
+            if (b && typeof b === 'object' && !Array.isArray(b)) {
+              s = Number(b.s); e = Number(b.e);
+            } else if (Array.isArray(b) && b.length >= 2) {
+              s = Number(b[0]); e = Number(b[1]);
+            } else {
+              return null;
+            }
+            if (!Number.isFinite(s) || !Number.isFinite(e)) return null;
+            if (e < s) return null;
+            return { s, e };
+          }).filter(Boolean)
         : [];
       return { kind: 'melee', dice, pen, tags, ranges };
     }
