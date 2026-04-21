@@ -23,6 +23,7 @@
 // inputs does a tighter repaint that leaves input focus intact.
 
 import { computeDerivedStats as defaultCompute } from './char-derived.js';
+import { getCollapsed, toggleCollapsed } from './char-util.js';
 
 export function createRollCalc(ctx) {
   // Fallback compute in case caller didn't pass one — keeps the module
@@ -692,11 +693,25 @@ export function createRollCalc(ctx) {
       ? `<div class="rc-line"><span class="rc-k">Penalty</span><span class="rc-v">— <span class="rc-dim">(passive — ignored)</span></span></div>`
       : `<div class="rc-line"><span class="rc-k">Penalty</span><span class="rc-v">−${r.penaltyDice}d  <span class="rc-dim">(${r.penaltyPct}% of ${r.basePool})</span></span></div>`;
 
+    // Collapse support — whole Roll Calculator tile can be collapsed
+    // by clicking the header. Persisted per-browser via localStorage.
+    // Uses the same `state-tile.collapsed` CSS rule the Overview tiles
+    // use so the entire body hides except the header. Key is stable
+    // across re-renders; click routes to the window-level toggler
+    // defined in character.html which flips the flag and re-renders.
+    const collapseKey = 'prime.collapse.combat.rollcalc';
+    const rcCollapsed = getCollapsed(collapseKey);
+    const rcCaret = rcCollapsed ? '▸' : '▾';
+
     return `
-      <div class="state-tile state-tile-wide state-tile-rollcalc">
-        <div class="state-tile-head">
+      <div class="state-tile state-tile-wide state-tile-rollcalc${rcCollapsed ? ' collapsed' : ''}">
+        <div class="state-tile-head state-tile-collapsible" role="button" tabindex="0"
+             onclick="combatToggleCollapse('${collapseKey}')"
+             onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();combatToggleCollapse('${collapseKey}')}"
+             title="${rcCollapsed ? 'Expand' : 'Collapse'} Roll Calculator">
+          <span class="state-tile-caret">${rcCaret}</span>
           <span class="state-tile-label">Roll Calculator</span>
-          <div class="rc-mode" role="group" aria-label="Roll mode">
+          <div class="rc-mode" role="group" aria-label="Roll mode" onclick="event.stopPropagation()">
             <button type="button" class="rc-mode-btn${!r.isPassive ? ' active' : ''}" onclick="rollCalcSetPassive(false)" title="Active roll — Strain reduces your dice pool">Active</button>
             <button type="button" class="rc-mode-btn${r.isPassive ? ' active' : ''}"  onclick="rollCalcSetPassive(true)"  title="Passive roll — Strain does not apply (resistance checks)">Passive</button>
           </div>
