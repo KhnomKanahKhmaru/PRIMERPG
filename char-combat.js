@@ -75,7 +75,11 @@ export function createCombatSection(ctx) {
     // still live inline in their Health and Sanity sections below;
     // Others editor lives right inside this card.
     const otherMods = Array.isArray(charData.otherModifiers) ? charData.otherModifiers : [];
-    html += overview.renderPenaltyTile(result.pain, result.stress, result.penalty, otherMods, ctx.getCanEdit());
+    // Collapsible:true emits the caret + click wiring. slug 'penalty-combat'
+    // keeps this tile's collapse state separate from the Overview-tab
+    // Penalty tile (which uses the default 'penalty' slug) so the two
+    // copies can be collapsed independently.
+    html += overview.renderPenaltyTile(result.pain, result.stress, result.penalty, otherMods, ctx.getCanEdit(), { collapsible: true, slug: 'penalty-combat' });
     // Movement below — speed, agility, reflex. Fast-lookup info you need
     // during play, positioned ahead of the more detailed health UI.
     html += renderDerivedStatsSection(result, ruleset, { includeGroups: ['movement'] });
