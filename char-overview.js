@@ -31,7 +31,8 @@ export function createOverviewSection(ctx) {
     getCharData,
     getCanEdit,
     escapeHtml,
-    fmt
+    fmt,
+    conditionsSection   // optional: char-conditions.js instance for the Physical/Mental tile
   } = ctx;
 
   // ─── ORCHESTRATOR ───
@@ -79,9 +80,37 @@ export function createOverviewSection(ctx) {
     const canEdit = getCanEdit ? getCanEdit() : true;
     tiles.push(renderPenaltyTile(result.pain, result.stress, result.penalty, otherMods, canEdit));
 
+    // Conditions tile — Physical / Mental split. Renders directly after
+    // the Penalty tile so "what's wrong with me" flows in a logical
+    // order: damage → strain → penalty → specific ongoing conditions.
+    if (conditionsSection && typeof conditionsSection.renderTileBody === 'function') {
+      tiles.push(renderConditionsTile());
+    }
+
     host.innerHTML = tiles.length
       ? `<div class="state-grid">${tiles.join('')}</div>`
       : '<div class="state-empty">No state data available.</div>';
+
+    // After the grid renders, mount the conditions modal (if any) into
+    // its root. The modal backdrop needs to live at the end of
+    // #state-body so it z-stacks above the tiles.
+    if (conditionsSection && typeof conditionsSection.renderModal === 'function') {
+      const modalHost = document.getElementById('cond-modal-root');
+      if (modalHost) modalHost.innerHTML = conditionsSection.renderModal();
+    }
+  }
+
+  // Conditions tile wrapper — delegates body to char-conditions.js but
+  // provides the tile frame consistent with the rest of State of Things.
+  function renderConditionsTile() {
+    return `
+      <div class="state-tile state-tile-wide state-tile-conditions">
+        <div class="state-tile-head">
+          <span class="state-tile-label">Conditions</span>
+          <span class="state-tile-sub">Physical &amp; Mental · traumas, disorders, ailments</span>
+        </div>
+        <div class="state-tile-body">${conditionsSection.renderTileBody()}</div>
+      </div>`;
   }
 
   // ─── BODY TILE ───
