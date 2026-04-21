@@ -13,6 +13,7 @@ import { createRollCalc } from './char-rollcalc.js';
 import { createPowerSection } from './char-power.js';
 import { createOverviewSection } from './char-overview.js';
 import { createConditionsSection } from './char-conditions.js';
+import { wrapCollapsibleSection } from './char-util.js';
 
 export function createCombatSection(ctx) {
   // ctx shape:
@@ -59,6 +60,14 @@ export function createCombatSection(ctx) {
     // Roll Calculator at the very top — the quick "how many dice will I
     // actually roll?" scratch pad you reach for mid-turn. Sits ahead of
     // Movement so it's the first thing visible when you swap to Combat.
+    //
+    // Every top-level combat section is wrapped in wrapCollapsibleSection
+    // so players can collapse whatever they don't need during a given
+    // scene. The Penalty tile is NOT wrapped because it's the paired
+    // companion to the Roll Calc — together they're the always-visible
+    // "what will I roll right now" block. Storage keys use
+    // `prime.collapse.combat.<slug>`. Click handler routes to
+    // window.combatToggleCollapse which toggles + re-renders.
     html += rollcalc.renderTile(result, ruleset, charData);
     // Penalty card right below — it's the biggest single factor affecting
     // the Roll Calculator, so seeing them side-by-side (top of tab) is the
@@ -189,18 +198,31 @@ export function createCombatSection(ctx) {
     groups.forEach(g => {
       const stats = buckets.get(g.code) || [];
       if (stats.length === 0) return;
-      html += `<div class="combat-section">`;
-      html += `<div class="combat-section-title">${escapeHtml(g.label)}</div>`;
-      html += `<div class="ds-grid">`;
-      stats.forEach(entry => { html += renderDsCard(entry); });
-      html += `</div></div>`;
+      // Each stat group is its own collapsible section. Storage key
+      // includes the group code (e.g. 'movement', 'mental') so toggles
+      // survive the order of groups being rearranged in the ruleset.
+      const headHtml = `<span class="combat-section-title-text">${escapeHtml(g.label)}</span>`;
+      let bodyHtml = '<div class="ds-grid">';
+      stats.forEach(entry => { bodyHtml += renderDsCard(entry); });
+      bodyHtml += '</div>';
+      html += wrapCollapsibleSection(
+        `prime.collapse.combat.group-${g.code}`,
+        headHtml,
+        bodyHtml,
+        { wrapperClass: 'combat-section', collapsibleClass: 'combat-section-title', rerenderHandler: 'combatToggleCollapse' }
+      );
     });
     if (orphans.length > 0) {
-      html += `<div class="combat-section">`;
-      html += `<div class="combat-section-title">Other</div>`;
-      html += `<div class="ds-grid">`;
-      orphans.forEach(entry => { html += renderDsCard(entry); });
-      html += `</div></div>`;
+      const headHtml = `<span class="combat-section-title-text">Other</span>`;
+      let bodyHtml = '<div class="ds-grid">';
+      orphans.forEach(entry => { bodyHtml += renderDsCard(entry); });
+      bodyHtml += '</div>';
+      html += wrapCollapsibleSection(
+        'prime.collapse.combat.group-other',
+        headHtml,
+        bodyHtml,
+        { wrapperClass: 'combat-section', collapsibleClass: 'combat-section-title', rerenderHandler: 'combatToggleCollapse' }
+      );
     }
     return html;
   }
@@ -867,13 +889,10 @@ export function createCombatSection(ctx) {
     const canEdit = ctx.getCanEdit();
     const ruleset = ctx.getRuleset();
 
-    let html = '<div class="combat-section">';
-    // Section-level title is "Health" now. This section houses:
-    //   - Health derived stat cards (HP, FORT, anything else in the 'health' group)
-    //   - Hit Locations list (with its own sub-header + Edit Modifiers button)
-    //   - Body bar
-    //   - Injuries manager
-    html += '<div class="combat-section-title">Health</div>';
+    // Build the body HTML (everything that goes INSIDE the section);
+    // wrapCollapsibleSection handles the outer wrapper + caret head.
+
+    let body_html = '';
 
     // Cards from the 'health' derived stat group, rendered at the top of the
     // section as an overview strip. These are ALSO filtered OUT of the normal
@@ -883,39 +902,46 @@ export function createCombatSection(ctx) {
       if (entry.def.group === 'health') healthStats.push(entry);
     });
     if (healthStats.length > 0) {
-      html += '<div class="ds-grid health-cards">';
-      healthStats.forEach(entry => { html += renderDsCard(entry); });
-      html += '</div>';
+      body_html += '<div class="ds-grid health-cards">';
+      healthStats.forEach(entry => { body_html += renderDsCard(entry); });
+      body_html += '</div>';
     }
 
     // "Hit Locations" sub-header with the Edit Modifiers button. Acts as the
     // divider between the cards overview and the location bars below.
-    html += '<div class="combat-subsection-head">';
+    body_html += '<div class="combat-subsection-head">';
     html += '<div class="combat-subsection-title">Hit Locations</div>';
     if (canEdit) {
-      html += `<button class="hl-edit-btn${editModifiersMode ? ' active' : ''}" onclick="toggleHlModifierEdit()">` +
+      body_html += `<button class="hl-edit-btn${editModifiersMode ? ' active' : ''}" onclick="toggleHlModifierEdit()">` +
               `${editModifiersMode ? 'Done' : 'Edit Modifiers'}</button>`;
     }
-    html += '</div>';
+    body_html += '</div>';
 
-    html += '<div class="hl-list">';
-    result.locations.forEach(loc => { html += renderHlRow(loc, body); });
-    html += '</div>';
+    body_html += '<div class="hl-list">';
+    result.locations.forEach(loc => { body_html += renderHlRow(loc, body); });
+    body_html += '</div>';
 
     // Body total goes at the bottom, summarizing the overall state after
     // you've read through the individual locations above.
-    html += renderBodyBlock(body);
+    body_html += renderBodyBlock(body);
 
     // Pain indicator — percent of Body missing, editable modifiers. Sits
     // between Body (which shows physical damage) and Injuries (detailed
     // wound list), conceptually linking "how hurt you are" to "what hurts".
-    html += renderPainPill(result);
+    body_html += renderPainPill(result);
 
     // Injuries manager — a collapsible list of wounds with degradation tracking.
-    html += renderInjuriesSection(result);
+    body_html += renderInjuriesSection(result);
 
-    html += '</div>';
-    return html;
+    // Wrap with collapsible shell. Key is stable across re-renders;
+    // click routes to window.combatToggleCollapse (defined in
+    // character.html) which toggles the flag and re-invokes renderAll.
+    return wrapCollapsibleSection(
+      'prime.collapse.combat.health',
+      '<span class="combat-section-title-text">Health</span>',
+      body_html,
+      { wrapperClass: 'combat-section', collapsibleClass: 'combat-section-title', rerenderHandler: 'combatToggleCollapse' }
+    );
   }
 
   function renderHlRow(loc, body) {
@@ -1641,51 +1667,44 @@ export function createCombatSection(ctx) {
     const SEG_CAP = 80;
     const segCount = Math.min(Math.max(san.max, 1), SEG_CAP);
 
-    let html = '<div class="combat-section san-section">';
-
-    // Header with title + Edit Modifiers button (parallel to Hit Locations).
-    html += '<div class="combat-section-head">';
-    html += '<div class="combat-section-title">Sanity</div>';
-    if (canEdit) {
-      html += `<button class="hl-edit-btn${editSanModifiersMode ? ' active' : ''}" onclick="toggleSanModifierEdit()">` +
-              `${editSanModifiersMode ? 'Done' : 'Edit Modifiers'}</button>`;
-    }
-    html += '</div>';
+    // Build the section body (everything below the title). The Edit
+    // Modifiers button goes INSIDE the collapsible header so players
+    // can still reach it, but clicks on it stop propagation so they
+    // don't also collapse the section.
+    let body_html = '';
 
     // Sanity stat card at the top — shows name, code, formula, value, and
     // description. Gives the player a clear reminder of what SAN is and
     // what they roll for mental resistances.
     const sanEntry = result.stats.get('SAN');
     if (sanEntry) {
-      html += '<div class="ds-grid san-card-wrap">';
-      html += renderDsCard(sanEntry);
-      html += '</div>';
+      body_html += '<div class="ds-grid san-card-wrap">';
+      body_html += renderDsCard(sanEntry);
+      body_html += '</div>';
     }
 
     // Status line: SAN label, current/max, colored status pill.
     const statusClass = 'san-status-' + san.status;
-    html += '<div class="san-top-row">';
-    html += '<span class="san-label">SAN</span>';
-    html += `<span class="san-nums"><span class="san-current">${san.current}</span><span class="san-slash"> / </span><span class="san-max">${san.max}</span></span>`;
-    html += `<span class="san-status-pill ${statusClass}">${escapeHtml(san.statusLabel)}</span>`;
-    html += '</div>';
+    body_html += '<div class="san-top-row">';
+    body_html += '<span class="san-label">SAN</span>';
+    body_html += `<span class="san-nums"><span class="san-current">${san.current}</span><span class="san-slash"> / </span><span class="san-max">${san.max}</span></span>`;
+    body_html += `<span class="san-status-pill ${statusClass}">${escapeHtml(san.statusLabel)}</span>`;
+    body_html += '</div>';
 
     // Penalty text — empty when Healthy, printed in italic otherwise.
     if (san.penaltyText) {
-      html += `<div class="san-penalty">${escapeHtml(san.penaltyText)}</div>`;
+      body_html += `<div class="san-penalty">${escapeHtml(san.penaltyText)}</div>`;
     }
 
     // Segmented bar.
-    html += '<div class="san-bar">';
-    html += renderSanSegments(san.max, san.damage, segCount);
-    html += '</div>';
+    body_html += '<div class="san-bar">';
+    body_html += renderSanSegments(san.max, san.damage, segCount);
+    body_html += '</div>';
 
     // Damage controls (input shows effective current; +/- tick damage).
     if (canEdit) {
-      // Max theoretical damage we might want to represent — 4x max covers
-      // past-Broken state. Input clamp prevents absurd inputs.
       const damageCap = Math.max(san.max * 5, 10);
-      html += `<div class="san-controls">
+      body_html += `<div class="san-controls">
         <button class="hl-dmg-btn" onclick="tickSanDmg(1)" title="Take 1 Mental Damage">−</button>
         <input type="number" class="san-dmg-input" value="${san.current}" min="${-damageCap}" max="${san.max}"
                onchange="setSanCurrent(this.value)"
@@ -1693,34 +1712,43 @@ export function createCombatSection(ctx) {
         <button class="hl-dmg-btn" onclick="tickSanDmg(-1)" title="Heal 1 SAN">+</button>
       </div>`;
     } else {
-      html += `<div class="san-controls san-controls-ro"><span class="san-current-ro">${san.current} / ${san.max}</span></div>`;
+      body_html += `<div class="san-controls san-controls-ro"><span class="san-current-ro">${san.current} / ${san.max}</span></div>`;
     }
 
     // Edit modifiers panel — same shape as Body modifier panel.
     if (editSanModifiersMode && canEdit) {
-      html += renderSanModifierPanel(san);
+      body_html += renderSanModifierPanel(san);
     }
 
     // Stress indicator — percent of SAN's full range (max → -2×max) that's
     // been used up. Editable percentile modifiers, parallels Pain pill in
     // the Health section. Combines with Pain to form Strain, which reduces
     // dice pools on non-passive active rolls.
-    html += renderStressPill(result);
+    body_html += renderStressPill(result);
 
-    // Damages manager — simplified Injuries for mental health. Renders below
-    // the bar and above the Breaking Point panel (if present). Players use
-    // this to record specific mental wounds (e.g. "Traumatic Memory 3rd Degree")
-    // that then feed back into the SAN damage pool.
-    html += renderSanDamagesSection(result);
+    // Damages manager — simplified Injuries for mental health.
+    body_html += renderSanDamagesSection(result);
 
     // Breaking Point reference — shown whenever Broken. This is guidance,
     // not automation. GM rolls d10 per PRIME rules and applies the result.
     if (san.status === 'broken') {
-      html += renderBreakingPointPanel();
+      body_html += renderBreakingPointPanel();
     }
 
-    html += '</div>';
-    return html;
+    // Head: title + the Edit Modifiers button (event.stopPropagation
+    // on the button prevents its click from also collapsing the section).
+    let head_html = '<span class="combat-section-title-text">Sanity</span>';
+    if (canEdit) {
+      head_html += `<button class="hl-edit-btn${editSanModifiersMode ? ' active' : ''}" onclick="event.stopPropagation();toggleSanModifierEdit()">` +
+                   `${editSanModifiersMode ? 'Done' : 'Edit Modifiers'}</button>`;
+    }
+
+    return wrapCollapsibleSection(
+      'prime.collapse.combat.sanity',
+      head_html,
+      body_html,
+      { wrapperClass: 'combat-section san-section', collapsibleClass: 'combat-section-title combat-section-head', rerenderHandler: 'combatToggleCollapse' }
+    );
   }
 
   // UI-only state for Damages, mirroring the Injuries pattern.
