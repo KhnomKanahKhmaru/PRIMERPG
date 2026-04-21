@@ -519,6 +519,7 @@ export function createAdvantagesSection(ctx) {
 
   // Commit a ruleset-catalog entry onto the character.
   async function commitCatalog(side) {
+    if (!ctx.getCanEdit()) return;
     const st = formState[side];
     if (!st.catalogName) return;
     const catalog = catalogFor(side);
@@ -550,6 +551,7 @@ export function createAdvantagesSection(ctx) {
 
   // Commit a custom free-text entry onto the character.
   async function commitCustom(side) {
+    if (!ctx.getCanEdit()) return;
     const st = formState[side];
     const name = (st.customName || '').trim();
     if (!name) return;
