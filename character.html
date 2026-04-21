@@ -3119,6 +3119,7 @@
     }
     .inv-weapon-diff-chip.mitigation { color: #9ed0a8; border-color: #253322; }
     .inv-weapon-diff-chip.penalty { color: #e8a8a8; border-color: #352525; }
+    .inv-weapon-diff-chip.wasted { opacity: 0.45; text-decoration: line-through; }
 
     /* ATK contested-result input on the damage block */
     .inv-weapon-atk-row {
@@ -4584,6 +4585,10 @@
     invUpdateCustomDraft:    (field, value)       => inventory.updateCustomDraft(field, value),
     invSaveCustomDef:        ()                   => inventory.saveCustomDef(),
     invDeleteCustomDef:      (kind, defId)        => inventory.deleteCustomDef(kind, defId),
+    invCustomDraftWeaponAddRange:    ()                  => inventory.customDraftWeaponAddRange(),
+    invCustomDraftWeaponRemoveRange: (bi)               => inventory.customDraftWeaponRemoveRange(bi),
+    invCustomDraftWeaponUpdateRange: (bi, which, value) => inventory.customDraftWeaponUpdateRange(bi, which, value),
+    invCustomDraftWeaponToggleTag:   (tagId, on)        => inventory.customDraftWeaponToggleTag(tagId, on),
     invSetViewMode:          (mode)               => inventory.setViewMode(mode),
     invToggleCatalogCat:     (id)                 => inventory.toggleCatalogCat(id),
     invToggleCatalogItem:    (id)                 => inventory.toggleCatalogItem(id),
