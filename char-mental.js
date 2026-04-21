@@ -53,6 +53,7 @@ export function createMentalSection(ctx) {
   }
 
   async function updateMoralSeverity(i, severity) {
+    if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     const selected = normalizeSelectedMorals();
     if (i >= 0 && i < selected.length) selected[i].severity = severity;
@@ -107,6 +108,7 @@ export function createMentalSection(ctx) {
   }
 
   async function addCustomMoral() {
+    if (!ctx.getCanEdit()) return;
     const name = prompt('Enter custom moral (one word or short phrase):');
     if (!name || !name.trim()) return;
     const trimmed = name.trim();
@@ -123,6 +125,7 @@ export function createMentalSection(ctx) {
   }
 
   async function removeMoralByIndex(i) {
+    if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     let selected = normalizeSelectedMorals();
     selected.splice(i, 1);
@@ -211,6 +214,7 @@ export function createMentalSection(ctx) {
   }
 
   async function addObligation() {
+    if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     const o = charData.moralObligations || [];
     o.push({ obligation: '', violation: '', severity: 'Minor' });
@@ -220,6 +224,7 @@ export function createMentalSection(ctx) {
   }
 
   async function saveObligation(i, f, v) {
+    if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     const o = charData.moralObligations || [];
     if (o[i]) o[i][f] = v;
@@ -228,6 +233,7 @@ export function createMentalSection(ctx) {
   }
 
   async function deleteObligation(i) {
+    if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     charData.moralObligations.splice(i, 1);
     await saveCharacter(ctx.getCharId(), { moralObligations: charData.moralObligations });
@@ -300,6 +306,7 @@ export function createMentalSection(ctx) {
   }
 
   async function addDisorder() {
+    if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     const d = charData.mentalDisorders || [];
     d.push({ disorder: '', description: '', symptoms: '', severity: 'Minor' });
@@ -309,6 +316,7 @@ export function createMentalSection(ctx) {
   }
 
   async function saveDisorder(i, f, v) {
+    if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     const d = charData.mentalDisorders || [];
     if (d[i]) d[i][f] = v;
@@ -317,6 +325,7 @@ export function createMentalSection(ctx) {
   }
 
   async function deleteDisorder(i) {
+    if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     charData.mentalDisorders.splice(i, 1);
     await saveCharacter(ctx.getCharId(), { mentalDisorders: charData.mentalDisorders });
