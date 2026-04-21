@@ -959,6 +959,17 @@ export function createInventorySection(ctx) {
       }
     }
 
+    // LIFT base sub-line. Shows base value and — if there's any
+    // adjustment — the breakdown: "+N% from CAP" (propagated) and
+    // "+M% from LIFT" (own modifiers). If neither, just the base.
+    const fmtPct = (n) => `${n > 0 ? '+' : '−'}${Math.abs(n)}%`;
+    const liftParts = [];
+    if (carry.liftFromCapPct !== 0) liftParts.push(`${fmtPct(carry.liftFromCapPct)} from CAP`);
+    if (carry.liftModTotal      !== 0) liftParts.push(`${fmtPct(carry.liftModTotal)} from LIFT`);
+    const liftBaseHtml = liftParts.length === 0
+      ? `<span class="inv-carry-base">base ${fmt(carry.rawLift)}</span>`
+      : `<span class="inv-carry-base">base ${fmt(carry.rawLift)} · ${liftParts.join(' · ')}</span>`;
+
     // ── LIFT CARD ──
     html += renderCarryCard({
       key:        'lift',
@@ -967,9 +978,7 @@ export function createInventorySection(ctx) {
       open:       liftOpen,
       canEdit,
       valueHtml:  `${fmt(carry.lift)} <span class="inv-carry-unit">lbs</span>`,
-      baseHtml:   (carry.liftModTotal !== 0)
-                    ? `<span class="inv-carry-base">base ${fmt(carry.rawLift)} ${carry.liftModTotal > 0 ? '+' : '−'} ${Math.abs(carry.liftModTotal)}%</span>`
-                    : `<span class="inv-carry-base">base ${fmt(carry.rawLift)}</span>`,
+      baseHtml:   liftBaseHtml,
       description:'Absolute maximum you can ever carry without a roll. At this weight, ENC is 100% and you cannot move without rolling to "lift". Base: CAP × 11.',
       modifiers:  carry.liftModifiers,
       modUnit:    '%',
