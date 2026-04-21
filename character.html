@@ -182,6 +182,38 @@
       align-items: baseline;
       gap: 10px;
     }
+    /* Clickable tile head — any tile wrapped with wrapCollapsibleTile
+       in char-overview.js gets .state-tile-collapsible on its head, a
+       caret prepended, and the collapse affordances below. The flex
+       direction is row so the caret sits left of everything else while
+       numbers/pills still right-align via their own flex rules. */
+    .state-tile-collapsible {
+      cursor: pointer;
+      user-select: none;
+    }
+    .state-tile-collapsible:hover .state-tile-label { color: #ccc; }
+    .state-tile-collapsible:focus-visible {
+      outline: 2px solid #444;
+      outline-offset: 2px;
+      border-radius: 2px;
+    }
+    .state-tile-caret {
+      color: #555;
+      font-size: 10px;
+      flex-shrink: 0;
+      display: inline-block;
+      width: 10px;
+      transition: color .1s;
+      align-self: center;
+    }
+    .state-tile-collapsible:hover .state-tile-caret { color: #aaa; }
+
+    /* Collapsed tile — hide every child except the header. The header
+       remains visible and the caret flips to ▸ (handled in the
+       renderer). Padding-bottom tightens slightly since there's
+       nothing below the head. */
+    .state-tile.collapsed > *:not(.state-tile-head) { display: none; }
+    .state-tile.collapsed { padding-bottom: 10px; }
     .state-tile-label {
       font-size: 10px; font-weight: 700; letter-spacing: .14em;
       text-transform: uppercase; color: #888;
@@ -3862,6 +3894,7 @@
     rollCalcSetReduction:    (v)   => combat.rollCalcSetReduction(v),
     rollCalcToggle:          ()    => combat.rollCalcToggle(),
     rollCalcSetPassive:      (f)   => combat.rollCalcSetPassive(f),
+    overviewToggleTile:      (slug) => combat.overviewToggleTile(slug),
     rollCalcTogglePenalty:       (key) => combat.rollCalcTogglePenalty(key),
     rollCalcTogglePenaltyPanel:  ()    => combat.rollCalcTogglePenaltyPanel(),
     rollCalcResetPenalty:        ()    => combat.rollCalcResetPenalty(),
