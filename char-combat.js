@@ -910,7 +910,7 @@ export function createCombatSection(ctx) {
     // "Hit Locations" sub-header with the Edit Modifiers button. Acts as the
     // divider between the cards overview and the location bars below.
     body_html += '<div class="combat-subsection-head">';
-    html += '<div class="combat-subsection-title">Hit Locations</div>';
+    body_html += '<div class="combat-subsection-title">Hit Locations</div>';
     if (canEdit) {
       body_html += `<button class="hl-edit-btn${editModifiersMode ? ' active' : ''}" onclick="toggleHlModifierEdit()">` +
               `${editModifiersMode ? 'Done' : 'Edit Modifiers'}</button>`;
