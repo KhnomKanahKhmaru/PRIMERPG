@@ -236,17 +236,30 @@ function classifyVar(name, character, ruleset) {
     const match = ruleset.stats.find(s => s && (s.code || '').toUpperCase() === name.toUpperCase());
     if (match) return { category: 'stat', statCode: match.code.toUpperCase() };
   }
-  // Skills — check primary, then secondary, then specialty.
+  // Skills — check primary, then secondary, then specialty. Skill
+  // names can contain spaces or hyphens ("Knife Fighting") that get
+  // stripped when they're injected into a formula (the formula engine
+  // only allows [A-Za-z0-9_] identifiers). When the override system
+  // substitutes in a multi-word skill, the resulting formula has the
+  // SANITIZED form. We match BOTH the exact name and the sanitized
+  // form so the classifier correctly identifies the skill regardless.
   const skills = (character && character.skills) || {};
   const primarySkills = (ruleset && Array.isArray(ruleset.primarySkills)) ? ruleset.primarySkills : [];
-  if (primarySkills.some(s => s && s.name === name)) {
-    return { category: 'skill', skillName: name, skillTier: 'primary' };
+  const sanitize = (s) => String(s || '').replace(/[^A-Za-z0-9_]+/g, '');
+  const nameMatches = (skillName) =>
+    skillName === name || sanitize(skillName) === name;
+
+  const primaryHit = primarySkills.find(s => s && nameMatches(s.name));
+  if (primaryHit) {
+    return { category: 'skill', skillName: primaryHit.name, skillTier: 'primary' };
   }
-  if (Array.isArray(skills.secondary) && skills.secondary.some(s => s && s.name === name)) {
-    return { category: 'skill', skillName: name, skillTier: 'secondary' };
+  if (Array.isArray(skills.secondary)) {
+    const hit = skills.secondary.find(s => s && nameMatches(s.name));
+    if (hit) return { category: 'skill', skillName: hit.name, skillTier: 'secondary' };
   }
-  if (Array.isArray(skills.specialty) && skills.specialty.some(s => s && s.name === name)) {
-    return { category: 'skill', skillName: name, skillTier: 'specialty' };
+  if (Array.isArray(skills.specialty)) {
+    const hit = skills.specialty.find(s => s && nameMatches(s.name));
+    if (hit) return { category: 'skill', skillName: hit.name, skillTier: 'specialty' };
   }
   return { category: 'unknown' };
 }
@@ -289,7 +302,7 @@ function extractAdditiveTerms(compiled, symbols, character, ruleset) {
     // Leaf (not a recognized addition operand). Evaluate it as a
     // mini-expression and stash.
     const v = evalFormula({ ast: node }, symbols);
-    const label = termLabel(node);
+    const rawLabel = termLabel(node);
     const varRefs = [];
     collectVarRefs(node, varRefs);
     const isFlat = varRefs.some(isFlatVar);
@@ -300,9 +313,16 @@ function extractAdditiveTerms(compiled, symbols, character, ruleset) {
     const classification = firstVar
       ? classifyVar(firstVar, character, ruleset)
       : { category: 'literal' };
+    // Prefer the classification's `skillName` (which is the ORIGINAL,
+    // human-readable name like "Knife Fighting") over the formula
+    // label ("KnifeFighting"). Stats and other categories fall back
+    // to the formula label.
+    const displayLabel = (classification.category === 'skill' && classification.skillName)
+      ? classification.skillName
+      : rawLabel;
     terms.push({
-      label,
-      value: (v == null ? 0 : v) * sign,
+      label:     displayLabel,
+      value:     (v == null ? 0 : v) * sign,
       sign,
       isFlat,
       category:  classification.category,
