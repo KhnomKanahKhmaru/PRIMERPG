@@ -145,6 +145,7 @@ export function createBioSection(ctx) {
   }
 
   async function saveBio() {
+    if (!ctx.getCanEdit()) return;
     const msg = document.getElementById('bio-msg');
     const updated = {};
     BIO_FIELDS.forEach(f => {
@@ -195,6 +196,7 @@ export function createBioSection(ctx) {
   }
 
   async function saveEtc() {
+    if (!ctx.getCanEdit()) return;
     const val = document.getElementById('etc-edit').value.trim();
     try {
       await saveCharacter(ctx.getCharId(), { etc: val });
@@ -213,6 +215,7 @@ export function createBioSection(ctx) {
   }
 
   async function handlePicChange(e) {
+    if (!ctx.getCanEdit()) return;
     const file = e.target.files[0];
     if (!file) return;
     const slot = document.getElementById('picture-slot');
