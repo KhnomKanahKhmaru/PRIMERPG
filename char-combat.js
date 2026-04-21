@@ -2604,21 +2604,17 @@ export function createCombatSection(ctx) {
     // Roll Calculator — delegated to char-rollcalc.js module. These are
     // thin proxies so the existing window.rollCalc* wirings in
     // character.html keep working without needing to know the module split.
-    rollCalcSetStat:       rollcalc.setStat,
-    rollCalcSetSkill:      rollcalc.setSkill,
-    rollCalcSetStatValue:  rollcalc.setStatValue,
-    rollCalcSetSkillValue: rollcalc.setSkillValue,
-    rollCalcSetStatmod:    rollcalc.setStatmod,
-    // Extra Dice slot (third pool input — stat / skill / custom / none)
-    rollCalcSetExtraKind:  rollcalc.setExtraKind,
-    rollCalcSetExtraStat:  rollcalc.setExtraStat,
-    rollCalcSetExtraSkill: rollcalc.setExtraSkill,
-    rollCalcSetExtraValue: rollcalc.setExtraValue,
-    rollCalcSetDifficulty: rollcalc.setDifficulty,
-    rollCalcSetMitigation: rollcalc.setMitigation,
-    rollCalcSetReduction:  rollcalc.setReduction,
-    rollCalcToggle:        rollcalc.toggleShowRaw,
-    rollCalcSetPassive:    rollcalc.setPassive,
+    rollCalcSetSlotKind:    rollcalc.setSlotKind,
+    rollCalcSetSlotStat:    rollcalc.setSlotStat,
+    rollCalcSetSlotSkill:   rollcalc.setSlotSkill,
+    rollCalcSetSlotDerived: rollcalc.setSlotDerived,
+    rollCalcSetSlotValue:   rollcalc.setSlotValue,
+    rollCalcSetStatmod:     rollcalc.setStatmod,
+    rollCalcSetDifficulty:  rollcalc.setDifficulty,
+    rollCalcSetMitigation:  rollcalc.setMitigation,
+    rollCalcSetReduction:   rollcalc.setReduction,
+    rollCalcToggle:         rollcalc.toggleShowRaw,
+    rollCalcSetPassive:     rollcalc.setPassive,
     // Pain / Stress (percentile modifiers feeding Penalty via Pain and Stress components)
     togglePainPanel, addPainMod, updatePainMod, deletePainMod,
     toggleStressPanel, addStressMod, updateStressMod, deleteStressMod,
