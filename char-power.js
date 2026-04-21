@@ -25,6 +25,8 @@
 //   powerPoolXpCost → from char-derived.js, used for purchase cost preview
 //   escapeHtml, fmt → shared helpers
 
+import { wrapCollapsibleSection } from './char-util.js';
+
 export function createPowerSection(ctx) {
   const {
     getCharId, getCharData, getCanEdit, getRuleset,
@@ -46,22 +48,34 @@ export function createPowerSection(ctx) {
 
     const canEdit = getCanEdit();
 
-    let html = '<div class="combat-section">';
-    html += `<div class="combat-section-title">${escapeHtml(pp.name || 'Power Pool')}</div>`;
-    if (pp.description) {
-      html += `<div class="pp-desc">${escapeHtml(pp.description)}</div>`;
-    }
+    // Build head (title + optional description underneath the title
+    // text) and body (resource bar + purchase controls). The description
+    // lives INSIDE the collapsible head so it disappears when collapsed
+    // along with everything else — a collapsed Power section should show
+    // just the name, nothing else.
+    let body_html = '';
 
     // POWER resource bar (if POWER derived stat is configured)
     if (result.power) {
-      html += renderPowerBar(result.power, canEdit);
+      body_html += renderPowerBar(result.power, canEdit);
     }
 
     // Power Pool purchase controls
-    html += renderPowerPoolPurchase(pp, charData, canEdit);
+    body_html += renderPowerPoolPurchase(pp, charData, canEdit);
 
-    html += '</div>';
-    return html;
+    const head_html = `<span class="combat-section-title-text">${escapeHtml(pp.name || 'Power Pool')}</span>`;
+
+    // The description is treated as part of the body (first thing
+    // inside) so players can still see it when the section is open
+    // while collapse hides it along with everything else.
+    const bodyWithDesc = (pp.description ? `<div class="pp-desc">${escapeHtml(pp.description)}</div>` : '') + body_html;
+
+    return wrapCollapsibleSection(
+      'prime.collapse.combat.power',
+      head_html,
+      bodyWithDesc,
+      { wrapperClass: 'combat-section', collapsibleClass: 'combat-section-title', rerenderHandler: 'combatToggleCollapse' }
+    );
   }
 
   // The segmented POWER resource bar. Always at most 10 segments; if max > 10
