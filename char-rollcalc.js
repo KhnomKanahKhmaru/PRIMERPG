@@ -59,6 +59,19 @@ export function createRollCalc(ctx) {
     // Static roll modifier. null = auto (inherit from the highest-valued
     // base stat in the slots). Number = player manually overrode it.
     statmodOverride: null,
+    // Per-component Penalty toggles. Each key corresponds to one
+    // contributor; true = applies, false = skipped for THIS roll only
+    // (the main Penalty tile and stat cards continue to show the full
+    // Penalty). Keys:
+    //   pain, stress, encumbrance — the fixed components
+    //   other_<name>_<value>      — each named Other modifier, keyed
+    //                               by "name|value" so reordering the
+    //                               list doesn't shift toggle state
+    // Any key not present in the map defaults to true (apply).
+    penaltyToggles: {},
+    // Whether the toggles panel is currently expanded in the UI.
+    // Session-only; resets on page reload.
+    penaltyPanelOpen: false,
     difficulty: 6,
     mitigation: 0,
     reduction:  0,
@@ -305,9 +318,29 @@ export function createRollCalc(ctx) {
     const basePool = Math.max(0, resolvedSlots.reduce(
       (sum, s) => sum + (parseInt(s.value) || 0), 0
     ));
-    const penaltyPct = (result.penalty && result.penalty.percent) || 0;
+
+    // Effective Penalty for THIS roll — rebuilt from the character's
+    // current penalty breakdown, but with each component filtered by
+    // the per-roll toggles. This is independent of the main Penalty
+    // tile (which always shows the full Penalty). A toggle missing
+    // from the map defaults to ON, so newly-added Other modifiers
+    // apply by default.
     const isPassive = state.passive === true;
-    const penaltyDice = isPassive ? 0 : Math.floor(basePool * penaltyPct / 100);
+    const penaltyBreakdown = buildPenaltyBreakdown(result, charData);
+    const fullPenaltyPct = (result.penalty && result.penalty.percent) || 0;
+    const effectivePenaltyPct = isPassive
+      ? 0
+      : Math.max(0, Math.min(100,
+          penaltyBreakdown
+            .filter(c => isToggleOn(c.key))
+            .reduce((sum, c) => sum + c.value, 0)
+        ));
+    // penaltyPct exposed to the UI is the effective one so the
+    // breakdown line reads correctly ("−4d (25% of 16)"). The full
+    // pre-toggle percent is also exposed for the tooltip that shows
+    // what's being skipped.
+    const penaltyPct = effectivePenaltyPct;
+    const penaltyDice = Math.floor(basePool * effectivePenaltyPct / 100);
     const finalPool = Math.max(0, basePool - penaltyDice);
 
     const dist = computeRollDistribution(finalPool, effDifficulty, effStatmod);
@@ -317,8 +350,65 @@ export function createRollCalc(ctx) {
       statmod, autoStatmod, statmodSource,
       diff, mit, red, effDifficulty, diffDelta, effStatmod,
       basePool, penaltyPct, penaltyDice, finalPool,
+      // Per-roll penalty-toggle details, for rendering the toggles panel
+      penaltyBreakdown, fullPenaltyPct, effectivePenaltyPct,
       isPassive, dist
     };
+  }
+
+  // Return the penalty components for this roll, each with a stable
+  // toggle-key, display label, and numeric contribution. The keys are
+  // what `state.penaltyToggles` stores flags under. Zero-contribution
+  // components are still included so the panel can show them (greyed
+  // out) — helps players see that a given source is inactive.
+  //
+  // Others are keyed by "other|name|value" so re-ordering the array
+  // doesn't scramble toggle state. Collisions between two mods with the
+  // identical name+value are treated as the same toggle (acceptable).
+  function buildPenaltyBreakdown(result, charData) {
+    const out = [];
+    const p = result.penalty || {};
+    out.push({
+      key:   'pain',
+      label: 'Pain',
+      value: p.painPercent || 0,
+      kind:  'component'
+    });
+    out.push({
+      key:   'stress',
+      label: 'Stress',
+      value: p.stressPercent || 0,
+      kind:  'component'
+    });
+    out.push({
+      key:   'encumbrance',
+      label: 'Encumbrance',
+      value: p.encumbrancePercent || 0,
+      kind:  'component'
+    });
+    const others = Array.isArray(charData.otherModifiers) ? charData.otherModifiers : [];
+    others.forEach(m => {
+      if (!m) return;
+      const name  = (m.name || '(unnamed)');
+      const val   = parseFloat(m.value) || 0;
+      out.push({
+        key:   'other|' + name + '|' + val,
+        label: name,
+        value: val,
+        kind:  'other'
+      });
+    });
+    return out;
+  }
+
+  // Lookup helper — a missing toggle defaults to ON (apply the penalty).
+  // That's the safe default because it matches the main Penalty tile's
+  // behavior, and it means a player has to opt OUT of a component
+  // rather than opt in.
+  function isToggleOn(key) {
+    if (!key) return true;
+    const v = state.penaltyToggles[key];
+    return v !== false;
   }
 
   // ─── FORMATTING HELPERS ───
@@ -500,6 +590,79 @@ export function createRollCalc(ctx) {
     return '';
   }
 
+  // Render the per-roll Penalty toggles panel. Collapsible pane with
+  // one checkbox per penalty component (Pain / Stress / Encumbrance /
+  // each Other mod). Clicking a row flips that component's toggle for
+  // THIS roll only — the main Penalty tile continues to show the full
+  // Penalty. Hidden entirely when the character has no active Penalty
+  // (nothing to toggle).
+  function renderPenaltyToggles(r) {
+    const breakdown = r.penaltyBreakdown || [];
+    // Hide when there are no non-zero components and the player hasn't
+    // opted into managing toggles. An empty breakdown would render a
+    // confusing "expand to see nothing" button.
+    const anyNonZero = breakdown.some(c => c.value !== 0);
+    if (!anyNonZero) return '';
+
+    // Summary line: "Applying 35% of 50% Penalty" when something's off,
+    // or "Applying full 50% Penalty" when everything's on.
+    const offCount = breakdown.filter(c => c.value !== 0 && !isToggleOn(c.key)).length;
+    const offSummary = offCount > 0
+      ? `Applying <b>${r.effectivePenaltyPct}%</b> of <span class="rc-dim">${r.fullPenaltyPct}%</span> Penalty · <b>${offCount}</b> skipped`
+      : `Applying full <b>${r.fullPenaltyPct}%</b> Penalty`;
+
+    // Passive mode bypasses all Penalty regardless — make that clear
+    // by disabling the checkboxes and noting it in the summary.
+    const passiveNote = r.isPassive
+      ? ' <span class="rc-dim">(passive — Penalty bypassed regardless)</span>'
+      : '';
+
+    const open = state.penaltyPanelOpen;
+
+    let body = '';
+    if (open) {
+      const rowsHtml = breakdown.map(c => {
+        const on = isToggleOn(c.key);
+        const isZero = c.value === 0;
+        const rowClass = [
+          'rc-pen-row',
+          on ? '' : 'rc-pen-row-off',
+          isZero ? 'rc-pen-row-zero' : '',
+          c.kind === 'other' ? 'rc-pen-row-other' : ''
+        ].filter(Boolean).join(' ');
+        // Checked checkbox = applies. Click triggers the toggle handler.
+        // The row itself is clickable for convenience (the <label>
+        // association makes the checkbox flip when the row is clicked).
+        const valSign = c.value > 0 ? '+' : (c.value < 0 ? '−' : '');
+        const valAbs  = Math.abs(c.value);
+        return `
+          <label class="${rowClass}"${r.isPassive ? '' : ` onclick="event.stopPropagation();rollCalcTogglePenalty('${escapeHtml(c.key)}')"`}>
+            <input type="checkbox" class="rc-pen-check"${on ? ' checked' : ''}${r.isPassive ? ' disabled' : ''} tabindex="-1">
+            <span class="rc-pen-name">${escapeHtml(c.label)}</span>
+            <span class="rc-pen-val">${valSign}${valAbs}%</span>
+          </label>`;
+      }).join('');
+      const resetBtn = (offCount > 0 && !r.isPassive)
+        ? `<button type="button" class="rc-pen-reset" onclick="rollCalcResetPenalty()" title="Re-enable all Penalty components for this roll.">Reset</button>`
+        : '';
+      body = `
+        <div class="rc-pen-body">
+          <div class="rc-pen-rows">${rowsHtml}</div>
+          ${resetBtn}
+        </div>`;
+    }
+
+    return `
+      <div class="rc-pen-panel${open ? ' open' : ''}${r.isPassive ? ' rc-pen-passive' : ''}">
+        <button type="button" class="rc-pen-head" onclick="rollCalcTogglePenaltyPanel()" title="Per-roll Penalty toggles — skip individual components for this roll only. The main Penalty tile keeps showing the full Penalty.">
+          <span class="rc-pen-caret">${open ? '▾' : '▸'}</span>
+          <span class="rc-pen-head-label">Penalty Components</span>
+          <span class="rc-pen-summary">${offSummary}${passiveNote}</span>
+        </button>
+        ${body}
+      </div>`;
+  }
+
   // ─── TILE RENDER ───
 
   // Full tile render — called by combat.js in its renderAll pipeline.
@@ -573,6 +736,8 @@ export function createRollCalc(ctx) {
                    title="Difficulty Reduction — subtracted from raw difficulty">
           </div>
         </div>
+
+        ${renderPenaltyToggles(r)}
 
         <div class="rc-output">
           <div class="rc-output-pair">
@@ -739,6 +904,35 @@ export function createRollCalc(ctx) {
     if (!Number.isFinite(state.statmodOverride)) state.statmodOverride = 0;
     repaintOutput();
   }
+
+  // Per-roll Penalty-component toggle. Flips whether a given component
+  // (pain / stress / encumbrance / a named Other) contributes to THIS
+  // roll's dice reduction. The main Penalty tile elsewhere in the UI
+  // keeps showing the full Penalty regardless — this is per-roll only.
+  function togglePenaltyComponent(key) {
+    if (!key) return;
+    // Undefined → treat current state as ON (default) and flip to OFF.
+    const current = state.penaltyToggles[key];
+    state.penaltyToggles[key] = (current === false) ? true : false;
+    // Tile repaint — the toggles panel + breakdown + final pool all
+    // shift when a component flips.
+    repaintTile();
+  }
+
+  // Show/hide the toggles panel. Expanding needs a tile repaint
+  // (the panel body doesn't exist in the DOM yet when collapsed).
+  function togglePenaltyPanel() {
+    state.penaltyPanelOpen = !state.penaltyPanelOpen;
+    repaintTile();
+  }
+
+  // "Re-enable everything" — clears all off-toggles at once. Handy when
+  // you've been experimenting and want to reset to the default (all
+  // components apply).
+  function resetPenaltyToggles() {
+    state.penaltyToggles = {};
+    repaintTile();
+  }
   function setDifficulty(v) {
     state.difficulty = parseInt(v) || 0;
     repaintOutput();
@@ -768,7 +962,9 @@ export function createRollCalc(ctx) {
     setSlotKind, setSlotStat, setSlotSkill, setSlotDerived, setSlotValue,
     setStatmod,
     setDifficulty, setMitigation, setReduction,
-    toggleShowRaw, setPassive
+    toggleShowRaw, setPassive,
+    // Per-roll Penalty component toggles
+    togglePenaltyComponent, togglePenaltyPanel, resetPenaltyToggles
   };
 }
 
