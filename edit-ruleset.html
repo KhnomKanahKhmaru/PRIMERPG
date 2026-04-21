@@ -2367,6 +2367,18 @@
       categories:        state.categories
     };
 
+    // TEMP DIAGNOSTIC — log every item that has a weapon block so we
+    // can see what's actually going to Firestore. Remove once the
+    // weapons-don't-persist bug is fixed. If this logs an empty
+    // array even after you've toggled weapons on, the issue is in
+    // the edit handlers (mutations aren't landing on state.items).
+    // If it logs correctly but reload shows no weapons, the issue
+    // is on the read/normalize path.
+    const weaponedItems = (state.items || [])
+      .filter(i => i && i.weapon)
+      .map(i => ({ id: i.id, name: i.name, weapon: i.weapon }));
+    console.log('[saveRuleset] weaponed items going to Firestore:', weaponedItems);
+
     try {
       if (isCreating) {
         payload.isBasicSet = false;
