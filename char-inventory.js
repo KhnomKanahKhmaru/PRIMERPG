@@ -1899,14 +1899,33 @@ export function createInventorySection(ctx) {
     return html;
   }
 
-  // Weapon readout block — attack/damage breakdown, range info, ammo
-  // tracker, tags, ROF flavor. All pulled from resolveWeapon() in
-  // char-weapons.js which handles the dice-pool-vs-flat-bonus split.
+  // Weapon readout block. Designed as a self-contained mini dice
+  // calculator — players read the numbers off the card, type them
+  // into their Discord dicebot, and roll. The Roll Calc integration
+  // ("→ Roll Calc" button) is a secondary convenience, not the
+  // primary workflow.
   //
-  // Rendering is intentionally compact so a weapon row doesn't balloon
-  // the inventory list. Hovering a tag shows its description; clicking
-  // "Send to Roll Calc" (wired in the next turn) will pre-fill the
-  // Roll Calculator's slots with the dice pool + flat bonus.
+  // Layout:
+  //   [Attack block]
+  //     Dice pool: "DEX(6) + Melee(3) = 9D10" (click to toggle raw vs penalty-reduced)
+  //     Flat bonus: "+2" (DEXMOD)
+  //     Difficulty row: base 6 + chips (secondary skill -1, pain +1, etc.), final number
+  //     Slot breakdown per term — category-coded colors
+  //     "→ Roll Calc" button (secondary)
+  //   [Damage block]
+  //     Same structure, with an extra "ATK result" input for the
+  //     chain-from-attack-to-damage flow
+  //   [Chips row]  — DMG, PEN, range info, AMMO, ROF
+  //   [Melee range bands] OR ranged range info
+  //   [Tags]
+  //
+  // Per-instance UI state (entry.weaponUI) carries:
+  //   showRawAttack  — boolean; toggles raw vs penalty-reduced for Attack
+  //   showRawDamage  — boolean; same for Damage
+  //   atkResult      — number or null; the attack roll's contested
+  //                     result, used to compute final damage dice
+  //   (overrides and current range live in entry.weaponOverrides and
+  //   entry.currentRange — those drive actual resolver state)
   function renderWeaponReadout(entry) {
     const snap = entry && entry.snapshot;
     const weapon = snap && snap.weapon;
@@ -1914,40 +1933,74 @@ export function createInventorySection(ctx) {
 
     const character = ctx.getCharData();
     const ruleset   = ctx.getRuleset();
-    const resolved = resolveWeapon(weapon, character, ruleset);
+
+    // Pull the overall penalty percent from derived stats. Roll Calc
+    // already uses this — keep the same source so displays stay
+    // consistent. A missing/broken derived block means 0 penalty.
+    let penaltyPct = 0;
+    try {
+      const derived = computeDerivedStats(character, ruleset);
+      penaltyPct = (derived && derived.penalty && derived.penalty.percent) || 0;
+    } catch (_) { penaltyPct = 0; }
+
+    // Per-instance UI state — initialized lazily. Stored on the entry
+    // so it survives re-renders in the same session (saves to
+    // Firestore too, harmlessly).
+    const ui = entry.weaponUI || {};
+    const overrides = entry.weaponOverrides || null;
+    const atkResult = Number.isFinite(ui.atkResult) ? ui.atkResult : null;
+
+    const resolved = resolveWeapon(weapon, character, ruleset, overrides, atkResult, penaltyPct);
     if (!resolved) return '';
 
     const kindLabel = resolved.kind === 'melee' ? 'Melee' : 'Ranged';
+    // Status pill: show if any override is active (visual cue that
+    // this weapon's formula isn't the default). Turn 2 will add the
+    // "Reset to def" button.
+    const hasOverride = !!(overrides && (
+      (overrides.attack && Object.keys(overrides.attack).length > 0) ||
+      (overrides.damage && Object.keys(overrides.damage).length > 0)
+    ));
+    const overrideBadge = hasOverride
+      ? '<span class="inv-weapon-kind-pill" style="background:#1a2030;color:#8fa8d4;margin-left:4px" title="This weapon has per-instance slot overrides.">custom</span>'
+      : '';
+
     let html = `<div class="inv-weapon">
       <div class="inv-weapon-title">
         <span>Weapon</span>
         <span class="inv-weapon-kind-pill">${kindLabel}</span>
+        ${overrideBadge}
       </div>
       <div class="inv-weapon-grid">
-        ${renderWeaponRollBlock(entry, 'Attack', resolved.attack)}
-        ${renderWeaponRollBlock(entry, 'Damage', resolved.damage)}
+        ${renderWeaponRollBlock(entry, 'Attack', resolved.attack, {
+          showRaw:  !!ui.showRawAttack,
+          penaltyPct,
+          isAttack: true
+        })}
+        ${renderWeaponRollBlock(entry, 'Damage', resolved.damage, {
+          showRaw:   !!ui.showRawDamage,
+          penaltyPct,
+          isAttack:  false,
+          atkResult
+        })}
       </div>`;
 
-    // Row of inline chips: DMG, PEN, range/ranges. Ranged weapons also
-    // get DMGMOD, AMMO tracker, ROF flavor.
+    // Chips row — DMG, PEN, range info.
     const chips = [];
     chips.push(`<span class="inv-weapon-chip"><span class="inv-weapon-chip-label">DMG</span><span class="inv-weapon-chip-val">${resolved.dice}D10</span></span>`);
     chips.push(`<span class="inv-weapon-chip"><span class="inv-weapon-chip-label">PEN</span><span class="inv-weapon-chip-val">${resolved.pen}</span></span>`);
-
     if (resolved.kind === 'ranged') {
       chips.push(`<span class="inv-weapon-chip"><span class="inv-weapon-chip-label">Range</span><span class="inv-weapon-chip-val">${resolved.range}ft</span></span>`);
       chips.push(`<span class="inv-weapon-chip"><span class="inv-weapon-chip-label">DMGMOD</span><span class="inv-weapon-chip-val">${resolved.dmgmod >= 0 ? '+' : ''}${resolved.dmgmod}</span></span>`);
       chips.push(renderAmmoTracker(entry, resolved));
       chips.push(renderRofChip(resolved));
     }
-
     html += `<div class="inv-weapon-row">${chips.join('')}</div>`;
 
-    // Melee range bands — shown as a strip of "+0: 0-1ft · +1: 1-2ft · ..."
+    // Melee range bands strip.
     if (resolved.kind === 'melee' && Array.isArray(resolved.ranges) && resolved.ranges.length > 0) {
       html += `<div class="inv-weapon-ranges">`;
       resolved.ranges.forEach((band, i) => {
-        // Resolver normalizes to {s, e}, but defensive reads in case.
         const s = (band && typeof band === 'object' && !Array.isArray(band))
           ? (Number.isFinite(band.s) ? band.s : 0)
           : (Array.isArray(band) && Number.isFinite(band[0]) ? band[0] : 0);
@@ -1959,7 +2012,7 @@ export function createInventorySection(ctx) {
       html += `</div>`;
     }
 
-    // Tags — shown as pills with a tooltip carrying the description.
+    // Tags.
     if (Array.isArray(resolved.tags) && resolved.tags.length > 0) {
       html += `<div class="inv-weapon-tags">`;
       resolved.tags.forEach(t => {
@@ -1973,12 +2026,24 @@ export function createInventorySection(ctx) {
     return html;
   }
 
-  // Single Attack / Damage roll block. Shows the dice pool + flat bonus
-  // prominently, the per-term breakdown underneath, and a "Send to
-  // Roll Calc" button. Errors surface as a small italic line so the
-  // author can see which variable their formula is missing.
-  function renderWeaponRollBlock(entry, label, roll) {
+  // Single Attack / Damage roll block.
+  //
+  // opts:
+  //   showRaw    — boolean; when true display raw numbers, when false
+  //                display penalty-reduced numbers. Click on the pool
+  //                or flat readouts toggles this per weapon.
+  //   penaltyPct — penalty percentage (0-100). Only used to decide
+  //                whether to show the raw/reduced toggle at all (if
+  //                there's no penalty, both values are identical).
+  //   isAttack   — true for Attack block. Drives the Difficulty row
+  //                (chips for secondary/specialty skill mitigation —
+  //                only relevant to attack rolls, not damage).
+  //   atkResult  — damage only; contested attack result if the player
+  //                has entered one. Shown in the readout as either
+  //                the literal value or a "[ATK]" placeholder.
+  function renderWeaponRollBlock(entry, label, roll, opts) {
     if (!roll) return '';
+    opts = opts || {};
     const which = label.toLowerCase();
     if (roll.error) {
       return `<div class="inv-weapon-roll">
@@ -1986,24 +2051,155 @@ export function createInventorySection(ctx) {
         <div class="inv-weapon-roll-error">${escapeHtml(roll.error)}</div>
       </div>`;
     }
-    const flatStr = roll.flatBonus === 0 ? '' :
-                    (roll.flatBonus > 0 ? ` + ${roll.flatBonus}` : ` − ${Math.abs(roll.flatBonus)}`);
-    const dicePart = `<span class="inv-weapon-roll-pool">${roll.dicePool}D10</span>`;
-    const flatPart = roll.flatBonus !== 0
+
+    // Pool and flat values — pick raw or reduced depending on toggle.
+    // If there's no penalty, both are the same, so the toggle is
+    // hidden to keep the UI clean.
+    const hasPenalty = opts.penaltyPct > 0 && (
+      roll.dicePool !== roll.dicePoolReduced ||
+      roll.flatBonus !== roll.flatBonusReduced
+    );
+    const pool = opts.showRaw ? roll.dicePool  : roll.dicePoolReduced;
+    const flat = opts.showRaw ? roll.flatBonus : roll.flatBonusReduced;
+    const rawKey = opts.isAttack ? 'showRawAttack' : 'showRawDamage';
+    const toggleAttrs = hasPenalty
+      ? `onclick="invWeaponToggleRaw('${escapeHtml(entry.id)}','${escapeHtml(rawKey)}')" style="cursor:pointer" title="Click to ${opts.showRaw ? 'apply' : 'remove'} ${opts.penaltyPct}% Penalty"`
+      : '';
+
+    // Main display: dice pool + flat bonus.
+    const flatStr = flat === 0 ? '' :
+                    (flat > 0 ? ` + ${flat}` : ` − ${Math.abs(flat)}`);
+    const dicePart = `<span class="inv-weapon-roll-pool">${pool}D10</span>`;
+    const flatPart = flat !== 0
       ? `<span class="inv-weapon-roll-flat">${flatStr}</span>`
       : '';
-    const diceSlotsStr = roll.diceSlots.length > 0
-      ? roll.diceSlots.map(s => `<span class="inv-weapon-roll-slot">${escapeHtml(s.label)}:${s.sign < 0 ? '−' : ''}${Math.abs(s.value)}</span>`).join('')
-      : '<span class="inv-weapon-roll-slot" style="color:#555">(no dice terms)</span>';
-    const flatSlotsStr = roll.flatSlots.length > 0
-      ? '<br>' + roll.flatSlots.map(s => `<span class="inv-weapon-roll-slot" style="color:#b88860">${escapeHtml(s.label)}:${s.value >= 0 ? '+' : ''}${s.value}</span>`).join('')
+
+    // Penalty badge — a tiny pill next to the main value so the user
+    // can see at a glance whether they're looking at raw or reduced
+    // numbers. Only shown when there's penalty to apply.
+    const penaltyBadge = hasPenalty
+      ? `<span class="inv-weapon-penalty-pill">${opts.showRaw ? 'raw' : `−${opts.penaltyPct}%`}</span>`
       : '';
+
+    // Slot breakdown — one per term. Color by category: stat/statmod
+    // colored as "affected by penalty" when active; skill with tier
+    // badge; weapon consts in neutral. Damage-block ATK gets special
+    // treatment — shown as a live input if no atkResult yet, or the
+    // entered value with a clear button if there is one.
+    const diceSlotsHtml = roll.diceSlots.map(s => renderWeaponSlot(entry, s, opts)).join('');
+    const flatSlotsHtml = roll.flatSlots.length > 0
+      ? '<br>' + roll.flatSlots.map(s => renderWeaponSlot(entry, s, opts)).join('')
+      : '';
+
+    // Difficulty row — attack only. Base 6 + chips:
+    //   * secondary skill in slot: −1 mitigation
+    //   * specialty skill in slot: −2 mitigation
+    //   * (range-based mitigation comes in Turn 2 with the range picker)
+    let difficultyHtml = '';
+    if (opts.isAttack) {
+      const chips = [];
+      let mitigation = 0;
+      // Find the skill in the attack slots; apply tier mitigation.
+      roll.diceSlots.forEach(s => {
+        if (s.category === 'skill') {
+          if (s.skillTier === 'secondary') {
+            mitigation += 1;
+            chips.push({ label: `${s.label} (secondary)`, delta: -1 });
+          } else if (s.skillTier === 'specialty') {
+            mitigation += 2;
+            chips.push({ label: `${s.label} (specialty)`, delta: -2 });
+          }
+        }
+      });
+      const baseDiff = 6;
+      const finalDiff = Math.max(2, baseDiff - mitigation);
+      const chipsHtml = chips.map(c => {
+        const sign = c.delta >= 0 ? '+' : '−';
+        return `<span class="inv-weapon-diff-chip" title="${escapeHtml(c.label)}">${sign}${Math.abs(c.delta)} ${escapeHtml(c.label)}</span>`;
+      }).join('');
+      difficultyHtml = `<div class="inv-weapon-diff-row">
+        <span class="inv-weapon-diff-label">Difficulty</span>
+        <span class="inv-weapon-diff-val">${finalDiff}</span>
+        ${chipsHtml ? `<span class="inv-weapon-diff-chips">${chipsHtml}</span>` : ''}
+      </div>`;
+    }
+
+    // ATK input — damage block only. Two modes:
+    //   - placeholder: no atkResult entered. Shows "[ATK]" text and a
+    //     small "+" button to reveal an input.
+    //   - filled: atkResult present. Shows the number with a clear (×)
+    //     button. The damage dice pool above ALREADY reflects the
+    //     added ATK (resolver bakes it in), so no further math needed.
+    let atkRowHtml = '';
+    if (!opts.isAttack) {
+      const atk = opts.atkResult;
+      if (atk == null) {
+        atkRowHtml = `<div class="inv-weapon-atk-row">
+          <span class="inv-weapon-atk-label">ATK result</span>
+          <span class="inv-weapon-atk-placeholder" title="The total from your attack roll (the contested result). Add it so this damage pool shows the real final number.">
+            [not rolled]
+          </span>
+          <input type="number" class="inv-weapon-atk-input" placeholder="e.g. 5"
+                 onchange="invWeaponSetAtk('${escapeHtml(entry.id)}',this.value)"
+                 onkeydown="if(event.key==='Enter'){invWeaponSetAtk('${escapeHtml(entry.id)}',this.value);}">
+        </div>`;
+      } else {
+        atkRowHtml = `<div class="inv-weapon-atk-row">
+          <span class="inv-weapon-atk-label">ATK result</span>
+          <span class="inv-weapon-atk-val">${atk}</span>
+          <button class="inv-weapon-atk-clear" onclick="invWeaponSetAtk('${escapeHtml(entry.id)}','')" title="Clear — start a new attack">×</button>
+          <span class="inv-weapon-atk-note">already rolled in to the dice pool above</span>
+        </div>`;
+      }
+    }
+
     return `<div class="inv-weapon-roll">
       <div class="inv-weapon-roll-label">${label}</div>
-      <div class="inv-weapon-roll-main">${dicePart}${flatPart}</div>
-      <div class="inv-weapon-roll-slots">${diceSlotsStr}${flatSlotsStr}</div>
+      <div class="inv-weapon-roll-main" ${toggleAttrs}>${dicePart}${flatPart}${penaltyBadge}</div>
+      <div class="inv-weapon-roll-slots">${diceSlotsHtml}${flatSlotsHtml}</div>
+      ${difficultyHtml}
+      ${atkRowHtml}
       <button class="inv-weapon-roll-send" onclick="invWeaponToRollCalc('${escapeHtml(entry.id)}','${which}')" title="Send this roll to the Roll Calculator">→ Roll Calc</button>
     </div>`;
+  }
+
+  // Single slot (term) in a roll's breakdown. Color-coded by category:
+  //   stat / statmod — orange-ish, shown with the penalty-reduced
+  //                    value when Penalty is in effect
+  //   skill          — cyan, with tier badge (P/S/Sp for primary/secondary/specialty)
+  //   weaponConst    — neutral gray (DMG, PEN, ATK)
+  //   literal        — gray (rare — raw numbers in the formula)
+  //
+  // opts.showRaw flips which value gets shown. The slot always shows
+  // ITS value — sum totals are handled at the block level.
+  function renderWeaponSlot(entry, slot, opts) {
+    const showRaw = !!opts.showRaw;
+    const value = showRaw ? slot.value : (Number.isFinite(slot.valueReduced) ? slot.valueReduced : slot.value);
+    const absVal = Math.abs(value);
+    const signStr = slot.sign < 0 ? '−' : '';
+    // Category color class — defined in the CSS block.
+    let clsColor = 'inv-weapon-slot-const';
+    if      (slot.category === 'stat')    clsColor = 'inv-weapon-slot-stat';
+    else if (slot.category === 'statmod') clsColor = 'inv-weapon-slot-statmod';
+    else if (slot.category === 'skill')   clsColor = 'inv-weapon-slot-skill';
+    else if (slot.category === 'literal') clsColor = 'inv-weapon-slot-literal';
+    else if (slot.category === 'unknown') clsColor = 'inv-weapon-slot-unknown';
+    // Tier badge — tiny letter pill after skill name.
+    let tierBadge = '';
+    if (slot.category === 'skill' && slot.skillTier) {
+      const letter = slot.skillTier === 'primary' ? 'P'
+                   : slot.skillTier === 'secondary' ? 'S'
+                   : slot.skillTier === 'specialty' ? 'Sp'
+                   : '';
+      if (letter) tierBadge = `<span class="inv-weapon-tier-badge" title="${slot.skillTier}">${letter}</span>`;
+    }
+    // Reduction indicator — show a tiny "(was N)" when we're viewing
+    // penalty-reduced and it's actually reduced from the raw value.
+    let reductionHint = '';
+    if (!showRaw && slot.valueReduced != null && Math.abs(slot.value) !== Math.abs(slot.valueReduced)) {
+      reductionHint = ` <span class="inv-weapon-slot-was">(was ${Math.abs(slot.value)})</span>`;
+    }
+    return `<span class="inv-weapon-roll-slot ${clsColor}">${escapeHtml(slot.label)}${tierBadge}:${signStr}${absVal}${reductionHint}</span>`;
   }
 
   // AMMO tracker chip — shows "current / max" with +/- buttons. The
@@ -4275,6 +4471,48 @@ export function createInventorySection(ctx) {
     try { await save(); } catch (e) { console.error('inventory save failed', e); }
   }
 
+  // Toggle the raw-vs-penalty-reduced display on a weapon's roll block.
+  // rawKey is either 'showRawAttack' or 'showRawDamage' — which half of
+  // the card to flip. State lives on entry.weaponUI so each inventory
+  // item independently remembers which mode it's in. Saves to Firestore
+  // so the toggle persists across sessions.
+  async function weaponToggleRaw(id, rawKey) {
+    const entry = findEntry(id);
+    if (!entry) return;
+    if (!entry.weaponUI || typeof entry.weaponUI !== 'object') entry.weaponUI = {};
+    // Only these two keys are meaningful — guard against stray input.
+    if (rawKey !== 'showRawAttack' && rawKey !== 'showRawDamage') return;
+    entry.weaponUI[rawKey] = !entry.weaponUI[rawKey];
+    renderAll();
+    // Toggle state is a display preference so non-editors can flip it
+    // in the UI too, but only editors have permission to persist. Skip
+    // the save for read-only viewers.
+    if (getCanEdit()) {
+      try { await save(); } catch (e) { console.error('inventory save failed', e); }
+    }
+  }
+
+  // Store an ATK contested result on a weapon entry. Empty string
+  // clears the value (back to the "[not rolled]" placeholder). Accepts
+  // numeric input — anything non-numeric clears. The resolver uses
+  // entry.weaponUI.atkResult to inject ATK into the damage formula.
+  async function weaponSetAtk(id, value) {
+    const entry = findEntry(id);
+    if (!entry) return;
+    if (!entry.weaponUI || typeof entry.weaponUI !== 'object') entry.weaponUI = {};
+    const raw = (value == null) ? '' : String(value).trim();
+    if (!raw) {
+      entry.weaponUI.atkResult = null;
+    } else {
+      const n = Number(raw);
+      entry.weaponUI.atkResult = Number.isFinite(n) ? Math.floor(n) : null;
+    }
+    renderAll();
+    if (getCanEdit()) {
+      try { await save(); } catch (e) { console.error('inventory save failed', e); }
+    }
+  }
+
   // Send a weapon's attack or damage roll to the Roll Calculator. The
   // actual Roll Calc state lives in char-rollcalc.js — we route the
   // call through ctx.sendWeaponToRollCalc which character.html wires
@@ -4355,6 +4593,8 @@ export function createInventorySection(ctx) {
     // Weapon readout — AMMO tracker and Roll Calc send
     weaponAdjustAmmo,
     weaponReloadAmmo,
+    weaponToggleRaw,
+    weaponSetAtk,
     weaponToRollCalc,
     removeEntry: removeEntryHandler,
     // Catalog view
