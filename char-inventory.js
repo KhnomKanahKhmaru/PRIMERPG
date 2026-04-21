@@ -1934,54 +1934,80 @@ export function createInventorySection(ctx) {
     const character = ctx.getCharData();
     const ruleset   = ctx.getRuleset();
 
-    // Pull the overall penalty percent from derived stats. Roll Calc
-    // already uses this — keep the same source so displays stay
-    // consistent. A missing/broken derived block means 0 penalty.
     let penaltyPct = 0;
     try {
       const derived = computeDerivedStats(character, ruleset);
       penaltyPct = (derived && derived.penalty && derived.penalty.percent) || 0;
     } catch (_) { penaltyPct = 0; }
 
-    // Per-instance UI state — initialized lazily. Stored on the entry
-    // so it survives re-renders in the same session (saves to
-    // Firestore too, harmlessly).
     const ui = entry.weaponUI || {};
     const overrides = entry.weaponOverrides || null;
     const atkResult = Number.isFinite(ui.atkResult) ? ui.atkResult : null;
+    const currentRange = Number.isFinite(entry.currentRange) ? entry.currentRange : null;
 
+    // Resolve TWICE:
+    //   resolved        — with overrides applied (what the user currently sees)
+    //   defaultResolved — with NO overrides (so each slot knows its original
+    //                     variable name for the override map key). Slots are
+    //                     paired by index between the two results.
+    // Performance is fine — two cheap compiles + evaluations per weapon.
     const resolved = resolveWeapon(weapon, character, ruleset, overrides, atkResult, penaltyPct);
     if (!resolved) return '';
+    const defaultResolved = overrides
+      ? resolveWeapon(weapon, character, ruleset, null, atkResult, penaltyPct)
+      : resolved;
+
+    // Compute range-based Difficulty chip for the Attack block. Works
+    // for both melee (map distance onto weapon's bands) and ranged
+    // (map distance past weapon's base range in successive bands).
+    // Returns { band, label } or null when no range set.
+    let rangeChip = null;
+    if (currentRange != null) {
+      try {
+        if (weapon.kind === 'melee') {
+          rangeChip = meleeBandFor(resolved.ranges, currentRange);
+        } else {
+          rangeChip = rangedBandFor(resolved.range, currentRange);
+        }
+      } catch (_) { rangeChip = null; }
+    }
 
     const kindLabel = resolved.kind === 'melee' ? 'Melee' : 'Ranged';
-    // Status pill: show if any override is active (visual cue that
-    // this weapon's formula isn't the default). Turn 2 will add the
-    // "Reset to def" button.
     const hasOverride = !!(overrides && (
       (overrides.attack && Object.keys(overrides.attack).length > 0) ||
       (overrides.damage && Object.keys(overrides.damage).length > 0)
     ));
-    const overrideBadge = hasOverride
-      ? '<span class="inv-weapon-kind-pill" style="background:#1a2030;color:#8fa8d4;margin-left:4px" title="This weapon has per-instance slot overrides.">custom</span>'
+    const hasAnyInstanceState = hasOverride || currentRange != null || atkResult != null;
+
+    const customBadge = hasOverride
+      ? '<span class="inv-weapon-custom-badge" title="This weapon has per-instance slot overrides. Click Reset to clear.">custom</span>'
+      : '';
+    const resetBtn = hasAnyInstanceState
+      ? `<button class="inv-weapon-reset-btn" onclick="invWeaponResetOverrides('${escapeHtml(entry.id)}')" title="Clear all slot overrides, range, and ATK result for this weapon">Reset to def</button>`
       : '';
 
     let html = `<div class="inv-weapon">
       <div class="inv-weapon-title">
         <span>Weapon</span>
         <span class="inv-weapon-kind-pill">${kindLabel}</span>
-        ${overrideBadge}
+        ${customBadge}
+        <span style="flex:1"></span>
+        ${resetBtn}
       </div>
       <div class="inv-weapon-grid">
         ${renderWeaponRollBlock(entry, 'Attack', resolved.attack, {
-          showRaw:  !!ui.showRawAttack,
+          showRaw:       !!ui.showRawAttack,
           penaltyPct,
-          isAttack: true
+          isAttack:      true,
+          defaultSlots:  defaultResolved.attack.diceSlots.concat(defaultResolved.attack.flatSlots),
+          rangeChip
         })}
         ${renderWeaponRollBlock(entry, 'Damage', resolved.damage, {
-          showRaw:   !!ui.showRawDamage,
+          showRaw:       !!ui.showRawDamage,
           penaltyPct,
-          isAttack:  false,
-          atkResult
+          isAttack:      false,
+          atkResult,
+          defaultSlots:  defaultResolved.damage.diceSlots.concat(defaultResolved.damage.flatSlots)
         })}
       </div>`;
 
@@ -1997,20 +2023,11 @@ export function createInventorySection(ctx) {
     }
     html += `<div class="inv-weapon-row">${chips.join('')}</div>`;
 
-    // Melee range bands strip.
-    if (resolved.kind === 'melee' && Array.isArray(resolved.ranges) && resolved.ranges.length > 0) {
-      html += `<div class="inv-weapon-ranges">`;
-      resolved.ranges.forEach((band, i) => {
-        const s = (band && typeof band === 'object' && !Array.isArray(band))
-          ? (Number.isFinite(band.s) ? band.s : 0)
-          : (Array.isArray(band) && Number.isFinite(band[0]) ? band[0] : 0);
-        const e = (band && typeof band === 'object' && !Array.isArray(band))
-          ? (Number.isFinite(band.e) ? band.e : 0)
-          : (Array.isArray(band) && Number.isFinite(band[1]) ? band[1] : 0);
-        html += `<span class="inv-weapon-range"><span class="inv-weapon-range-label">+${i}</span>${fmt(s)}–${fmt(e)}ft</span>`;
-      });
-      html += `</div>`;
-    }
+    // Engagement-range selector — distance input + (for melee) the
+    // clickable band strip. Distance is stored as feet on
+    // entry.currentRange. Clicking a melee band chip auto-fills the
+    // distance to that band's start.
+    html += renderWeaponRangeSelector(entry, weapon, resolved, currentRange, rangeChip);
 
     // Tags.
     if (Array.isArray(resolved.tags) && resolved.tags.length > 0) {
@@ -2023,6 +2040,58 @@ export function createInventorySection(ctx) {
     }
 
     html += `</div>`;
+    return html;
+  }
+
+  // Engagement-range selector row. Melee and ranged weapons differ:
+  //   Melee  — show clickable band chips (Band 0: 0-1ft, Band 1: 1-2ft, ...)
+  //            plus a distance input for arbitrary values. Clicking a band
+  //            fills the distance to that band's start.
+  //   Ranged — just a distance input. The computed band comes from
+  //            rangedBandFor(weapon.range, distance) which doubles the
+  //            difficulty zone each band past the base range.
+  //
+  // Always shows the current computed band label when a range is set.
+  function renderWeaponRangeSelector(entry, weapon, resolved, currentRange, rangeChip) {
+    const id = escapeHtml(entry.id);
+    const distVal = currentRange != null ? String(currentRange) : '';
+    const distInput = `<input type="number" class="inv-weapon-range-input" min="0" step="1"
+                              value="${escapeHtml(distVal)}"
+                              placeholder="ft"
+                              onchange="invWeaponSetRange('${id}',this.value)"
+                              onkeydown="if(event.key==='Enter'){invWeaponSetRange('${id}',this.value);this.blur();}">`;
+    const clearBtn = currentRange != null
+      ? `<button class="inv-weapon-range-clear" onclick="invWeaponSetRange('${id}','')" title="Clear range">×</button>`
+      : '';
+    const bandLabel = rangeChip
+      ? `<span class="inv-weapon-range-band">${escapeHtml(rangeChip.label)}</span>`
+      : '<span class="inv-weapon-range-band none">base</span>';
+
+    let html = `<div class="inv-weapon-range-row">
+      <span class="inv-weapon-range-row-label">Engagement range</span>
+      ${distInput}<span class="inv-weapon-range-unit">ft</span>
+      ${clearBtn}
+      ${bandLabel}
+    </div>`;
+
+    // Melee: show the band strip, clickable. Each chip snaps distance
+    // to the band's start (user can fine-tune with the input).
+    if (resolved.kind === 'melee' && Array.isArray(resolved.ranges) && resolved.ranges.length > 0) {
+      html += `<div class="inv-weapon-ranges">`;
+      resolved.ranges.forEach((band, i) => {
+        const s = (band && typeof band === 'object' && !Array.isArray(band))
+          ? (Number.isFinite(band.s) ? band.s : 0)
+          : (Array.isArray(band) && Number.isFinite(band[0]) ? band[0] : 0);
+        const e = (band && typeof band === 'object' && !Array.isArray(band))
+          ? (Number.isFinite(band.e) ? band.e : 0)
+          : (Array.isArray(band) && Number.isFinite(band[1]) ? band[1] : 0);
+        const active = rangeChip && rangeChip.band === i ? ' active' : '';
+        html += `<span class="inv-weapon-range clickable${active}" onclick="invWeaponSetRange('${id}',${s})" title="Click to snap to ${fmt(s)}ft">
+          <span class="inv-weapon-range-label">+${i}</span>${fmt(s)}–${fmt(e)}ft
+        </span>`;
+      });
+      html += `</div>`;
+    }
     return html;
   }
 
@@ -2082,40 +2151,68 @@ export function createInventorySection(ctx) {
       : '';
 
     // Slot breakdown — one per term. Color by category: stat/statmod
-    // colored as "affected by penalty" when active; skill with tier
-    // badge; weapon consts in neutral. Damage-block ATK gets special
-    // treatment — shown as a live input if no atkResult yet, or the
-    // entered value with a clear button if there is one.
-    const diceSlotsHtml = roll.diceSlots.map(s => renderWeaponSlot(entry, s, opts)).join('');
+    // with penalty-reduction visual when active; skill with tier
+    // badge; weapon consts in neutral. Stat and skill slots become
+    // <select> pickers so the user can swap the variable (writes to
+    // entry.weaponOverrides).
+    //
+    // We pair each live slot with the SAME POSITION in the pre-override
+    // resolve (opts.defaultSlots). That pre-override slot's label is
+    // the ORIGINAL variable name, which is what we need as the
+    // override-map key. If the two result arrays happen to differ in
+    // length (shouldn't in normal operation), we fall back to using
+    // the live slot's own label.
+    const defaultSlots = Array.isArray(opts.defaultSlots) ? opts.defaultSlots : null;
+    const pairSlot = (liveSlot, i) => {
+      const def = defaultSlots && defaultSlots[i];
+      const fromVar = (def && def.label) ? def.label : liveSlot.label;
+      return renderWeaponSlot(entry, liveSlot, opts, fromVar, which);
+    };
+    // diceSlots + flatSlots concat follows the same order in both
+    // resolves (extractAdditiveTerms walks the AST deterministically).
+    // Indexing starts at 0 and runs across both arrays, so dice slots
+    // use indices 0..N-1 and flat slots start at N.
+    const diceCount = roll.diceSlots.length;
+    const diceSlotsHtml = roll.diceSlots.map((s, i) => pairSlot(s, i)).join('');
     const flatSlotsHtml = roll.flatSlots.length > 0
-      ? '<br>' + roll.flatSlots.map(s => renderWeaponSlot(entry, s, opts)).join('')
+      ? '<br>' + roll.flatSlots.map((s, i) => pairSlot(s, diceCount + i)).join('')
       : '';
 
     // Difficulty row — attack only. Base 6 + chips:
+    //   * range: +N from current engagement range
     //   * secondary skill in slot: −1 mitigation
     //   * specialty skill in slot: −2 mitigation
-    //   * (range-based mitigation comes in Turn 2 with the range picker)
     let difficultyHtml = '';
     if (opts.isAttack) {
       const chips = [];
-      let mitigation = 0;
-      // Find the skill in the attack slots; apply tier mitigation.
+      let delta = 0;
+      // Range chip first (so the Difficulty readout reads left-to-right
+      // like "+1 Range, −1 Secondary, = 6").
+      if (opts.rangeChip && Number.isFinite(opts.rangeChip.band) && opts.rangeChip.band > 0) {
+        delta += opts.rangeChip.band;
+        chips.push({
+          label: `Range ${opts.rangeChip.label}`,
+          delta: opts.rangeChip.band,
+          cls: 'penalty'
+        });
+      }
+      // Skill-tier mitigation.
       roll.diceSlots.forEach(s => {
         if (s.category === 'skill') {
           if (s.skillTier === 'secondary') {
-            mitigation += 1;
-            chips.push({ label: `${s.label} (secondary)`, delta: -1 });
+            delta -= 1;
+            chips.push({ label: `${s.label} (secondary)`, delta: -1, cls: 'mitigation' });
           } else if (s.skillTier === 'specialty') {
-            mitigation += 2;
-            chips.push({ label: `${s.label} (specialty)`, delta: -2 });
+            delta -= 2;
+            chips.push({ label: `${s.label} (specialty)`, delta: -2, cls: 'mitigation' });
           }
         }
       });
       const baseDiff = 6;
-      const finalDiff = Math.max(2, baseDiff - mitigation);
+      const finalDiff = Math.max(2, baseDiff + delta);
       const chipsHtml = chips.map(c => {
         const sign = c.delta >= 0 ? '+' : '−';
-        return `<span class="inv-weapon-diff-chip" title="${escapeHtml(c.label)}">${sign}${Math.abs(c.delta)} ${escapeHtml(c.label)}</span>`;
+        return `<span class="inv-weapon-diff-chip ${c.cls || ''}" title="${escapeHtml(c.label)}">${sign}${Math.abs(c.delta)} ${escapeHtml(c.label)}</span>`;
       }).join('');
       difficultyHtml = `<div class="inv-weapon-diff-row">
         <span class="inv-weapon-diff-label">Difficulty</span>
@@ -2170,9 +2267,20 @@ export function createInventorySection(ctx) {
   //   weaponConst    — neutral gray (DMG, PEN, ATK)
   //   literal        — gray (rare — raw numbers in the formula)
   //
-  // opts.showRaw flips which value gets shown. The slot always shows
-  // ITS value — sum totals are handled at the block level.
-  function renderWeaponSlot(entry, slot, opts) {
+  // For stat and skill slots, the label becomes a native `<select>` so
+  // the user can swap the variable without navigating away. Changing
+  // the select calls invWeaponSetSlotOverride which writes to
+  // entry.weaponOverrides and re-renders.
+  //
+  // Arguments:
+  //   entry    — inventory entry (for the id in onchange)
+  //   slot     — the live (post-override) slot from the resolver
+  //   opts     — roll-block opts (showRaw, penaltyPct, isAttack, ...)
+  //   fromVar  — the ORIGINAL variable name at this slot position, used
+  //              as the override-map key. Needed because `slot.label`
+  //              already reflects the overridden identifier.
+  //   whichRoll — 'attack' | 'damage', the override sub-map to target.
+  function renderWeaponSlot(entry, slot, opts, fromVar, whichRoll) {
     const showRaw = !!opts.showRaw;
     const value = showRaw ? slot.value : (Number.isFinite(slot.valueReduced) ? slot.valueReduced : slot.value);
     const absVal = Math.abs(value);
@@ -2191,7 +2299,7 @@ export function createInventorySection(ctx) {
                    : slot.skillTier === 'secondary' ? 'S'
                    : slot.skillTier === 'specialty' ? 'Sp'
                    : '';
-      if (letter) tierBadge = `<span class="inv-weapon-tier-badge" title="${slot.skillTier}">${letter}</span>`;
+      if (letter) tierBadge = `<span class="inv-weapon-tier-badge ${slot.skillTier}" title="${slot.skillTier}">${letter}</span>`;
     }
     // Reduction indicator — show a tiny "(was N)" when we're viewing
     // penalty-reduced and it's actually reduced from the raw value.
@@ -2199,7 +2307,60 @@ export function createInventorySection(ctx) {
     if (!showRaw && slot.valueReduced != null && Math.abs(slot.value) !== Math.abs(slot.valueReduced)) {
       reductionHint = ` <span class="inv-weapon-slot-was">(was ${Math.abs(slot.value)})</span>`;
     }
-    return `<span class="inv-weapon-roll-slot ${clsColor}">${escapeHtml(slot.label)}${tierBadge}:${signStr}${absVal}${reductionHint}</span>`;
+
+    // Decide whether this slot gets a picker. Stats and skills do;
+    // statmods (derived from their base stat, not independently
+    // pickable), weapon constants, literals, and unknowns don't.
+    const pickable = (slot.category === 'stat' || slot.category === 'skill')
+                     && fromVar && whichRoll;
+    if (!pickable) {
+      return `<span class="inv-weapon-roll-slot ${clsColor}">${escapeHtml(slot.label)}${tierBadge}:${signStr}${absVal}${reductionHint}</span>`;
+    }
+
+    // Build the select. Current value (slot.label) is pre-selected.
+    // Options come from buildSlotPickerOptions which looks at the
+    // ruleset (stats) or the character (skills across tiers).
+    const picker = buildSlotPickerOptions(slot.category);
+    const idAttr = escapeHtml(entry.id);
+    const fromAttr = escapeHtml(fromVar);
+    const rollAttr = escapeHtml(whichRoll);
+    const currentLabel = slot.label;
+
+    let optsHtml = '';
+    if (picker.flat) {
+      optsHtml = picker.flat.map(o => {
+        const sel = (o.value === currentLabel) ? ' selected' : '';
+        return `<option value="${escapeHtml(o.value)}"${sel}>${escapeHtml(o.label)}</option>`;
+      }).join('');
+    } else if (Array.isArray(picker.groups)) {
+      optsHtml = picker.groups.map(g => {
+        if (!g.items || g.items.length === 0) return '';
+        const items = g.items.map(o => {
+          // Match against both the raw label (for exact-name skills
+          // like "Melee") and the sanitized form (for spaces → none),
+          // since the current slot label comes back sanitized.
+          const sanitized = String(o.value).replace(/[^A-Za-z0-9_]+/g, '');
+          const sel = (o.value === currentLabel || sanitized === currentLabel) ? ' selected' : '';
+          return `<option value="${escapeHtml(o.value)}"${sel}>${escapeHtml(o.label)}</option>`;
+        }).join('');
+        return `<optgroup label="${escapeHtml(g.label)}">${items}</optgroup>`;
+      }).join('');
+    }
+
+    // If the current slot's value is missing from the picker (e.g. a
+    // formula variable the character doesn't have a matching skill
+    // for), inject it as a disabled option so the select still shows
+    // something sensible rather than defaulting to option[0].
+    if (optsHtml.indexOf(' selected>') === -1) {
+      optsHtml = `<option value="${escapeHtml(currentLabel)}" selected disabled>${escapeHtml(currentLabel)} (unknown)</option>${optsHtml}`;
+    }
+
+    const select = `<select class="inv-weapon-slot-select"
+                            onchange="invWeaponSetSlotOverride('${idAttr}','${rollAttr}','${fromAttr}',this.value)"
+                            title="Swap this slot for a different ${slot.category}. Select the original to reset.">
+      ${optsHtml}
+    </select>`;
+    return `<span class="inv-weapon-roll-slot ${clsColor}">${select}${tierBadge}:${signStr}${absVal}${reductionHint}</span>`;
   }
 
   // AMMO tracker chip — shows "current / max" with +/- buttons. The
@@ -4513,6 +4674,163 @@ export function createInventorySection(ctx) {
     }
   }
 
+  // Apply (or clear) a per-instance slot override on a weapon. The
+  // override rewrites a single variable in the Attack or Damage
+  // formula at resolve time — e.g. swap DEX for INT, or Melee for
+  // KnifeFighting. If `toVar` equals `fromVar` (i.e. "back to
+  // default"), the override entry is DELETED from the map so the
+  // formula returns to the ruleset default.
+  //
+  // Arguments:
+  //   id      — inventory entry id
+  //   roll    — 'attack' | 'damage'
+  //   fromVar — original variable name (the one in the ruleset formula)
+  //   toVar   — new variable name (stat code or skill name). Empty
+  //             string or fromVar clears the override.
+  async function weaponSetSlotOverride(id, roll, fromVar, toVar) {
+    const entry = findEntry(id);
+    if (!entry) return;
+    if (roll !== 'attack' && roll !== 'damage') return;
+    if (!fromVar) return;
+    if (!entry.weaponOverrides || typeof entry.weaponOverrides !== 'object') {
+      entry.weaponOverrides = {};
+    }
+    if (!entry.weaponOverrides[roll] || typeof entry.weaponOverrides[roll] !== 'object') {
+      entry.weaponOverrides[roll] = {};
+    }
+    const safeTo = (toVar == null) ? '' : String(toVar).trim();
+    if (!safeTo || safeTo === fromVar) {
+      delete entry.weaponOverrides[roll][fromVar];
+    } else {
+      entry.weaponOverrides[roll][fromVar] = safeTo;
+    }
+    // Clean up empty sub-objects so the "hasOverride" check stays
+    // accurate even after toggling an override off.
+    if (Object.keys(entry.weaponOverrides[roll]).length === 0) {
+      delete entry.weaponOverrides[roll];
+    }
+    if (Object.keys(entry.weaponOverrides).length === 0) {
+      entry.weaponOverrides = null;
+    }
+    renderAll();
+    if (getCanEdit()) {
+      try { await save(); } catch (e) { console.error('inventory save failed', e); }
+    }
+  }
+
+  // Wipe all per-instance overrides and the current range back to the
+  // weapon's default. Leaves ammo counter alone (that's not an
+  // "override" per se — it's a gameplay state).
+  async function weaponResetOverrides(id) {
+    const entry = findEntry(id);
+    if (!entry) return;
+    let touched = false;
+    if (entry.weaponOverrides) { entry.weaponOverrides = null; touched = true; }
+    if (entry.currentRange != null) { entry.currentRange = null; touched = true; }
+    if (entry.weaponUI && entry.weaponUI.atkResult != null) {
+      entry.weaponUI.atkResult = null;
+      touched = true;
+    }
+    if (!touched) return;
+    renderAll();
+    if (getCanEdit()) {
+      try { await save(); } catch (e) { console.error('inventory save failed', e); }
+    }
+  }
+
+  // Set the current engagement range for a weapon (in feet). Used to
+  // compute the Range chip in the Attack's Difficulty row. Melee
+  // weapons map the distance onto their range bands (+N difficulty
+  // per band past 0). Ranged weapons use the base range + distance
+  // via rangedBandFor().
+  //
+  // Empty string clears the range (Difficulty goes back to base 6).
+  async function weaponSetRange(id, value) {
+    const entry = findEntry(id);
+    if (!entry) return;
+    const raw = (value == null) ? '' : String(value).trim();
+    if (!raw) {
+      entry.currentRange = null;
+    } else {
+      const n = Number(raw);
+      entry.currentRange = Number.isFinite(n) && n >= 0 ? n : null;
+    }
+    renderAll();
+    if (getCanEdit()) {
+      try { await save(); } catch (e) { console.error('inventory save failed', e); }
+    }
+  }
+
+  // Build the list of options for a slot picker. Category dictates
+  // the option set:
+  //   stat  → all ruleset.stats (flat list)
+  //   skill → character's primary + secondary + specialty skills,
+  //           grouped by tier. Secondary/specialty live as arrays on
+  //           the character; primary is keyed by name on the ruleset.
+  //
+  // Returns an object:
+  //   {
+  //     flat:      [{value, label, tier}]    — for stats (tier null)
+  //     groups:    [{label, items: [{value, label, tier}]}]  — for skills
+  //   }
+  //
+  // One of the two fields will be populated, never both.
+  function buildSlotPickerOptions(category) {
+    if (category === 'stat') {
+      const ruleset = getRuleset();
+      const stats = Array.isArray(ruleset && ruleset.stats) ? ruleset.stats : [];
+      return {
+        flat: stats.map(s => ({
+          value: (s.code || '').toUpperCase(),
+          label: (s.code || '').toUpperCase(),
+          tier:  null
+        })),
+        groups: null
+      };
+    }
+    if (category === 'skill') {
+      const ruleset = getRuleset();
+      const character = getCharData();
+      const primary = Array.isArray(ruleset && ruleset.primarySkills) ? ruleset.primarySkills : [];
+      const skills = (character && character.skills) || {};
+      const secondary = Array.isArray(skills.secondary) ? skills.secondary : [];
+      const specialty = Array.isArray(skills.specialty) ? skills.specialty : [];
+      const groups = [];
+      if (primary.length > 0) {
+        groups.push({
+          label: 'Primary',
+          items: primary.map(s => ({
+            value: s.name || s.code || '',
+            label: s.name || s.code || '',
+            tier:  'primary'
+          })).filter(o => o.value)
+        });
+      }
+      if (secondary.length > 0) {
+        groups.push({
+          label: 'Secondary (−1 Difficulty)',
+          items: secondary.map(s => ({
+            value: s.name || '',
+            label: s.name || '',
+            tier:  'secondary'
+          })).filter(o => o.value)
+        });
+      }
+      if (specialty.length > 0) {
+        groups.push({
+          label: 'Specialty (−2 Difficulty)',
+          items: specialty.map(s => ({
+            value: s.name || '',
+            label: s.name || '',
+            tier:  'specialty'
+          })).filter(o => o.value)
+        });
+      }
+      return { flat: null, groups };
+    }
+    return { flat: null, groups: null };
+  }
+
   // Send a weapon's attack or damage roll to the Roll Calculator. The
   // actual Roll Calc state lives in char-rollcalc.js — we route the
   // call through ctx.sendWeaponToRollCalc which character.html wires
@@ -4595,6 +4913,9 @@ export function createInventorySection(ctx) {
     weaponReloadAmmo,
     weaponToggleRaw,
     weaponSetAtk,
+    weaponSetSlotOverride,
+    weaponResetOverrides,
+    weaponSetRange,
     weaponToRollCalc,
     removeEntry: removeEntryHandler,
     // Catalog view
