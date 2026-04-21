@@ -1368,6 +1368,57 @@
     .ad-cat-title { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #666; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px dashed #1e1e1e; }
     .ad-cards { display: flex; flex-direction: column; gap: 8px; }
 
+    /* Collapsible headers (A/D sides + their inner category titles).
+       The ad-collapsible class is added to any header that acts as
+       a toggle button. The ▸ / ▾ caret is an inline span the renderer
+       swaps based on collapsed state. Focus-visible outline keeps
+       keyboard-toggle users oriented. */
+    .ad-collapsible {
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .ad-collapsible:hover { color: #ccc; }
+    .ad-collapsible:focus-visible {
+      outline: 2px solid #444;
+      outline-offset: 2px;
+      border-radius: 2px;
+    }
+    .ad-caret {
+      color: #555;
+      font-size: 10px;
+      width: 10px;
+      display: inline-block;
+      flex-shrink: 0;
+      transition: color .1s;
+    }
+    .ad-collapsible:hover .ad-caret { color: #aaa; }
+    /* Inner category header gets a small count pill next to its label
+       so a collapsed section still communicates how much is inside. */
+    .ad-cat-title-label { flex: 1; }
+    .ad-cat-count {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 9px;
+      color: #666;
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 8px;
+      padding: 0 5px;
+      letter-spacing: 0;
+      font-weight: 500;
+    }
+    /* Collapsed category hides its cards. Header stays visible. */
+    .ad-cat-group.collapsed > .ad-cards { display: none; }
+    .ad-cat-group.collapsed > .ad-cat-title { margin-bottom: 0; border-bottom-style: dotted; }
+    /* Collapsed outer A/D block: bottom border of the header loses its
+       emphasis (since there's nothing below it), and the block itself
+       shrinks its padding a touch. Subtle — just gives the eye a cue
+       the block is dormant. */
+    .ad-block.collapsed .ad-block-header { margin-bottom: 0; border-bottom-style: dotted; padding-bottom: 6px; }
+    .ad-block.collapsed { padding-bottom: 10px; }
+
     /* Individual card */
     .ad-card { background: #111; border: 1px solid #1f1f1f; border-radius: 4px; padding: 10px 12px; position: relative; }
     .ad-card-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
@@ -3748,6 +3799,8 @@
     commitAdFormCatalog:  (side) => advantages.commitCatalog(side),
     commitAdFormCustom:   (side) => advantages.commitCustom(side),
     removeAdEntry:        (side, i) => advantages.removeEntry(side, i),
+    adToggleSide:         (side)     => advantages.toggleSide(side),
+    adToggleCategory:     (side, cat) => advantages.toggleCategory(side, cat),
     // Situations
     openNewSituation:     () => situations.openAddForm(),
     closeNewSituation:    () => situations.closeAddForm(),
