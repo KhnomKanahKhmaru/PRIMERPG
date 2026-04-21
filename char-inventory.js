@@ -2449,6 +2449,14 @@ export function createInventorySection(ctx) {
       </div>`;
     }
 
+    // Weapon block — equipment only. Renders underneath the container
+    // toggle so an item can be BOTH a weapon AND a container (think
+    // a staff with a hidden compartment — unusual but not
+    // impossible). Container-kind defs skip this entirely.
+    if (defKind === 'equipment') {
+      html += renderCatalogManagerWeaponBlock(d, def.id);
+    }
+
     html += `<div class="inv-edit-panel-actions">
       <button class="inv-add-btn" onclick="invCatMgrSaveEdit('${escapeHtml(defKind)}','${escapeHtml(def.id)}')">Save Changes</button>
       <button class="inv-add-btn inv-add-btn-ghost" onclick="invCatMgrCollapseRow('${escapeHtml(def.id)}')">Cancel</button>
@@ -2522,12 +2530,190 @@ export function createInventorySection(ctx) {
       </div>`;
     }
 
+    // Weapon block — equipment only, same as the edit form. Routes
+    // through invCatMgrNewDraft / *-NewWeapon* handlers via the
+    // '__new__' target sentinel.
+    if (kind === 'equipment') {
+      html += renderCatalogManagerWeaponBlock(d, '__new__');
+    }
+
     html += `<div class="inv-edit-panel-actions">
       <button class="inv-add-btn" onclick="invCatMgrSaveNew()">Save to Catalogue</button>
       <button class="inv-add-btn inv-add-btn-ghost" onclick="invCatMgrCancelNew()">Cancel</button>
     </div>`;
 
     html += `</div>`;
+    return html;
+  }
+
+  // Shared weapon-block renderer used by both the edit form and the
+  // new form. Parameterized by `target`: pass a def id for edit mode
+  // (all mutations route through invCatMgrDraft / invCatMgrWeaponRange
+  // / invCatMgrWeaponTag with the def id), or pass the sentinel
+  // '__new__' for the new-item form (routes through invCatMgrNewDraft
+  // and the new-specific variants).
+  //
+  // The block only renders for equipment-kind drafts — containers
+  // can't be weapons (you don't attack with a backpack). Container
+  // forms simply skip this block entirely.
+  //
+  // Data shape on the draft:
+  //   isWeapon:       bool     — master toggle; false hides everything below
+  //   weaponKind:     'melee' | 'ranged'
+  //   weaponDice:     number   — D10 count for damage dice
+  //   weaponPen:      number   — armor pierced
+  //   weaponRanges:   [[s,e],...]  — melee only
+  //   weaponRange:    number   — ranged only, base range in feet
+  //   weaponDmgmod:   number   — ranged only, flat damage bonus + recoil req
+  //   weaponAmmo:     string   — number OR formula (preserved as-entered)
+  //   weaponRof:      string   — number OR formula
+  //   weaponTags:     string[] — array of ruleset weapon tag ids
+  function renderCatalogManagerWeaponBlock(draft, target) {
+    // Routing table — build onclick/oninput call sites based on
+    // whether this is the edit form or the new form. Uses string
+    // concatenation rather than template interpolation so the emitted
+    // handler attribute is clean and copy-pasteable in devtools.
+    const isNew = (target === '__new__');
+    // Field update: "invCatMgrDraft(id,field,val)" vs "invCatMgrNewDraft(field,val)"
+    const upd = (field, valExpr) => isNew
+      ? `invCatMgrNewDraft('${escapeHtml(field)}',${valExpr})`
+      : `invCatMgrDraft('${escapeHtml(target)}','${escapeHtml(field)}',${valExpr})`;
+    // Range handlers — invCatMgrWeaponAddRange / Remove / UpdateRange.
+    // Same pattern for tags: invCatMgrWeaponToggleTag.
+    const rngAdd    = ()            => isNew ? `invCatMgrNewWeaponAddRange()`                   : `invCatMgrWeaponAddRange('${escapeHtml(target)}')`;
+    const rngRemove = (bi)          => isNew ? `invCatMgrNewWeaponRemoveRange(${bi})`           : `invCatMgrWeaponRemoveRange('${escapeHtml(target)}',${bi})`;
+    const rngUpdate = (bi, which)   => isNew ? `invCatMgrNewWeaponUpdateRange(${bi},'${which}',this.value)` : `invCatMgrWeaponUpdateRange('${escapeHtml(target)}',${bi},'${which}',this.value)`;
+    const tagToggle = (tagId)       => isNew ? `invCatMgrNewWeaponToggleTag('${escapeHtml(tagId)}',this.checked)` : `invCatMgrWeaponToggleTag('${escapeHtml(target)}','${escapeHtml(tagId)}',this.checked)`;
+
+    const isWeapon = !!draft.isWeapon;
+
+    // Toggle row — master on/off for the weapon block. Same visual
+    // pattern as "Also a container."
+    let html = `<div class="inv-toggle-row">
+      <span class="inv-toggle${isWeapon ? ' on' : ''}" onclick="${upd('isWeapon', !isWeapon)}">${isWeapon ? '✓ Also a weapon' : 'Also a weapon'}</span>
+      <span class="inv-toggle-hint">Turn on to make this a weapon — reveals damage dice, PEN, range, and tags. Roll formulas come from the ruleset.</span>
+    </div>`;
+
+    if (!isWeapon) return html;
+
+    const kind = draft.weaponKind === 'ranged' ? 'ranged' : 'melee';
+    const dice   = Number.isFinite(draft.weaponDice)   ? draft.weaponDice   : 0;
+    const pen    = Number.isFinite(draft.weaponPen)    ? draft.weaponPen    : 0;
+    const range  = Number.isFinite(draft.weaponRange)  ? draft.weaponRange  : 0;
+    const dmgmod = Number.isFinite(draft.weaponDmgmod) ? draft.weaponDmgmod : 0;
+
+    html += `<div class="inv-container-block">
+      <div class="inv-container-block-title">Weapon Properties</div>
+
+      <div class="inv-pair-row">
+        <div class="inv-field" style="max-width:200px">
+          <label>Kind</label>
+          <select onchange="${upd('weaponKind', 'this.value')}">
+            <option value="melee"${kind === 'melee' ? ' selected' : ''}>Melee</option>
+            <option value="ranged"${kind === 'ranged' ? ' selected' : ''}>Ranged</option>
+          </select>
+        </div>
+        <div class="inv-field" style="max-width:120px">
+          <label>Damage Dice</label>
+          <input type="number" step="1" min="0" value="${escapeHtml(String(dice))}"
+                 oninput="${upd('weaponDice', 'this.value')}">
+        </div>
+        <div class="inv-field" style="max-width:120px">
+          <label>PEN</label>
+          <input type="number" step="1" min="0" value="${escapeHtml(String(pen))}"
+                 oninput="${upd('weaponPen', 'this.value')}">
+        </div>
+      </div>`;
+
+    if (kind === 'melee') {
+      const ranges = Array.isArray(draft.weaponRanges) ? draft.weaponRanges : [];
+      html += `<div class="inv-field">
+        <label>Range Bands (feet)</label>
+        <div style="font-size:10px;color:#666;line-height:1.4;margin-bottom:4px">
+          Each band adds +1 Difficulty over the previous. Band 0 is +0, Band 1 is +1, etc. Leave empty for trivial range.
+        </div>`;
+      if (ranges.length === 0) {
+        html += `<div style="font-size:11px;color:#666;padding:4px 0">No range bands defined.</div>`;
+      } else {
+        ranges.forEach((band, bi) => {
+          const s = Number.isFinite(band[0]) ? band[0] : 0;
+          const e = Number.isFinite(band[1]) ? band[1] : 0;
+          html += `<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
+            <span style="font-size:11px;color:#888;min-width:58px">Band ${bi} (+${bi})</span>
+            <input type="number" step="0.5" min="0" value="${escapeHtml(String(s))}" placeholder="Start"
+                   style="max-width:80px"
+                   oninput="${rngUpdate(bi, 'start')}">
+            <span style="color:#666">–</span>
+            <input type="number" step="0.5" min="0" value="${escapeHtml(String(e))}" placeholder="End"
+                   style="max-width:80px"
+                   oninput="${rngUpdate(bi, 'end')}">
+            <span style="color:#666;font-size:11px">ft</span>
+            <span class="delete-x" style="margin-left:6px"
+                  onclick="${rngRemove(bi)}" title="Remove band">×</span>
+          </div>`;
+        });
+      }
+      html += `<button class="inv-add-btn inv-add-btn-sm inv-add-btn-ghost" style="margin-top:4px"
+                      onclick="${rngAdd()}">+ Add Band</button>
+      </div>`;
+    } else {
+      // ranged
+      const ammo = (draft.weaponAmmo == null) ? '' : String(draft.weaponAmmo);
+      const rof  = (draft.weaponRof  == null) ? '' : String(draft.weaponRof);
+      html += `<div class="inv-pair-row">
+        <div class="inv-field" style="max-width:140px">
+          <label>Base Range (ft)</label>
+          <input type="number" step="1" min="0" value="${escapeHtml(String(range))}"
+                 oninput="${upd('weaponRange', 'this.value')}">
+          <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">+0 within base, +1 (R→2R), +2 (2R→3R), longshot ×3 per band after.</div>
+        </div>
+        <div class="inv-field" style="max-width:120px">
+          <label>Weapon DMGMOD</label>
+          <input type="number" step="1" value="${escapeHtml(String(dmgmod))}"
+                 oninput="${upd('weaponDmgmod', 'this.value')}">
+          <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">Flat damage bonus + sets Recoil STR requirement.</div>
+        </div>
+      </div>
+      <div class="inv-pair-row">
+        <div class="inv-field">
+          <label>AMMO (number or formula)</label>
+          <input type="text" value="${escapeHtml(ammo)}" placeholder="e.g. 6  or  STR"
+                 oninput="${upd('weaponAmmo', 'this.value')}">
+          <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">Literal magazine size or a formula like <code>STR</code> or <code>DEXMOD+2</code>.</div>
+        </div>
+        <div class="inv-field">
+          <label>ROF (number or formula)</label>
+          <input type="text" value="${escapeHtml(rof)}" placeholder="e.g. 1  or  (DEXMOD/2)-1"
+                 oninput="${upd('weaponRof', 'this.value')}">
+          <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">-1 Single · 0 Action · 1 Semi · 2 Auto · 3 Full · 4 Chain.</div>
+        </div>
+      </div>`;
+    }
+
+    // Tag checkboxes — pulled from the active ruleset's catalogue.
+    // Empty ruleset shows a hint. Tooltip carries the description.
+    const ruleset = getRuleset() || {};
+    const rsTags = Array.isArray(ruleset.weaponTags) ? ruleset.weaponTags : [];
+    const tagIds = Array.isArray(draft.weaponTags) ? draft.weaponTags : [];
+    html += `<div class="inv-field">
+      <label>Tags</label>`;
+    if (rsTags.length === 0) {
+      html += `<div style="font-size:11px;color:#888;padding:4px 0">This ruleset has no weapon tags defined. The ruleset author can add them under Derived Stats &amp; Combat → Weapon Tags.</div>`;
+    } else {
+      html += `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">`;
+      rsTags.forEach(t => {
+        const checked = tagIds.includes(t.id) ? ' checked' : '';
+        const name = escapeHtml(t.name || t.id);
+        const desc = escapeHtml(t.description || '');
+        html += `<label style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:4px;font-size:11px;cursor:pointer" title="${desc}">
+          <input type="checkbox"${checked} onchange="${tagToggle(t.id)}">
+          ${name}
+        </label>`;
+      });
+      html += `</div>`;
+    }
+    html += `</div></div>`;   // /inv-container-block
+
     return html;
   }
 
@@ -2554,7 +2740,33 @@ export function createInventorySection(ctx) {
       innerDims = def.containerOf.dimensions || { l: 0, w: 0, h: 0 };
       innerPacking = Number.isFinite(def.containerOf.packingEfficiency) ? def.containerOf.packingEfficiency : 0.75;
     }
-    catalogManager.drafts.set(def.id, {
+    // Weapon fields — only relevant for equipment defs (container
+    // defs can't be weapons). If the def has a weapon block, seed all
+    // its fields; otherwise the draft gets isWeapon=false and empty
+    // defaults, so toggling the weapon on in the form reveals them.
+    // Tags are copied as a fresh array so edits don't mutate the def
+    // until save.
+    const w = (defKind === 'equipment' && def.weapon) ? def.weapon : null;
+    const weaponFields = {
+      isWeapon:       !!w,
+      weaponKind:     w ? (w.kind || 'melee') : 'melee',
+      weaponDice:     w && Number.isFinite(w.dice)   ? w.dice   : 1,
+      weaponPen:      w && Number.isFinite(w.pen)    ? w.pen    : 0,
+      weaponRanges:   w && Array.isArray(w.ranges)
+                        ? w.ranges.map(b => [
+                            Number.isFinite(b[0]) ? b[0] : 0,
+                            Number.isFinite(b[1]) ? b[1] : 0
+                          ])
+                        : [],
+      weaponRange:    w && Number.isFinite(w.range)  ? w.range  : 30,
+      weaponDmgmod:   w && Number.isFinite(w.dmgmod) ? w.dmgmod : 0,
+      // ammo/rof can be a number OR a formula string; draft stores the
+      // same shape the form typed in, save coerces.
+      weaponAmmo:     w ? (w.ammo != null ? String(w.ammo) : '1') : '1',
+      weaponRof:      w ? (w.rof  != null ? String(w.rof)  : '0') : '0',
+      weaponTags:     w && Array.isArray(w.tags) ? w.tags.slice() : []
+    };
+    catalogManager.drafts.set(def.id, Object.assign({
       name:         def.name || '',
       description:  def.description || '',
       weight:       def.weight || 0,
@@ -2566,7 +2778,7 @@ export function createInventorySection(ctx) {
       innerW:       innerDims.w || 0,
       innerH:       innerDims.h || 0,
       innerPacking
-    });
+    }, weaponFields));
   }
 
   // ── Handlers ──
@@ -2620,19 +2832,76 @@ export function createInventorySection(ctx) {
   function catMgrDraft(defId, field, value) {
     const d = catalogManager.drafts.get(defId);
     if (!d) return;
-    const numericFields = new Set(['weight','l','w','h','innerL','innerW','innerH','innerPacking']);
-    if (numericFields.has(field)) {
-      const n = parseFloat(value);
-      d[field] = Number.isFinite(n) && n >= 0 ? n : 0;
-    } else if (field === 'alsoContainer') {
-      d[field] = !!value;
-      renderCatalogManager();   // show/hide container block
-    } else {
-      d[field] = typeof value === 'string' ? value : '';
-    }
+    applyDraftField(d, field, value, /*isNew=*/false);
   }
 
   // Save the draft back to the def and persist.
+  // ── Weapon range-band + tag handlers ──
+  //
+  // Range bands are stored as an array of [start, end] pairs. Adding
+  // a band chains start = previous band's end, so typing 0-1, 1-2,
+  // 2-3 is quick. Removing a band splices. Tag toggles flip the
+  // ruleset-tag-id in or out of the weaponTags array.
+  //
+  // Two variants exist: one targets an EDIT draft (looked up by defId
+  // in catalogManager.drafts), the other targets the NEW draft
+  // (catalogManager.newDraft). The split exists because the two
+  // drafts have different lookup keys — there's no way to write a
+  // single handler covering both without introducing a sentinel
+  // argument everywhere, and the variants are just thin wrappers.
+
+  function _getEditDraft(defId) {
+    return catalogManager.drafts.get(defId);
+  }
+  function _getNewDraft() {
+    return catalogManager.newDraft;
+  }
+
+  // Helpers working on any draft (edit or new) — pass the draft in.
+  function _weaponAddRange(d) {
+    if (!d) return;
+    if (!Array.isArray(d.weaponRanges)) d.weaponRanges = [];
+    const prev = d.weaponRanges[d.weaponRanges.length - 1];
+    const start = prev ? (Number(prev[1]) || 0) : 0;
+    d.weaponRanges.push([start, start + 1]);
+    renderCatalogManager();
+  }
+  function _weaponRemoveRange(d, bandIdx) {
+    if (!d || !Array.isArray(d.weaponRanges)) return;
+    d.weaponRanges.splice(bandIdx, 1);
+    renderCatalogManager();
+  }
+  function _weaponUpdateRange(d, bandIdx, which, value) {
+    if (!d || !Array.isArray(d.weaponRanges)) return;
+    const band = d.weaponRanges[bandIdx];
+    if (!Array.isArray(band)) return;
+    const n = parseFloat(value);
+    const safe = Number.isFinite(n) && n >= 0 ? n : 0;
+    if (which === 'start') band[0] = safe;
+    else if (which === 'end') band[1] = safe;
+    // No re-render — user might still be typing the other side.
+  }
+  function _weaponToggleTag(d, tagId, on) {
+    if (!d) return;
+    if (!Array.isArray(d.weaponTags)) d.weaponTags = [];
+    const idx = d.weaponTags.indexOf(tagId);
+    if (on && idx < 0) d.weaponTags.push(tagId);
+    else if (!on && idx >= 0) d.weaponTags.splice(idx, 1);
+    // No re-render — checkbox visual handled by browser.
+  }
+
+  // Edit-draft variants — wire up via invCatMgrWeapon* window handlers.
+  function catMgrWeaponAddRange(defId)                       { _weaponAddRange(_getEditDraft(defId)); }
+  function catMgrWeaponRemoveRange(defId, bandIdx)           { _weaponRemoveRange(_getEditDraft(defId), bandIdx); }
+  function catMgrWeaponUpdateRange(defId, bandIdx, w, value) { _weaponUpdateRange(_getEditDraft(defId), bandIdx, w, value); }
+  function catMgrWeaponToggleTag(defId, tagId, on)           { _weaponToggleTag(_getEditDraft(defId), tagId, on); }
+
+  // New-draft variants — invCatMgrNewWeapon* window handlers.
+  function catMgrNewWeaponAddRange()                       { _weaponAddRange(_getNewDraft()); }
+  function catMgrNewWeaponRemoveRange(bandIdx)             { _weaponRemoveRange(_getNewDraft(), bandIdx); }
+  function catMgrNewWeaponUpdateRange(bandIdx, w, value)   { _weaponUpdateRange(_getNewDraft(), bandIdx, w, value); }
+  function catMgrNewWeaponToggleTag(tagId, on)             { _weaponToggleTag(_getNewDraft(), tagId, on); }
+
   async function catMgrSaveEdit(defKind, defId) {
     const inv = ensureInventory();
     const bucket = defKind === 'container' ? inv.customDefs.containers : inv.customDefs.equipment;
@@ -2662,6 +2931,11 @@ export function createInventorySection(ctx) {
         dimensions: { l: d.innerL || 0, w: d.innerW || 0, h: d.innerH || 0 },
         packingEfficiency: clampEff(d.innerPacking, 0.75)
       } : null;
+      // Weapon block — equipment only. If the draft has isWeapon on,
+      // write a coerced weapon object; otherwise clear to null so an
+      // item that used to be a weapon but isn't anymore doesn't keep
+      // stale data.
+      def.weapon = d.isWeapon ? buildWeaponFromDraft(d) : null;
     }
 
     // Drop the draft and close the row.
@@ -2669,6 +2943,51 @@ export function createInventorySection(ctx) {
     catalogManager.expandedDefIds.delete(defId);
     renderCatalogManager();
     try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
+  // Coerce a flat draft's weapon fields into the def.weapon schema.
+  // Mirrors coerceWeapon in ruleset-defaults.js — if the draft data is
+  // malformed the returned object may not match the coercer's output
+  // exactly, but the coercer runs again at ruleset-load time so any
+  // drift gets cleaned up on the next session. We're just building a
+  // "best effort" save shape here.
+  function buildWeaponFromDraft(d) {
+    const kind = d.weaponKind === 'ranged' ? 'ranged' : 'melee';
+    const dice = Number.isFinite(d.weaponDice) ? Math.max(0, Math.floor(d.weaponDice)) : 0;
+    const pen  = Number.isFinite(d.weaponPen)  ? Math.max(0, Math.floor(d.weaponPen))  : 0;
+    const tags = Array.isArray(d.weaponTags) ? d.weaponTags.slice() : [];
+    if (kind === 'melee') {
+      const ranges = Array.isArray(d.weaponRanges)
+        ? d.weaponRanges
+            .filter(b => Array.isArray(b) && b.length >= 2)
+            .map(b => [
+              Number.isFinite(b[0]) ? b[0] : 0,
+              Number.isFinite(b[1]) ? b[1] : 0
+            ])
+            .filter(b => b[1] >= b[0])
+        : [];
+      return { kind: 'melee', dice, pen, tags, ranges };
+    }
+    // ranged
+    const range  = Number.isFinite(d.weaponRange)  ? Math.max(0, d.weaponRange)  : 0;
+    const dmgmod = Number.isFinite(d.weaponDmgmod) ? d.weaponDmgmod : 0;
+    // ammo/rof: store as number if the draft value is a clean numeric
+    // string, otherwise preserve as formula string. Empty string → 0.
+    const asNum = (raw, fallback) => {
+      const s = (raw == null) ? '' : String(raw).trim();
+      if (!s) return fallback;
+      const n = Number(s);
+      if (Number.isFinite(n) && s === String(n)) return n;
+      return s;
+    };
+    return {
+      kind: 'ranged',
+      dice, pen, tags,
+      range,
+      dmgmod,
+      ammo: asNum(d.weaponAmmo, 0),
+      rof:  asNum(d.weaponRof,  0)
+    };
   }
 
   // Instance-preserving delete from the manager. Reuses the same
@@ -2692,7 +3011,19 @@ export function createInventorySection(ctx) {
       l: 0, w: 0, h: 0,
       alsoContainer: false,
       innerL: 0, innerW: 0, innerH: 0,
-      innerPacking: 0.75
+      innerPacking: 0.75,
+      // Weapon defaults — only surfaced in the form for equipment
+      // kind. Container-kind drafts never see the weapon toggle.
+      isWeapon: false,
+      weaponKind: 'melee',
+      weaponDice: 1,
+      weaponPen: 0,
+      weaponRanges: [],
+      weaponRange: 30,
+      weaponDmgmod: 0,
+      weaponAmmo: '1',
+      weaponRof:  '0',
+      weaponTags: []
     };
     renderCatalogManager();
   }
@@ -2706,16 +3037,85 @@ export function createInventorySection(ctx) {
   function catMgrNewDraft(field, value) {
     const d = catalogManager.newDraft;
     if (!d) return;
-    const numericFields = new Set(['weight','l','w','h','innerL','innerW','innerH','innerPacking']);
-    if (numericFields.has(field)) {
+    applyDraftField(d, field, value, /*isNew=*/true);
+  }
+
+  // Shared field-application logic for both edit drafts and the new
+  // draft. Centralizes the field-type dispatch: scalar numerics, the
+  // container toggle (which needs a re-render to show/hide the
+  // container fields), weapon-specific fields with their own numeric /
+  // string / boolean rules, and fall-through for plain string fields.
+  //
+  // Fields that mutate the DOM structure (isWeapon, weaponKind,
+  // alsoContainer) trigger a re-render; field edits that just change
+  // a value (dice, PEN, range, ammo formula, etc.) skip the re-render
+  // so the input keeps focus mid-typing. This mirrors the behavior
+  // of the ruleset-side item editor.
+  function applyDraftField(d, field, value, isNew) {
+    // Dimensions / weights — numeric, >= 0.
+    const nonNegativeNumeric = new Set(['weight','l','w','h','innerL','innerW','innerH','innerPacking']);
+    if (nonNegativeNumeric.has(field)) {
       const n = parseFloat(value);
       d[field] = Number.isFinite(n) && n >= 0 ? n : 0;
-    } else if (field === 'alsoContainer') {
+      return;
+    }
+
+    // Container dual-role toggle — re-render so the container block
+    // appears/disappears.
+    if (field === 'alsoContainer') {
       d[field] = !!value;
       renderCatalogManager();
-    } else {
-      d[field] = typeof value === 'string' ? value : '';
+      return;
     }
+
+    // ── Weapon fields ──
+    if (field === 'isWeapon') {
+      d.isWeapon = !!value;
+      renderCatalogManager();   // show/hide the whole weapon block
+      return;
+    }
+    if (field === 'weaponKind') {
+      // Swapping kind wipes the old kind's data, same as the
+      // ruleset-side item editor. The re-render reveals the new
+      // kind-specific fields.
+      if (value !== 'melee' && value !== 'ranged') return;
+      d.weaponKind = value;
+      if (value === 'melee') {
+        // Going ranged → melee clears range-specific defaults so the
+        // old range/dmgmod/ammo/rof don't linger invisibly.
+        d.weaponRanges = d.weaponRanges || [];
+      } else {
+        // Going melee → ranged, seed defaults if they're missing.
+        if (!Number.isFinite(d.weaponRange))  d.weaponRange  = 30;
+        if (!Number.isFinite(d.weaponDmgmod)) d.weaponDmgmod = 0;
+        if (d.weaponAmmo == null || d.weaponAmmo === '') d.weaponAmmo = '1';
+        if (d.weaponRof  == null || d.weaponRof  === '') d.weaponRof  = '0';
+      }
+      renderCatalogManager();
+      return;
+    }
+    if (field === 'weaponDice' || field === 'weaponPen' || field === 'weaponRange') {
+      const n = parseFloat(value);
+      d[field] = Number.isFinite(n) && n >= 0 ? n : 0;
+      return;
+    }
+    if (field === 'weaponDmgmod') {
+      // Allow negatives — some cursed/miscalibrated weapons have -N.
+      const n = parseFloat(value);
+      d.weaponDmgmod = Number.isFinite(n) ? n : 0;
+      return;
+    }
+    if (field === 'weaponAmmo' || field === 'weaponRof') {
+      // Stored as-typed so the user can enter either a plain number
+      // ("6") or a formula ("STR" or "(DEXMOD/2)-1"). The save path
+      // coerces pure-numeric strings into numbers before writing to
+      // def.weapon.ammo / def.weapon.rof.
+      d[field] = (typeof value === 'string') ? value : '';
+      return;
+    }
+
+    // Default fallback — plain string fields (name, description).
+    d[field] = typeof value === 'string' ? value : '';
   }
 
   // Commit the new-def draft to the customDefs bucket. Does NOT
