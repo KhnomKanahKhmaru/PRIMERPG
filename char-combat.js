@@ -2609,6 +2609,11 @@ export function createCombatSection(ctx) {
     rollCalcSetStatValue:  rollcalc.setStatValue,
     rollCalcSetSkillValue: rollcalc.setSkillValue,
     rollCalcSetStatmod:    rollcalc.setStatmod,
+    // Extra Dice slot (third pool input — stat / skill / custom / none)
+    rollCalcSetExtraKind:  rollcalc.setExtraKind,
+    rollCalcSetExtraStat:  rollcalc.setExtraStat,
+    rollCalcSetExtraSkill: rollcalc.setExtraSkill,
+    rollCalcSetExtraValue: rollcalc.setExtraValue,
     rollCalcSetDifficulty: rollcalc.setDifficulty,
     rollCalcSetMitigation: rollcalc.setMitigation,
     rollCalcSetReduction:  rollcalc.setReduction,
