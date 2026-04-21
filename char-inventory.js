@@ -2180,39 +2180,60 @@ export function createInventorySection(ctx) {
 
     // Difficulty row — attack only. Base 6 + chips:
     //   * range: +N from current engagement range
-    //   * secondary skill in slot: −1 mitigation
-    //   * specialty skill in slot: −2 mitigation
+    //   * secondary skill in slot: −1 mitigation (CANNOT reduce below 6)
+    //   * specialty skill in slot: −2 mitigation (CANNOT reduce below 6)
+    //
+    // Mitigation math: sum all POSITIVE additions first, then apply
+    // mitigation against that sum only. Secondary/specialty skills
+    // make a hard task easier but can never make Difficulty 6 (the
+    // standard threshold) lower. If mitigation exceeds additions, it
+    // clamps — you can't "store" unused mitigation.
     let difficultyHtml = '';
     if (opts.isAttack) {
-      const chips = [];
-      let delta = 0;
-      // Range chip first (so the Difficulty readout reads left-to-right
-      // like "+1 Range, −1 Secondary, = 6").
+      const additionChips = [];
+      const mitigationChips = [];
+      let additions = 0;
+      let mitigation = 0;
+
       if (opts.rangeChip && Number.isFinite(opts.rangeChip.band) && opts.rangeChip.band > 0) {
-        delta += opts.rangeChip.band;
-        chips.push({
+        additions += opts.rangeChip.band;
+        additionChips.push({
           label: `Range ${opts.rangeChip.label}`,
           delta: opts.rangeChip.band,
           cls: 'penalty'
         });
       }
-      // Skill-tier mitigation.
+      // Skill-tier mitigation — only counted if positive additions exist.
       roll.diceSlots.forEach(s => {
         if (s.category === 'skill') {
           if (s.skillTier === 'secondary') {
-            delta -= 1;
-            chips.push({ label: `${s.label} (secondary)`, delta: -1, cls: 'mitigation' });
+            mitigation += 1;
+            mitigationChips.push({ label: `${s.label} (secondary)`, delta: -1, cls: 'mitigation' });
           } else if (s.skillTier === 'specialty') {
-            delta -= 2;
-            chips.push({ label: `${s.label} (specialty)`, delta: -2, cls: 'mitigation' });
+            mitigation += 2;
+            mitigationChips.push({ label: `${s.label} (specialty)`, delta: -2, cls: 'mitigation' });
           }
         }
       });
+
+      const effectiveMitigation = Math.min(mitigation, additions);
       const baseDiff = 6;
-      const finalDiff = Math.max(2, baseDiff + delta);
+      const finalDiff = baseDiff + additions - effectiveMitigation;
+
+      // Mitigation chips get a "(wasted)" hint when they exceed the
+      // additions — so the player sees their skill advantage isn't
+      // being used up. Still displayed so they know the skill is
+      // recognized.
+      const chips = additionChips.concat(mitigationChips.map((c, i) => {
+        const wasted = mitigation > additions;
+        return wasted
+          ? Object.assign({}, c, { label: c.label + ' — already at base', wasted: true })
+          : c;
+      }));
       const chipsHtml = chips.map(c => {
         const sign = c.delta >= 0 ? '+' : '−';
-        return `<span class="inv-weapon-diff-chip ${c.cls || ''}" title="${escapeHtml(c.label)}">${sign}${Math.abs(c.delta)} ${escapeHtml(c.label)}</span>`;
+        const extraCls = c.wasted ? ' wasted' : '';
+        return `<span class="inv-weapon-diff-chip ${c.cls || ''}${extraCls}" title="${escapeHtml(c.label)}">${sign}${Math.abs(c.delta)} ${escapeHtml(c.label)}</span>`;
       }).join('');
       difficultyHtml = `<div class="inv-weapon-diff-row">
         <span class="inv-weapon-diff-label">Difficulty</span>
@@ -2971,21 +2992,44 @@ export function createInventorySection(ctx) {
   //   weaponRof:      string   — number OR formula
   //   weaponTags:     string[] — array of ruleset weapon tag ids
   function renderCatalogManagerWeaponBlock(draft, target) {
-    // Routing table — build onclick/oninput call sites based on
-    // whether this is the edit form or the new form. Uses string
-    // concatenation rather than template interpolation so the emitted
-    // handler attribute is clean and copy-pasteable in devtools.
-    const isNew = (target === '__new__');
-    // Field update: "invCatMgrDraft(id,field,val)" vs "invCatMgrNewDraft(field,val)"
-    const upd = (field, valExpr) => isNew
-      ? `invCatMgrNewDraft('${escapeHtml(field)}',${valExpr})`
-      : `invCatMgrDraft('${escapeHtml(target)}','${escapeHtml(field)}',${valExpr})`;
-    // Range handlers — invCatMgrWeaponAddRange / Remove / UpdateRange.
-    // Same pattern for tags: invCatMgrWeaponToggleTag.
-    const rngAdd    = ()            => isNew ? `invCatMgrNewWeaponAddRange()`                   : `invCatMgrWeaponAddRange('${escapeHtml(target)}')`;
-    const rngRemove = (bi)          => isNew ? `invCatMgrNewWeaponRemoveRange(${bi})`           : `invCatMgrWeaponRemoveRange('${escapeHtml(target)}',${bi})`;
-    const rngUpdate = (bi, which)   => isNew ? `invCatMgrNewWeaponUpdateRange(${bi},'${which}',this.value)` : `invCatMgrWeaponUpdateRange('${escapeHtml(target)}',${bi},'${which}',this.value)`;
-    const tagToggle = (tagId)       => isNew ? `invCatMgrNewWeaponToggleTag('${escapeHtml(tagId)}',this.checked)` : `invCatMgrWeaponToggleTag('${escapeHtml(target)}','${escapeHtml(tagId)}',this.checked)`;
+    // Routing table — build onclick/oninput call sites based on which
+    // form this block is inside. Three targets:
+    //   def.id (e.g. 'eq_blah')   — existing personal-catalogue row
+    //                               being edited (catMgr)
+    //   '__new__'                 — the personal-catalogue "new item"
+    //                               form (catMgr)
+    //   '__custom__'              — the one-off custom item modal
+    //                               (renderCustomForm)
+    const isNew    = (target === '__new__');
+    const isCustom = (target === '__custom__');
+    // Field update site. CatMgr edit uses 3-arg (id,field,value);
+    // CatMgr new and custom form both use 2-arg (field,value) against
+    // different module handlers.
+    const upd = (field, valExpr) => {
+      if (isCustom) return `invUpdateCustomDraft('${escapeHtml(field)}',${valExpr})`;
+      if (isNew)    return `invCatMgrNewDraft('${escapeHtml(field)}',${valExpr})`;
+      return `invCatMgrDraft('${escapeHtml(target)}','${escapeHtml(field)}',${valExpr})`;
+    };
+    const rngAdd    = () => {
+      if (isCustom) return `invCustomDraftWeaponAddRange()`;
+      if (isNew)    return `invCatMgrNewWeaponAddRange()`;
+      return `invCatMgrWeaponAddRange('${escapeHtml(target)}')`;
+    };
+    const rngRemove = (bi) => {
+      if (isCustom) return `invCustomDraftWeaponRemoveRange(${bi})`;
+      if (isNew)    return `invCatMgrNewWeaponRemoveRange(${bi})`;
+      return `invCatMgrWeaponRemoveRange('${escapeHtml(target)}',${bi})`;
+    };
+    const rngUpdate = (bi, which) => {
+      if (isCustom) return `invCustomDraftWeaponUpdateRange(${bi},'${which}',this.value)`;
+      if (isNew)    return `invCatMgrNewWeaponUpdateRange(${bi},'${which}',this.value)`;
+      return `invCatMgrWeaponUpdateRange('${escapeHtml(target)}',${bi},'${which}',this.value)`;
+    };
+    const tagToggle = (tagId) => {
+      if (isCustom) return `invCustomDraftWeaponToggleTag('${escapeHtml(tagId)}',this.checked)`;
+      if (isNew)    return `invCatMgrNewWeaponToggleTag('${escapeHtml(tagId)}',this.checked)`;
+      return `invCatMgrWeaponToggleTag('${escapeHtml(target)}','${escapeHtml(tagId)}',this.checked)`;
+    };
 
     const isWeapon = !!draft.isWeapon;
 
@@ -3847,7 +3891,8 @@ export function createInventorySection(ctx) {
               <input type="number" step="0.05" min="0.1" max="1.0" value="${escapeHtml(String(draft.innerPacking || 0.75))}" oninput="invUpdateCustomDraft('innerPacking',this.value)">
               <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">1.0 = fitted case · 0.75 = typical bag · 0.5 = loose sack</div>
             </div>
-          </div>` : ''}`}
+          </div>` : ''}
+          ${renderCatalogManagerWeaponBlock(draft, '__custom__')}`}
 
           <div class="inv-modal-actions">
             <button class="inv-add-btn" onclick="invSaveCustomDef()">Save &amp; Add</button>
@@ -4329,7 +4374,22 @@ export function createInventorySection(ctx) {
       packingEfficiency: 0.75,
       alsoContainer: false,
       innerL: 0, innerW: 0, innerH: 0,
-      innerPacking: 0.75
+      innerPacking: 0.75,
+      // Weapon fields — match the schema used by the personal-catalogue
+      // draft so renderCatalogManagerWeaponBlock + buildWeaponFromDraft
+      // can be shared. `isWeapon` false means the weapon block is
+      // collapsed and no weapon data gets attached to the snapshot on
+      // save.
+      isWeapon:      false,
+      weaponKind:    'melee',
+      weaponDice:    1,
+      weaponPen:     0,
+      weaponRanges:  [],
+      weaponRange:   30,
+      weaponDmgmod:  0,
+      weaponAmmo:    '1',
+      weaponRof:     '0',
+      weaponTags:    []
     };
     renderActiveModal();
   }
@@ -4379,19 +4439,115 @@ export function createInventorySection(ctx) {
     const d = activeModal.customDraft;
     // Numeric fields — coerce, clamp non-negative. Text fields pass through.
     const numericFields = new Set(['l','w','h','weight','packingEfficiency','innerL','innerW','innerH','innerPacking']);
+    // Weapon numeric fields. PEN/dice/range can't go negative; dmgmod
+    // is signed (for penalty weapons).
+    const weaponNumericNonNeg = new Set(['weaponDice','weaponPen','weaponRange']);
+    const weaponNumericSigned = new Set(['weaponDmgmod']);
+    // Weapon text fields — stored as strings so formulas like "STR+1"
+    // survive. buildWeaponFromDraft coerces numeric strings back to
+    // numbers when saving.
+    const weaponTextFields = new Set(['weaponAmmo','weaponRof']);
+
     if (numericFields.has(field)) {
       const n = parseFloat(value);
       d[field] = Number.isFinite(n) && n >= 0 ? n : 0;
+    } else if (weaponNumericNonNeg.has(field)) {
+      const n = parseFloat(value);
+      d[field] = Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+    } else if (weaponNumericSigned.has(field)) {
+      const n = parseFloat(value);
+      d[field] = Number.isFinite(n) ? Math.floor(n) : 0;
+    } else if (weaponTextFields.has(field)) {
+      d[field] = (value == null) ? '' : String(value);
     } else if (field === 'alsoContainer') {
       d[field] = !!value;
-      // Re-render so the inner-container block shows/hides.
+      renderActiveModal();
+      return;
+    } else if (field === 'isWeapon') {
+      // Boolean toggle coming in as 'true'/'false' from the toggle
+      // span's onclick-string, or as an actual boolean.
+      d[field] = (value === true || value === 'true');
+      renderActiveModal();
+      return;
+    } else if (field === 'weaponKind') {
+      // Kind swap rebuilds the kind-specific fields on the draft so
+      // switching melee↔ranged doesn't leave stale ranges or ammo.
+      const v = (value === 'ranged') ? 'ranged' : 'melee';
+      d.weaponKind = v;
+      if (v === 'melee') {
+        // Kill ranged-only fields so they don't leak into the save.
+        d.weaponRanges = Array.isArray(d.weaponRanges) ? d.weaponRanges : [];
+        d.weaponRange  = 0;
+        d.weaponDmgmod = 0;
+        d.weaponAmmo   = '0';
+        d.weaponRof    = '0';
+      } else {
+        d.weaponRanges = [];
+        d.weaponRange  = Number.isFinite(d.weaponRange) && d.weaponRange > 0 ? d.weaponRange : 30;
+        d.weaponAmmo   = d.weaponAmmo || '1';
+        d.weaponRof    = d.weaponRof  || '0';
+      }
       renderActiveModal();
       return;
     } else {
       d[field] = typeof value === 'string' ? value : '';
     }
     // Most text/number tweaks don't need a re-render — the inputs are
-    // self-updating. Only structural changes (toggles) re-render above.
+    // self-updating. Only structural changes (toggles, kind-swap)
+    // re-render above.
+  }
+
+  // Custom-form weapon range-band handlers. Mirror the catalog-manager
+  // helpers but target activeModal.customDraft instead of
+  // catalogManager.drafts, and call renderActiveModal() for UI refresh.
+  // Band shape is { s, e } objects — Firestore doesn't allow nested
+  // arrays, so we never emit [s, e] tuples.
+  function customDraftWeaponAddRange() {
+    if (!activeModal || !activeModal.customDraft) return;
+    const d = activeModal.customDraft;
+    if (!Array.isArray(d.weaponRanges)) d.weaponRanges = [];
+    const prev = d.weaponRanges[d.weaponRanges.length - 1];
+    const prevEnd = prev
+      ? (prev && typeof prev === 'object' && !Array.isArray(prev)
+          ? (Number(prev.e) || 0)
+          : (Array.isArray(prev) ? (Number(prev[1]) || 0) : 0))
+      : 0;
+    d.weaponRanges.push({ s: prevEnd, e: prevEnd + 1 });
+    renderActiveModal();
+  }
+  function customDraftWeaponRemoveRange(bandIdx) {
+    if (!activeModal || !activeModal.customDraft) return;
+    const d = activeModal.customDraft;
+    if (!Array.isArray(d.weaponRanges)) return;
+    d.weaponRanges.splice(bandIdx, 1);
+    renderActiveModal();
+  }
+  function customDraftWeaponUpdateRange(bandIdx, which, value) {
+    if (!activeModal || !activeModal.customDraft) return;
+    const d = activeModal.customDraft;
+    if (!Array.isArray(d.weaponRanges)) return;
+    let band = d.weaponRanges[bandIdx];
+    if (!band) return;
+    if (Array.isArray(band)) {
+      band = { s: Number(band[0]) || 0, e: Number(band[1]) || 0 };
+      d.weaponRanges[bandIdx] = band;
+    }
+    const n = parseFloat(value);
+    const safe = Number.isFinite(n) && n >= 0 ? n : 0;
+    if (which === 'start') band.s = safe;
+    else if (which === 'end') band.e = safe;
+    // No re-render — user may still be typing the other side.
+  }
+  function customDraftWeaponToggleTag(tagId, on) {
+    if (!activeModal || !activeModal.customDraft) return;
+    const d = activeModal.customDraft;
+    if (!Array.isArray(d.weaponTags)) d.weaponTags = [];
+    const idx = d.weaponTags.indexOf(tagId);
+    if (on && idx < 0) d.weaponTags.push(tagId);
+    else if (!on && idx >= 0) d.weaponTags.splice(idx, 1);
+    // Tag toggle doesn't re-render the whole modal — the checkbox
+    // state is tracked by the browser. If we DID re-render, the
+    // cursor position in any focused input would be lost.
   }
 
   // Create a one-off entry from the inline custom form in the picker
@@ -4434,6 +4590,15 @@ export function createInventorySection(ctx) {
         dimensions:        { l: d.innerL || 0, w: d.innerW || 0, h: d.innerH || 0 },
         packingEfficiency: clampEff(d.innerPacking, 0.75)
       };
+    }
+    // Weapon block — same shape the ruleset's coerceWeapon produces,
+    // built from the draft via buildWeaponFromDraft (shared with the
+    // personal catalogue manager). Only attached when the user
+    // toggled "Also a weapon"; containers never get one.
+    if (!isContainer && d.isWeapon) {
+      snapshot.weapon = buildWeaponFromDraft(d);
+    } else {
+      snapshot.weapon = null;
     }
 
     const isContainerRole = !!snapshot.containerOf;
@@ -4845,25 +5010,52 @@ export function createInventorySection(ctx) {
     const snap = entry && entry.snapshot;
     const weapon = snap && snap.weapon;
     if (!weapon) return;
-    const resolved = resolveWeapon(weapon, getCharData(), getRuleset());
+
+    // Resolve with the SAME inputs the on-sheet readout uses: live
+    // overrides, atkResult from the card, and current penalty. That
+    // way Roll Calc mirrors what the player sees on the weapon card.
+    const character = getCharData();
+    const ruleset   = getRuleset();
+    const ui = entry.weaponUI || {};
+    const overrides = entry.weaponOverrides || null;
+    const atkResult = Number.isFinite(ui.atkResult) ? ui.atkResult : null;
+    let penaltyPct = 0;
+    try {
+      const derived = computeDerivedStats(character, ruleset);
+      penaltyPct = (derived && derived.penalty && derived.penalty.percent) || 0;
+    } catch (_) { penaltyPct = 0; }
+
+    const resolved = resolveWeapon(weapon, character, ruleset, overrides, atkResult, penaltyPct);
     if (!resolved) return;
     const roll = which === 'damage' ? resolved.damage : resolved.attack;
     if (!roll || roll.error) {
       alert('Weapon roll has an error: ' + (roll && roll.error ? roll.error : 'unknown'));
       return;
     }
+
+    // Send Penalty-reduced numbers to Roll Calc so the player doesn't
+    // have to re-apply penalty there. Roll Calc's own "show raw"
+    // toggle still lets them see the pre-penalty numbers if needed.
+    // (Penalty shouldn't reduce the ATK-result contribution to damage
+    // since the attack roll's result is already a finalized number —
+    // but the resolver's reduction logic only touches stat/statmod
+    // terms anyway, so ATK/DMG/PEN constants pass through untouched.)
+    const dicePool  = Number.isFinite(roll.dicePoolReduced)  ? roll.dicePoolReduced  : roll.dicePool;
+    const flatBonus = Number.isFinite(roll.flatBonusReduced) ? roll.flatBonusReduced : roll.flatBonus;
+
     const weaponName = (snap && snap.name) || 'Weapon';
-    const label = `${weaponName} · ${which === 'damage' ? 'Damage' : 'Attack'}`;
+    // Annotate the label when ATK is baked in so it's clear where
+    // the extra dice came from on the Roll Calc side.
+    const atkHint = (which === 'damage' && atkResult != null) ? ` (+ATK ${atkResult})` : '';
+    const label = `${weaponName} · ${which === 'damage' ? 'Damage' : 'Attack'}${atkHint}`;
+
     if (typeof ctx.sendWeaponToRollCalc === 'function') {
       ctx.sendWeaponToRollCalc({
-        dicePool:  roll.dicePool,
-        flatBonus: roll.flatBonus,
+        dicePool,
+        flatBonus,
         label
       });
     } else {
-      // Fallback if character.html hasn't wired the bridge yet —
-      // surfaces a clear error rather than a silent no-op so the dev
-      // notices the missing wiring.
       console.warn('[weaponToRollCalc] ctx.sendWeaponToRollCalc missing; cannot deliver', label);
       alert('Roll Calc bridge is not wired up. (Reload the page; if this persists the feature is half-deployed.)');
     }
@@ -4907,6 +5099,11 @@ export function createInventorySection(ctx) {
     updateCustomDraft,
     saveCustomDef,
     deleteCustomDef,
+    // One-off custom form — weapon range/tag helpers
+    customDraftWeaponAddRange,
+    customDraftWeaponRemoveRange,
+    customDraftWeaponUpdateRange,
+    customDraftWeaponToggleTag,
     tickQty,
     // Weapon readout — AMMO tracker and Roll Calc send
     weaponAdjustAmmo,
