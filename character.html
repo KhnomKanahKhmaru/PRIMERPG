@@ -420,7 +420,7 @@
       border-style: solid;
     }
 
-    /* ── Conditions tile (Physical / Mental tracker) ──
+    /* ── Afflictions tile (Conditions / Circumstances tracker) ──
      * Renders in the State of Things grid after the Penalty tile. Two
      * columns side-by-side. Each entry is a compact row (collapsed) that
      * expands on click to show description + system + notes. Scale pill
@@ -3846,7 +3846,7 @@
     addTrauma:            (injId) => combat.addTrauma(injId),
     removeTrauma:         (injId, i) => combat.removeTrauma(injId, i),
     updateTraumaField:    (injId, i, field, val) => combat.updateTraumaField(injId, i, field, val),
-    // Conditions (Physical / Mental tracker on Overview tab)
+    // Afflictions tile (Conditions / Circumstances tracker on Overview tab)
     condOpenAdd:          (cat)             => combat.condOpenAdd(cat),
     condStartCustom:      ()                => combat.condStartCustom(),
     condPickPreset:       (defId)           => combat.condPickPreset(defId),
