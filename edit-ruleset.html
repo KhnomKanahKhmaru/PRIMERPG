@@ -1013,7 +1013,26 @@
         window.location.href = 'my-rulesets.html';
       } else {
         existingDoc = rsDoc.data();
+        // TEMP DIAGNOSTIC — log exactly what Firestore returns for items
+        // with weapon blocks, BEFORE and AFTER normalizeRuleset runs. If
+        // "raw from Firestore" shows weapons but "after normalize" doesn't,
+        // the coercer is dropping them. Opposite means Firestore isn't
+        // storing them.
+        const rawWeaponedIn = ((existingDoc && existingDoc.items) || [])
+          .filter(i => i && i.weapon)
+          .map(i => ({ id: i.id, name: i.name, weapon: i.weapon }));
+        console.log('[loadRuleset] RAW weaponed items from Firestore:', rawWeaponedIn);
+        console.log('[loadRuleset] RAW ruleset.weapons:', existingDoc && existingDoc.weapons);
+        console.log('[loadRuleset] RAW ruleset.weaponTags:', existingDoc && existingDoc.weaponTags);
+
         state = window.normalizeRuleset(existingDoc);
+
+        const normWeaponedIn = (state.items || [])
+          .filter(i => i && i.weapon)
+          .map(i => ({ id: i.id, name: i.name, weapon: i.weapon }));
+        console.log('[loadRuleset] NORMALIZED weaponed items:', normWeaponedIn);
+        console.log('[loadRuleset] NORMALIZED ruleset.weapons:', state.weapons);
+        console.log('[loadRuleset] NORMALIZED ruleset.weaponTags:', state.weaponTags);
 
         const isOwner = existingDoc.createdBy === myUid;
         const isBasic = existingDoc.isBasicSet;
@@ -2301,6 +2320,74 @@
   }
 
   // ── SAVE ──
+  // Firestore rejects `undefined` on any field (it throws on write).
+  // This scrubber walks each item and replaces any undefined nested
+  // values with either null (for optional refs) or a type-safe
+  // default (numeric 0, array []). Also explicitly coerces the
+  // weapon block to a clean shape — if any edit handler happened to
+  // leave a field unset, this patches it before the Firestore call.
+  //
+  // Non-destructive: produces a fresh array, original state.items
+  // stays untouched so subsequent re-renders see the same data.
+  function sanitizeItemsForFirestore(items) {
+    if (!Array.isArray(items)) return [];
+    return items.map(it => {
+      if (!it || typeof it !== 'object') return null;
+      const out = {
+        id:             it.id || '',
+        name:           typeof it.name === 'string' ? it.name : '',
+        description:    typeof it.description === 'string' ? it.description : '',
+        dimensions:     it.dimensions || { l: 0, w: 0, h: 0 },
+        weight:         Number.isFinite(it.weight) ? it.weight : 0,
+        categoryId:     (typeof it.categoryId === 'string' && it.categoryId) ? it.categoryId : null,
+        legacyCategory: typeof it.legacyCategory === 'string' ? it.legacyCategory : '',
+        weaponId:       (typeof it.weaponId === 'string' && it.weaponId) ? it.weaponId : null,
+        containerOf:    it.containerOf || null,
+        weapon:         sanitizeWeaponForFirestore(it.weapon)
+      };
+      return out;
+    }).filter(Boolean);
+  }
+
+  // Coerce a weapon block into a known-good shape. Returns null if
+  // the input isn't a recognizable weapon; otherwise returns a fully
+  // populated object with no undefined fields (Firestore-safe).
+  function sanitizeWeaponForFirestore(w) {
+    if (!w || typeof w !== 'object') return null;
+    const kind = (w.kind === 'ranged') ? 'ranged' : (w.kind === 'melee' ? 'melee' : null);
+    if (!kind) return null;
+    const dice = Number.isFinite(w.dice) ? w.dice : 0;
+    const pen  = Number.isFinite(w.pen)  ? w.pen  : 0;
+    const tags = Array.isArray(w.tags)
+      ? w.tags.filter(t => typeof t === 'string' && t)
+      : [];
+    if (kind === 'melee') {
+      const ranges = Array.isArray(w.ranges)
+        ? w.ranges
+            .filter(b => Array.isArray(b) && b.length >= 2)
+            .map(b => [
+              Number.isFinite(Number(b[0])) ? Number(b[0]) : 0,
+              Number.isFinite(Number(b[1])) ? Number(b[1]) : 0
+            ])
+        : [];
+      return { kind, dice, pen, tags, ranges };
+    }
+    // ranged
+    const range  = Number.isFinite(w.range)  ? w.range  : 0;
+    const dmgmod = Number.isFinite(w.dmgmod) ? w.dmgmod : 0;
+    // ammo/rof: preserve number or string as-is, fallback to 0
+    const coerceNumOrStr = (v, fallback) => {
+      if (typeof v === 'number' && Number.isFinite(v)) return v;
+      if (typeof v === 'string' && v.trim()) return v.trim();
+      return fallback;
+    };
+    return {
+      kind, dice, pen, tags, range, dmgmod,
+      ammo: coerceNumOrStr(w.ammo, 0),
+      rof:  coerceNumOrStr(w.rof,  0)
+    };
+  }
+
   window.saveRuleset = async function() {
     const msg = document.getElementById('save-msg');
     const btn = document.getElementById('submit-btn');
@@ -2363,7 +2450,7 @@
       weaponTags:        state.weaponTags,
       // Inventory
       bodySlots:         state.bodySlots,
-      items:             state.items,
+      items:             sanitizeItemsForFirestore(state.items),
       categories:        state.categories
     };
 
@@ -2374,10 +2461,12 @@
     // the edit handlers (mutations aren't landing on state.items).
     // If it logs correctly but reload shows no weapons, the issue
     // is on the read/normalize path.
-    const weaponedItems = (state.items || [])
+    const weaponedItems = (payload.items || [])
       .filter(i => i && i.weapon)
       .map(i => ({ id: i.id, name: i.name, weapon: i.weapon }));
     console.log('[saveRuleset] weaponed items going to Firestore:', weaponedItems);
+    console.log('[saveRuleset] ruleset.weapons:', payload.weapons);
+    console.log('[saveRuleset] ruleset.weaponTags:', payload.weaponTags);
 
     try {
       if (isCreating) {
