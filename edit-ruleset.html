@@ -921,6 +921,16 @@
   let advNewRepeatable = false;
   let disNewRepeatable = false;
 
+  // Conditions tab categories. Declared up here (ahead of the top-level
+  // await below) so that any function called from within the post-auth
+  // bootstrap flow — e.g. renderConditions() via initUI() — can see it.
+  // If this lived after the await, `await auth.authStateReady()` would
+  // pause module execution before this initializer ran, and any
+  // handler called during the async bootstrap would hit a temporal-
+  // dead-zone ReferenceError trying to read it.
+  const CONDITION_CATEGORIES = ['conditions', 'circumstances'];
+  let condActiveTab = 'conditions';
+
   await auth.authStateReady();
   const user = auth.currentUser;
   if (!user || !user.emailVerified) {
@@ -1371,8 +1381,10 @@
   //
   // Sub-tab state — tracks which of the two lists is currently visible.
   // Doesn't persist; the Conditions tab is always active on load.
-  const CONDITION_CATEGORIES = ['conditions', 'circumstances'];
-  let condActiveTab = 'conditions';
+  // (CONDITION_CATEGORIES and condActiveTab are declared near the top
+  // of the module, above the top-level `await auth.authStateReady()`,
+  // so they're accessible to handlers that fire during the async
+  // bootstrap flow.)
 
   window.switchCondTab = function(cat) {
     if (!CONDITION_CATEGORIES.includes(cat)) return;
