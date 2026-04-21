@@ -3157,7 +3157,11 @@ export function createInventorySection(ctx) {
         containerOf: d.alsoContainer ? {
           dimensions: { l: d.innerL || 0, w: d.innerW || 0, h: d.innerH || 0 },
           packingEfficiency: clampEff(d.innerPacking, 0.75)
-        } : null
+        } : null,
+        // Weapon block — only present when the draft had isWeapon on.
+        // Null omitted for non-weapon equipment to keep the stored
+        // shape minimal; the coercer handles missing vs null the same way.
+        weapon: d.isWeapon ? buildWeaponFromDraft(d) : null
       };
       inv.customDefs.equipment.push(def);
     }
@@ -4297,6 +4301,15 @@ export function createInventorySection(ctx) {
     catMgrCancelNew,
     catMgrNewDraft,
     catMgrSaveNew,
+    // Personal catalogue — weapon range-bands and tag toggles
+    catMgrWeaponAddRange,
+    catMgrWeaponRemoveRange,
+    catMgrWeaponUpdateRange,
+    catMgrWeaponToggleTag,
+    catMgrNewWeaponAddRange,
+    catMgrNewWeaponRemoveRange,
+    catMgrNewWeaponUpdateRange,
+    catMgrNewWeaponToggleTag,
     // Carry cards (CAP / ENC / LIFT) + group-level encumbrance toggle
     toggleCarryCard,
     addCapMod, updateCapMod, deleteCapMod,
