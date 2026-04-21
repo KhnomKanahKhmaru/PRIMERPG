@@ -2648,6 +2648,7 @@ export function createCombatSection(ctx) {
     condSaveCustom:    conditionsSection.saveCustom,
     condOpenEdit:      conditionsSection.openEdit,
     condSaveEdit:      conditionsSection.saveEdit,
+    condPromote:       conditionsSection.promote,
     condDraft:         conditionsSection.draft,
     condCloseModal:    conditionsSection.closeModal,
     condSwapCategory:  conditionsSection.swapCategory,
