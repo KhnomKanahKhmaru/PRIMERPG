@@ -41,6 +41,17 @@ export function createRollCalc(ctx) {
     statmodOverride: null,   // number; null = use picked stat's live mod
     skillKey:    '__none__', // skill name, '__none__' (skip), or 'custom'
     skillOverride: null,
+    // Extra dice slot — optional third input. kind selects the source:
+    //   'none'   — slot disabled, contributes 0 dice, no statmod effect
+    //   'stat'   — pick from base + derived stats; contributes that stat
+    //              to the pool AND enters the statmod competition
+    //   'skill'  — pick from primary/secondary/specialty skills
+    //   'custom' — player types a raw number
+    extraKind:     'none',
+    extraStatKey:  'STR',    // used when extraKind === 'stat'
+    extraSkillKey: '__none__',// used when extraKind === 'skill'
+    extraOverride: null,     // number; active for 'custom' always,
+                             // and for 'stat'/'skill' as an override
     difficulty: 6,
     mitigation: 0,
     reduction:  0,
@@ -203,9 +214,49 @@ export function createRollCalc(ctx) {
     const skillValue = state.skillOverride != null
       ? state.skillOverride
       : (pickedSkill ? pickedSkill.value : 0);
+
+    // Extra slot — up to one more source of dice. Can be a stat, skill,
+    // or raw number. Tracks the picked option so we can show the live
+    // source-value alongside a manual override (if the player typed one).
+    let extraValue = 0;
+    let pickedExtraStat = null;
+    let pickedExtraSkill = null;
+    if (state.extraKind === 'stat') {
+      pickedExtraStat = statOpts.find(o => o.key === state.extraStatKey) || null;
+      extraValue = state.extraOverride != null
+        ? state.extraOverride
+        : (pickedExtraStat ? pickedExtraStat.value : 0);
+    } else if (state.extraKind === 'skill') {
+      pickedExtraSkill = skillOpts.find(o => o.key === state.extraSkillKey) || null;
+      extraValue = state.extraOverride != null
+        ? state.extraOverride
+        : (pickedExtraSkill ? pickedExtraSkill.value : 0);
+    } else if (state.extraKind === 'custom') {
+      extraValue = state.extraOverride != null ? state.extraOverride : 0;
+    }
+    // 'none' leaves extraValue = 0
+
+    // STATMOD — by default, inherits the picked Stat slot's mod. If the
+    // Extra slot is also a STAT AND its raw stat value is higher than
+    // the primary Stat slot's, we use THAT stat's mod instead. Player
+    // override wins over the auto-pick.
+    //
+    // Why "raw stat value" and not the pool-contribution value: the rule
+    // is "whichever stat is highest contributes its mod" — and STAT's
+    // identity (which stat the character has) is measured by the base
+    // number on the character sheet, not by what was typed into the
+    // override field for this specific calc.
+    let autoStatmod = pickedStat ? pickedStat.mod : 0;
+    if (state.extraKind === 'stat' && pickedExtraStat) {
+      const primaryBase = pickedStat ? pickedStat.value : -Infinity;
+      const extraBase   = pickedExtraStat.value;
+      if (extraBase > primaryBase) {
+        autoStatmod = pickedExtraStat.mod;
+      }
+    }
     const statmod = state.statmodOverride != null
       ? state.statmodOverride
-      : (pickedStat ? pickedStat.mod : 0);
+      : autoStatmod;
 
     const diff   = parseInt(state.difficulty) || 0;
     const mit    = parseInt(state.mitigation) || 0;
@@ -214,7 +265,13 @@ export function createRollCalc(ctx) {
     const diffDelta = effDifficulty - 6;
     const effStatmod = statmod - diffDelta;
 
-    const basePool = Math.max(0, (parseInt(statValue) || 0) + (parseInt(skillValue) || 0));
+    // Pool sums all three slots. A slot with kind 'none' or a 0 value
+    // simply adds 0 (it's already accounted for above).
+    const basePool = Math.max(0,
+      (parseInt(statValue)  || 0) +
+      (parseInt(skillValue) || 0) +
+      (parseInt(extraValue) || 0)
+    );
     const penaltyPct = (result.penalty && result.penalty.percent) || 0;
     // Passive rolls bypass Strain — used for resistance checks.
     const isPassive = state.passive === true;
@@ -227,7 +284,9 @@ export function createRollCalc(ctx) {
 
     return {
       statOpts, skillOpts, pickedStat, pickedSkill,
-      statValue, skillValue, statmod,
+      statValue, skillValue, extraValue,
+      pickedExtraStat, pickedExtraSkill,
+      statmod,
       diff, mit, red, effDifficulty, diffDelta, effStatmod,
       basePool, penaltyPct, penaltyDice, finalPool,
       isPassive, dist
@@ -258,43 +317,130 @@ export function createRollCalc(ctx) {
     };
   }
 
-  function buildStatSelectHtml(opts) {
+  function buildStatSelectHtml(opts, selectedKey) {
+    if (selectedKey === undefined) selectedKey = state.statKey;
     const base = opts.filter(o => o.group === 'base');
     const derived = opts.filter(o => o.group === 'derived');
     let html = '';
     if (base.length > 0) {
       html += '<optgroup label="Stats">';
       base.forEach(o => {
-        html += `<option value="${escapeHtml(o.key)}"${o.key === state.statKey ? ' selected' : ''}>${escapeHtml(o.label)} (${o.value})</option>`;
+        html += `<option value="${escapeHtml(o.key)}"${o.key === selectedKey ? ' selected' : ''}>${escapeHtml(o.label)} (${o.value})</option>`;
       });
       html += '</optgroup>';
     }
     if (derived.length > 0) {
       html += '<optgroup label="Derived">';
       derived.forEach(o => {
-        html += `<option value="${escapeHtml(o.key)}"${o.key === state.statKey ? ' selected' : ''}>${escapeHtml(o.label)} (${o.value})</option>`;
+        html += `<option value="${escapeHtml(o.key)}"${o.key === selectedKey ? ' selected' : ''}>${escapeHtml(o.label)} (${o.value})</option>`;
       });
       html += '</optgroup>';
     }
-    html += `<option value="custom"${state.statKey === 'custom' ? ' selected' : ''}>— Custom —</option>`;
+    html += `<option value="custom"${selectedKey === 'custom' ? ' selected' : ''}>— Custom —</option>`;
     return html;
   }
 
-  function buildSkillSelectHtml(opts) {
+  function buildSkillSelectHtml(opts, selectedKey) {
+    if (selectedKey === undefined) selectedKey = state.skillKey;
     const by = { primary: [], secondary: [], specialty: [] };
     opts.forEach(o => { if (by[o.group]) by[o.group].push(o); });
-    let html = `<option value="__none__"${state.skillKey === '__none__' ? ' selected' : ''}>— None (0) —</option>`;
+    let html = `<option value="__none__"${selectedKey === '__none__' ? ' selected' : ''}>— None (0) —</option>`;
     ['primary', 'secondary', 'specialty'].forEach(g => {
       if (by[g].length === 0) return;
       const label = g.charAt(0).toUpperCase() + g.slice(1);
       html += `<optgroup label="${label}">`;
       by[g].forEach(o => {
-        html += `<option value="${escapeHtml(o.key)}"${o.key === state.skillKey ? ' selected' : ''}>${escapeHtml(o.label)} (${o.value})</option>`;
+        html += `<option value="${escapeHtml(o.key)}"${o.key === selectedKey ? ' selected' : ''}>${escapeHtml(o.label)} (${o.value})</option>`;
       });
       html += '</optgroup>';
     });
-    html += `<option value="custom"${state.skillKey === 'custom' ? ' selected' : ''}>— Custom —</option>`;
+    html += `<option value="custom"${selectedKey === 'custom' ? ' selected' : ''}>— Custom —</option>`;
     return html;
+  }
+
+  // Render the Extra Dice field — a third pool input. Kind picker
+  // controls what follows: 'none' shows nothing, 'stat' shows a stat
+  // picker + override, 'skill' shows a skill picker + override,
+  // 'custom' shows just a numeric input. The pool sums whatever value
+  // this slot resolves to (0 when kind='none').
+  function renderExtraField(r, statOptionsHtml, skillOptionsHtml) {
+    const kind = state.extraKind;
+    // Kind selector — always rendered.
+    const kindSelect = `
+      <select class="rc-select rc-select-extra-kind" onchange="rollCalcSetExtraKind(this.value)" title="Pick what this third input represents — another stat, a skill, a custom number, or none">
+        <option value="none"${kind === 'none'   ? ' selected' : ''}>— None —</option>
+        <option value="stat"${kind === 'stat'   ? ' selected' : ''}>Stat</option>
+        <option value="skill"${kind === 'skill' ? ' selected' : ''}>Skill</option>
+        <option value="custom"${kind === 'custom' ? ' selected' : ''}>Custom</option>
+      </select>`;
+
+    // Source picker — a second dropdown for stat/skill kinds, or empty
+    // space (to keep column alignment) for custom/none.
+    let sourcePicker = '';
+    if (kind === 'stat') {
+      // Rebuild the stat select with the EXTRA slot's selection.
+      const html = buildStatSelectHtml(r.statOpts, state.extraStatKey);
+      sourcePicker = `<select class="rc-select" onchange="rollCalcSetExtraStat(this.value)" title="Pick a stat — its value joins the pool, and the highest-stat's mod wins statmod">${html}</select>`;
+    } else if (kind === 'skill') {
+      const html = buildSkillSelectHtml(r.skillOpts, state.extraSkillKey);
+      sourcePicker = `<select class="rc-select" onchange="rollCalcSetExtraSkill(this.value)" title="Pick a skill — its value joins the pool">${html}</select>`;
+    }
+
+    // Numeric input — always rendered for stat/skill/custom. For 'none'
+    // we show a disabled placeholder so the column layout doesn't jump.
+    let numInput;
+    if (kind === 'none') {
+      numInput = `<input type="number" class="rc-num" value="0" disabled title="Pick a source above to enable this slot">`;
+    } else {
+      const tip = kind === 'custom'
+        ? 'Custom dice — raw number added to the pool'
+        : 'Value — auto-fills from the picker, editable for custom scenarios';
+      numInput = `<input type="number" class="rc-num" value="${r.extraValue}"
+                   oninput="rollCalcSetExtraValue(this.value)"
+                   title="${escapeHtml(tip)}">`;
+    }
+
+    // Three-column row when stat/skill (kind | source | value); two
+    // columns when custom or none (kind | value — source hidden).
+    const rowHtml = (kind === 'stat' || kind === 'skill')
+      ? `<div class="rc-field-row rc-field-row-extra-three">${kindSelect}${sourcePicker}${numInput}</div>`
+      : `<div class="rc-field-row">${kindSelect}${numInput}</div>`;
+
+    return `
+      <div class="rc-field">
+        <label class="rc-label">Extra Dice</label>
+        ${rowHtml}
+      </div>`;
+  }
+
+  // Statmod field tooltip — explains where the auto-value came from.
+  // Mentions stat-slot competition when Extra is also a stat so the
+  // player understands why statmod might not match the picked Stat's.
+  function statmodTip(r) {
+    const base = 'Static roll bonus — auto-fills from picked stat, override for custom rolls.';
+    if (state.extraKind !== 'stat' || !r.pickedExtraStat) return base;
+    const primaryVal = r.pickedStat ? r.pickedStat.value : 0;
+    const extraVal = r.pickedExtraStat.value;
+    if (extraVal > primaryVal) {
+      return base + ` Using ${r.pickedExtraStat.key}MOD — ${r.pickedExtraStat.key} (${extraVal}) is higher than ${r.pickedStat ? r.pickedStat.key : '—'} (${primaryVal}).`;
+    }
+    if (extraVal === primaryVal && r.pickedStat) {
+      return base + ` Tie between ${r.pickedStat.key} and ${r.pickedExtraStat.key} — using ${r.pickedStat.key}MOD.`;
+    }
+    return base + ` ${r.pickedStat ? r.pickedStat.key : '—'} (${primaryVal}) is higher than ${r.pickedExtraStat.key} (${extraVal}).`;
+  }
+
+  // Format the Pool line inside the breakdown. Shows each contributing
+  // slot explicitly when Extra is active, otherwise falls back to the
+  // original stat+skill form. Includes a small label per term so the
+  // player can trace which number came from which slot at a glance.
+  function poolLineText(r) {
+    const parts = [
+      `${r.statValue}`
+    ];
+    parts.push(`+ ${r.skillValue}`);
+    if (state.extraKind !== 'none') parts.push(`+ ${r.extraValue}`);
+    return `${parts.join(' ')} = <b>${r.basePool}d</b>`;
   }
 
   // ─── TILE RENDER ───
@@ -337,7 +483,7 @@ export function createRollCalc(ctx) {
             <button type="button" class="rc-mode-btn${!r.isPassive ? ' active' : ''}" onclick="rollCalcSetPassive(false)" title="Active roll — Strain reduces your dice pool">Active</button>
             <button type="button" class="rc-mode-btn${r.isPassive ? ' active' : ''}"  onclick="rollCalcSetPassive(true)"  title="Passive roll — Strain does not apply (resistance checks)">Passive</button>
           </div>
-          <span class="rc-hint">(STAT + SKILL) @ Difficulty + Mod</span>
+          <span class="rc-hint">(STAT + SKILL + EXTRA) @ Difficulty + Mod</span>
         </div>
 
         <div class="rc-grid">
@@ -365,11 +511,13 @@ export function createRollCalc(ctx) {
             </div>
           </div>
 
+          ${renderExtraField(r, statOptionsHtml, skillOptionsHtml)}
+
           <div class="rc-field">
             <label class="rc-label">Stat Mod</label>
             <input type="number" class="rc-num" value="${r.statmod}"
                    oninput="rollCalcSetStatmod(this.value)"
-                   title="Static roll bonus — auto-fills from picked stat, override for custom rolls">
+                   title="${escapeHtml(statmodTip(r))}">
           </div>
 
           <div class="rc-field">
@@ -411,7 +559,7 @@ export function createRollCalc(ctx) {
             </div>
           </div>
           <div class="rc-breakdown">
-            <div class="rc-line"><span class="rc-k">Pool</span><span class="rc-v">${r.statValue} + ${r.skillValue} = <b>${r.basePool}d</b></span></div>
+            <div class="rc-line"><span class="rc-k">Pool</span><span class="rc-v">${poolLineText(r)}</span></div>
             ${penaltyLine}
             <div class="rc-line"><span class="rc-k">After Strain</span><span class="rc-v"><b>${r.finalPool}d</b></span></div>
             <div class="rc-line"><span class="rc-k">Difficulty</span><span class="rc-v">${r.diff} − ${r.mit} mit − ${r.red} red = <b>${r.effDifficulty}</b>  <span class="rc-dim">(${diffNote})</span></span></div>
@@ -496,7 +644,7 @@ export function createRollCalc(ctx) {
     const bd = tile.querySelector('.rc-breakdown');
     if (bd) {
       bd.innerHTML = `
-        <div class="rc-line"><span class="rc-k">Pool</span><span class="rc-v">${r.statValue} + ${r.skillValue} = <b>${r.basePool}d</b></span></div>
+        <div class="rc-line"><span class="rc-k">Pool</span><span class="rc-v">${poolLineText(r)}</span></div>
         ${penaltyLineHtml}
         <div class="rc-line"><span class="rc-k">After Strain</span><span class="rc-v"><b>${r.finalPool}d</b></span></div>
         <div class="rc-line"><span class="rc-k">Difficulty</span><span class="rc-v">${r.diff} − ${r.mit} mit − ${r.red} red = <b>${r.effDifficulty}</b>  <span class="rc-dim">(${diffNote})</span></span></div>
@@ -536,6 +684,36 @@ export function createRollCalc(ctx) {
     if (!Number.isFinite(state.statmodOverride)) state.statmodOverride = 0;
     repaintOutput();
   }
+
+  // Extra slot setters. setExtraKind switches what type the extra slot
+  // is (stat/skill/custom/none) — that changes the UI so we do a full
+  // tile repaint. The per-source key setters also need a tile repaint
+  // because the number input's displayed live value changes. The
+  // override setter only changes the computed pool, so it uses the
+  // lighter repaintOutput (keeps focus on the input).
+  function setExtraKind(kind) {
+    const valid = new Set(['none','stat','skill','custom']);
+    state.extraKind = valid.has(kind) ? kind : 'none';
+    // Clear any stale override when switching source type — otherwise
+    // a number typed against "stat" would leak into "skill"'s field.
+    state.extraOverride = null;
+    repaintTile();
+  }
+  function setExtraStat(key) {
+    state.extraStatKey = key;
+    state.extraOverride = null;
+    repaintTile();
+  }
+  function setExtraSkill(key) {
+    state.extraSkillKey = key;
+    state.extraOverride = null;
+    repaintTile();
+  }
+  function setExtraValue(v) {
+    state.extraOverride = parseFloat(v);
+    if (!Number.isFinite(state.extraOverride)) state.extraOverride = 0;
+    repaintOutput();
+  }
   function setDifficulty(v) {
     state.difficulty = parseInt(v) || 0;
     repaintOutput();
@@ -563,6 +741,8 @@ export function createRollCalc(ctx) {
     repaintOutput,
     setStat, setSkill,
     setStatValue, setSkillValue, setStatmod,
+    // Extra dice slot (third input — stat / skill / custom / none)
+    setExtraKind, setExtraStat, setExtraSkill, setExtraValue,
     setDifficulty, setMitigation, setReduction,
     toggleShowRaw, setPassive
   };
