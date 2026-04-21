@@ -569,7 +569,13 @@ export function meleeBandFor(ranges, distance) {
     return { s: 0, e: 0 };
   };
   const normalized = ranges.map(readBand);
-  for (let i = 0; i < normalized.length; i++) {
+  // Iterate backwards so that on boundary ties — distance exactly
+  // equal to the END of band N and the START of band N+1 — the
+  // HIGHER band wins. This matches user intent: clicking the
+  // "+3 3–4ft" chip sends distance=3, which would otherwise land in
+  // band 2 (2–3ft) because both intervals include 3. Backward walk
+  // finds band 3 first.
+  for (let i = normalized.length - 1; i >= 0; i--) {
     const { s, e } = normalized[i];
     if (distance >= s && distance <= e) return { band: i, label: '+' + i };
   }
