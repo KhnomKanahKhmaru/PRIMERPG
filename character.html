@@ -3165,6 +3165,92 @@
       margin-left: 6px;
     }
 
+    /* ── Turn 2 additions: slot picker, reset button, range selector ── */
+    /* Inline <select> styled to blend with the slot text */
+    .inv-weapon-slot-select {
+      background: transparent;
+      border: none;
+      border-bottom: 1px dotted #555;
+      color: inherit;           /* matches the slot's category color */
+      font-family: inherit;
+      font-size: inherit;
+      font-weight: inherit;
+      padding: 0 14px 0 0;
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      outline: none;
+      background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+                        linear-gradient(135deg, currentColor 50%, transparent 50%);
+      background-position: calc(100% - 6px) 50%, calc(100% - 2px) 50%;
+      background-size: 4px 4px, 4px 4px;
+      background-repeat: no-repeat;
+      opacity: 0.92;
+    }
+    .inv-weapon-slot-select:hover {
+      border-bottom-color: currentColor;
+      opacity: 1;
+    }
+    .inv-weapon-slot-select:focus {
+      border-bottom-color: currentColor;
+      outline: none;
+    }
+    /* <option> elements render in the browser's native dropdown UA —
+       these styles apply inside the popup where supported. */
+    .inv-weapon-slot-select option { background: #0a0a0a; color: #e0e0e0; }
+    .inv-weapon-slot-select optgroup { background: #0a0a0a; color: #888; font-style: italic; }
+
+    /* Reset-to-def button in the weapon title bar */
+    .inv-weapon-reset-btn {
+      background: #1a1515; border: 1px solid #3a2a1a;
+      color: #d4a574; font-size: 9px; font-weight: 700;
+      letter-spacing: .08em; text-transform: uppercase;
+      padding: 3px 8px; border-radius: 3px; cursor: pointer;
+      font-family: inherit;
+    }
+    .inv-weapon-reset-btn:hover { background: #2a1e18; border-color: #4a3525; color: #e8b585; }
+
+    /* Engagement-range selector row */
+    .inv-weapon-range-row {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+      margin-top: 8px; padding: 6px 0;
+      border-top: 1px dashed #1a1a1a;
+      font-size: 11px;
+    }
+    .inv-weapon-range-row-label {
+      font-size: 9px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #777;
+    }
+    .inv-weapon-range-input {
+      background: #0a0a0a; border: 1px solid #222; color: #e8e8e8;
+      font-family: 'Courier New', monospace;
+      font-size: 11px; padding: 2px 6px; border-radius: 2px;
+      width: 56px; text-align: center; outline: none;
+    }
+    .inv-weapon-range-input:focus { border-color: #3a5878; }
+    .inv-weapon-range-unit { font-size: 10px; color: #666; }
+    .inv-weapon-range-clear {
+      background: none; border: none; color: #666; cursor: pointer;
+      font-size: 14px; line-height: 1; padding: 0 2px;
+    }
+    .inv-weapon-range-clear:hover { color: #cc6666; }
+    .inv-weapon-range-band {
+      background: #1a1815; border: 1px solid #3a2f1a; color: #e8a874;
+      font-family: 'Courier New', monospace;
+      font-size: 10px; padding: 1px 6px; border-radius: 2px;
+      margin-left: auto;
+    }
+    .inv-weapon-range-band.none { background: #0a0a0a; border-color: #1a1a1a; color: #666; }
+
+    /* Clickable melee band chips (reuses .inv-weapon-range base) */
+    .inv-weapon-range.clickable { cursor: pointer; transition: background 0.1s, border-color 0.1s; }
+    .inv-weapon-range.clickable:hover { background: #151515; border-color: #2a2a2a; }
+    .inv-weapon-range.clickable.active {
+      background: #1a1815; border-color: #3a2f1a;
+      color: #e8a874;
+    }
+    .inv-weapon-range.clickable.active .inv-weapon-range-label { color: #b88558; }
+
     /* Custom-def form inside the modal — same field shape as edit-ruleset */
     .inv-custom-form .inv-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
     .inv-custom-form .inv-field label { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; }
@@ -4542,6 +4628,9 @@
     invWeaponReloadAmmo:     (id)                 => inventory.weaponReloadAmmo(id),
     invWeaponToggleRaw:      (id, rawKey)         => inventory.weaponToggleRaw(id, rawKey),
     invWeaponSetAtk:         (id, value)          => inventory.weaponSetAtk(id, value),
+    invWeaponSetSlotOverride:(id, roll, fr, to)   => inventory.weaponSetSlotOverride(id, roll, fr, to),
+    invWeaponResetOverrides: (id)                 => inventory.weaponResetOverrides(id),
+    invWeaponSetRange:       (id, value)          => inventory.weaponSetRange(id, value),
     invWeaponToRollCalc:     (id, which)          => inventory.weaponToRollCalc(id, which),
     // Carry cards (CAP / ENC / LIFT) + group-level encumbrance toggle
     invToggleCarryCard:      (key)                => inventory.toggleCarryCard(key),
