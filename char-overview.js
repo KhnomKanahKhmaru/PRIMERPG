@@ -60,8 +60,19 @@ export function createOverviewSection(ctx) {
   // `classes` is additional CSS classes on the tile wrapper
   // (e.g. "state-tile-wide state-tile-penalty").
   //
+  // `opts.rerenderHandler` — name of the window-level handler to call
+  // when the tile header is clicked. Defaults to 'overviewToggleTile',
+  // which re-renders the Overview tab. Callers that render this tile
+  // elsewhere (e.g. the Penalty tile inline on the Combat tab) should
+  // pass their own handler so the RIGHT tab is re-rendered on click.
+  // Without this, clicks on a Combat-tab tile would toggle the flag
+  // but only repaint the Overview tab — looking like "nothing happens"
+  // on the tab that actually has the caret.
+  //
   // Returns a full `.state-tile` element HTML string.
-  function wrapCollapsibleTile(slug, classes, headInnerHtml, bodyHtml) {
+  function wrapCollapsibleTile(slug, classes, headInnerHtml, bodyHtml, opts) {
+    opts = opts || {};
+    const handler = opts.rerenderHandler || 'overviewToggleTile';
     const collapsed = isTileCollapsed(slug);
     const caret = collapsed ? '▸' : '▾';
     const extraCls = classes ? ` ${classes}` : '';
@@ -69,8 +80,8 @@ export function createOverviewSection(ctx) {
     return `
       <div class="state-tile${extraCls}${collapsedCls}" data-tile="${escapeHtml(slug)}">
         <div class="state-tile-head state-tile-collapsible" role="button" tabindex="0"
-             onclick="overviewToggleTile('${escapeHtml(slug)}')"
-             onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();overviewToggleTile('${escapeHtml(slug)}')}"
+             onclick="${handler}('${escapeHtml(slug)}')"
+             onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();${handler}('${escapeHtml(slug)}')}"
              title="${collapsed ? 'Expand' : 'Collapse'} tile">
           <span class="state-tile-caret">${caret}</span>${headInnerHtml}
         </div>
@@ -395,11 +406,19 @@ export function createOverviewSection(ctx) {
   // produces storage key `prime.collapse.overview-tile.penalty`. The
   // Combat tab passes 'penalty-combat' so its copy collapses
   // independently of the Overview copy.
+  //
+  // opts.rerenderHandler: name of the window handler called on click.
+  // Defaults to 'overviewToggleTile' (correct for the Overview tab).
+  // The Combat tab should pass 'combatToggleTile' (or equivalent) so
+  // clicks re-render the Combat tab, not the Overview tab — otherwise
+  // toggles flip the state but appear to do nothing because the tab
+  // containing the caret is never repainted.
   function renderPenaltyTile(pain, stress, penalty, otherMods, canEdit, opts) {
     if (!penalty) return '';
     opts = opts || {};
     const collapsible = opts.collapsible === true;
     const slug = opts.slug || 'penalty';
+    const rerenderHandler = opts.rerenderHandler;
     const pct = penalty.percent;
     let pctColor;
     if (pct <= 0)      pctColor = '#666';
@@ -487,7 +506,8 @@ export function createOverviewSection(ctx) {
       ${othersEditor}`;
 
     if (collapsible) {
-      return wrapCollapsibleTile(slug, 'state-tile-wide state-tile-penalty', headInner, bodyHtml);
+      const wrapOpts = rerenderHandler ? { rerenderHandler } : undefined;
+      return wrapCollapsibleTile(slug, 'state-tile-wide state-tile-penalty', headInner, bodyHtml, wrapOpts);
     }
     // Non-collapsible (inline on Combat tab) — keep the original markup
     // shape so combat.js's repaint logic and any CSS selectors that
