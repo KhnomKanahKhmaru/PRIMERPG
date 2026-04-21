@@ -715,6 +715,39 @@
       border-radius: 3px;
     }
     .cond-modal-empty b { color: #caa060; }
+    /* Picker section — groups presets by source (Ruleset vs Catalogue).
+       Small label header with a count pill; same row styling underneath
+       regardless of source. Sections stack vertically with a gap. */
+    .cond-picker-section {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 10px;
+    }
+    .cond-picker-section:last-child { margin-bottom: 0; }
+    .cond-picker-section-head {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      padding: 2px 2px 4px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .cond-picker-section-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #888;
+    }
+    .cond-picker-section-count {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 9px;
+      color: #666;
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 8px;
+      padding: 0 5px;
+    }
     .cond-picker-list {
       display: flex;
       flex-direction: column;
@@ -828,9 +861,27 @@
     .cond-form-foot {
       display: flex;
       gap: 8px;
-      justify-content: flex-end;
+      align-items: center;
       padding-top: 6px;
       border-top: 1px solid #1a1a1a;
+    }
+    .cond-form-foot-spacer { flex: 1; }
+    .cond-modal-promote {
+      background: #1a1406;
+      border: 1px solid #3a2c10;
+      color: #e0b870;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 3px;
+      cursor: pointer;
+      letter-spacing: .04em;
+    }
+    .cond-modal-promote:hover {
+      background: #241a08;
+      color: #e8c070;
+      border-color: #4a3818;
     }
     .cond-modal-cancel {
       background: transparent;
@@ -3802,6 +3853,7 @@
     condSaveCustom:       ()                => combat.condSaveCustom(),
     condOpenEdit:         (id)              => combat.condOpenEdit(id),
     condSaveEdit:         ()                => combat.condSaveEdit(),
+    condPromote:          ()                => combat.condPromote(),
     condDraft:            (field, value)    => combat.condDraft(field, value),
     condCloseModal:       (ev)              => combat.condCloseModal(ev),
     condSwapCategory:     (id)              => combat.condSwapCategory(id),
