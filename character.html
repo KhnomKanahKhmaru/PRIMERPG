@@ -420,6 +420,445 @@
       border-style: solid;
     }
 
+    /* ── Conditions tile (Physical / Mental tracker) ──
+     * Renders in the State of Things grid after the Penalty tile. Two
+     * columns side-by-side. Each entry is a compact row (collapsed) that
+     * expands on click to show description + system + notes. Scale pill
+     * on the left indicates severity. Picker and edit modals use the
+     * overlay pattern shared with the inventory modals. */
+    .state-tile-conditions { gap: 10px; }
+    .state-tile-conditions .state-tile-head {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+    .state-tile-conditions .state-tile-sub {
+      font-size: 10px;
+      color: #666;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-style: italic;
+    }
+    .state-tile-conditions .state-tile-body {
+      padding-top: 6px;
+      border-top: 1px solid #1a1a1a;
+    }
+
+    .cond-columns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    @media (max-width: 680px) {
+      .cond-columns { grid-template-columns: 1fr; }
+    }
+    .cond-col {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 0;
+    }
+    .cond-col-head {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .cond-col-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #aaa;
+    }
+    .cond-col-count {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 10px;
+      color: #666;
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 8px;
+      padding: 0 6px;
+    }
+    .cond-add-btn {
+      margin-left: auto;
+      background: transparent;
+      border: 1px dashed #2a2a2a;
+      color: #888;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 10px;
+      border-radius: 3px;
+      cursor: pointer;
+      letter-spacing: .04em;
+      transition: all .1s;
+    }
+    .cond-add-btn:hover {
+      background: #111;
+      color: #ccc;
+      border-color: #3a3a3a;
+      border-style: solid;
+    }
+
+    .cond-list {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .cond-empty {
+      font-size: 11px;
+      color: #555;
+      font-style: italic;
+      padding: 8px 4px;
+    }
+
+    .cond-entry {
+      background: #0a0a0a;
+      border: 1px solid #1a1a1a;
+      border-radius: 3px;
+      overflow: hidden;
+      transition: border-color .08s;
+    }
+    .cond-entry:hover { border-color: #2a2a2a; }
+    .cond-entry.expanded { border-color: #3a3a3a; }
+
+    .cond-entry-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      cursor: pointer;
+      user-select: none;
+      min-width: 0;
+    }
+    .cond-entry-head:hover { background: #111; }
+
+    .cond-entry-name {
+      font-family: 'Open Sans', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      color: #ddd;
+      flex-shrink: 0;
+    }
+    .cond-blurb {
+      flex: 1;
+      min-width: 0;
+      font-size: 10px;
+      color: #777;
+      font-style: italic;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Scale pill — inline severity badge. 7 tiers with increasingly
+       alarming colors. "None" renders as a neutral dash. */
+    .cond-scale {
+      flex-shrink: 0;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      padding: 2px 6px;
+      border-radius: 2px;
+      border: 1px solid transparent;
+      min-width: 34px;
+      text-align: center;
+    }
+    .cond-scale-none       { background: #141414; color: #555; border-color: #1a1a1a; }
+    .cond-scale-minor      { background: #10201a; color: #8cc0a0; border-color: #1a3a30; }
+    .cond-scale-moderate   { background: #1a2410; color: #c0c080; border-color: #2a3a20; }
+    .cond-scale-major      { background: #251a10; color: #d8a860; border-color: #3a2a1c; }
+    .cond-scale-massive    { background: #2a1410; color: #e09060; border-color: #4a2820; }
+    .cond-scale-monumental { background: #2a1010; color: #e07878; border-color: #4a1c1c; }
+    .cond-scale-mega       { background: #1a081a; color: #d080d0; border-color: #3a1c3a; }
+    .cond-scale-mythical   {
+      background: linear-gradient(90deg, #2a1a1a, #1a1a2a, #1a2a2a);
+      color: #e8e0c0;
+      border-color: #4a3a28;
+    }
+
+    .cond-entry-actions {
+      flex-shrink: 0;
+      display: flex;
+      gap: 2px;
+      opacity: 0.4;
+      transition: opacity .1s;
+    }
+    .cond-entry:hover .cond-entry-actions { opacity: 1; }
+    .cond-entry-btn {
+      background: transparent;
+      border: 1px solid #222;
+      color: #888;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 11px;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border-radius: 2px;
+      cursor: pointer;
+      line-height: 1;
+      transition: all .08s;
+    }
+    .cond-entry-btn:hover {
+      background: #1a1a1a;
+      color: #ccc;
+      border-color: #3a3a3a;
+    }
+    .cond-entry-btn-danger { border-color: #2a1a1a; color: #a06060; }
+    .cond-entry-btn-danger:hover {
+      background: #2a1212;
+      border-color: #4a2828;
+      color: #d07070;
+    }
+
+    /* Expanded body — description / system / notes blocks. */
+    .cond-entry-body {
+      padding: 6px 12px 10px;
+      border-top: 1px solid #151515;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: #080808;
+    }
+    .cond-entry-block-label {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: #666;
+      margin-bottom: 2px;
+    }
+    .cond-entry-block-text {
+      font-size: 11px;
+      color: #bbb;
+      line-height: 1.4;
+      white-space: pre-wrap;
+    }
+    .cond-entry-empty {
+      font-size: 10px;
+      color: #555;
+      font-style: italic;
+    }
+
+    /* ── Conditions modals — picker + edit. ──
+     * Overlay style matches the inventory modal conventions. The
+     * backdrop catches outside clicks to close; modal content stops
+     * propagation so clicks inside don't dismiss. */
+    .cond-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.65);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 20px;
+    }
+    .cond-modal {
+      background: #0c0c0c;
+      border: 1px solid #2a2a2a;
+      border-radius: 5px;
+      max-width: 520px;
+      width: 100%;
+      max-height: 90vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+    }
+    .cond-modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: #111;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .cond-modal-title {
+      font-family: 'Open Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      color: #ddd;
+      letter-spacing: .03em;
+    }
+    .cond-modal-close {
+      background: transparent;
+      border: none;
+      color: #888;
+      font-size: 18px;
+      width: 24px;
+      height: 24px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0;
+      border-radius: 2px;
+    }
+    .cond-modal-close:hover { background: #1a1a1a; color: #ddd; }
+    .cond-modal-body {
+      padding: 14px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    /* Picker list — each preset rendered as a clickable row. */
+    .cond-modal-empty {
+      padding: 16px 12px;
+      font-size: 12px;
+      color: #888;
+      line-height: 1.5;
+      text-align: center;
+      background: #0a0a0a;
+      border: 1px dashed #222;
+      border-radius: 3px;
+    }
+    .cond-modal-empty b { color: #caa060; }
+    .cond-picker-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-height: 340px;
+      overflow-y: auto;
+    }
+    .cond-picker-row {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding: 8px 12px;
+      background: #0a0a0a;
+      border: 1px solid #1a1a1a;
+      border-radius: 3px;
+      color: inherit;
+      font-family: inherit;
+      text-align: left;
+      cursor: pointer;
+      transition: all .08s;
+    }
+    .cond-picker-row:hover {
+      background: #111;
+      border-color: #3a3a3a;
+    }
+    .cond-picker-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: #ddd;
+    }
+    .cond-picker-blurb {
+      font-size: 10px;
+      color: #888;
+      font-style: italic;
+      line-height: 1.4;
+    }
+
+    .cond-modal-foot {
+      padding-top: 10px;
+      margin-top: 10px;
+      border-top: 1px solid #1a1a1a;
+    }
+    .cond-modal-custom-btn {
+      background: transparent;
+      border: 1px dashed #2a2010;
+      color: #caa060;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 3px;
+      cursor: pointer;
+      letter-spacing: .04em;
+      transition: all .1s;
+      width: 100%;
+    }
+    .cond-modal-custom-btn:hover {
+      background: #1a1406;
+      color: #e0b870;
+      border-color: #3a2c10;
+      border-style: solid;
+    }
+
+    /* Custom / edit form. */
+    .cond-form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .cond-preset-note {
+      padding: 6px 10px;
+      background: #0f1208;
+      border: 1px solid #2a3a18;
+      border-radius: 3px;
+      font-size: 10px;
+      color: #a0c080;
+      line-height: 1.4;
+    }
+    .cond-form-row {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .cond-form-row label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: #888;
+    }
+    .cond-form-row input,
+    .cond-form-row textarea,
+    .cond-form-row select {
+      background: #111;
+      border: 1px solid #222;
+      color: #ddd;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 12px;
+      padding: 6px 8px;
+      border-radius: 3px;
+      outline: none;
+      resize: vertical;
+    }
+    .cond-form-row input:focus,
+    .cond-form-row textarea:focus,
+    .cond-form-row select:focus {
+      border-color: #3a3a3a;
+    }
+    .cond-form-row textarea { font-family: inherit; line-height: 1.4; }
+
+    .cond-form-foot {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      padding-top: 6px;
+      border-top: 1px solid #1a1a1a;
+    }
+    .cond-modal-cancel {
+      background: transparent;
+      border: 1px solid #222;
+      color: #888;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 3px;
+      cursor: pointer;
+      letter-spacing: .04em;
+    }
+    .cond-modal-cancel:hover { background: #1a1a1a; color: #ccc; border-color: #3a3a3a; }
+    .cond-modal-save {
+      background: #1a1406;
+      border: 1px solid #3a2c10;
+      color: #e0b870;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 3px;
+      cursor: pointer;
+      letter-spacing: .04em;
+    }
+    .cond-modal-save:hover { background: #2a1f0a; color: #e8c280; border-color: #4a3818; }
+
     /* ── Roll Calculator ── */
     .state-tile-rollcalc { gap: 14px; }
     .state-tile-rollcalc .state-tile-head {
@@ -3101,6 +3540,7 @@
   import { createSituationsSection } from './char-situations.js';
   import { createCombatSection } from './char-combat.js';
   import { createInventorySection } from './char-inventory.js';
+  import { createConditionsSection } from './char-conditions.js';
 
   // All imports resolved — module body executes from here.
   if (window.__logStep) window.__logStep('all modules imported');
@@ -3355,6 +3795,18 @@
     addTrauma:            (injId) => combat.addTrauma(injId),
     removeTrauma:         (injId, i) => combat.removeTrauma(injId, i),
     updateTraumaField:    (injId, i, field, val) => combat.updateTraumaField(injId, i, field, val),
+    // Conditions (Physical / Mental tracker on Overview tab)
+    condOpenAdd:          (cat)             => combat.condOpenAdd(cat),
+    condStartCustom:      ()                => combat.condStartCustom(),
+    condPickPreset:       (defId)           => combat.condPickPreset(defId),
+    condSaveCustom:       ()                => combat.condSaveCustom(),
+    condOpenEdit:         (id)              => combat.condOpenEdit(id),
+    condSaveEdit:         ()                => combat.condSaveEdit(),
+    condDraft:            (field, value)    => combat.condDraft(field, value),
+    condCloseModal:       (ev)              => combat.condCloseModal(ev),
+    condSwapCategory:     (id)              => combat.condSwapCategory(id),
+    condRemove:           (id)              => combat.condRemove(id),
+    condToggleEntry:      (id)              => combat.condToggleEntry(id),
     // Inventory tab
     invToggleSlot:           (code)               => inventory.toggleSlot(code),
     invToggleEntry:          (id)                 => inventory.toggleEntry(id),
