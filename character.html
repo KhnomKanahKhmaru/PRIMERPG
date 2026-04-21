@@ -233,6 +233,62 @@
       font-size: 10px;
       transition: color .1s;
     }
+    /* ─── READ-ONLY VIEWER MODE ───
+       When the viewer is not the owner AND not a GM (Leader/Admin of
+       the character's playgroup), the body gets .prime-readonly and
+       every inline edit affordance is hidden via CSS. This complements
+       the JS handler-level canEdit guards — handlers already bail for
+       non-editors, but the visual affordances (Add, ×, +/−, Edit)
+       would otherwise still be visible and confusing to click. This
+       suppresses them all in one place.
+
+       GMs don't get this class (canEdit is true for them), so they see
+       the full editing UI. Owners also pass through normally. */
+    body.prime-readonly .edit-btn,
+    body.prime-readonly .mod-add-btn,
+    body.prime-readonly .mod-add-row,
+    body.prime-readonly .mod-delete,
+    body.prime-readonly .entry-delete,
+    body.prime-readonly .stat-pm-btn,
+    body.prime-readonly .stat-adj-btn,
+    body.prime-readonly .hl-edit-btn,
+    body.prime-readonly .hl-dmg-btn,
+    body.prime-readonly .cond-add-btn,
+    body.prime-readonly .cond-entry-btn,
+    body.prime-readonly .ad-add-btn,
+    body.prime-readonly .ad-card-delete,
+    body.prime-readonly .inv-add-btn,
+    body.prime-readonly .inv-manage-btn,
+    body.prime-readonly .inv-add-group-row,
+    body.prime-readonly .inv-group-btn,
+    body.prime-readonly .inv-carry-add,
+    body.prime-readonly .inv-carry-mod-del,
+    body.prime-readonly .injury-add-btn,
+    body.prime-readonly .injury-delete-btn,
+    body.prime-readonly .injury-quickadd-row,
+    body.prime-readonly .injury-quickadd-locations,
+    body.prime-readonly .trauma-add-btn,
+    body.prime-readonly .sit-ctrl-btn,
+    body.prime-readonly .sit-add-btn,
+    body.prime-readonly .danger-zone,
+    body.prime-readonly .ad-add-form-container,
+    body.prime-readonly .add-entry-btn {
+      display: none !important;
+    }
+    /* Disable form inputs so readers can't type into numbers/selects
+       and get confusing visual feedback. Keeps the value visible; just
+       can't modify. */
+    body.prime-readonly #stats-list input,
+    body.prime-readonly #stats-list select,
+    body.prime-readonly #stats-list textarea,
+    body.prime-readonly .skills-grid input,
+    body.prime-readonly .skills-grid select,
+    body.prime-readonly .san-dmg-input,
+    body.prime-readonly .rc-input,
+    body.prime-readonly .ds-input {
+      pointer-events: none;
+      opacity: 0.85;
+    }
     /* Synthetic headers injected above content that didn't originally
        have a dedicated title bar (Bio card, Mental card, Stats-card).
        Visually match the section-title conventions elsewhere on the
@@ -4518,19 +4574,36 @@
     const char = await loadCharacter(charId);
     if (!char) { window.location.href = 'home.html'; return; }
     charData = char;
-    canEdit = charData.uid === user.uid;
-    if (window.__logStep) window.__logStep('character loaded, canEdit=' + canEdit);
+    // Initial canEdit is ownership; GM/Leader rights are folded in
+    // below once we know the playgroup role. Keeps the log readable —
+    // first line shows raw ownership, second shows the final value.
+    const isOwner = charData.uid === user.uid;
+    canEdit = isOwner;
+    if (window.__logStep) window.__logStep('character loaded, isOwner=' + isOwner);
 
     // GM check: Leader or Administrator of this character's playgroup.
-    // Character owners get GM powers on their own sheet too, so a solo
-    // character (no playgroup) still gets Situation-editing rights.
+    // GMs get FULL edit rights on characters in their playgroup — stats,
+    // skills, inventory, everything. This matches TTRPG norms where the
+    // GM can correct typos, adjudicate impossible rolls, or apply
+    // Break Points on a player's behalf without bouncing to "please let
+    // me in as you".
+    //
+    // Solo characters (no playgroup) default isGM to ownership so the
+    // Situations UI, which uses isGM for show/hide logic, still works
+    // for the solo-play case.
     if (charData.playgroupId) {
       if (window.__logStep) window.__logStep('checking GM role for playgroup: ' + charData.playgroupId);
       const role = await loadMembershipRole(user.uid, charData.playgroupId);
       isGM = role === 'Leader' || role === 'Administrator';
     } else {
-      isGM = canEdit;
+      isGM = isOwner;
     }
+
+    // Final canEdit: owner OR GM (Leader/Administrator). Computed after
+    // the role check so downstream UI renders with the correct value on
+    // first pass — no "owner-only for a frame, then GM kicks in" flash.
+    canEdit = isOwner || isGM;
+    if (window.__logStep) window.__logStep('permissions resolved: canEdit=' + canEdit + ' isGM=' + isGM);
 
     // Resolve the ruleset that governs this character — playgroup's
     // attached ruleset, else Basic Set, else defaults. Always returns a
@@ -4596,6 +4669,15 @@
       document.getElementById('bio-edit-btn').style.display = 'inline';
       document.getElementById('stats-edit-btn').style.display = 'inline';
       document.getElementById('danger-zone').style.display = 'block';
+    } else {
+      // Read-only viewer. Slap a body class so the CSS below can hide
+      // every inline edit affordance (modifier +/−, Add modifier rows,
+      // × delete chips, edit-mode form buttons). The button handlers
+      // themselves bail on !canEdit already — this is purely visual so
+      // non-editors don't see buttons that would no-op. Scoped to
+      // viewer state: GMs get edit rights (canEdit true) and won't see
+      // this class, so they get the full editing UI as expected.
+      document.body.classList.add('prime-readonly');
     }
 
     if (window.__logStep) window.__logStep('load complete');
