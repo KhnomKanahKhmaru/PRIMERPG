@@ -32,7 +32,7 @@ export function createOverviewSection(ctx) {
     getCanEdit,
     escapeHtml,
     fmt,
-    conditionsSection   // optional: char-conditions.js instance for the Physical/Mental tile
+    conditionsSection   // optional: char-conditions.js instance for the Afflictions tile (Conditions / Circumstances)
   } = ctx;
 
   // ─── ORCHESTRATOR ───
@@ -80,9 +80,10 @@ export function createOverviewSection(ctx) {
     const canEdit = getCanEdit ? getCanEdit() : true;
     tiles.push(renderPenaltyTile(result.pain, result.stress, result.penalty, otherMods, canEdit));
 
-    // Conditions tile — Physical / Mental split. Renders directly after
-    // the Penalty tile so "what's wrong with me" flows in a logical
-    // order: damage → strain → penalty → specific ongoing conditions.
+    // Afflictions tile — Conditions & Circumstances split. Renders
+    // directly after the Penalty tile so "what's wrong / what's affecting
+    // me" flows in a logical order: damage → strain → penalty →
+    // afflictions (specific ongoing things).
     if (conditionsSection && typeof conditionsSection.renderTileBody === 'function') {
       tiles.push(renderConditionsTile());
     }
@@ -100,14 +101,16 @@ export function createOverviewSection(ctx) {
     }
   }
 
-  // Conditions tile wrapper — delegates body to char-conditions.js but
+  // Afflictions tile wrapper — delegates body to char-conditions.js but
   // provides the tile frame consistent with the rest of State of Things.
+  // The inner module renders two columns: "Conditions" (ongoing states
+  // of the character) and "Circumstances" (external / situational).
   function renderConditionsTile() {
     return `
       <div class="state-tile state-tile-wide state-tile-conditions">
         <div class="state-tile-head">
-          <span class="state-tile-label">Conditions</span>
-          <span class="state-tile-sub">Physical &amp; Mental · traumas, disorders, ailments</span>
+          <span class="state-tile-label">Afflictions</span>
+          <span class="state-tile-sub">Conditions &amp; Circumstances · traumas, disorders, external effects</span>
         </div>
         <div class="state-tile-body">${conditionsSection.renderTileBody()}</div>
       </div>`;
