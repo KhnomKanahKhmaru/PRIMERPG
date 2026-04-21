@@ -476,6 +476,31 @@
       color: #888;
     }
     .rc-field-row { display: flex; gap: 6px; min-width: 0; }
+    /* Extra Dice slot — when the source-type is stat or skill, the row
+       holds three controls: kind picker | source picker | value. The
+       kind picker gets a narrower flex share so the source picker
+       (which shows the actual stat/skill name) has room to breathe. */
+    .rc-field-row-extra-three {
+      display: flex;
+      gap: 6px;
+      min-width: 0;
+    }
+    .rc-field-row-extra-three .rc-select-extra-kind {
+      flex: 0 0 auto;
+      min-width: 84px;
+      max-width: 110px;
+    }
+    .rc-field-row-extra-three .rc-select:not(.rc-select-extra-kind) {
+      flex: 1;
+      min-width: 0;
+    }
+    /* Kind picker at its own max-width when the row is 2-column (custom
+       or none) so it doesn't stretch unreasonably wide. */
+    .rc-field-row .rc-select-extra-kind {
+      flex: 0 0 auto;
+      min-width: 84px;
+      max-width: 110px;
+    }
     .rc-select {
       flex: 1;
       min-width: 0;
@@ -3158,6 +3183,10 @@
     rollCalcSetStatValue:    (v)   => combat.rollCalcSetStatValue(v),
     rollCalcSetSkillValue:   (v)   => combat.rollCalcSetSkillValue(v),
     rollCalcSetStatmod:      (v)   => combat.rollCalcSetStatmod(v),
+    rollCalcSetExtraKind:    (k)   => combat.rollCalcSetExtraKind(k),
+    rollCalcSetExtraStat:    (k)   => combat.rollCalcSetExtraStat(k),
+    rollCalcSetExtraSkill:   (k)   => combat.rollCalcSetExtraSkill(k),
+    rollCalcSetExtraValue:   (v)   => combat.rollCalcSetExtraValue(v),
     rollCalcSetDifficulty:   (v)   => combat.rollCalcSetDifficulty(v),
     rollCalcSetMitigation:   (v)   => combat.rollCalcSetMitigation(v),
     rollCalcSetReduction:    (v)   => combat.rollCalcSetReduction(v),
