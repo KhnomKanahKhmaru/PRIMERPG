@@ -2615,6 +2615,10 @@ export function createCombatSection(ctx) {
     rollCalcSetReduction:   rollcalc.setReduction,
     rollCalcToggle:         rollcalc.toggleShowRaw,
     rollCalcSetPassive:     rollcalc.setPassive,
+    // Per-roll Penalty component toggles
+    rollCalcTogglePenalty:      rollcalc.togglePenaltyComponent,
+    rollCalcTogglePenaltyPanel: rollcalc.togglePenaltyPanel,
+    rollCalcResetPenalty:       rollcalc.resetPenaltyToggles,
     // Pain / Stress (percentile modifiers feeding Penalty via Pain and Stress components)
     togglePainPanel, addPainMod, updatePainMod, deletePainMod,
     toggleStressPanel, addStressMod, updateStressMod, deleteStressMod,
