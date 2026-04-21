@@ -3788,10 +3788,14 @@ export function createInventorySection(ctx) {
     try { await save(); } catch (e) { console.error('inventory save failed', e); }
   }
 
-  // Placeholder for Turn 6 — sends the weapon's resolved dice pool +
-  // flat bonus to the Roll Calculator. For now just logs so the
-  // button does something visible when clicked; the actual Roll Calc
-  // integration lands in the next turn.
+  // Send a weapon's attack or damage roll to the Roll Calculator. The
+  // actual Roll Calc state lives in char-rollcalc.js — we route the
+  // call through ctx.sendWeaponToRollCalc which character.html wires
+  // up at module-create time. This keeps char-inventory unaware of
+  // char-rollcalc's internals (the two modules are otherwise
+  // independent).
+  //
+  // which = 'attack' | 'damage'
   function weaponToRollCalc(id, which) {
     const entry = findEntry(id);
     if (!entry) return;
@@ -3805,16 +3809,21 @@ export function createInventorySection(ctx) {
       alert('Weapon roll has an error: ' + (roll && roll.error ? roll.error : 'unknown'));
       return;
     }
-    // TODO Turn 6: fill Roll Calc slots from roll.dicePool + roll.flatBonus.
-    // For now, console.log so developers see the signal and users get
-    // a soft no-op rather than a silent dead button.
-    console.log('[weaponToRollCalc]', which, entry.id, {
-      dicePool: roll.dicePool,
-      flatBonus: roll.flatBonus,
-      diceSlots: roll.diceSlots,
-      flatSlots: roll.flatSlots
-    });
-    alert(`Would send to Roll Calc: ${roll.dicePool}D10${roll.flatBonus >= 0 ? ' + ' : ' − '}${Math.abs(roll.flatBonus)}\n\n(Roll Calc wiring comes in the next update.)`);
+    const weaponName = (snap && snap.name) || 'Weapon';
+    const label = `${weaponName} · ${which === 'damage' ? 'Damage' : 'Attack'}`;
+    if (typeof ctx.sendWeaponToRollCalc === 'function') {
+      ctx.sendWeaponToRollCalc({
+        dicePool:  roll.dicePool,
+        flatBonus: roll.flatBonus,
+        label
+      });
+    } else {
+      // Fallback if character.html hasn't wired the bridge yet —
+      // surfaces a clear error rather than a silent no-op so the dev
+      // notices the missing wiring.
+      console.warn('[weaponToRollCalc] ctx.sendWeaponToRollCalc missing; cannot deliver', label);
+      alert('Roll Calc bridge is not wired up. (Reload the page; if this persists the feature is half-deployed.)');
+    }
   }
 
   async function removeEntryHandler(id) {
