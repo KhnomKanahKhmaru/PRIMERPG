@@ -2676,6 +2676,13 @@ export function createCombatSection(ctx) {
     rollCalcSetReduction:   rollcalc.setReduction,
     rollCalcToggle:         rollcalc.toggleShowRaw,
     rollCalcSetPassive:     rollcalc.setPassive,
+    // Weapon → Roll Calc bridge. Called by char-inventory's weapon
+    // readout when the user clicks "→ Roll Calc" on an attack or
+    // damage block. Fills the calc's slot 0 with the resolved dice
+    // pool (as a 'custom' override) and statmodOverride with the
+    // resolved flat bonus, clearing slots 1/2. See char-rollcalc.js
+    // for the full loadout semantics.
+    rollCalcLoadWeapon:     rollcalc.loadWeaponRoll,
     // Overview tile collapse — click handler on state-tile headers
     overviewToggleTile:     (slug) => overview.toggleTile(slug),
     // Per-roll Penalty component toggles
