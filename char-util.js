@@ -111,3 +111,48 @@ export function skillXpLabel(val, type) {
 export function skillLevelText(val) {
   return SKILL_LABELS[Math.min(10, Math.max(0, parseInt(val) || 0))];
 }
+
+// ── COLLAPSE STATE ──
+//
+// Per-browser persistence of "is this section collapsed?" flags. Used
+// by the Overview tiles, Advantages/Disadvantages sections, and any
+// other collapsible UI the character sheet adds later. Keys share a
+// `prime.collapse.` prefix so they're easy to find and clear in
+// browser devtools.
+//
+// Values stored as '1' (collapsed) / '0' (expanded). Absent values
+// default to expanded — low-friction first-visit behavior.
+//
+// Private-mode browsers can throw on localStorage access, so we fall
+// back to an in-memory Map for the session. Matches the pattern from
+// the Advantages module.
+
+const _memoryCollapse = new Map();
+
+// Read the stored collapse flag for a key. Returns true if collapsed,
+// false if expanded or missing.
+export function getCollapsed(key) {
+  if (!key) return false;
+  try {
+    const v = window.localStorage.getItem(key);
+    if (v !== null) return v === '1';
+  } catch (_) { /* fall through */ }
+  return _memoryCollapse.get(key) === true;
+}
+
+// Write the collapse flag for a key. Boolean-coerces the value.
+export function setCollapsed(key, value) {
+  if (!key) return;
+  const v = value ? '1' : '0';
+  try { window.localStorage.setItem(key, v); return; }
+  catch (_) { /* fall through */ }
+  _memoryCollapse.set(key, !!value);
+}
+
+// Flip the flag and return the new value. Convenient for toggle
+// handlers that also want to know the result.
+export function toggleCollapsed(key) {
+  const next = !getCollapsed(key);
+  setCollapsed(key, next);
+  return next;
+}
