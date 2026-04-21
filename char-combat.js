@@ -77,9 +77,16 @@ export function createCombatSection(ctx) {
     const otherMods = Array.isArray(charData.otherModifiers) ? charData.otherModifiers : [];
     // Collapsible:true emits the caret + click wiring. slug 'penalty-combat'
     // keeps this tile's collapse state separate from the Overview-tab
-    // Penalty tile (which uses the default 'penalty' slug) so the two
-    // copies can be collapsed independently.
-    html += overview.renderPenaltyTile(result.pain, result.stress, result.penalty, otherMods, ctx.getCanEdit(), { collapsible: true, slug: 'penalty-combat' });
+    // Penalty tile. rerenderHandler 'combatToggleTile' makes the click
+    // re-render THIS tab (Combat) rather than the Overview tab —
+    // without this override, the handler defaults to overviewToggleTile,
+    // which would toggle the flag but only repaint the Overview tab,
+    // leaving the Combat-tab caret visually stuck.
+    html += overview.renderPenaltyTile(result.pain, result.stress, result.penalty, otherMods, ctx.getCanEdit(), {
+      collapsible: true,
+      slug: 'penalty-combat',
+      rerenderHandler: 'combatToggleTile'
+    });
     // Movement below — speed, agility, reflex. Fast-lookup info you need
     // during play, positioned ahead of the more detailed health UI.
     html += renderDerivedStatsSection(result, ruleset, { includeGroups: ['movement'] });
