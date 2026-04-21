@@ -75,7 +75,12 @@ export function createCombatSection(ctx) {
     // Sanity section — mental health pool, placed between physical and power.
     html += renderSanSection(result);
     // All other derived stat groups (mental, etc.) render below.
-    html += renderDerivedStatsSection(result, ruleset, { excludeGroups: ['movement'] });
+    // 'carry' is excluded because CAP / LIFT / ENC render as their own
+    // cards at the top of the Inventory tab — putting them here too
+    // would duplicate them (which is where the stray "Other" section
+    // was coming from before). The three carry stats are authored with
+    // `group: 'carry'` precisely so they can be filtered out here.
+    html += renderDerivedStatsSection(result, ruleset, { excludeGroups: ['movement', 'carry'] });
     // Power last (its own complex section with resource bar).
     html += power.renderSection(result, ruleset, charData);
     container.innerHTML = html || '<div class="combat-empty">No combat data configured in this ruleset.</div>';
