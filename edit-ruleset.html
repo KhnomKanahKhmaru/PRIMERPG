@@ -505,6 +505,34 @@
 
     /* Container pill in item card header */
     .item-container-pill { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #6a9; background: #0a1a0a; border: 1px solid #2a4a2a; padding: 1px 6px; border-radius: 2px; margin-left: 8px; vertical-align: middle; }
+
+    /* Armor pill in item card header — warm-metal color distinct from
+       the container pill's green. Visible at a glance when scanning
+       the item list. */
+    .item-armor-pill {
+      font-size: 9px; font-weight: 600; letter-spacing: .06em;
+      text-transform: uppercase; color: #caa060;
+      background: #1a1408; border: 1px solid #3a2a14;
+      padding: 1px 6px; border-radius: 2px;
+      margin-left: 8px; vertical-align: middle;
+    }
+
+    /* Armor coverage checkbox grid — pulls hit locations from state */
+    .inv-armor-coverage-row {
+      display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px;
+    }
+    .inv-armor-cov-cb {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 8px; background: #1a1408;
+      border: 1px solid #2a2010; border-radius: 4px;
+      font-size: 11px; color: #c8c8c8; cursor: pointer;
+      transition: background 0.1s, border-color 0.1s, color 0.1s;
+    }
+    .inv-armor-cov-cb:hover { background: #221a0a; border-color: #3a2a14; color: #caa060; }
+    .inv-armor-cov-cb input[type="checkbox"] { margin: 0; cursor: pointer; }
+    .inv-armor-cov-cb:has(input:checked) {
+      background: #2a1f0c; border-color: #4a3a1a; color: #d4a574;
+    }
   </style>
 </head>
 <body>
@@ -3361,11 +3389,16 @@
     const cof = it.containerOf || { dimensions: { l: 0, w: 0, h: 0 }, packingEfficiency: 0.75 };
     const cofDims = cof.dimensions || { l: 0, w: 0, h: 0 };
     const containerPill = isContainer ? '<span class="item-container-pill" title="This item is also a container">container</span>' : '';
+    // Armor pill — shown in the card header when the item carries an
+    // armor block. "Armor N" so a glance tells the author the rating.
+    const hasArmor = !!it.armor;
+    const armorVal = hasArmor ? (it.armor.value || 0) : 0;
+    const armorPill = hasArmor ? `<span class="item-armor-pill" title="This item is also armor">Armor ${armorVal}</span>` : '';
     const indentPx = (depth + 1) * 18;   // one level deeper than the category header
 
     let html = `<div class="inv-card${open ? ' open' : ''}" style="margin-left:${indentPx}px">
       <div class="inv-card-head" onclick="toggleItemOpen('${q(it.id)}', event)">
-        <div class="inv-card-name${nameCls}"><span class="inv-card-caret">${open ? '▾' : '▸'}</span>${nameText}${containerPill}</div>
+        <div class="inv-card-name${nameCls}"><span class="inv-card-caret">${open ? '▾' : '▸'}</span>${nameText}${containerPill}${armorPill}</div>
         <div class="inv-card-dims">${qText(dimsStr)} in</div>
         <div class="inv-card-weight">${qText(weightStr)}</div>
         <span class="delete-x" onclick="event.stopPropagation();deleteItem('${q(it.id)}')" title="Remove item">×</span>
@@ -3433,6 +3466,13 @@
           </div>
         </div>` : ''}
 
+        <div class="inv-toggle-row">
+          <span class="inv-toggle${hasArmor ? ' on' : ''}" onclick="toggleItemArmor('${q(it.id)}')">${hasArmor ? '✓ Also armor' : 'Also armor'}</span>
+          <span class="inv-toggle-hint">Turn on to let this item function as armor — reduces incoming damage on its covered hit locations.</span>
+        </div>
+
+        ${hasArmor ? renderItemArmorBlock(it) : ''}
+
         ${renderItemWeaponBlock(it)}
 
         <div class="inv-card-footer">
@@ -3442,6 +3482,63 @@
     }
     html += '</div>';
     return html;
+  }
+
+  // Armor block — rendered inside the item card body when `item.armor`
+  // is set. Authors pick a value, which hit locations the armor covers
+  // (checkbox grid pulled from state.hitLocations), a max durability
+  // (0 = no tracking), and a condition label. Per-instance durability
+  // tracking happens on character inventory entries, not here.
+  function renderItemArmorBlock(it) {
+    const a = it.armor || { value: 0, coverage: [], maxDurability: 0, condition: 'pristine' };
+    const coverage = Array.isArray(a.coverage) ? a.coverage : [];
+    const hls = Array.isArray(state.hitLocations) ? state.hitLocations : [];
+    const conds = ['pristine','worn','damaged','broken'];
+    let body = `<div class="inv-container-block" style="border-color:#2a1f14;background:#0a0602">
+      <div class="inv-container-block-title" style="color:#caa060">Armor Properties</div>
+
+      <div class="inv-pair-row">
+        <div class="inv-field">
+          <label>Armor Value</label>
+          <input type="number" step="1" min="0" value="${q(a.value || 0)}" oninput="updateItemArmorField('${q(it.id)}','value',this.value)" style="max-width:100px">
+          <div style="font-size:10px;color:#666;margin-top:2px">Reduces incoming damage by this amount on covered locations. 0 = cosmetic only.</div>
+        </div>
+        <div class="inv-field">
+          <label>Max Durability</label>
+          <input type="number" step="1" min="0" value="${q(a.maxDurability || 0)}" oninput="updateItemArmorField('${q(it.id)}','maxDurability',this.value)" style="max-width:100px">
+          <div style="font-size:10px;color:#666;margin-top:2px">Total condition points before the armor breaks. 0 = no durability tracking.</div>
+        </div>
+      </div>
+
+      <div class="inv-field">
+        <label>Condition</label>
+        <select onchange="updateItemArmorField('${q(it.id)}','condition',this.value)" style="max-width:200px">`;
+    conds.forEach(c => {
+      body += `<option value="${c}"${c === a.condition ? ' selected' : ''}>${c.charAt(0).toUpperCase() + c.slice(1)}</option>`;
+    });
+    body += `</select>
+        <div style="font-size:10px;color:#666;margin-top:2px">Baseline condition label. Pristine = factory-fresh, Broken = non-functional.</div>
+      </div>
+
+      <div class="inv-field">
+        <label>Coverage — which hit locations does this armor protect?</label>`;
+    if (hls.length === 0) {
+      body += `<div style="font-size:11px;color:#888;padding:4px 0">No hit locations defined in this ruleset. Add them under <b>Derived Stats &amp; Combat → Hit Locations</b> to pick coverage.</div>`;
+    } else {
+      body += `<div class="inv-armor-coverage-row">`;
+      hls.forEach(hl => {
+        const checked = coverage.includes(hl.code) ? ' checked' : '';
+        const label = hl.name || hl.code;
+        body += `<label class="inv-armor-cov-cb" title="Covers ${q(label)}">
+          <input type="checkbox"${checked} onchange="toggleItemArmorCoverage('${q(it.id)}','${q(hl.code)}',this.checked)">
+          ${qText(label)}
+        </label>`;
+      });
+      body += `</div>`;
+    }
+    body += `</div>
+    </div>`;
+    return body;
   }
 
   // Weapon block — rendered inside the item card body. Shows a toggle
@@ -3718,13 +3815,23 @@
     if (nameEl) {
       const hasName = it.name && it.name.trim();
       nameEl.classList.toggle('empty', !hasName);
-      // Preserve caret + container pill spans, rebuild name text between.
+      // Preserve caret + pills, rebuild the name text between them.
+      // Container pill is kept as-is (its presence/absence is toggled
+      // on container-facet toggle, not by this handler). Armor pill
+      // gets rebuilt so its value label stays fresh.
       const caret = nameEl.querySelector('.inv-card-caret');
-      const pill = nameEl.querySelector('.item-container-pill');
+      const containerPill = nameEl.querySelector('.item-container-pill');
       nameEl.innerHTML = '';
       if (caret) nameEl.appendChild(caret);
       nameEl.appendChild(document.createTextNode(hasName ? it.name : '(unnamed)'));
-      if (pill) nameEl.appendChild(pill);
+      if (containerPill) nameEl.appendChild(containerPill);
+      if (it.armor) {
+        const armorPill = document.createElement('span');
+        armorPill.className = 'item-armor-pill';
+        armorPill.title = 'This item is also armor';
+        armorPill.textContent = 'Armor ' + (it.armor.value || 0);
+        nameEl.appendChild(armorPill);
+      }
     }
     const dimsEl = head.querySelector('.inv-card-dims');
     if (dimsEl) dimsEl.textContent = `${dims.l} × ${dims.w} × ${dims.h} in`;
@@ -3769,6 +3876,59 @@
     if (!it.containerOf.dimensions) it.containerOf.dimensions = { l: 0, w: 0, h: 0 };
     const n = parseFloat(value);
     it.containerOf.dimensions[axis] = Number.isFinite(n) && n >= 0 ? n : 0;
+  };
+
+  // ── Armor facet handlers ──
+  //
+  // Mirror the container-toggle pattern: armor is an orthogonal facet
+  // that can coexist with containerOf and weapon. Toggling off clears
+  // the armor block entirely (authors who want to preserve coverage
+  // can just leave the toggle on and set Value to 0).
+  window.toggleItemArmor = function(id) {
+    const it = state.items.find(x => x.id === id);
+    if (!it) return;
+    if (it.armor) {
+      it.armor = null;
+    } else {
+      // Seed with sensible defaults — 1 point of armor, no coverage
+      // set yet (author picks which hit locations). Pristine condition,
+      // no durability tracking.
+      it.armor = {
+        value: 1,
+        coverage: [],
+        maxDurability: 0,
+        condition: 'pristine'
+      };
+    }
+    renderItemList();
+  };
+
+  window.updateItemArmorField = function(id, field, value) {
+    const it = state.items.find(x => x.id === id);
+    if (!it || !it.armor) return;
+    if (field === 'value' || field === 'maxDurability') {
+      const n = parseInt(value, 10);
+      it.armor[field] = Number.isFinite(n) && n >= 0 ? n : 0;
+      // Update the header pill without re-rendering the whole list —
+      // that would steal focus from the number input the user's typing
+      // in. The pill lives on the card head which is a different node.
+      if (field === 'value') updateItemCardHeader(it);
+    } else if (field === 'condition') {
+      const valid = new Set(['pristine','worn','damaged','broken']);
+      it.armor.condition = valid.has(value) ? value : 'pristine';
+    }
+  };
+
+  window.toggleItemArmorCoverage = function(id, locationCode, checked) {
+    const it = state.items.find(x => x.id === id);
+    if (!it || !it.armor) return;
+    if (!Array.isArray(it.armor.coverage)) it.armor.coverage = [];
+    const idx = it.armor.coverage.indexOf(locationCode);
+    if (checked && idx === -1) it.armor.coverage.push(locationCode);
+    else if (!checked && idx !== -1) it.armor.coverage.splice(idx, 1);
+    // No re-render needed — the checkbox is already reflecting the
+    // new state visually, and no other UI depends on the coverage
+    // set (the card header shows only the value).
   };
 
   // ── WEAPON block on catalogue items ──
