@@ -1968,10 +1968,10 @@ export function createInventorySection(ctx) {
     //                     variable name for the override map key). Slots are
     //                     paired by index between the two results.
     // Performance is fine — two cheap compiles + evaluations per weapon.
-    const resolved = resolveWeapon(weapon, character, ruleset, overrides, atkResult, penaltyPct, rapidfireExtra);
+    const resolved = resolveWeapon(weapon, character, ruleset, overrides, atkResult, penaltyPct, rapidfireExtra, currentRange);
     if (!resolved) return '';
     const defaultResolved = overrides
-      ? resolveWeapon(weapon, character, ruleset, null, atkResult, penaltyPct, rapidfireExtra)
+      ? resolveWeapon(weapon, character, ruleset, null, atkResult, penaltyPct, rapidfireExtra, currentRange)
       : resolved;
 
     // Compute range-based Difficulty chip for the Attack block. Works
@@ -2042,7 +2042,16 @@ export function createInventorySection(ctx) {
     chips.push(`<span class="inv-weapon-chip"><span class="inv-weapon-chip-label">DMG</span><span class="inv-weapon-chip-val">${resolved.dice}D10</span></span>`);
     chips.push(`<span class="inv-weapon-chip"><span class="inv-weapon-chip-label">PEN</span><span class="inv-weapon-chip-val">${resolved.pen}</span></span>`);
     if (resolved.kind === 'ranged') {
-      chips.push(`<span class="inv-weapon-chip"><span class="inv-weapon-chip-label">Range</span><span class="inv-weapon-chip-val">${resolved.range}ft</span></span>`);
+      // Range chip — if Scoped, show both base and aimed range so
+      // player can see the magnification payoff at a glance.
+      if (resolved.scoped) {
+        chips.push(`<span class="inv-weapon-chip" title="Base range ${resolved.range}ft; ${resolved.scoped.magnification}× scope takes it to ${resolved.scoped.aimedRange}ft when Aimed.">
+          <span class="inv-weapon-chip-label">Range</span>
+          <span class="inv-weapon-chip-val">${resolved.range}ft / ${resolved.scoped.aimedRange}ft scoped</span>
+        </span>`);
+      } else {
+        chips.push(`<span class="inv-weapon-chip"><span class="inv-weapon-chip-label">Range</span><span class="inv-weapon-chip-val">${resolved.range}ft</span></span>`);
+      }
       chips.push(`<span class="inv-weapon-chip"><span class="inv-weapon-chip-label">DMGMOD</span><span class="inv-weapon-chip-val">${resolved.dmgmod >= 0 ? '+' : ''}${resolved.dmgmod}</span></span>`);
       chips.push(renderAmmoTracker(entry, resolved));
       chips.push(renderRofChip(resolved));
@@ -2054,6 +2063,27 @@ export function createInventorySection(ctx) {
     // entry.currentRange. Clicking a melee band chip auto-fills the
     // distance to that band's start.
     html += renderWeaponRangeSelector(entry, weapon, resolved, currentRange, rangeChip);
+
+    // Shotgun close-range indicator — shows the active damage zone
+    // (if any) when an engagement range is set. Informational only;
+    // the damage block applies the bonus directly to the dice pool.
+    if (resolved.shotgun && currentRange != null) {
+      const zone = pickShotgunZone(resolved.shotgun, currentRange);
+      if (zone) {
+        html += `<div class="inv-weapon-shotgun-zone" title="Shotgun close-range bonus is applied to the Damage roll's dice pool. Doesn't affect DMGMOD or recoil.">
+          <span class="inv-weapon-shotgun-zone-label">Shotgun zone</span>
+          <span class="inv-weapon-shotgun-zone-val">+${zone.bonus} damage <span class="inv-weapon-shotgun-zone-range">(${zone.label}, ≤${fmt(zone.maxDist)}ft)</span></span>
+        </div>`;
+      }
+    }
+
+    // Rapidfire Sweep info panel — shown when the tag is present.
+    // Not an interactive calculator (the player pairs it with the
+    // existing Rapidfire selector); just shows the formula and a
+    // live example at the current AMMO spend.
+    if (resolved.rapidfireSweep) {
+      html += renderRapidfireSweepInfo(entry, resolved);
+    }
 
     // Tags.
     if (Array.isArray(resolved.tags) && resolved.tags.length > 0) {
@@ -2184,6 +2214,50 @@ export function createInventorySection(ctx) {
       <span class="inv-weapon-rf-max">/ ${maxExtra}</span>
       ${clearBtn}
       <span class="inv-weapon-rf-chips">${chipsHtml}</span>
+    </div>`;
+  }
+
+  // ─── TAG-DRIVEN DISPLAY HELPERS ────────────────────────────────────
+
+  // Pick the shotgun close-range damage zone that applies at a given
+  // distance. Returns { bonus, maxDist, label } or null if the target
+  // is past all zones (no bonus). Zones are ordered closest-first.
+  function pickShotgunZone(shotgunInfo, distance) {
+    if (!shotgunInfo || !Array.isArray(shotgunInfo.zones)) return null;
+    if (!Number.isFinite(distance) || distance < 0) return null;
+    for (let i = 0; i < shotgunInfo.zones.length; i++) {
+      const z = shotgunInfo.zones[i];
+      if (distance <= z.maxDist) return z;
+    }
+    return null;
+  }
+
+  // Rapidfire Sweep info panel — shows the area coverage formula +
+  // a live computation at the current rapidfire AMMO spend. Readonly:
+  // player reads it and makes sweep decisions outside the sheet.
+  function renderRapidfireSweepInfo(entry, resolved) {
+    const sweep = resolved.rapidfireSweep;
+    if (!sweep) return '';
+    if (!sweep.available) {
+      return `<div class="inv-weapon-sweep-panel unavailable" title="Rapidfire Sweep requires a weapon with ROF ≥ 2. This weapon's current ROF is ${sweep.rofValue}.">
+        <span class="inv-weapon-sweep-label">Rapidfire Sweep</span>
+        <span class="inv-weapon-sweep-unavailable">unavailable — requires ROF ≥ 2 (current ROF ${sweep.rofValue})</span>
+      </div>`;
+    }
+    // Live example — use rapidfireExtra as the AMMO spend (clamped
+    // to minimum 2). If the player hasn't picked a rapidfire count,
+    // show the minimum case.
+    const ui = entry.weaponUI || {};
+    const rfExtra = Number.isFinite(ui.rapidfireExtra) ? ui.rapidfireExtra : 0;
+    const totalAmmo = Math.max(2, 1 + rfExtra);
+    const result = sweep.computeArea(totalAmmo);
+    const sideLenRounded = Math.round(result.sideLen * 10) / 10;
+    const areaRounded = Math.round(result.area);
+    const side = 2.5 * sweep.rofValue;
+    return `<div class="inv-weapon-sweep-panel" title="Area covered = ((2.5 × ROF) × (2.5 × ROF)) × AMMO. Any shape — line, circle, zig-zag, cone, etc.">
+      <span class="inv-weapon-sweep-label">Rapidfire Sweep</span>
+      <span class="inv-weapon-sweep-formula">(${side}×${side}) × AMMO</span>
+      <span class="inv-weapon-sweep-example">at ${totalAmmo} AMMO → up to ${sideLenRounded}×${sideLenRounded}ft <span class="inv-weapon-sweep-area">(${areaRounded} sq ft)</span></span>
     </div>`;
   }
 
@@ -5139,6 +5213,7 @@ export function createInventorySection(ctx) {
     const numericNonNeg = new Set(['dice', 'pen', 'range']);
     const numericSigned = new Set(['dmgmod']);
     const numOrFormula = new Set(['ammo', 'rof']);
+    const decimalMinOne = new Set(['scopeMagnification']);
 
     if (numericNonNeg.has(field)) {
       const n = parseFloat(value);
@@ -5146,6 +5221,10 @@ export function createInventorySection(ctx) {
     } else if (numericSigned.has(field)) {
       const n = parseFloat(value);
       w[field] = Number.isFinite(n) ? Math.floor(n) : 0;
+    } else if (decimalMinOne.has(field)) {
+      // Scope magnification — decimal, minimum 1 (1× = no scope).
+      const n = parseFloat(value);
+      w[field] = Number.isFinite(n) && n >= 1 ? n : 1;
     } else if (numOrFormula.has(field)) {
       const raw = (value == null) ? '' : String(value).trim();
       if (!raw) { w[field] = 0; }
@@ -5472,13 +5551,14 @@ export function createInventorySection(ctx) {
                             && ui.rapidfireExtra > 0)
       ? Math.floor(ui.rapidfireExtra)
       : 0;
+    const currentRange = Number.isFinite(entry.currentRange) ? entry.currentRange : null;
     let penaltyPct = 0;
     try {
       const derived = computeDerivedStats(character, ruleset);
       penaltyPct = (derived && derived.penalty && derived.penalty.percent) || 0;
     } catch (_) { penaltyPct = 0; }
 
-    const resolved = resolveWeapon(weapon, character, ruleset, overrides, atkResult, penaltyPct, rapidfireExtra);
+    const resolved = resolveWeapon(weapon, character, ruleset, overrides, atkResult, penaltyPct, rapidfireExtra, currentRange);
     if (!resolved) return;
     const roll = which === 'damage' ? resolved.damage : resolved.attack;
     if (!roll || roll.error) {
@@ -5503,7 +5583,6 @@ export function createInventorySection(ctx) {
       // the same way the card does: +N per range band, +recoil from
       // rapidfire, −1 per secondary skill, −2 per specialty skill,
       // mitigation capped at additions (never dips below base 6).
-      const currentRange = Number.isFinite(entry.currentRange) ? entry.currentRange : null;
       let additions = 0;
       let mitigation = 0;
       if (currentRange != null) {
