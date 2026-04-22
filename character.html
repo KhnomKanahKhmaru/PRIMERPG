@@ -2940,7 +2940,7 @@
     .item-preset-select:hover { border-color: #3a2a1a; color: #d4a574; }
     .item-preset-select:focus { border-color: #5a4820; }
     .item-preset-select option { background: #111; color: #e0e0e0; }
-    .inv-edit-panel .inv-pair-row { display: grid; grid-template-columns: 140px 1fr; gap: 14px; }
+    .inv-edit-panel .inv-pair-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
     .inv-edit-panel .inv-container-block { border: 1px dashed #2a2010; border-radius: 4px; padding: 10px 12px; margin-top: 6px; background: #0a0802; }
     .inv-edit-panel .inv-container-block-title { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #caa060; margin-bottom: 8px; }
     .inv-edit-panel-actions { display: flex; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #2a2010; }
@@ -3754,6 +3754,15 @@
     .inv-custom-form .inv-toggle-hint { font-size: 11px; color: #666; }
     .inv-custom-form .inv-container-block { border: 1px dashed #2a2a2a; border-radius: 4px; padding: 10px 12px; margin-top: 6px; background: #0c0c0c; }
     .inv-custom-form .inv-container-block-title { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #888; margin-bottom: 8px; }
+
+    /* Side-by-side field pair for SIZE + Armor in the custom modal.
+       50/50 split so both columns breathe — different from the edit
+       panel's narrow-label layout (140px 1fr), since modals have more
+       horizontal room. Collapses to a single column on narrow viewports. */
+    .inv-custom-form .inv-pair-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 10px; }
+    @media (max-width: 520px) {
+      .inv-custom-form .inv-pair-row { grid-template-columns: 1fr; }
+    }
 
     /* Armor-coverage picker inside the custom-item form. Mirrors the
        ruleset editor's armor-worn block — hit-location checkboxes as
@@ -5125,6 +5134,9 @@
     invCustomDraftToggleArmorCoverage:   (code, checked) => inventory.customDraftToggleArmorCoverage(code, checked),
     invCustomDraftAddCustomCoverage:     (value)         => inventory.customDraftAddCustomCoverage(value),
     invCustomDraftRemoveCustomCoverage:  (label)         => inventory.customDraftRemoveCustomCoverage(label),
+    // SIZE preset dropdowns
+    invApplySizePresetToEditDraft:       (value)         => inventory.applySizePresetToEditDraft(value),
+    invApplySizePresetToCustomDraft:     (value)         => inventory.applySizePresetToCustomDraft(value),
     invSetViewMode:          (mode)               => inventory.setViewMode(mode),
     invToggleCatalogCat:     (id)                 => inventory.toggleCatalogCat(id),
     invToggleCatalogItem:    (id)                 => inventory.toggleCatalogItem(id),
