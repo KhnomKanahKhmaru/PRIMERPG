@@ -1,6422 +1,5464 @@
-// char-inventory.js
-//
-// Inventory tab — nested container tree with live overflow computation.
-// Characters attach containers to body slots (from the ruleset's bodySlots
-// catalog) and drop items into them; containers can also nest inside other
-// containers without depth limit.
-//
-// The system is INFORMATIONAL ONLY — overflow is flagged with a red pill
-// and a tooltip, but nothing prevents putting too much stuff in a bag.
-// GMs adjudicate whether a bulging duffel is "it works, just conspicuous"
-// or "no, you can't fit a shotgun in a purse." Storage model:
-//
-//   charData.inventory = {
-//     bySlot: { [slotCode]: [entry, ...], ... },
-//     stowed: [entry, ...]                        // not worn; in a vehicle, etc.
-//   }
-//
-//   entry = {
-//     id:        'inv_...',             // per-instance unique id
-//     defId:     'cont_...' | 'eq_...', // reference into ruleset catalog
-//     defKind:   'container' | 'equipment',
-//     quantity:  1,
-//     customName?: string,               // optional per-instance rename
-//     notes?:    string,
-//     contents?: [entry, ...]            // only for containers / equipment
-//                                        // with a containerOf block
-//   }
-//
-// The ruleset-side defs hold the size/weight/packing schema. Inventory
-// entries hold only the reference + per-instance quirks, so a ruleset
-// edit (say, resizing a duffel bag def) instantly reflects on every
-// character using it. No data duplication, no migration pain.
-//
-// ctx shape:
-//   getCharId()   → doc id
-//   getCharData() → live charData
-//   getCanEdit()  → boolean (only owner can modify)
-//   getRuleset()  → active ruleset (provides bodySlots, containers, equipment)
-//   saveCharacter → Firestore writer
-//   escapeHtml    → shared HTML-escape
-//   fmt           → shared number formatter
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PRIME RPG — Character</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="nav.js"></script>
+  <script src="ruleset-defaults.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0a0a0a; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 14px; min-height: 100vh; }
+    .page { padding-top: 104px; padding-left: 24px; padding-right: 24px; padding-bottom: 60px; max-width: 1200px; margin: 0 auto; }
+    .empty { color: #444; font-size: 13px; text-align: center; padding: 60px 0; }
+    .char-card { display: flex; align-items: stretch; border: 1px solid #222; border-radius: 6px; overflow: hidden; min-height: 320px; }
+    .char-picture { width: 220px; flex-shrink: 0; border-right: 1px solid #222; background: #0e0e0e; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; min-height: 320px; }
+    .char-picture img { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; }
+    .char-picture-placeholder { color: #333; font-size: 12px; text-align: center; padding: 16px; z-index: 1; }
+    .char-picture input[type=file] { display: none; }
+    .pic-uploading { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; font-size: 12px; color: #aaa; z-index: 2; }
+    .char-bio-col { flex: 1; padding: 20px 24px; border-right: 1px solid #222; display: flex; flex-direction: column; }
+    .char-header { display: flex; align-items: flex-start; gap: 20px; margin-bottom: 16px; }
+    .char-header-left { flex: 1; }
+    .char-name { font-size: 28px; font-weight: 700; color: #e0e0e0; margin-bottom: 4px; }
+    .char-archetype { font-size: 15px; font-weight: 500; color: #666; }
+    .char-quip-box { width: 280px; flex-shrink: 0; border: 1px solid #222; border-radius: 4px; padding: 16px; font-size: 13px; font-style: italic; color: #555; background: #0e0e0e; min-height: 80px; cursor: pointer; display: flex; align-items: center; justify-content: center; text-align: center; }
+    .char-quip-box.has-quip { color: #aaa; }
+    .section-title { font-size: 18px; font-weight: 600; color: #aaa; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #1a1a1a; display: flex; align-items: center; gap: 10px; }
+    .edit-btn { font-size: 11px; color: #555; cursor: pointer; padding: 2px 8px; border: 1px solid #333; border-radius: 3px; font-weight: 400; }
+    .edit-btn:hover { color: #aaa; border-color: #555; }
+    .bio-prose { font-size: 13px; color: #888; line-height: 1.9; }
+    .bio-prose b { color: #ccc; font-weight: 600; }
+    .bio-prose i { color: #888; font-style: italic; }
+    .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+    .field label { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #555; }
+    .field input, .field textarea, .field select { background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 13px; padding: 7px 10px; border-radius: 4px; outline: none; width: 100%; }
+    .field input:focus, .field textarea:focus, .field select:focus { border-color: #444; }
+    .field textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
+    .field select option { background: #111; }
+    .btn-row { display: flex; gap: 8px; margin-top: 14px; align-items: center; }
+    .save-btn { background: #1a1a1a; border: 1px solid #333; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 16px; border-radius: 4px; cursor: pointer; }
+    .save-btn:hover { background: #222; border-color: #555; }
+    .save-msg { font-size: 11px; color: #66ff99; }
+    .char-etc-col { width: 220px; flex-shrink: 0; padding: 20px 16px; background: #0e0e0e; }
+    .etc-title { font-size: 14px; font-weight: 700; color: #666; margin-bottom: 12px; }
+    .etc-content { font-size: 12px; color: #555; line-height: 1.7; min-height: 200px; cursor: pointer; white-space: pre-wrap; }
+    .etc-content:hover { color: #777; }
+    .mental-card { display: flex; align-items: stretch; border: 1px solid #222; border-radius: 6px; min-height: 200px; margin-top: 16px; }
+    .mental-col { flex: 1; padding: 16px; border-right: 1px solid #222; display: flex; flex-direction: column; }
+    .mental-col:last-child { border-right: none; }
+    .mental-col-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #1a1a1a; }
+    .mental-col-title { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #555; flex: 1; }
+    .add-entry-btn { background: transparent; border: 1px solid #222; color: #555; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 12px; border-radius: 3px; cursor: pointer; margin-top: 10px; display: none; }
+    .add-entry-btn:hover { color: #aaa; border-color: #444; }
+    .severity-select { background: #1a1a1a; border: 1px solid #333; color: #888; font-family: 'Open Sans', sans-serif; font-size: 10px; padding: 2px 4px; border-radius: 3px; outline: none; cursor: pointer; }
+    .severity-select option { background: #111; }
+    .obligation-entry, .disorder-entry { background: #111; border: 1px solid #1a1a1a; border-radius: 4px; padding: 10px; margin-bottom: 8px; font-size: 12px; color: #888; line-height: 1.9; position: relative; }
+    .entry-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 11px; font-weight: 600; color: #777; }
+    .entry-header-type { color: #666; }
+    .entry-delete { position: absolute; top: 6px; right: 8px; font-size: 14px; color: #333; cursor: pointer; }
+    .entry-delete:hover { color: #c84b4b; }
+    .entry-input { background: transparent; border: none; border-bottom: 1px solid #333; color: #ccc; font-family: 'Open Sans', sans-serif; font-size: 12px; outline: none; width: 100%; padding: 2px 0; }
+    .entry-input:focus { border-bottom-color: #666; }
+    .entry-text { color: #ccc; font-weight: 500; }
+    .moral-cards { display: flex; flex-direction: column; gap: 6px; }
+    .moral-card-item { background: #111; border: 1px solid #222; border-radius: 4px; padding: 10px 12px; width: 100%; }
+    .moral-card-top { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+    .moral-card-name { font-size: 14px; font-weight: 600; color: #ccc; }
+    .moral-empty { color: #333; font-size: 12px; }
+    .moral-group { margin-bottom: 14px; }
+    .moral-group-title { font-size: 10px; color: #444; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 6px; }
+    .moral-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .moral-chip { font-size: 11px; padding: 3px 10px; border-radius: 3px; border: 1px solid #222; background: #111; color: #555; cursor: pointer; user-select: none; }
+    .moral-chip.selected { background: #1a1a1a; border-color: #444; color: #ccc; }
+    .moral-chip:hover { border-color: #444; color: #aaa; }
+    .stats-card { display: flex; align-items: stretch; border: 1px solid #222; border-radius: 6px; margin-top: 16px; min-height: 300px; }
+    .stats-col { width: 300px; flex-shrink: 0; border-right: 1px solid #222; background: #0a0a0a; padding: 16px; }
+    .stats-col-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #1a1a1a; }
+    .stats-col-title { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #555; flex: 1; }
+    .stat-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; position: relative; }
+    .stat-icon-wrap { position: relative; width: 36px; flex-shrink: 0; }
+    .stat-icon { width: 36px; height: 36px; border-radius: 4px; overflow: hidden; background: #151515; border: 1px solid #252525; cursor: default; display: flex; align-items: center; justify-content: center; }
+    .stat-icon svg { width: 34px; height: 34px; }
+    .stat-tooltip { display: none; position: absolute; left: 44px; top: 0; background: #1e1e1e; border: 1px solid #444; border-radius: 4px; padding: 7px 10px; font-size: 12px; color: #ccc; width: 200px; z-index: 200; pointer-events: none; white-space: normal; line-height: 1.5; }
+    .stat-icon-wrap:hover .stat-tooltip { display: block; }
+    .stat-info { flex: 1; min-width: 0; }
+    .stat-label { font-size: 12px; font-weight: 500; color: #666; }
+    .stat-label .abbr { color: #aaa; font-weight: 700; }
+    .stat-level-label { font-size: 11px; font-style: italic; color: #666; margin-top: 2px; }
+    .stat-value-area { display: flex; flex-direction: column; align-items: center; gap: 2px; flex-shrink: 0; }
+    .stat-value-wrap { position: relative; display: inline-flex; align-items: flex-start; }
+    .stat-total-display { font-size: 20px; font-weight: 700; color: #e0e0e0; }
+    .stat-mod-exponent { font-size: 10px; font-weight: 600; color: #555; margin-left: 2px; line-height: 1; align-self: flex-start; margin-top: 1px; }
+    .stat-mod-badge { background: #1a1a1a; border: 1px solid #333; color: #888; font-size: 9px; padding: 1px 5px; border-radius: 3px; white-space: nowrap; text-align: center; }
+    .stat-input-row { display: flex; align-items: center; gap: 3px; }
+    .stat-mod-row { display: flex; align-items: center; gap: 4px; margin-top: 3px; }
+    .stat-adj-btn { background: transparent; border: 1px solid #333; color: #666; font-size: 13px; width: 20px; height: 20px; border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; font-family: 'Open Sans', sans-serif; line-height: 1; }
+    .stat-adj-btn:hover { color: #ccc; border-color: #666; }
+    .stat-base-input { width: 44px; background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 14px; font-weight: 700; text-align: center; padding: 3px; border-radius: 4px; outline: none; }
+    .stat-base-input:focus { border-color: #444; }
+    .stat-size-select { width: 90px; background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 3px 4px; border-radius: 4px; outline: none; }
+    .stat-pm-btn { font-size: 11px; color: #444; background: transparent; border: 1px solid #222; border-radius: 3px; padding: 2px 6px; cursor: pointer; flex-shrink: 0; font-family: 'Open Sans', sans-serif; margin-top: 2px; }
+    .stat-pm-btn:hover { color: #aaa; border-color: #444; }
+    .stat-mod-panel { background: #111; border: 1px solid #1a1a1a; border-radius: 4px; padding: 8px; margin-bottom: 8px; }
+    .mod-item { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 11px; color: #888; }
+    .mod-item-name { flex: 1; }
+    .mod-item-val { color: #aaa; font-weight: 600; min-width: 30px; text-align: right; }
+    .mod-delete { color: #333; cursor: pointer; font-size: 13px; }
+    .mod-delete:hover { color: #c84b4b; }
+    .mod-add-row { display: flex; gap: 4px; margin-top: 6px; }
+    .mod-add-row input[type=text] { flex: 1; background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 3px 6px; border-radius: 3px; outline: none; }
+    .mod-add-row input[type=number] { width: 44px; background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 3px 4px; border-radius: 3px; outline: none; text-align: center; }
+    .mod-add-btn { background: #1a1a1a; border: 1px solid #333; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 3px 8px; border-radius: 3px; cursor: pointer; }
+    .mod-add-btn:hover { border-color: #555; }
+    .skills-col { flex: 1; padding: 16px; overflow: visible; }
+    .skills-section { margin-bottom: 16px; }
+    .skills-section-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .skills-section-title { font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: #555; flex: 1; padding-bottom: 4px; border-bottom: 1px solid #1a1a1a; }
+    .skills-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+    .skill-item { position: relative; display: flex; align-items: center; gap: 4px; background: #111; border: 1px solid #1a1a1a; border-radius: 3px; padding: 6px 8px; min-height: 44px; box-sizing: border-box; min-width: 0; overflow: hidden; }
+    .skill-name { font-size: 11px; color: #ccc; font-weight: 500; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
+    .skill-val-display { font-size: 13px; color: #e0e0e0; font-weight: 700; min-width: 18px; text-align: right; }
+    .skill-input { width: 36px; background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; text-align: center; padding: 1px 2px; border-radius: 2px; outline: none; }
+    .skill-tooltip { display: none; position: absolute; bottom: 100%; left: 0; background: #1e1e1e; border: 1px solid #444; border-radius: 4px; padding: 7px 10px; font-size: 12px; color: #ccc; width: 200px; z-index: 1000; pointer-events: none; white-space: normal; line-height: 1.5; margin-bottom: 4px; }
+    .skill-item:hover .skill-tooltip { display: block; }
+    .skill-add-row { display: flex; gap: 6px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
+    .skill-add-input { background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 8px; border-radius: 3px; outline: none; }
+    .skill-add-input:focus { border-color: #444; }
+    .skill-add-select { background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 6px; border-radius: 3px; outline: none; }
+    .skill-add-btn { background: #1a1a1a; border: 1px solid #333; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 10px; border-radius: 3px; cursor: pointer; }
+    .skill-add-btn:hover { border-color: #555; }
+    .sec-skill-under { font-size: 9px; color: #666; font-style: italic; white-space: nowrap; }
+    .char-power-bar { display: flex; align-items: center; gap: 16px; margin-top: 6px; margin-bottom: 4px; flex-wrap: wrap; }
+    .power-pill { display: flex; align-items: center; gap: 6px; }
+    .power-pill .pill-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #444; }
+    .power-pill .pill-val { font-size: 13px; font-weight: 600; color: #aaa; }
+    .power-pill .pill-sub { font-size: 11px; color: #555; }
+    .power-select { background: #111; border: 1px solid #222; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 12px; font-weight: 600; padding: 2px 6px; border-radius: 4px; outline: none; cursor: pointer; }
+    .power-select option { background: #111; }
+    .power-num-input { width: 52px; background: #111; border: 1px solid #222; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 13px; font-weight: 600; text-align: center; padding: 2px 4px; border-radius: 4px; outline: none; }
+    .power-num-input:focus { border-color: #444; }
+    .power-sep { color: #333; font-size: 13px; }
 
-import { saveCharacter } from './char-firestore.js';
-import { computeDerivedStats } from './char-derived.js';
-import { wrapCollapsibleSection } from './char-util.js';
-import { resolveWeapon, rofFlavor, rangedBandFor, meleeBandFor } from './char-weapons.js';
-
-export function createInventorySection(ctx) {
-  const { getCharId, getCharData, getCanEdit, getRuleset } = ctx;
-  const escapeHtml = ctx.escapeHtml || defaultEscapeHtml;
-  const fmt = ctx.fmt || defaultFmt;
-
-  // ─── UI-ONLY STATE ───
-  //
-  // Which containers are currently expanded (showing their contents). A
-  // Set of entry ids. Not persisted — reset on page reload. Top-level
-  // slot sections default to open; nested containers default to closed.
-
-  const expandedEntries = new Set();
-
-  // Which item entries have their description panel expanded. Separate
-  // from expandedEntries because containers use expansion for "show
-  // contents" and items use it for "show description/notes" — different
-  // semantics, different default state (always collapsed for items).
-  const expandedInfo = new Set();
-
-  // Which slots have their whole section collapsed. Stored BY CODE.
-  // Default is all-open. Used so a user can fold away unused slots.
-  const collapsedSlots = new Set();
-
-  // Which carry cards (CAP / ENC / LIFT) have their modifier editor
-  // expanded. Set of card keys: 'cap', 'enc', 'lift'. Click the card
-  // header to toggle. Session-only, not persisted.
-  const expandedCarryCards = new Set();
-
-  // Tag-category collapse state — keyed per "scope" since the same
-  // category can be collapsed in one editor panel but open in another.
-  // Scope keys we use:
-  //   'display:<entryId>'  → on-sheet weapon card tag row
-  //   'editor:<entryId>'   → weapon stats editor (Edit stats button)
-  //   'custom:__custom__'  → custom weapon form in Add Item modal
-  //   'catmgr:<defId>'     → personal catalogue manager rows
-  //
-  // Each scope maps to a Set of category ids that are currently
-  // collapsed for that scope. Missing scope = all categories expanded.
-  const collapsedTagCats = new Map();
-  function getCollapsedTagCats(scope) {
-    if (!collapsedTagCats.has(scope)) collapsedTagCats.set(scope, new Set());
-    return collapsedTagCats.get(scope);
-  }
-
-  // Bucket a set of tag objects by their categoryId. Returns ordered
-  // groups walking the ruleset's tagCategories tree so the display
-  // order matches the Ruleset Editor. Tags belonging to unknown (or
-  // missing) categories land under Uncategorized. Empty categories
-  // are omitted entirely so the UI doesn't show empty headers.
-  //
-  // Input: `tags` is an array of {id, name, description, categoryId?}.
-  // Returns: [{cat: {id, name, builtIn?}, depth, tags: [...], deepCount}]
-  function groupTagsByCategory(tags, ruleset) {
-    const tagCats = Array.isArray(ruleset && ruleset.tagCategories) ? ruleset.tagCategories : [];
-    if (tagCats.length === 0 || tags.length === 0) {
-      return [{ cat: { id: 'tcat_uncategorized', name: 'Tags' }, depth: 0, tags, deepCount: tags.length }];
+    /* ═══ THE STATE OF THINGS (overview dashboard) ═══ */
+    /* Outer container uses the same visual rhythm as the Advantages block
+       so the overview page reads as a consistent stack of cards. */
+    .state-of-things {
+      margin-top: 24px;
+      padding: 18px 20px;
+      border: 1px solid #1a1a1a;
+      border-radius: 6px;
+      background: #0d0d0d;
     }
-    const tagsByCat = new Map();
-    tags.forEach(t => {
-      const cid = (t && t.categoryId) || 'tcat_uncategorized';
-      if (!tagsByCat.has(cid)) tagsByCat.set(cid, []);
-      tagsByCat.get(cid).push(t);
-    });
-    const byParent = new Map();
-    tagCats.forEach(c => {
-      const pid = c.parentId || '__root__';
-      if (!byParent.has(pid)) byParent.set(pid, []);
-      byParent.get(pid).push(c);
-    });
-    const deepCount = (cat) => {
-      let n = (tagsByCat.get(cat.id) || []).length;
-      (byParent.get(cat.id) || []).forEach(ch => { n += deepCount(ch); });
-      return n;
-    };
-    const groups = [];
-    const walk = (cat, depth) => {
-      const direct = tagsByCat.get(cat.id) || [];
-      const total = deepCount(cat);
-      if (total > 0) {
-        groups.push({
-          cat:       { id: cat.id, name: cat.name, builtIn: !!cat.builtIn },
-          depth,
-          tags:      direct,
-          deepCount: total
-        });
+    .state-title {
+      font-size: 12px; font-weight: 600; letter-spacing: .08em;
+      text-transform: uppercase; color: #aaa;
+      margin-bottom: 14px; padding-bottom: 8px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .state-empty { color: #444; font-size: 12px; font-style: italic; text-align: center; padding: 20px 0; }
+
+    /* Flex grid of tiles. Each tile is self-sizing; wraps cleanly on
+       narrow screens. Two tiles fit per row at normal desktop width,
+       four at wide, single column under ~500px. */
+    .state-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+    }
+    .state-tile {
+      padding: 12px 14px;
+      background: #0a0a0a;
+      border: 1px solid #1a1a1a;
+      border-radius: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .state-tile-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 10px;
+    }
+    /* Clickable tile head — any tile wrapped with wrapCollapsibleTile
+       in char-overview.js gets .state-tile-collapsible on its head, a
+       caret prepended, and the collapse affordances below. The flex
+       direction is row so the caret sits left of everything else while
+       numbers/pills still right-align via their own flex rules. */
+    .state-tile-collapsible {
+      cursor: pointer;
+      user-select: none;
+    }
+    .state-tile-collapsible:hover .state-tile-label { color: #ccc; }
+    .state-tile-collapsible:focus-visible {
+      outline: 2px solid #444;
+      outline-offset: 2px;
+      border-radius: 2px;
+    }
+    .state-tile-caret {
+      color: #555;
+      font-size: 10px;
+      flex-shrink: 0;
+      display: inline-block;
+      width: 10px;
+      transition: color .1s;
+      align-self: center;
+    }
+    .state-tile-collapsible:hover .state-tile-caret { color: #aaa; }
+
+    /* Collapsed tile — hide every child except the header. The header
+       remains visible and the caret flips to ▸ (handled in the
+       renderer). Padding-bottom tightens slightly since there's
+       nothing below the head. */
+    .state-tile.collapsed > *:not(.state-tile-head) { display: none; }
+    .state-tile.collapsed { padding-bottom: 10px; }
+
+    /* Generic collapsible header helper — used by attachCollapsible()
+       in char-util.js to retrofit arbitrary section headers. The
+       caret is injected as a <span class="cc-caret"> before any
+       existing content so the header's original layout is preserved.
+       Hover/focus affordances match the in-tile carets. */
+    .cc-collapsible { cursor: pointer; user-select: none; }
+    .cc-collapsible:hover .cc-caret { color: #aaa; }
+    .cc-collapsible:focus-visible {
+      outline: 2px solid #444;
+      outline-offset: 2px;
+      border-radius: 2px;
+    }
+    .cc-caret {
+      display: inline-block;
+      color: #555;
+      font-size: 10px;
+      transition: color .1s;
+    }
+    /* ─── READ-ONLY VIEWER MODE ───
+       When the viewer is not the owner AND not a GM (Leader/Admin of
+       the character's playgroup), the body gets .prime-readonly and
+       every inline edit affordance is hidden via CSS. This complements
+       the JS handler-level canEdit guards — handlers already bail for
+       non-editors, but the visual affordances (Add, ×, +/−, Edit)
+       would otherwise still be visible and confusing to click. This
+       suppresses them all in one place.
+
+       GMs don't get this class (canEdit is true for them), so they see
+       the full editing UI. Owners also pass through normally. */
+    body.prime-readonly .edit-btn,
+    body.prime-readonly .mod-add-btn,
+    body.prime-readonly .mod-add-row,
+    body.prime-readonly .mod-delete,
+    body.prime-readonly .entry-delete,
+    body.prime-readonly .stat-pm-btn,
+    body.prime-readonly .stat-adj-btn,
+    body.prime-readonly .hl-edit-btn,
+    body.prime-readonly .hl-dmg-btn,
+    body.prime-readonly .cond-add-btn,
+    body.prime-readonly .cond-entry-btn,
+    body.prime-readonly .ad-add-btn,
+    body.prime-readonly .ad-card-delete,
+    body.prime-readonly .inv-add-btn,
+    body.prime-readonly .inv-manage-btn,
+    body.prime-readonly .inv-add-group-row,
+    body.prime-readonly .inv-group-btn,
+    body.prime-readonly .inv-carry-add,
+    body.prime-readonly .inv-carry-mod-del,
+    body.prime-readonly .injury-add-btn,
+    body.prime-readonly .injury-delete-btn,
+    body.prime-readonly .injury-quickadd-row,
+    body.prime-readonly .injury-quickadd-locations,
+    body.prime-readonly .trauma-add-btn,
+    body.prime-readonly .sit-ctrl-btn,
+    body.prime-readonly .sit-add-btn,
+    body.prime-readonly .danger-zone,
+    body.prime-readonly .ad-add-form-container,
+    body.prime-readonly .add-entry-btn {
+      display: none !important;
+    }
+    /* Disable form inputs so readers can't type into numbers/selects
+       and get confusing visual feedback. Keeps the value visible; just
+       can't modify. */
+    body.prime-readonly #stats-list input,
+    body.prime-readonly #stats-list select,
+    body.prime-readonly #stats-list textarea,
+    body.prime-readonly .skills-grid input,
+    body.prime-readonly .skills-grid select,
+    body.prime-readonly .san-dmg-input,
+    body.prime-readonly .rc-input,
+    body.prime-readonly .ds-input {
+      pointer-events: none;
+      opacity: 0.85;
+    }
+    /* Synthetic headers injected above content that didn't originally
+       have a dedicated title bar (Bio card, Mental card, Stats-card).
+       Visually match the section-title conventions elsewhere on the
+       sheet — small caps, letter-spaced, muted color. Spacing sits
+       above the host element it governs. */
+    .cc-synthetic-head {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: #888;
+      margin: 14px 0 6px;
+      padding: 4px 6px;
+      border-bottom: 1px solid #1a1a1a;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .cc-synthetic-head:first-child { margin-top: 0; }
+    .cc-synthetic-head:hover { color: #bbb; }
+
+    /* Render-aware collapsible wrapper (wrapCollapsibleSection in
+       char-util.js). Applied by combat / inventory modules that emit
+       HTML strings. Structure:
+         .cc-wrap
+           .cc-head (the header — also gets module-specific class
+                     like .combat-section-title so it inherits the
+                     existing section header styling)
+           .cc-body (everything below the head; hidden when collapsed)
+       The existing .combat-section border/padding rules keep applying
+       because wrapperClass adds that class on .cc-wrap itself.
+
+       When collapsed we strip the title's bottom padding/border/margin
+       so the collapsed header sits flush inside the section padding
+       and there's no dangling divider line below a visually-empty head.
+    */
+    .cc-wrap { }
+    .cc-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .cc-body { }
+    .cc-body-hidden { display: none; }
+
+    /* When the body is hidden (section collapsed), tighten the head so
+       it doesn't leave a lonely divider line. Uses the sibling selector
+       against .cc-body-hidden. */
+    .cc-wrap:has(> .cc-body-hidden) > .cc-head.combat-section-title {
+      margin-bottom: 0;
+      padding-bottom: 0;
+      border-bottom: none;
+    }
+    .cc-wrap:has(> .cc-body-hidden) {
+      padding-bottom: 12px;
+    }
+
+    /* When the section head contains an action button (e.g. Sanity's
+       Edit Modifiers), let the title text take the left side and push
+       the button to the right. combat-section-head already did this;
+       preserve it now that .cc-head is flex. */
+    .cc-head .combat-section-title-text { flex: 1; }
+    .cc-head.combat-section-head { /* already flex via the combined class */ }
+
+    /* Inventory Carry row collapsible. Matches the visual tone of
+       other inventory group headers (muted caps label) and sits just
+       above the three CAP/ENC/LIFT cards. */
+    .inv-carry-wrap { margin-bottom: 14px; }
+    .inv-carry-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 2px;
+      margin-bottom: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: #aaa;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .inv-carry-head-text { flex: 1; }
+    .inv-carry-wrap:has(> .cc-body-hidden) > .inv-carry-head {
+      margin-bottom: 0;
+      padding-bottom: 6px;
+    }
+    .state-tile-label {
+      font-size: 10px; font-weight: 700; letter-spacing: .14em;
+      text-transform: uppercase; color: #888;
+    }
+    .state-tile-nums {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 13px;
+      font-weight: 600;
+      color: #ccc;
+      font-variant-numeric: tabular-nums;
+    }
+    .state-tile-nums .sep { color: #444; margin: 0 2px; }
+    .state-tile-nums .max { color: #666; }
+
+    /* Status pill — colored by severity to match Combat tab tiers. */
+    .state-tile-status {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 10px;
+      align-self: flex-start;
+    }
+    .state-tile-status.s-healthy  { background: #1a2a1a; color: #8cc080; border: 1px solid #2a4a2a; }
+    .state-tile-status.s-injured  { background: #2a2410; color: #d8c060; border: 1px solid #4a3d20; }
+    .state-tile-status.s-disabled { background: #2a1a10; color: #d89060; border: 1px solid #4a2d20; }
+    .state-tile-status.s-dead     { background: #2a0d0d; color: #e06060; border: 1px solid #6a2a2a; }
+    .state-tile-status.s-shock    { background: #2a2410; color: #d8c060; border: 1px solid #4a3d20; }
+    .state-tile-status.s-insane   { background: #2a1a10; color: #d89060; border: 1px solid #4a2d20; }
+    .state-tile-status.s-broken   { background: #2a0d0d; color: #e06060; border: 1px solid #6a2a2a; }
+
+    /* Segmented bar — re-uses visual language from HP/SAN bars in combat tab
+       but with slightly smaller segments for the overview density. */
+    .state-bar {
+      display: flex;
+      gap: 1px;
+      height: 10px;
+      border-radius: 2px;
+      overflow: hidden;
+      background: #0f0f0f;
+    }
+    .state-bar-seg {
+      flex: 1;
+      min-width: 2px;
+      transition: background 0.2s;
+    }
+    /* Shared progress-bar primitive used by the Power tile (and any
+       future resource-pool tile). Previously misnamed state-strain-*; the
+       Penalty tile has its own layout and doesn't use a bar. */
+    .state-progress-bar {
+      position: relative;
+      height: 10px;
+      background: #111;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .state-progress-fill {
+      position: absolute;
+      top: 0; left: 0; bottom: 0;
+      transition: width 0.3s, background 0.2s;
+    }
+
+    /* Wide tile — full-width inside the state grid. Used by Movement,
+       Roll Calc, and Penalty in the bottom stack. */
+    .state-tile-wide { grid-column: 1 / -1; }
+
+    /* ── Penalty tile (replaces Strain) ── */
+    /* Identical layout to the old Strain tile, plus an inline Others
+       editor (CRUD for player-named ±% modifiers). Uses a parallel
+       naming so both can coexist during the transition. */
+    .state-tile-penalty .state-tile-head {
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+    }
+    .state-penalty-big {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      align-self: flex-start;
+    }
+    .state-penalty-rows-inline {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 28px;
+      padding-top: 4px;
+      border-top: 1px solid #1a1a1a;
+    }
+    .state-penalty-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 12px;
+      min-width: 120px;
+    }
+    .state-penalty-k {
+      font-weight: 600;
+      letter-spacing: .05em;
+      color: #aaa;
+      margin-right: 10px;
+    }
+    .state-penalty-v {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-weight: 600;
+      color: #ccc;
+      font-variant-numeric: tabular-nums;
+    }
+    /* Locked row — used for Encumbrance (auto-calculated from inventory).
+       Muted label with a tiny lock icon, but the value still pops because
+       players need to read it. Cursor becomes help-question on hover
+       so the tooltip ("managed on Inventory tab") is discoverable. */
+    .state-penalty-row-locked {
+      cursor: help;
+    }
+    .state-penalty-row-locked .state-penalty-k {
+      color: #888;
+    }
+    .state-penalty-lock {
+      font-size: 9px;
+      margin-left: 2px;
+      opacity: 0.5;
+      vertical-align: middle;
+    }
+    .state-penalty-row-locked:hover .state-penalty-lock {
+      opacity: 0.9;
+    }
+    /* Others editor — inline CRUD for player-named ±% modifiers.
+       Below the breakdown rows, visually separated by a top border.
+       Each row is a grid: name input (flex) | number input | % unit | × delete. */
+    .state-penalty-others {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #1a1a1a;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .state-penalty-others-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 11px;
+      margin-bottom: 2px;
+    }
+    .state-penalty-others-title {
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #888;
+    }
+    .state-penalty-others-total {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-weight: 600;
+      color: #aaa;
+      font-variant-numeric: tabular-nums;
+    }
+    .state-penalty-others-empty {
+      font-size: 11px;
+      color: #666;
+      font-style: italic;
+      line-height: 1.45;
+      padding: 4px 2px 2px;
+    }
+    .state-penalty-other-row {
+      display: grid;
+      grid-template-columns: 1fr 60px auto auto;
+      gap: 6px;
+      align-items: center;
+    }
+    .state-penalty-other-name,
+    .state-penalty-other-val {
+      background: #0a0a0a;
+      border: 1px solid #222;
+      color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 12px;
+      padding: 5px 8px;
+      border-radius: 3px;
+      outline: none;
+      width: 100%;
+    }
+    .state-penalty-other-val {
+      font-family: 'Consolas', 'Courier New', monospace;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .state-penalty-other-name:focus,
+    .state-penalty-other-val:focus {
+      border-color: #444;
+    }
+    .state-penalty-other-unit {
+      font-size: 11px;
+      color: #888;
+      padding-right: 2px;
+    }
+    .state-penalty-other-del {
+      color: #555;
+      font-size: 16px;
+      cursor: pointer;
+      width: 18px;
+      text-align: center;
+      line-height: 1;
+      user-select: none;
+    }
+    .state-penalty-other-del:hover {
+      color: #c84b4b;
+    }
+    .state-penalty-other-del-ph {
+      width: 18px;
+    }
+    .state-penalty-other-add-row {
+      padding-top: 2px;
+    }
+    .state-penalty-other-add-btn {
+      background: transparent;
+      border: 1px dashed #2a2a2a;
+      color: #888;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 5px 12px;
+      border-radius: 3px;
+      cursor: pointer;
+      letter-spacing: .04em;
+      width: 100%;
+      transition: all .1s;
+    }
+    .state-penalty-other-add-btn:hover {
+      background: #111;
+      color: #ccc;
+      border-color: #3a3a3a;
+      border-style: solid;
+    }
+
+    /* ── Afflictions tile (Conditions / Circumstances tracker) ──
+     * Renders in the State of Things grid after the Penalty tile. Two
+     * columns side-by-side. Each entry is a compact row (collapsed) that
+     * expands on click to show description + system + notes. Scale pill
+     * on the left indicates severity. Picker and edit modals use the
+     * overlay pattern shared with the inventory modals. */
+    .state-tile-conditions { gap: 10px; }
+    .state-tile-conditions .state-tile-head {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+    .state-tile-conditions .state-tile-sub {
+      font-size: 10px;
+      color: #666;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-style: italic;
+    }
+    .state-tile-conditions .state-tile-body {
+      padding-top: 6px;
+      border-top: 1px solid #1a1a1a;
+    }
+
+    .cond-columns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    @media (max-width: 680px) {
+      .cond-columns { grid-template-columns: 1fr; }
+    }
+    .cond-col {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 0;
+    }
+    .cond-col-head {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .cond-col-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #aaa;
+    }
+    .cond-col-count {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 10px;
+      color: #666;
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 8px;
+      padding: 0 6px;
+    }
+    .cond-add-btn {
+      margin-left: auto;
+      background: transparent;
+      border: 1px dashed #2a2a2a;
+      color: #888;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 10px;
+      border-radius: 3px;
+      cursor: pointer;
+      letter-spacing: .04em;
+      transition: all .1s;
+    }
+    .cond-add-btn:hover {
+      background: #111;
+      color: #ccc;
+      border-color: #3a3a3a;
+      border-style: solid;
+    }
+
+    .cond-list {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .cond-empty {
+      font-size: 11px;
+      color: #555;
+      font-style: italic;
+      padding: 8px 4px;
+    }
+
+    .cond-entry {
+      background: #0a0a0a;
+      border: 1px solid #1a1a1a;
+      border-radius: 3px;
+      overflow: hidden;
+      transition: border-color .08s;
+    }
+    .cond-entry:hover { border-color: #2a2a2a; }
+    .cond-entry.expanded { border-color: #3a3a3a; }
+
+    .cond-entry-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      cursor: pointer;
+      user-select: none;
+      min-width: 0;
+    }
+    .cond-entry-head:hover { background: #111; }
+
+    .cond-entry-name {
+      font-family: 'Open Sans', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      color: #ddd;
+      flex-shrink: 0;
+    }
+    .cond-blurb {
+      flex: 1;
+      min-width: 0;
+      font-size: 10px;
+      color: #777;
+      font-style: italic;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Scale pill — inline severity badge. 7 tiers with increasingly
+       alarming colors. "None" renders as a neutral dash. */
+    .cond-scale {
+      flex-shrink: 0;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      padding: 2px 6px;
+      border-radius: 2px;
+      border: 1px solid transparent;
+      min-width: 34px;
+      text-align: center;
+    }
+    .cond-scale-none       { background: #141414; color: #555; border-color: #1a1a1a; }
+    .cond-scale-minor      { background: #10201a; color: #8cc0a0; border-color: #1a3a30; }
+    .cond-scale-moderate   { background: #1a2410; color: #c0c080; border-color: #2a3a20; }
+    .cond-scale-major      { background: #251a10; color: #d8a860; border-color: #3a2a1c; }
+    .cond-scale-massive    { background: #2a1410; color: #e09060; border-color: #4a2820; }
+    .cond-scale-monumental { background: #2a1010; color: #e07878; border-color: #4a1c1c; }
+    .cond-scale-mega       { background: #1a081a; color: #d080d0; border-color: #3a1c3a; }
+    .cond-scale-mythical   {
+      background: linear-gradient(90deg, #2a1a1a, #1a1a2a, #1a2a2a);
+      color: #e8e0c0;
+      border-color: #4a3a28;
+    }
+
+    .cond-entry-actions {
+      flex-shrink: 0;
+      display: flex;
+      gap: 2px;
+      opacity: 0.4;
+      transition: opacity .1s;
+    }
+    .cond-entry:hover .cond-entry-actions { opacity: 1; }
+    .cond-entry-btn {
+      background: transparent;
+      border: 1px solid #222;
+      color: #888;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 11px;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border-radius: 2px;
+      cursor: pointer;
+      line-height: 1;
+      transition: all .08s;
+    }
+    .cond-entry-btn:hover {
+      background: #1a1a1a;
+      color: #ccc;
+      border-color: #3a3a3a;
+    }
+    .cond-entry-btn-danger { border-color: #2a1a1a; color: #a06060; }
+    .cond-entry-btn-danger:hover {
+      background: #2a1212;
+      border-color: #4a2828;
+      color: #d07070;
+    }
+
+    /* Expanded body — description / system / notes blocks. */
+    .cond-entry-body {
+      padding: 6px 12px 10px;
+      border-top: 1px solid #151515;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: #080808;
+    }
+    .cond-entry-block-label {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: #666;
+      margin-bottom: 2px;
+    }
+    .cond-entry-block-text {
+      font-size: 11px;
+      color: #bbb;
+      line-height: 1.4;
+      white-space: pre-wrap;
+    }
+    .cond-entry-empty {
+      font-size: 10px;
+      color: #555;
+      font-style: italic;
+    }
+
+    /* ── Conditions modals — picker + edit. ──
+     * Overlay style matches the inventory modal conventions. The
+     * backdrop catches outside clicks to close; modal content stops
+     * propagation so clicks inside don't dismiss. */
+    .cond-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.65);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 20px;
+    }
+    .cond-modal {
+      background: #0c0c0c;
+      border: 1px solid #2a2a2a;
+      border-radius: 5px;
+      max-width: 520px;
+      width: 100%;
+      max-height: 90vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+    }
+    .cond-modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: #111;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .cond-modal-title {
+      font-family: 'Open Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      color: #ddd;
+      letter-spacing: .03em;
+    }
+    .cond-modal-close {
+      background: transparent;
+      border: none;
+      color: #888;
+      font-size: 18px;
+      width: 24px;
+      height: 24px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0;
+      border-radius: 2px;
+    }
+    .cond-modal-close:hover { background: #1a1a1a; color: #ddd; }
+    .cond-modal-body {
+      padding: 14px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    /* Picker list — each preset rendered as a clickable row. */
+    .cond-modal-empty {
+      padding: 16px 12px;
+      font-size: 12px;
+      color: #888;
+      line-height: 1.5;
+      text-align: center;
+      background: #0a0a0a;
+      border: 1px dashed #222;
+      border-radius: 3px;
+    }
+    .cond-modal-empty b { color: #caa060; }
+    /* Picker section — groups presets by source (Ruleset vs Catalogue).
+       Small label header with a count pill; same row styling underneath
+       regardless of source. Sections stack vertically with a gap. */
+    .cond-picker-section {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 10px;
+    }
+    .cond-picker-section:last-child { margin-bottom: 0; }
+    .cond-picker-section-head {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      padding: 2px 2px 4px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .cond-picker-section-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #888;
+    }
+    .cond-picker-section-count {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 9px;
+      color: #666;
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 8px;
+      padding: 0 5px;
+    }
+    .cond-picker-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-height: 340px;
+      overflow-y: auto;
+    }
+    .cond-picker-row {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding: 8px 12px;
+      background: #0a0a0a;
+      border: 1px solid #1a1a1a;
+      border-radius: 3px;
+      color: inherit;
+      font-family: inherit;
+      text-align: left;
+      cursor: pointer;
+      transition: all .08s;
+    }
+    .cond-picker-row:hover {
+      background: #111;
+      border-color: #3a3a3a;
+    }
+    .cond-picker-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: #ddd;
+    }
+    .cond-picker-blurb {
+      font-size: 10px;
+      color: #888;
+      font-style: italic;
+      line-height: 1.4;
+    }
+
+    .cond-modal-foot {
+      padding-top: 10px;
+      margin-top: 10px;
+      border-top: 1px solid #1a1a1a;
+    }
+    .cond-modal-custom-btn {
+      background: transparent;
+      border: 1px dashed #2a2010;
+      color: #caa060;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 3px;
+      cursor: pointer;
+      letter-spacing: .04em;
+      transition: all .1s;
+      width: 100%;
+    }
+    .cond-modal-custom-btn:hover {
+      background: #1a1406;
+      color: #e0b870;
+      border-color: #3a2c10;
+      border-style: solid;
+    }
+
+    /* Custom / edit form. */
+    .cond-form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .cond-preset-note {
+      padding: 6px 10px;
+      background: #0f1208;
+      border: 1px solid #2a3a18;
+      border-radius: 3px;
+      font-size: 10px;
+      color: #a0c080;
+      line-height: 1.4;
+    }
+    .cond-form-row {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .cond-form-row label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: #888;
+    }
+    .cond-form-row input,
+    .cond-form-row textarea,
+    .cond-form-row select {
+      background: #111;
+      border: 1px solid #222;
+      color: #ddd;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 12px;
+      padding: 6px 8px;
+      border-radius: 3px;
+      outline: none;
+      resize: vertical;
+    }
+    .cond-form-row input:focus,
+    .cond-form-row textarea:focus,
+    .cond-form-row select:focus {
+      border-color: #3a3a3a;
+    }
+    .cond-form-row textarea { font-family: inherit; line-height: 1.4; }
+
+    .cond-form-foot {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      padding-top: 6px;
+      border-top: 1px solid #1a1a1a;
+    }
+    .cond-form-foot-spacer { flex: 1; }
+    .cond-modal-promote {
+      background: #1a1406;
+      border: 1px solid #3a2c10;
+      color: #e0b870;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 3px;
+      cursor: pointer;
+      letter-spacing: .04em;
+    }
+    .cond-modal-promote:hover {
+      background: #241a08;
+      color: #e8c070;
+      border-color: #4a3818;
+    }
+    .cond-modal-cancel {
+      background: transparent;
+      border: 1px solid #222;
+      color: #888;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 3px;
+      cursor: pointer;
+      letter-spacing: .04em;
+    }
+    .cond-modal-cancel:hover { background: #1a1a1a; color: #ccc; border-color: #3a3a3a; }
+    .cond-modal-save {
+      background: #1a1406;
+      border: 1px solid #3a2c10;
+      color: #e0b870;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 3px;
+      cursor: pointer;
+      letter-spacing: .04em;
+    }
+    .cond-modal-save:hover { background: #2a1f0a; color: #e8c280; border-color: #4a3818; }
+
+    /* ── Roll Calculator ── */
+    .state-tile-rollcalc { gap: 14px; }
+    .state-tile-rollcalc .state-tile-head {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+    .rc-hint {
+      font-size: 10px;
+      color: #666;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-style: italic;
+    }
+    /* Active / Passive pill toggle in the tile header. Two mutually
+       exclusive buttons that look like a segmented control. */
+    .rc-mode {
+      display: inline-flex;
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 14px;
+      padding: 2px;
+      gap: 0;
+    }
+    .rc-mode-btn {
+      border: none;
+      background: transparent;
+      color: #666;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      padding: 3px 12px;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .rc-mode-btn.active {
+      background: #2a2a2a;
+      color: #e0e0e0;
+    }
+    .rc-mode-btn:hover:not(.active) { color: #aaa; }
+    .rc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 10px 14px;
+    }
+    .rc-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .rc-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: #888;
+    }
+    .rc-field-row { display: flex; gap: 6px; min-width: 0; }
+    /* Three-column slot row: kind picker | source picker | value input.
+       Kind picker is narrow (fixed), source picker flexes to fill, value
+       is fixed-width. When slot kind is 'custom' or 'none' the source
+       picker is omitted and we fall back to the two-column form. */
+    .rc-field-row-slot-3,
+    .rc-field-row-slot-2 {
+      display: flex;
+      gap: 6px;
+      min-width: 0;
+    }
+    .rc-select-slot-kind {
+      flex: 0 0 auto;
+      min-width: 84px;
+      max-width: 100px;
+    }
+    .rc-select-slot-src {
+      flex: 1;
+      min-width: 0;
+    }
+    .rc-select {
+      flex: 1;
+      min-width: 0;
+      background: #111;
+      border: 1px solid #222;
+      color: #ccc;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 12px;
+      padding: 4px 6px;
+      border-radius: 3px;
+      outline: none;
+    }
+    .rc-select:hover, .rc-select:focus { border-color: #444; }
+    .rc-select optgroup { color: #888; }
+    .rc-select option { color: #ccc; background: #111; }
+    .rc-num {
+      width: 64px;
+      background: #111;
+      border: 1px solid #222;
+      color: #ccc;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: center;
+      padding: 4px 4px;
+      border-radius: 3px;
+      outline: none;
+      font-variant-numeric: tabular-nums;
+    }
+    .rc-num:hover, .rc-num:focus { border-color: #444; }
+    /* Hide spinner on number inputs — visual noise; tabindex still works. */
+    .rc-num::-webkit-outer-spin-button,
+    .rc-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .rc-num[type=number] { -moz-appearance: textfield; }
+    .rc-field-row .rc-num { flex: 0 0 auto; width: 60px; }
+
+    /* Penalty toggles panel — collapsible, sits between grid and output.
+       Head row is always visible (shows summary "Applying X% of Y%");
+       body appears when expanded with one row per component. Each row
+       is a clickable label; checkbox state + strike-through convey ON/OFF. */
+    .rc-pen-panel {
+      margin-top: 10px;
+      padding: 0;
+      background: #0c0c0c;
+      border: 1px solid #1a1a1a;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .rc-pen-panel.open { border-color: #2a2a2a; }
+    .rc-pen-panel.rc-pen-passive { opacity: 0.75; }
+    .rc-pen-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 7px 12px;
+      background: transparent;
+      border: none;
+      color: inherit;
+      cursor: pointer;
+      text-align: left;
+      font-family: inherit;
+      font-size: 11px;
+      transition: background .1s;
+    }
+    .rc-pen-head:hover { background: #111; }
+    .rc-pen-caret {
+      color: #666;
+      font-size: 9px;
+      width: 10px;
+      flex-shrink: 0;
+    }
+    .rc-pen-head-label {
+      font-weight: 600;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      color: #888;
+      font-size: 10px;
+    }
+    .rc-pen-summary {
+      flex: 1;
+      color: #999;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-variant-numeric: tabular-nums;
+      font-size: 11px;
+      text-align: right;
+    }
+    .rc-pen-summary b { color: #ccc; font-weight: 700; }
+    .rc-pen-body {
+      padding: 8px 12px 10px;
+      border-top: 1px solid #151515;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .rc-pen-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .rc-pen-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 6px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: background .08s;
+      user-select: none;
+    }
+    .rc-pen-row:hover { background: #141414; }
+    .rc-pen-check {
+      flex-shrink: 0;
+      accent-color: #888;
+      cursor: pointer;
+    }
+    .rc-pen-row-off .rc-pen-check { accent-color: #444; }
+    .rc-pen-name {
+      flex: 1;
+      color: #ccc;
+      font-family: 'Open Sans', sans-serif;
+    }
+    .rc-pen-row-off .rc-pen-name {
+      color: #555;
+      text-decoration: line-through;
+    }
+    .rc-pen-row-zero .rc-pen-name {
+      color: #666;
+      font-style: italic;
+    }
+    .rc-pen-row-zero .rc-pen-val {
+      color: #555;
+    }
+    .rc-pen-row-other .rc-pen-name {
+      font-style: italic;
+    }
+    .rc-pen-val {
+      color: #ccc;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      font-size: 12px;
+      min-width: 48px;
+      text-align: right;
+    }
+    .rc-pen-row-off .rc-pen-val {
+      color: #555;
+      text-decoration: line-through;
+    }
+    .rc-pen-reset {
+      align-self: flex-start;
+      background: transparent;
+      border: 1px solid #2a2a2a;
+      color: #888;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 3px;
+      cursor: pointer;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      transition: all .1s;
+    }
+    .rc-pen-reset:hover {
+      background: #141414;
+      border-color: #3a3a3a;
+      color: #ccc;
+    }
+
+    /* Output block — big number summary + breakdown details below. */
+    .rc-output {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding-top: 8px;
+      border-top: 1px solid #1a1a1a;
+    }
+    /* Output block — side-by-side dice pool + expected result on wide
+       screens, stacking on narrow. Both blocks share height. */
+    .rc-output-pair {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .rc-output-pair > * {
+      flex: 1 1 220px;
+      min-width: 0;
+    }
+    .rc-big-label,
+    .rc-expected .rc-big-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: #888;
+    }
+    .rc-big {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+      background: transparent;
+      border: 1px solid #1a1a1a;
+      border-radius: 4px;
+      padding: 10px 14px;
+      cursor: pointer;
+      text-align: left;
+      font-family: 'Open Sans', sans-serif;
+      transition: background 0.1s, border-color 0.1s;
+    }
+    .rc-big:hover { background: #111; border-color: #2a2a2a; }
+    /* Passive mode tints the big button border so the roll mode is
+       visible even if the header's pill toggle scrolls out of view. */
+    .rc-big-passive { border-color: #2a3a4a; }
+    .rc-big-passive:hover { border-color: #3a4a5a; }
+    .rc-big-main {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+    }
+    .rc-big-num {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 28px;
+      font-weight: 700;
+      color: #e0e0e0;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+    /* Pre-strain view tints dim — lets the player know they're looking
+       at raw pool, not the real dice they'll roll. */
+    .rc-big-num.rc-raw { color: #888; }
+    .rc-big-mod {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 18px;
+      font-weight: 700;
+      color: #c8a868;
+      font-variant-numeric: tabular-nums;
+    }
+    .rc-big-diff {
+      font-size: 11px;
+      color: #777;
+      font-family: 'Consolas', 'Courier New', monospace;
+      letter-spacing: .04em;
+    }
+
+    /* Expected result — sibling of .rc-big. Shows the 70% central result
+       interval computed analytically from the dice-success distribution. */
+    .rc-expected {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      background: transparent;
+      border: 1px solid #1a1a1a;
+      border-radius: 4px;
+      padding: 10px 14px;
+      font-family: 'Open Sans', sans-serif;
+    }
+    .rc-expected-mean {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 28px;
+      font-weight: 700;
+      color: #c8e0a8;       /* cool green — reads as "expected / likely" */
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+    .rc-expected-range {
+      font-size: 11px;
+      color: #888;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: .02em;
+    }
+    .rc-breakdown {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      font-size: 11px;
+      color: #aaa;
+      font-family: 'Open Sans', sans-serif;
+    }
+    .rc-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 2px 4px;
+    }
+    .rc-k { color: #888; font-weight: 600; }
+    .rc-v {
+      color: #ccc;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+    .rc-v b { color: #e0e0e0; font-weight: 700; }
+    .rc-dim { color: #666; font-size: 10px; }
+
+    /* Movement stat row inside the Movement tile — simple wrapping flex. */
+    .state-movement-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px 28px;
+    }
+    .state-movement-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 80px;
+    }
+    .state-movement-item .mi-label {
+      font-size: 10px; font-weight: 700; letter-spacing: .12em;
+      text-transform: uppercase; color: #888;
+    }
+    .state-movement-item .mi-val {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 15px;
+      font-weight: 600;
+      color: #d0d0d0;
+      font-variant-numeric: tabular-nums;
+    }
+    .state-movement-item .mi-unit {
+      font-size: 11px;
+      color: #666;
+      font-weight: 400;
+      margin-left: 2px;
+    }
+    /* The red-italic annotation when movement is strain-reduced — same
+       visual language as the Combat tab cards for consistency. */
+    .state-movement-item .mi-penalty {
+      color: #e07878;
+      font-style: italic;
+      font-size: 13px;
+      font-weight: 600;
+      margin-left: 4px;
+    }
+    /* Clickable variant — toggle between "10 − 2.5" and "7.5" inline.
+       Uses the same .penalty-collapsed class convention as the Combat tab
+       Dice/Stat cards so the same togglePenaltyValueDisplay() handler
+       flips both views in sync. */
+    .state-movement-item.clickable {
+      cursor: pointer;
+      -webkit-user-select: none;
+         -moz-user-select: none;
+              user-select: none;
+      border-radius: 3px;
+      padding: 2px 6px;
+      margin: -2px -6px;
+      transition: background 0.1s;
+    }
+    .state-movement-item.clickable:hover { background: rgba(255,255,255,0.04); }
+    .state-movement-item .mi-expanded,
+    .state-movement-item .mi-effective { display: inline; }
+    .state-movement-item.penalty-collapsed .mi-expanded { display: none; }
+    .state-movement-item:not(.penalty-collapsed) .mi-effective { display: none; }
+    /* Collapsed value takes the same red italic as the reduction — signals
+       this number has been modified by Strain. */
+    .state-movement-item .mi-effective {
+      color: #e07878;
+      font-style: italic;
+      font-weight: 600;
+    }
+
+    /* ═══ ADVANTAGES / DISADVANTAGES ═══ */
+    /* Row wrapper: two blocks side-by-side on wide screens, stacked on narrow */
+    .ad-row { display: flex; gap: 14px; margin-top: 24px; align-items: flex-start; }
+    .ad-row > .ad-block { flex: 1; min-width: 0; margin-top: 0; }
+    @media (max-width: 900px) {
+      .ad-row { flex-direction: column; }
+    }
+    .ad-block { padding: 18px 20px; border: 1px solid #1a1a1a; border-radius: 6px; background: #0d0d0d; }
+    .ad-block-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid #1a1a1a; }
+    .ad-block-title { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #aaa; flex: 1; }
+    .ad-add-btn { background: #1a1a1a; border: 1px solid #333; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 500; padding: 5px 12px; border-radius: 4px; cursor: pointer; }
+    .ad-add-btn:hover { background: #222; border-color: #555; color: #ccc; }
+
+    .ad-empty { color: #444; font-size: 12px; font-style: italic; text-align: center; padding: 20px 0; }
+
+    .ad-cat-group { margin-bottom: 18px; }
+    .ad-cat-group:last-child { margin-bottom: 0; }
+    .ad-cat-title { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #666; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px dashed #1e1e1e; }
+    .ad-cards { display: flex; flex-direction: column; gap: 8px; }
+
+    /* Collapsible headers (A/D sides + their inner category titles).
+       The ad-collapsible class is added to any header that acts as
+       a toggle button. The ▸ / ▾ caret is an inline span the renderer
+       swaps based on collapsed state. Focus-visible outline keeps
+       keyboard-toggle users oriented. */
+    .ad-collapsible {
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .ad-collapsible:hover { color: #ccc; }
+    .ad-collapsible:focus-visible {
+      outline: 2px solid #444;
+      outline-offset: 2px;
+      border-radius: 2px;
+    }
+    .ad-caret {
+      color: #555;
+      font-size: 10px;
+      width: 10px;
+      display: inline-block;
+      flex-shrink: 0;
+      transition: color .1s;
+    }
+    .ad-collapsible:hover .ad-caret { color: #aaa; }
+    /* Inner category header gets a small count pill next to its label
+       so a collapsed section still communicates how much is inside. */
+    .ad-cat-title-label { flex: 1; }
+    .ad-cat-count {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 9px;
+      color: #666;
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 8px;
+      padding: 0 5px;
+      letter-spacing: 0;
+      font-weight: 500;
+    }
+    /* Collapsed category hides its cards. Header stays visible. */
+    .ad-cat-group.collapsed > .ad-cards { display: none; }
+    .ad-cat-group.collapsed > .ad-cat-title { margin-bottom: 0; border-bottom-style: dotted; }
+    /* Collapsed outer A/D block: bottom border of the header loses its
+       emphasis (since there's nothing below it), and the block itself
+       shrinks its padding a touch. Subtle — just gives the eye a cue
+       the block is dormant. */
+    .ad-block.collapsed .ad-block-header { margin-bottom: 0; border-bottom-style: dotted; padding-bottom: 6px; }
+    .ad-block.collapsed { padding-bottom: 10px; }
+
+    /* Individual card */
+    .ad-card { background: #111; border: 1px solid #1f1f1f; border-radius: 4px; padding: 10px 12px; position: relative; }
+    .ad-card-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+    .ad-card-xp { font-size: 13px; font-weight: 700; letter-spacing: .02em; padding: 2px 8px; border-radius: 3px; font-variant-numeric: tabular-nums; flex-shrink: 0; background: #1a1a1a; color: #ccc; border: 1px solid #2a2a2a; }
+    .ad-card-xp-adv { }
+    .ad-card-xp-dis { }
+    .ad-card-tier { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; padding: 2px 7px; border: 1px solid #2a2a2a; border-radius: 3px; flex-shrink: 0; }
+    .ad-card-name { font-size: 14px; font-weight: 600; color: #e0e0e0; flex: 1; min-width: 0; }
+    .ad-card-custom { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #888; padding: 2px 6px; border: 1px dashed #333; border-radius: 3px; flex-shrink: 0; }
+    .ad-card-delete { color: #444; font-size: 18px; cursor: pointer; padding: 0 4px; line-height: 1; flex-shrink: 0; user-select: none; }
+    .ad-card-delete:hover { color: #c84b4b; }
+    .ad-card-desc { font-size: 12px; font-style: italic; color: #9a9a9a; line-height: 1.5; margin-bottom: 4px; }
+    .ad-card-system { font-size: 12px; color: #bbb; line-height: 1.5; padding-top: 4px; border-top: 1px solid #1a1a1a; }
+
+    /* Add form */
+    .ad-add-form-container { margin-top: 12px; }
+    .ad-form { background: #0a0a0a; border: 1px solid #2a2a2a; border-radius: 5px; padding: 14px 16px; }
+    .ad-form-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .ad-form-title { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #ccc; flex: 1; }
+    .ad-form-mode-switch { font-size: 11px; color: #888; cursor: pointer; user-select: none; }
+    .ad-form-mode-switch:hover { color: #ccc; text-decoration: underline; }
+
+    .ad-form-search { width: 100%; background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 7px 10px; border-radius: 3px; outline: none; margin-bottom: 8px; }
+    .ad-form-search:focus { border-color: #444; }
+
+    .ad-form-select { width: 100%; background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px; border-radius: 3px; outline: none; margin-bottom: 10px; }
+    .ad-form-select:focus { border-color: #444; }
+    .ad-form-select option { padding: 3px 6px; }
+    .ad-form-select optgroup { color: #888; font-style: italic; font-weight: 600; }
+
+    .ad-form-preview { background: #111; border: 1px solid #1a1a1a; border-radius: 3px; padding: 10px 12px; margin-bottom: 10px; }
+
+    .ad-form-empty { color: #666; font-size: 12px; font-style: italic; padding: 14px 0; text-align: center; }
+
+    .ad-form-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+    .ad-form-field label { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; }
+    .ad-form-field input, .ad-form-field select, .ad-form-field textarea {
+      background: #111; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 9px;
+      border-radius: 3px; outline: none; width: 100%;
+    }
+    .ad-form-field input:focus, .ad-form-field select:focus, .ad-form-field textarea:focus { border-color: #444; }
+    .ad-form-field textarea { resize: vertical; line-height: 1.4; font-family: 'Open Sans', sans-serif; }
+    .ad-form-row { display: flex; gap: 10px; }
+    .ad-form-row .ad-form-field { flex: 1; }
+
+    .ad-form-actions { display: flex; gap: 8px; margin-top: 6px; }
+    .ad-form-btn { background: #1a1a1a; border: 1px solid #333; color: #ccc; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 14px; border-radius: 4px; cursor: pointer; }
+    .ad-form-btn:hover:not(:disabled) { background: #222; border-color: #555; }
+    .ad-form-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .ad-form-btn-primary { background: #222; border-color: #555; color: #e0e0e0; }
+    .ad-form-btn-primary:hover:not(:disabled) { background: #2a2a2a; border-color: #777; }
+
+    /* ═══ SITUATIONS ═══ */
+    .sit-block { margin-top: 14px; padding: 18px 20px; border: 1px solid #1a1a1a; border-radius: 6px; background: #0d0d0d; }
+    .sit-block-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid #1a1a1a; }
+    .sit-block-title { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #aaa; flex: 1; }
+    .sit-add-btn { background: #1a1a1a; border: 1px solid #333; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 500; padding: 5px 12px; border-radius: 4px; cursor: pointer; }
+    .sit-add-btn:hover { background: #222; border-color: #555; color: #ccc; }
+
+    .sit-empty { color: #444; font-size: 12px; font-style: italic; text-align: center; padding: 20px 0; }
+
+    .sit-list { display: flex; flex-direction: column; gap: 10px; }
+
+    /* Individual card */
+    .sit-card { background: #111; border: 1px solid #1f1f1f; border-radius: 4px; padding: 12px 14px; position: relative; transition: border-color 0.15s; }
+    .sit-card-paused { background: #0e0e0e; border-color: #2a2a2a; }
+    .sit-card-expired { background: #0e0e0e; border-color: #333; }
+    .sit-card-hidden { border-style: dashed; opacity: 0.82; }
+    .sit-card-gm-face { border-color: #3a3a3a; background: #0e0e0e; }
+
+    .sit-card-top { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+    .sit-clock { font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #ccc; background: #1a1a1a; border: 1px solid #2a2a2a; padding: 3px 10px; border-radius: 3px; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+    .sit-card-expired .sit-clock { background: #1a1a1a; color: #999; text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 12px; font-style: italic; border-color: #333; }
+    .sit-card-paused:not(.sit-card-expired) .sit-clock { background: #1a1a1a; color: #888; }
+
+    .sit-badges { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
+    .sit-badge { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; padding: 2px 6px; border-radius: 2px; background: #1a1a1a; color: #888; border: 1px solid #2a2a2a; }
+    .sit-badge-hidden  { }
+    .sit-badge-paused  { }
+    .sit-badge-expired { }
+
+    .sit-card-name { font-size: 15px; font-weight: 600; color: #e8e8e8; margin-bottom: 4px; }
+    .sit-card-body { font-size: 12px; color: #bbb; line-height: 1.55; }
+    .sit-card-gm-face .sit-card-body { color: #ccc; }
+
+    .sit-assigned { font-size: 10px; color: #555; margin-top: 8px; font-style: italic; letter-spacing: .02em; }
+
+    /* GM controls */
+    .sit-gm-controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid #1e1e1e; }
+    .sit-ctrl-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 10px; border-radius: 3px; cursor: pointer; }
+    .sit-ctrl-btn:hover { background: #222; border-color: #3f3f3f; color: #ddd; }
+    .sit-ctrl-primary { background: #222; border-color: #555; color: #e0e0e0; }
+    .sit-ctrl-primary:hover { background: #2a2a2a; border-color: #777; }
+    .sit-ctrl-danger { color: #c87777; border-color: #3a1a1a; }
+    .sit-ctrl-danger:hover { background: #1f1313; border-color: #5a2a2a; color: #e09999; }
+    .sit-flip-btn { background: #1a1a1a; border-color: #3a3a3a; color: #ccc; }
+    .sit-flip-btn:hover { background: #222; border-color: #555; color: #e0e0e0; }
+
+    .sit-clock-ticker { display: flex; align-items: center; gap: 4px; }
+    .sit-tick-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 14px; font-weight: 700; width: 26px; height: 26px; padding: 0; border-radius: 3px; cursor: pointer; line-height: 1; }
+    .sit-tick-btn:hover { background: #222; border-color: #3f3f3f; color: #fff; }
+    .sit-clock-input { width: 56px; text-align: center; background: #0a0a0a; border: 1px solid #2a2a2a; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 13px; font-weight: 600; padding: 4px 6px; border-radius: 3px; outline: none; }
+    .sit-clock-input:focus { border-color: #444; }
+    .sit-clock-input:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Edit form (per-card and new) */
+    .sit-card-editing { background: #0c0c0c; border-color: #3a3a3a; }
+    .sit-edit-form { display: flex; flex-direction: column; gap: 10px; }
+    .sit-edit-header { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #ccc; margin-bottom: 4px; }
+    .sit-edit-row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .sit-edit-field { display: flex; flex-direction: column; gap: 4px; }
+    .sit-edit-field label { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; }
+    .sit-edit-sublabel { color: #555; font-weight: 400; text-transform: none; letter-spacing: 0; }
+    .sit-edit-field input, .sit-edit-field textarea {
+      background: #111; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 9px;
+      border-radius: 3px; outline: none; width: 100%;
+    }
+    .sit-edit-field input:focus, .sit-edit-field textarea:focus { border-color: #444; }
+    .sit-edit-field textarea { resize: vertical; line-height: 1.5; font-family: 'Open Sans', sans-serif; min-height: 44px; }
+    .sit-edit-actions { display: flex; gap: 8px; margin-top: 4px; }
+
+    /* ═══ FOLDER TABS (Overview / Combat) ═══ */
+    /*
+     * The sheet is split into tabs. The tabs themselves stick out on the
+     * LEFT side of the body like manila-folder tabs. Visually, the active
+     * tab's right edge overlaps the body border so the tab "merges" with
+     * the panel, creating the folder look.
+     *
+     * On narrow viewports (<760px wide) the tabs flip to top-horizontal
+     * so mobile users don't lose screen space to side tabs.
+     */
+    .sheet-wrap { position: relative; display: flex; align-items: flex-start; gap: 0; margin-top: 8px; }
+    .sheet-tabs { display: flex; flex-direction: column; gap: 4px; padding-top: 16px; flex-shrink: 0; }
+    .sheet-tab {
+      /* Tab body: slight negative right-margin to push into the panel border */
+      background: #0a0a0a;
+      border: 1px solid #222;
+      border-right: none;
+      border-radius: 6px 0 0 6px;
+      padding: 14px 14px 14px 18px;
+      min-width: 48px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: #666;
+      cursor: pointer;
+      user-select: none;
+      /* Vertical orientation: rotate text 180deg so it reads bottom-to-top
+         like a book spine. Flip the writing mode to avoid upside-down text. */
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      transition: background 0.12s, color 0.12s, border-color 0.12s;
+      margin-right: -1px;
+      position: relative;
+      z-index: 1;
+    }
+    .sheet-tab:hover { background: #111; color: #aaa; border-color: #333; }
+    .sheet-tab.active {
+      background: #0d0d0d;
+      border-color: #333;
+      color: #e0e0e0;
+      z-index: 3;  /* sit above the panel border so they visually merge */
+    }
+
+    .sheet-body {
+      flex: 1;
+      min-width: 0;
+      border: 1px solid #333;
+      border-radius: 0 6px 6px 6px;
+      background: #0a0a0a;
+      padding: 20px 24px;
+      position: relative;
+      z-index: 2;
+    }
+    .sheet-panel { display: none; }
+    .sheet-panel.active { display: block; }
+
+    @media (max-width: 760px) {
+      /* On narrow viewports, flip to horizontal top tabs — folder-edge effect
+         is cute but steals too much width on phones. */
+      .sheet-wrap { flex-direction: column; }
+      .sheet-tabs { flex-direction: row; padding-top: 0; padding-bottom: 0; margin-bottom: -1px; }
+      .sheet-tab {
+        writing-mode: horizontal-tb;
+        transform: none;
+        border-radius: 6px 6px 0 0;
+        border-right: 1px solid #222;
+        border-bottom: none;
+        margin-right: 0;
+        margin-bottom: -1px;
+        min-width: auto;
+        padding: 10px 18px;
       }
-      (byParent.get(cat.id) || []).forEach(ch => walk(ch, depth + 1));
-    };
-    (byParent.get('__root__') || []).forEach(c => walk(c, 0));
-    return groups;
-  }
-
-  // Build the <option>s for a dimension-preset <select>. Leading
-  // empty option is the "no preset picked" sentinel — picking it
-  // does nothing. Each preset shows its L×W×H (and weight when
-  // non-zero) in the label so players don't have to memorize.
-  // Pulled from ruleset.dimensionPresets — empty if the ruleset
-  // defines none (the select still renders with just the sentinel).
-  function buildDimensionPresetOptions() {
-    const ruleset = getRuleset() || {};
-    const presets = Array.isArray(ruleset.dimensionPresets) ? ruleset.dimensionPresets : [];
-    let html = '<option value="">— pick a preset —</option>';
-    presets.forEach(p => {
-      const dims = p.dimensions || { l: 0, w: 0, h: 0 };
-      const weight = Number.isFinite(p.weight) && p.weight > 0 ? ', ' + p.weight + 'lb' : '';
-      const label = `${p.name} (${dims.l}×${dims.w}×${dims.h}${weight})`;
-      html += `<option value="${escapeHtml(p.id)}">${escapeHtml(label)}</option>`;
-    });
-    return html;
-  }
-
-  // ── ITEM DURABILITY HELPERS ──
-  //
-  // Items have a derived Durability pool analogous to hit-location HP.
-  // Max Durability = SIZE + Armor (default formula — ruleset-configurable
-  // later via ruleset.itemDurability.maxFormula).
-  //
-  // Damage is tracked as INSTANCES — an array of numbers on the entry.
-  // Each attack that hits the item adds an instance. Effective damage
-  // uses the same formula hit locations use for multi-wound stacking:
-  //
-  //   effective damage = highest instance + (sum of other instances) / Construction
-  //
-  // Where Construction is derived by treating the item's Armor as STR,
-  // looking up STRMOD via ruleset.statMods, then FORT via ruleset.fortitudeTable.
-  // Armor 0–3 → Construction 1 (linear stacking), Armor 6–7 → Construction 2
-  // (secondaries halved), etc. — exactly the existing FORT curve.
-
-  // Compute max Durability for an entry. Reads SIZE + Armor from the
-  // entry's snapshot. Returns 0 when neither is set, which suppresses
-  // the durability UI entirely.
-  function computeMaxDurability(entry) {
-    if (!entry || !entry.snapshot) return 0;
-    const size  = Number.isFinite(entry.snapshot.size)  ? entry.snapshot.size  : 0;
-    const armor = Number.isFinite(entry.snapshot.armor) ? entry.snapshot.armor : 0;
-    return Math.max(0, size + armor);
-  }
-
-  // Compute Construction for an entry — treats the item's Armor as
-  // if it were a character's STR, looks up STRMOD, then FORT. Result
-  // is the divisor for secondary-instance damage. Returns 1 (linear
-  // stacking) for rulesets missing a fortitudeTable.
-  function computeItemConstruction(entry) {
-    if (!entry || !entry.snapshot) return 1;
-    const ruleset = getRuleset() || {};
-    const armor = Number.isFinite(entry.snapshot.armor) ? entry.snapshot.armor : 0;
-    const statMods = Array.isArray(ruleset.statMods) ? ruleset.statMods : [];
-    // Clamp armor to the statMods array range — same pattern used for
-    // character STRMOD lookup (which also clamps overflow to endpoints).
-    const idx = Math.max(0, Math.min(statMods.length - 1, armor));
-    const armorAsStrmod = (typeof statMods[idx] === 'number') ? statMods[idx] : 0;
-    const fortTable = Array.isArray(ruleset.fortitudeTable) ? ruleset.fortitudeTable : [];
-    if (fortTable.length === 0) return 1;
-    const exact = fortTable.find(e => e.strmod === armorAsStrmod);
-    if (exact) return exact.value;
-    const sorted = fortTable.slice().sort((a, b) => a.strmod - b.strmod);
-    if (armorAsStrmod < sorted[0].strmod) return sorted[0].value;
-    if (armorAsStrmod > sorted[sorted.length - 1].strmod) return sorted[sorted.length - 1].value;
-    return 1;
-  }
-
-  // Compute current Durability for an entry — Max minus effective damage
-  // from all tracked instances. Returns Max when no instances are
-  // present. Returns a number that can go negative (Disabled at 0,
-  // Destroyed at -Max, Definitively Destroyed at -2×Max, mirroring
-  // hit-location thresholds).
-  function computeCurrentDurability(entry) {
-    const max = computeMaxDurability(entry);
-    if (max <= 0) return 0;
-    const instances = Array.isArray(entry.durabilityInstances) ? entry.durabilityInstances : [];
-    if (instances.length === 0) return max;
-    const construction = computeItemConstruction(entry) || 1;
-    let highest = 0;
-    let sumAll = 0;
-    instances.forEach(v => {
-      const n = Number(v);
-      if (!Number.isFinite(n) || n < 0) return;
-      sumAll += n;
-      if (n > highest) highest = n;
-    });
-    const effective = highest + ((sumAll - highest) / construction);
-    return max - effective;
-  }
-
-  // Compute a short state label for a durability value. Mirrors the
-  // hit-location damage thresholds: 0 = Disabled, -max = Destroyed,
-  // -2×max = Definitively Destroyed. Anything above 0 = Functional.
-  function computeDurabilityState(current, max) {
-    if (max <= 0) return 'Functional';
-    if (current <= -2 * max) return 'Def. Destroyed';
-    if (current <= -max)     return 'Destroyed';
-    if (current <= 0)        return 'Disabled';
-    return 'Functional';
-  }
-
-  // Render a compact durability readout for an entry that has tracking
-  // turned on. Shows Current / Max, state label, accumulated instances
-  // (each clickable to remove), a "take damage" input, and a clear
-  // button. Emits nothing when tracking is off or max is 0.
-  function renderDurabilityRow(entry, canEdit) {
-    if (!entry || !entry.durabilityTracked) return '';
-    const max = computeMaxDurability(entry);
-    if (max <= 0) return '';
-    const instances = Array.isArray(entry.durabilityInstances) ? entry.durabilityInstances : [];
-    const current = computeCurrentDurability(entry);
-    const construction = computeItemConstruction(entry);
-    const state = computeDurabilityState(current, max);
-    const stateCls = state === 'Functional' ? 'ok'
-                  : state === 'Disabled'    ? 'warn'
-                                            : 'bad';
-    // Round current for display — the effective-damage formula can
-    // produce fractions (e.g. 3 + 2/1.5 = 4.33). Keep one decimal.
-    const curDisplay = Number.isInteger(current) ? String(current) : current.toFixed(1);
-    let html = `<div class="inv-entry-dur-row">
-      <span class="inv-entry-dur-label">Dur</span>
-      <span class="inv-entry-dur-value">${curDisplay} / ${max}</span>
-      <span class="inv-entry-dur-state inv-entry-dur-state-${stateCls}">${state}</span>`;
-    if (instances.length > 0) {
-      html += `<span class="inv-entry-dur-instances" title="Construction ${construction} · Each chip = one damage instance. Click to remove.">`;
-      instances.forEach((v, i) => {
-        const n = Number.isFinite(v) ? v : 0;
-        html += canEdit
-          ? `<span class="inv-entry-dur-chip" onclick="invDurabilityRemoveInstance('${escapeHtml(entry.id)}',${i})" title="Remove this instance">${n}</span>`
-          : `<span class="inv-entry-dur-chip readonly">${n}</span>`;
-      });
-      html += `</span>`;
-    }
-    if (canEdit) {
-      html += `<input type="number" class="inv-entry-dur-input" step="1" min="0" placeholder="+dmg"
-                 onkeydown="if(event.key==='Enter'){invDurabilityAddInstance('${escapeHtml(entry.id)}',this.value);this.value='';}"
-                 title="Type a damage amount and press Enter to add an instance.">`;
-      if (instances.length > 0) {
-        html += `<button class="inv-entry-dur-clear" onclick="invDurabilityClear('${escapeHtml(entry.id)}')" title="Clear all instances — restores item to full Durability">Clear</button>`;
-      }
-    }
-    html += `</div>`;
-    return html;
-  }
-
-
-  //
-  // Modal state for the "Add Item" and "Add Container" flows. Null when
-  // no modal is open. Expanded shape: {
-  //   kind:       'container' | 'item',
-  //   target:     slotCode | groupId | entryId,
-  //   targetKind: 'slot' | 'group' | 'container',
-  //   targetLabel: string,
-  //   showCustomForm: boolean,   // whether the inline custom def form is open
-  //   customDraft: { ... }       // in-progress custom def fields
-  // }
-  let activeModal = null;
-
-  // Inline entry-edit state. Only one entry can be in edit mode at a
-  // time — opening a second one auto-closes the first. While editing,
-  // the draft is held OUTSIDE the entry (so we don't mutate the stored
-  // snapshot on every keystroke); on Save it replaces the snapshot and
-  // persists. On Cancel, the draft is discarded.
-  //
-  // Shape:
-  //   editingEntryId: string (the entry's id) | null
-  //   editDraft: { name, description, weight, dimensions:{l,w,h},
-  //                isContainer, innerL, innerW, innerH, innerPacking }
-  let editingEntryId = null;
-  let editDraft = null;
-
-  // Personal Catalogue manager. Separate from activeModal (the picker)
-  // because they have nothing in common and shouldn't share state.
-  //
-  // When open, the manager is a modal overlay with a list of all the
-  // character's custom defs. Each can be inline-edited (same semantics
-  // as the entry edit panel, but against the def instead of an entry's
-  // snapshot). New defs can be added. Deleting a def here uses the
-  // instance-preserving delete — existing sheet entries keep their
-  // snapshot data.
-  //
-  // Shape:
-  //   open:             boolean
-  //   expandedDefIds:   Set<string>   (which rows are expanded for editing)
-  //   drafts:           Map<id, draft>  (per-def working drafts)
-  //   newDraft:         draft | null   (inline "create new" form state)
-  //   newKind:          'container' | 'equipment' | null
-  let catalogManager = {
-    open: false,
-    expandedDefIds: new Set(),
-    drafts: new Map(),
-    newDraft: null,
-    newKind: null
-  };
-
-  // View mode: 'inventory' shows the character's actual kit (groups +
-  // slots + items they own). 'catalog' shows the read-only ruleset
-  // catalog — every item the ruleset defines, organized by category.
-  // Toggled via the header bar at the top of the panel. Not persisted
-  // across reloads; defaults to 'inventory'.
-  let viewMode = 'inventory';
-
-  // Which categories are collapsed in the catalog view. Stored BY ID.
-  // Default is all-expanded so users immediately see what's available.
-  const collapsedCatalogCats = new Set();
-
-  // Which items have their description/details expanded in the catalog
-  // view. Items render collapsed by default (just name + summary); click
-  // to expand full details. Keyed by item id.
-  const expandedCatalogItems = new Set();
-
-  // Which item's Add-target dropdown is currently open. Only one at a
-  // time (clicking a different item's ▾ closes the previous). Null when
-  // no dropdown is open. Stored as the item id.
-  let catalogAddMenuFor = null;
-
-  // Short-lived confirmation toast for catalog adds. Shows "Added
-  // Shotgun to Back" or similar after a successful add. Auto-clears
-  // on next render (so it's essentially one-render-lifetime).
-  let lastAddToast = null;
-
-  // Character-scoped id counter for group/def synthesis. Prefixed so
-  // ruleset ids (cont_ / eq_) and character custom ids (cust_cont_ /
-  // cust_eq_) don't collide.
-  const _nextInvId = (() => {
-    let n = 0;
-    return (prefix) => `${prefix}_${Date.now().toString(36)}_${(n++).toString(36)}`;
-  })();
-
-  // ─── DEF LOOKUP ───
-  //
-  // Under the unified schema, the ruleset has ONE items array — no more
-  // containers/equipment split. An item is a container when its def's
-  // `containerOf` block is populated. Character-scoped custom defs work
-  // the same way; they live in charData.inventory.customDefs.containers
-  // and .equipment for backwards compatibility with older charData but
-  // get read as a merged pool (both arrays are walked on lookup).
-  //
-  // defKind on entries is now cosmetic — kept for legacy entries that
-  // already have it set, but new entries don't need to distinguish.
-  // containerness is determined by def.containerOf, not by defKind.
-
-  function getItemDef(id) {
-    if (!id) return null;
-    const ruleset = getRuleset();
-    const fromRuleset = (ruleset.items || []).find(x => x.id === id);
-    if (fromRuleset) return fromRuleset;
-    const inv = ensureInventory();
-    // Walk both legacy customDef buckets so older character data still
-    // resolves. New custom defs written today land in `.equipment` (for
-    // plain items) or `.containers` (for custom pure-containers), but
-    // either bucket works at lookup time.
-    const fromCustomEq   = (inv.customDefs.equipment  || []).find(x => x.id === id);
-    if (fromCustomEq) return fromCustomEq;
-    const fromCustomCont = (inv.customDefs.containers || []).find(x => x.id === id);
-    if (fromCustomCont) return fromCustomCont;
-    return null;
-  }
-
-  // Legacy aliases — the rest of the module still calls these. They all
-  // resolve via getItemDef now, so the legacy containers/equipment split
-  // no longer matters at lookup time.
-  function getContainerDef(id) { return getItemDef(id); }
-  function getEquipmentDef(id) { return getItemDef(id); }
-
-  function getDefForEntry(entry) {
-    if (!entry) return null;
-    return getItemDef(entry.defId);
-  }
-
-  // ─── SNAPSHOT-FIRST ACCESSORS ───
-  //
-  // Entries carry a `snapshot` object that holds name, dimensions,
-  // weight, description, and containerOf. This is the source of truth
-  // for display and calculations. The def is only consulted as a
-  // fallback for legacy entries that haven't been snapshot-migrated,
-  // or to look up external references (like the ruleset category tree).
-  //
-  // Every accessor below reads from snapshot first, falls through to
-  // the def as a safety net. Post-migration the fallback should never
-  // fire, but it keeps us robust against mid-render migration gaps.
-
-  function entrySnapshot(entry) {
-    if (entry && entry.snapshot) return entry.snapshot;
-    // Synthesize a snapshot on-the-fly if missing — used as a last
-    // resort so accessors never return null fields.
-    const def = getDefForEntry(entry);
-    if (def) {
-      return {
-        name:         def.name || '',
-        description:  def.description || '',
-        dimensions:   def.dimensions || { l: 0, w: 0, h: 0 },
-        weight:       def.weight || 0,
-        containerOf:  def.containerOf || null,
-        legacyCategory: def.legacyCategory || def.category || '',
-        // Weapon snapshot — copied at add-time so later def changes
-        // don't retroactively alter existing character entries. Null
-        // when the source def isn't a weapon. Deep-clone so range
-        // arrays / tag arrays are owned by the entry.
-        weapon:       def.weapon ? JSON.parse(JSON.stringify(def.weapon)) : null
-      };
-    }
-    return {
-      name: '(unknown item)',
-      description: '',
-      dimensions: { l: 0, w: 0, h: 0 },
-      weight: 0,
-      containerOf: null,
-      legacyCategory: '',
-      weapon: null
-    };
-  }
-
-  // An entry "is a container" if its snapshot has a containerOf block.
-  // Falls back to def and entry metadata for safety against missing
-  // snapshot (e.g. pre-migration legacy entries loaded mid-transaction).
-  function entryIsContainer(entry) {
-    if (!entry) return false;
-    const snap = entry.snapshot;
-    if (snap && snap.containerOf) return true;
-    if (snap) return false;   // snapshot exists and explicitly has no containerOf
-    // No snapshot — fall back to def + legacy signals.
-    const def = getDefForEntry(entry);
-    if (def && def.containerOf) return true;
-    if (entry.defKind === 'container') return true;
-    if (Array.isArray(entry.contents)) return true;
-    return false;
-  }
-
-  // Inner container spec (dimensions + packingEfficiency). Reads from
-  // the snapshot's containerOf. Legacy fallback for entries without
-  // snapshots, matching the old behavior.
-  function innerSpec(entry) {
-    const snap = entry && entry.snapshot;
-    if (snap && snap.containerOf) return snap.containerOf;
-    // Fallback for pre-migration entries.
-    const def = getDefForEntry(entry);
-    if (!def) return null;
-    if (def.containerOf) return def.containerOf;
-    if (def.packingEfficiency != null) {
-      return { dimensions: def.dimensions, packingEfficiency: def.packingEfficiency };
-    }
-    return null;
-  }
-
-  // Display name. Priority: explicit customName (player rename) →
-  // snapshot.name → def.name → placeholder. Edits to a container's name
-  // via the pencil icon go into snapshot.name, not customName, so
-  // customName is mostly unused going forward but preserved for any
-  // legacy entries that set it.
-  function entryName(entry) {
-    if (entry.customName && entry.customName.trim()) return entry.customName.trim();
-    const snap = entry.snapshot;
-    if (snap && snap.name) return snap.name;
-    const def = getDefForEntry(entry);
-    return def && def.name ? def.name : '(missing def)';
-  }
-
-  // Convenience: entry's own dimensions. Reads snapshot.dimensions.
-  function entryDimensions(entry) {
-    return entrySnapshot(entry).dimensions || { l: 0, w: 0, h: 0 };
-  }
-
-  // Convenience: entry's own weight.
-  function entryWeight(entry) {
-    return entrySnapshot(entry).weight || 0;
-  }
-
-  // Convenience: entry's own description.
-  function entryDescription(entry) {
-    return entrySnapshot(entry).description || '';
-  }
-
-  // ─── OVERFLOW COMPUTATION ───
-  //
-  // Walk a container entry's contents bottom-up, computing aggregate
-  // weight, used volume, and per-axis overflow. Items that don't fit
-  // dimensionally (longest item dim > longest container dim, etc.) are
-  // still counted toward volume — GM adjudicates the whole mess.
-  //
-  // Returns: {
-  //   totalWeight,     // pounds, including self + all descendants
-  //   usedVolume,      // cubic inches used by direct children's outer dims
-  //   availableVolume, // inner dims × packingEfficiency, cubic inches
-  //   volumeOver,      // boolean
-  //   volumeOverBy,    // cubic inches overflowing, >= 0
-  //   dimIssues        // [{entryId, axis, itemVal, contVal}] per-item dim overflows
-  // }
-
-  function computeContainerStats(entry) {
-    const spec = innerSpec(entry);
-    const ownWeight = entryWeight(entry);
-    const result = {
-      totalWeight:     ownWeight * (entry.quantity || 1),
-      usedVolume:      0,
-      availableVolume: 0,
-      volumeOver:      false,
-      volumeOverBy:    0,
-      dimIssues:       []
-    };
-    if (!spec) return result;
-    const d = spec.dimensions || { l: 0, w: 0, h: 0 };
-    const rawVolume = (d.l || 0) * (d.w || 0) * (d.h || 0);
-    const eff = Number.isFinite(spec.packingEfficiency) ? spec.packingEfficiency : 0.75;
-    result.availableVolume = rawVolume * eff;
-
-    // Longest container dimension for the per-item fit check.
-    const contMaxDim = Math.max(d.l || 0, d.w || 0, d.h || 0);
-
-    const contents = Array.isArray(entry.contents) ? entry.contents : [];
-    contents.forEach(child => {
-      // Read dimensions/weight from the child's snapshot, not from
-      // its def — children carry their own data post-migration.
-      const cd = entryDimensions(child);
-      const qty = child.quantity || 1;
-
-      // Volume and weight contribution. Both stack with quantity — carrying
-      // 10 shotgun shells is 10× the volume of one shell (approximately;
-      // realistically they'd tessellate tighter, but the packing efficiency
-      // factor already accounts for that).
-      const itemVolume = (cd.l || 0) * (cd.w || 0) * (cd.h || 0) * qty;
-      result.usedVolume += itemVolume;
-
-      // Longest-axis dimension check. If an item's longest dimension
-      // exceeds the container's longest dimension, it can't fit at any
-      // orientation without bulging. Record the issue; still count the
-      // volume.
-      const itemMaxDim = Math.max(cd.l || 0, cd.w || 0, cd.h || 0);
-      if (itemMaxDim > contMaxDim && contMaxDim > 0) {
-        result.dimIssues.push({
-          entryId: child.id,
-          itemVal: itemMaxDim,
-          contVal: contMaxDim
-        });
-      }
-
-      // Recurse: the child's totalWeight flows up (a backpack-in-backpack's
-      // contents weigh on the outer pack too).
-      if (entryIsContainer(child)) {
-        const sub = computeContainerStats(child);
-        result.totalWeight += sub.totalWeight;
-      } else {
-        result.totalWeight += entryWeight(child) * qty;
-      }
-    });
-
-    if (result.usedVolume > result.availableVolume) {
-      result.volumeOver = true;
-      result.volumeOverBy = result.usedVolume - result.availableVolume;
-    }
-    return result;
-  }
-
-  // ─── ID HELPERS ───
-
-  // Legacy alias for the existing name used throughout the module.
-  const _nextId = () => _nextInvId('inv');
-
-  // Well-known group ids. On-Person is fixed and always present; its
-  // contents come from bySlot (the body-slot map) rather than its own
-  // array. The default Stowed group is added on new-character / migration.
-  const GROUP_ONPERSON_ID = 'grp_onperson';
-  const GROUP_STOWED_ID   = 'grp_stowed';
-
-  // Ensure charData.inventory has the current expected shape. Mutates in
-  // place. Called before any read/write so legacy characters don't crash.
-  //
-  // Handles three migration paths:
-  //   1. No inventory at all              → create fresh with On-Person + Stowed
-  //   2. Old shape (bySlot + flat stowed) → wrap into groups, keep bySlot
-  //   3. Current shape                    → validate and fill any gaps
-  //
-  // customDefs holds per-character one-off defs — one-offs created right
-  // from the sheet, not promoted to the ruleset. Lookups walk customDefs
-  // as a fallback, so these entries render and weigh just like ruleset
-  // defs do.
-  function ensureInventory() {
-    const charData = getCharData();
-    if (!charData.inventory || typeof charData.inventory !== 'object') {
-      charData.inventory = {};
-    }
-    const inv = charData.inventory;
-
-    // customDefs: always shaped { containers: [], equipment: [] }.
-    if (!inv.customDefs || typeof inv.customDefs !== 'object') inv.customDefs = {};
-    if (!Array.isArray(inv.customDefs.containers)) inv.customDefs.containers = [];
-    if (!Array.isArray(inv.customDefs.equipment))  inv.customDefs.equipment  = [];
-
-    // bySlot is legacy. Kept as an always-empty object during the
-    // migration transition so any code still reading it sees empty
-    // arrays (turning those branches into no-ops). Will be deleted
-    // entirely once the render path stops consulting it.
-    //
-    // If inv.bySlot exists with data when we open the character, the
-    // body-slot → subgroup migration below moves that data into
-    // subgroups inside On-Person and then deletes inv.bySlot. The
-    // shim re-creates an empty object so old readers don't crash.
-
-    // Legacy flat-stowed migration (pre-groups-era). Convert into a
-    // "Stowed" group so players' existing data keeps working. New chars
-    // don't get a default Stowed group — they add their own.
-    const hadLegacyStowed = Array.isArray(inv.stowed);
-    if (!Array.isArray(inv.groups)) inv.groups = [];
-
-    // On-Person: always present, always first. Post-refactor, On-Person
-    // is a regular group with its own `contents` array. Previously its
-    // contents lived in bySlot (the body-slot map); those get migrated
-    // into subgroups of On-Person below.
-    let onPerson = inv.groups.find(g => g.id === GROUP_ONPERSON_ID);
-    if (!onPerson) {
-      onPerson = {
-        id: GROUP_ONPERSON_ID,
-        name: 'On-Person',
-        kind: 'onPerson',
-        collapsed: false,
-        contents: []
-      };
-      inv.groups.unshift(onPerson);
-    }
-    // Make sure On-Person has a contents array — older docs stored
-    // items in bySlot, not here, so contents wasn't needed.
-    if (!Array.isArray(onPerson.contents)) onPerson.contents = [];
-
-    // Preserve legacy Stowed data by wrapping it in a group — only if
-    // that legacy array actually existed AND had content worth keeping.
-    if (hadLegacyStowed && inv.stowed.length > 0 && !inv.groups.find(g => g.id === GROUP_STOWED_ID)) {
-      inv.groups.push({
-        id: GROUP_STOWED_ID,
-        name: 'Stowed',
-        kind: 'custom',
-        collapsed: false,
-        contents: inv.stowed.slice()
-      });
-    }
-    if (hadLegacyStowed) delete inv.stowed;
-
-    // ── BODY-SLOT → SUBGROUP MIGRATION ──
-    //
-    // Body slots are gone. Each non-empty legacy slot becomes a subgroup
-    // inside On-Person, preserving its items. Slot labels are read from
-    // the current ruleset when available (so "back" renders as "Back");
-    // if the ruleset no longer has that slot defined, we title-case the
-    // code as a fallback.
-    //
-    // Empty slots are discarded — no point cluttering On-Person with
-    // seven empty "Head", "Shoulders" etc. buckets.
-    //
-    // Idempotent: after migration the bySlot field is deleted, so
-    // reopening the same character is a no-op.
-    if (inv.bySlot && typeof inv.bySlot === 'object') {
-      const ruleset = getRuleset ? getRuleset() : null;
-      const slotLabels = new Map();
-      if (ruleset && Array.isArray(ruleset.bodySlots)) {
-        ruleset.bodySlots.forEach(s => { if (s && s.code) slotLabels.set(s.code, s.label || s.code); });
-      }
-      Object.keys(inv.bySlot).forEach(slotCode => {
-        const items = inv.bySlot[slotCode];
-        if (!Array.isArray(items) || items.length === 0) return;
-        const label = slotLabels.get(slotCode) || slotCode.charAt(0).toUpperCase() + slotCode.slice(1).replace(/_/g, ' ');
-        // Use a deterministic subgroup id based on slot code so
-        // migrations don't create duplicates if run twice.
-        const subId = 'grp_migrated_' + slotCode;
-        if (!onPerson.contents.some(n => n && n.id === subId)) {
-          onPerson.contents.push({
-            id: subId,
-            name: label,
-            kind: 'custom',
-            collapsed: false,
-            contents: items.slice()
-          });
-        }
-      });
-      delete inv.bySlot;
+      .sheet-body { border-radius: 0 6px 6px 6px; }
     }
 
-    // Shim: always ensure inv.bySlot exists as an empty object so any
-    // remaining legacy reader sees `{}`, not `undefined`. Turn 2 of
-    // the slot→group refactor will strip the last readers; until then
-    // this keeps everything working.
-    if (!inv.bySlot || typeof inv.bySlot !== 'object') inv.bySlot = {};
+    /* ═══ COMBAT TAB ═══ */
+    .combat-empty { color: #444; font-size: 13px; font-style: italic; text-align: center; padding: 40px 0; }
 
-    // Validate every top-level group and ensure contents is an array.
-    inv.groups = inv.groups.filter(g => {
-      if (!g || typeof g !== 'object' || !g.id || !g.kind) return false;
-      if (!Array.isArray(g.contents)) g.contents = [];
-      return true;
-    });
+    .combat-section { border: 1px solid #1a1a1a; border-radius: 6px; padding: 16px 20px; margin-bottom: 14px; background: #0d0d0d; }
+    .combat-section:last-child { margin-bottom: 0; }
+    .combat-section-title { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #aaa; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #1a1a1a; }
 
-    // Recursively validate subgroups — any node in contents that looks
-    // like a group (has kind 'custom') must have a contents array.
-    // Entries (defId / defKind present) are left alone here.
-    normalizeGroupTree(inv.groups);
-
-    // ── SNAPSHOT MIGRATION ──
-    //
-    // Every entry now carries a `snapshot` object — its own copy of the
-    // def's name, dimensions, weight, description, and containerOf at
-    // the moment of placement. Entries use this for display/calculation
-    // rather than looking up the def each time. Result: deleting a def
-    // (custom or ruleset) doesn't strand entries as "(deleted def)" —
-    // they keep their own data.
-    //
-    // Legacy entries (placed before this migration) have no snapshot.
-    // For those, look up the def and populate the snapshot from it.
-    // If the def is also missing, we build a minimal snapshot with
-    // "(unknown item)" placeholders so the entry still renders.
-    //
-    // Idempotent: entries with a snapshot already are left alone.
-    migrateSnapshots(inv);
-
-    return inv;
-  }
-
-  // Walk the group tree, making sure every group node has a contents
-  // array and dropping anything malformed. Called after any migration
-  // step that might have left the tree in a partial state.
-  function normalizeGroupTree(groups) {
-    if (!Array.isArray(groups)) return;
-    groups.forEach(g => {
-      if (!g || typeof g !== 'object') return;
-      if (isGroupNode(g)) {
-        if (!Array.isArray(g.contents)) g.contents = [];
-        // Recurse into subgroup children.
-        g.contents = g.contents.filter(child => {
-          if (!child || typeof child !== 'object') return false;
-          if (isGroupNode(child)) {
-            if (!Array.isArray(child.contents)) child.contents = [];
-            normalizeGroupTree([child]);
-          }
-          return true;
-        });
-      }
-    });
-  }
-
-  // A node is a "group" (vs an entry) when it has a `kind` field of
-  // 'custom' or 'onPerson'. Entries don't have that field (they have
-  // defKind + defId). This is the single discriminator used throughout
-  // the walk code.
-  function isGroupNode(node) {
-    return !!(node && (node.kind === 'custom' || node.kind === 'onPerson'));
-  }
-
-  // Walk every entry in the inventory tree and ensure it has a
-  // `snapshot` field. See ensureInventory for rationale. Post-refactor,
-  // the tree is entirely groups-and-entries; bySlot is gone.
-  function migrateSnapshots(inv) {
-    const ruleset = getRuleset ? getRuleset() : null;
-    // `visit` walks an array that may hold entries OR subgroups.
-    // Entries get their snapshot populated; groups are recursed into.
-    const visit = (arr) => {
-      if (!Array.isArray(arr)) return;
-      arr.forEach(node => {
-        if (!node || typeof node !== 'object') return;
-        if (isGroupNode(node)) {
-          visit(node.contents);
-        } else {
-          // Entry — populate snapshot if missing.
-          if (!node.snapshot) {
-            node.snapshot = buildSnapshotFromDef(node, ruleset, inv);
-          }
-          // Recurse into container contents so nested legacy entries
-          // get migrated too.
-          if (Array.isArray(node.contents)) visit(node.contents);
-        }
-      });
-    };
-    (inv.groups || []).forEach(g => visit(g.contents));
-  }
-
-  // Build a snapshot object for an entry by looking up its def in the
-  // ruleset + customDefs. Used during migration of legacy entries AND
-  // during instantiation of new ones. Deep-copies dimensions and
-  // containerOf so snapshot edits don't mutate shared def references.
-  function buildSnapshotFromDef(entry, ruleset, inv) {
-    const def = findDefInSources(entry.defId, ruleset, inv);
-    if (def) {
-      // Determine containerOf. Three possible def shapes:
-      //   1. Unified ruleset item with `containerOf` block — use it.
-      //   2. Legacy pure-container with top-level `packingEfficiency`
-      //      and no explicit containerOf — synthesize containerOf from
-      //      dimensions + packingEfficiency (they represent the inner
-      //      capacity in the old schema).
-      //   3. Plain item — null.
-      let containerOf = null;
-      if (def.containerOf) {
-        containerOf = {
-          dimensions:        deepCopyDims(def.containerOf.dimensions),
-          packingEfficiency: Number.isFinite(def.containerOf.packingEfficiency) ? def.containerOf.packingEfficiency : 0.75
-        };
-      } else if (def.packingEfficiency != null) {
-        containerOf = {
-          dimensions:        deepCopyDims(def.dimensions),
-          packingEfficiency: Number.isFinite(def.packingEfficiency) ? def.packingEfficiency : 0.75
-        };
-      }
-      return {
-        name:          def.name || '',
-        description:   def.description || '',
-        dimensions:    deepCopyDims(def.dimensions),
-        weight:        Number.isFinite(def.weight) ? def.weight : 0,
-        containerOf,
-        // Legacy category string preserved so weapon-linkage etc. can
-        // still resolve if needed. defaultSlot NOT snapshotted because
-        // it's only useful during catalog-add.
-        legacyCategory: def.legacyCategory || def.category || '',
-        // Weapon snapshot — deep clone so mutations on the entry
-        // don't leak back to the def.
-        weapon:        def.weapon ? JSON.parse(JSON.stringify(def.weapon)) : null,
-        // SIZE + material Armor integer — feeds Durability computation
-        // on the character sheet. Both have sensible defaults for
-        // defs that don't carry them (legacy migrations, custom items).
-        size:          Number.isFinite(def.size) ? def.size : 3,
-        armor:         Number.isFinite(def.armor) ? def.armor : 0,
-        // Armor-worn facet — present when the item is wearable armor.
-        // Carries coverage + condition only; the numeric rating lives
-        // at `.armor` above.
-        armorWorn:     def.armorWorn ? JSON.parse(JSON.stringify(def.armorWorn)) : null
-      };
-    }
-    // Def is missing entirely — build a minimal placeholder snapshot
-    // so the entry still renders with a recognizable name.
-    return {
-      name:          '(unknown item)',
-      description:   '',
-      dimensions:    { l: 0, w: 0, h: 0 },
-      weight:        0,
-      containerOf:   null,
-      legacyCategory: '',
-      weapon:        null,
-      size:          3,
-      armor:         0,
-      armorWorn:     null
-    };
-  }
-
-  // Helper: find a def across ruleset.items + customDefs.{containers,equipment}.
-  // Returns null if no match. Same logic as getItemDef but without
-  // requiring the module's context getters — used by migrations that
-  // may run before the full module is wired up.
-  function findDefInSources(defId, ruleset, inv) {
-    if (!defId) return null;
-    const fromRuleset = ((ruleset && ruleset.items) || []).find(x => x.id === defId);
-    if (fromRuleset) return fromRuleset;
-    const fromEq   = ((inv && inv.customDefs && inv.customDefs.equipment)  || []).find(x => x.id === defId);
-    if (fromEq) return fromEq;
-    const fromCont = ((inv && inv.customDefs && inv.customDefs.containers) || []).find(x => x.id === defId);
-    if (fromCont) return fromCont;
-    return null;
-  }
-
-  function deepCopyDims(d) {
-    if (!d || typeof d !== 'object') return { l: 0, w: 0, h: 0 };
-    return {
-      l: Number.isFinite(d.l) ? d.l : 0,
-      w: Number.isFinite(d.w) ? d.w : 0,
-      h: Number.isFinite(d.h) ? d.h : 0
-    };
-  }
-
-  // Walk the inventory tree, calling visit(entry, parentArray, index)
-  // for each item/container entry. Groups are traversed into but never
-  // passed to the visitor — visit() is called only on entries.
-  //
-  // Post-refactor, every entry lives inside some group's contents (or
-  // nested inside a container or subgroup within that). There are no
-  // more body slots to special-case.
-  function walkTree(visit) {
-    const inv = ensureInventory();
-    const visitArr = (arr) => {
-      if (!Array.isArray(arr)) return;
-      for (let i = 0; i < arr.length; i++) {
-        const node = arr[i];
-        if (!node || typeof node !== 'object') continue;
-        if (isGroupNode(node)) {
-          // Subgroup — don't call visit, just recurse.
-          visitArr(node.contents);
-        } else {
-          // Entry — call visit, then recurse into its container contents.
-          visit(node, arr, i);
-          if (Array.isArray(node.contents)) visitArr(node.contents);
-        }
-      }
-    };
-    (inv.groups || []).forEach(g => visitArr(g.contents));
-  }
-
-  function findEntry(id) {
-    if (!id) return null;
-    let found = null;
-    walkTree((entry) => { if (entry.id === id) found = entry; });
-    return found;
-  }
-
-  function removeEntry(id) {
-    const inv = ensureInventory();
-    // Remove a node (entry OR subgroup) from whichever array it lives
-    // in. Recurses through subgroups and container contents equally.
-    const removeFromArr = (arr) => {
-      if (!Array.isArray(arr)) return false;
-      for (let i = 0; i < arr.length; i++) {
-        const node = arr[i];
-        if (!node || typeof node !== 'object') continue;
-        if (node.id === id) { arr.splice(i, 1); return true; }
-        if (Array.isArray(node.contents) && removeFromArr(node.contents)) return true;
-      }
-      return false;
-    };
-    for (const g of inv.groups) {
-      if (removeFromArr(g.contents)) return true;
-    }
-    return false;
-  }
-
-  // Find the subgroup (or top-level group) with the given id. Walks the
-  // nested subgroup tree. Returns null if not found. Used by placement
-  // targeting when the user picks a specific subgroup from a menu.
-  function findGroup(id) {
-    if (!id) return null;
-    const inv = ensureInventory();
-    const search = (nodes) => {
-      if (!Array.isArray(nodes)) return null;
-      for (const node of nodes) {
-        if (!node || typeof node !== 'object') continue;
-        if (isGroupNode(node)) {
-          if (node.id === id) return node;
-          const nested = search(node.contents);
-          if (nested) return nested;
-        }
-      }
-      return null;
-    };
-    // Top-level groups (On-Person + custom) are in inv.groups directly.
-    for (const g of inv.groups || []) {
-      if (g.id === id) return g;
-      const nested = search(g.contents);
-      if (nested) return nested;
-    }
-    return null;
-  }
-
-  // ─── PERSISTENCE ───
-
-  // Central choke point for all inventory writes. Every mutating
-  // handler calls this (add/move/delete item, group ops, carry mods).
-  // Gating here stops every write path at once without having to
-  // decorate each caller. Owners + GMs pass; everyone else is a no-op.
-  // Recursively sanitize any entry snapshots' weapon ranges so nested
-  // arrays ([s,e] tuples) never hit Firestore. Converts to {s,e}
-  // objects on the fly. Walks bySlot groups and stowed, descending
-  // into container contents. This is defensive — new entries come
-  // through fresh resolver/coercer paths that already produce
-  // objects, but legacy snapshots from earlier versions may still be
-  // in the stored character doc. Run on every save so Firestore
-  // accepts the write.
-  function _sanitizeEntryRangesInPlace(entry) {
-    if (!entry) return;
-    const snap = entry.snapshot;
-    if (snap && snap.weapon && snap.weapon.kind === 'melee' && Array.isArray(snap.weapon.ranges)) {
-      snap.weapon.ranges = snap.weapon.ranges.map(b => {
-        if (b && typeof b === 'object' && !Array.isArray(b)) {
-          return { s: Number(b.s) || 0, e: Number(b.e) || 0 };
-        }
-        if (Array.isArray(b) && b.length >= 2) {
-          return { s: Number(b[0]) || 0, e: Number(b[1]) || 0 };
-        }
-        return { s: 0, e: 0 };
-      });
-    }
-    if (Array.isArray(entry.contents)) {
-      entry.contents.forEach(_sanitizeEntryRangesInPlace);
-    }
-  }
-
-  async function save() {
-    if (!getCanEdit()) return;
-    const inv = ensureInventory();
-    // Walk every entry and normalize weapon.ranges to {s,e} objects
-    // so Firestore (which rejects nested arrays) accepts the write.
-    // Mutates in place — cheap, and future reads see the clean shape.
-    if (inv && inv.bySlot && typeof inv.bySlot === 'object') {
-      Object.values(inv.bySlot).forEach(arr => {
-        if (Array.isArray(arr)) arr.forEach(_sanitizeEntryRangesInPlace);
-      });
-    }
-    if (Array.isArray(inv && inv.stowed)) {
-      inv.stowed.forEach(_sanitizeEntryRangesInPlace);
-    }
-    await saveCharacter(getCharId(), { inventory: inv });
-  }
-
-  // ─── MAIN RENDER ───
-
-  function renderAll() {
-    const host = document.getElementById('inventory-content');
-    if (!host) return;
-    const ruleset = getRuleset();
-    if (!ruleset) {
-      host.innerHTML = '<div class="inv-empty">No ruleset loaded.</div>';
-      return;
+    /* Derived stat cards */
+    .ds-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+    .ds-card { background: #111; border: 1px solid #1f1f1f; border-radius: 4px; padding: 10px 12px; position: relative; }
+    .ds-card-name { font-size: 10px; font-weight: 700; letter-spacing: .06em; color: #888; text-transform: uppercase; margin-bottom: 6px; padding-right: 36px; }
+    /* Roll-modifier badge — shown top-right. Read-only: signed static number
+       (e.g. +STRMOD) that's added to the TOTAL of a roll's dice sum. Hover
+       tooltip explains what it is. Not editable here — separate "dice mod"
+       system handles bonus DICE (see .ds-card-dicepill below). */
+    .ds-card-rollmod {
+      position: absolute;
+      top: 8px;
+      right: 10px;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 13px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: #d0c080;
+      background: #1a1810;
+      border: 1px solid #3a3420;
+      border-radius: 4px;
+      padding: 2px 8px;
+      line-height: 1.1;
+      letter-spacing: 0;
+      cursor: help;
     }
 
-    const inv = ensureInventory();
-    const canEdit = getCanEdit();
+    /* Dice-mod pill — below the value. Clickable in edit mode. Shows net
+       bonus dice from abilities ("+2d"), or a prompt to add the first one.
+       When the card's panel is open, the pill is highlighted. */
+    .ds-card-dicepill {
+      display: inline-block;
+      margin: 4px 0 2px;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0;
+      padding: 3px 10px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.15s;
+      background: transparent;
+      font-family: 'Consolas', 'Courier New', monospace;
+    }
+    .ds-card-dicepill.has-mods {
+      background: #10222a;
+      border: 1px solid #1d4050;
+      color: #6ec0e0;
+    }
+    .ds-card-dicepill.has-mods:hover { background: #163244; border-color: #2e5a70; color: #92d0ea; }
+    .ds-card-dicepill.empty {
+      background: transparent;
+      border: 1px dashed #2a2a2a;
+      color: #555;
+      font-weight: 500;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 10px;
+      letter-spacing: .04em;
+    }
+    .ds-card-dicepill.empty:hover { border-style: solid; border-color: #555; color: #aaa; background: #141414; }
+    .ds-card-dicepill.open {
+      background: #1d4050 !important;
+      border-color: #4a7a95 !important;
+      color: #a8e0f0 !important;
+    }
+    .ds-card-dicepill.readonly { cursor: help; }
 
-    // View toggle header: always at the top, switches between the
-    // character's actual inventory and the read-only ruleset catalog.
-    // Owner-only Manage Catalogue button floats to the right; it opens
-    // a modal for CRUD on the character's personal catalogue (custom
-    // defs) without needing to go through the Add → + Custom flow.
-    let html = `<div class="inv-view-toggle">
-      <div class="inv-view-toggle-left">
-        <button class="inv-view-btn${viewMode === 'inventory' ? ' on' : ''}" onclick="invSetViewMode('inventory')">Inventory</button>
-        <button class="inv-view-btn${viewMode === 'catalog'   ? ' on' : ''}" onclick="invSetViewMode('catalog')">Catalog</button>
-      </div>
-      ${canEdit ? `<button class="inv-manage-btn" onclick="invOpenManageCatalog()" title="Create, edit, and delete items in your personal catalogue for this character.">Manage Personal Catalogue</button>` : ''}
-    </div>`;
-
-    // Toast confirming the last add/promote action, if any. Fades
-    // after 3s via the timer that set it. Renders in either view.
-    if (lastAddToast) {
-      html += `<div class="inv-add-toast">${escapeHtml(lastAddToast)}</div>`;
+    /* Panel summary — shows total dice the player actually rolls. */
+    .ds-dicemod-summary {
+      display: flex; align-items: baseline; gap: 6px;
+      padding: 6px 10px;
+      background: #10222a;
+      border: 1px solid #1d4050;
+      border-radius: 3px;
+      font-size: 11px;
+    }
+    .ds-dm-summary-label {
+      color: #888;
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      font-weight: 700;
+    }
+    .ds-dm-summary-value {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 14px;
+      font-weight: 700;
+      color: #92d0ea;
+      font-variant-numeric: tabular-nums;
+    }
+    .ds-dm-summary-breakdown {
+      color: #6a8a98;
+      font-size: 10px;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-variant-numeric: tabular-nums;
+    }
+    .ds-dm-passive-note {
+      color: #4a7a4a;
+      font-style: italic;
+      font-family: 'Open Sans', sans-serif;
     }
 
-    if (viewMode === 'catalog') {
-      html += renderCatalogView(ruleset, inv);
-    } else {
-      // Carry stats — three cards (CAP / ENC / LIFT) at the top of the
-      // inventory view. They show the current derived carry state and
-      // let the player manage named modifiers on each. Derived in sync
-      // with char-derived.js; modifiers are stored on the character
-      // (capModifiers, liftModifiers, encModifiers arrays).
-      const charData = getCharData();
-      if (charData) {
-        const derived = computeDerivedStats(charData, ruleset);
-        html += renderCarryCards(derived.carry, canEdit);
-      }
-
-      // Inventory view — groups-first layout: On-Person (wraps slots)
-      // plus any custom groups. One group header per entry in inv.groups,
-      // rendered in order. Custom groups may be renamed/deleted;
-      // On-Person cannot.
-      inv.groups.forEach(group => {
-        html += renderGroup(group, ruleset, inv, canEdit);
-      });
-
-      // Add-group button at the bottom of the inventory view. Custom
-      // groups only — On-Person is special and always exists.
-      if (canEdit) {
-        html += `<div class="inv-add-group-row">
-          <button class="inv-add-btn inv-add-btn-ghost" onclick="invAddGroup()">+ Add Group</button>
-          <span class="inv-add-group-hint">e.g. Vehicle, Safe House, Stash — anything that isn't on your body.</span>
-        </div>`;
-      }
+    /* ─── PAIN / STRESS / STRAIN ─── */
+    /* Shared pill block — appears in both Health (Pain) and Sanity (Stress)
+       sections. Click the head row to expand an editor for percentile
+       modifiers that adjust the base %. Left-edge color reflects severity. */
+    .strain-block {
+      margin: 12px 0;
+    }
+    .strain-head {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      width: 100%;
+      padding: 10px 14px;
+      background: #0e0e0e;
+      border: 1px solid #222;
+      border-left: 3px solid #2a2a2a;
+      border-radius: 4px;
+      cursor: pointer;
+      text-align: left;
+      font-family: 'Open Sans', sans-serif;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    button.strain-head:hover { background: #141414; }
+    .strain-head.strain-zero  { border-left-color: #2a3a2a; }
+    .strain-head.strain-light { border-left-color: #6a8a4a; }
+    .strain-head.strain-heavy { border-left-color: #c88a3a; }
+    .strain-head.strain-crit  { border-left-color: #c85a3a; }
+    .strain-head.open {
+      background: #141414;
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+    .strain-label {
+      font-size: 11px; font-weight: 700; letter-spacing: .12em;
+      text-transform: uppercase; color: #aaa;
+      min-width: 60px;
+    }
+    .strain-percent {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 18px; font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: #e0e0e0;
+    }
+    .strain-head.strain-zero  .strain-percent { color: #666; }
+    .strain-head.strain-light .strain-percent { color: #a0c080; }
+    .strain-head.strain-heavy .strain-percent { color: #d8a860; }
+    .strain-head.strain-crit  .strain-percent { color: #e07878; }
+    .strain-breakdown {
+      font-size: 10px;
+      color: #666;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-variant-numeric: tabular-nums;
+      flex: 1;
     }
 
-    // Modal host — only gets content when activeModal is set.
-    html += '<div id="inv-modal-root"></div>';
-
-    // Personal Catalogue manager — separate modal root so it stacks
-    // cleanly above the picker when both would be open (rare, but
-    // possible if a user Ctrl-clicks or script-triggers; better to have
-    // predictable ordering than overlap chaos).
-    html += '<div id="inv-catalog-manager-root"></div>';
-
-    host.innerHTML = html;
-
-    if (activeModal) renderActiveModal();
-    // Always touch the manager root — when open, render the modal;
-    // when closed, explicitly clear it. Without the explicit clear,
-    // a stale modal could persist in environments that re-use DOM
-    // references rather than rebuilding from the host's innerHTML.
-    if (catalogManager.open) {
-      renderCatalogManager();
-    } else {
-      const mgrRoot = document.getElementById('inv-catalog-manager-root');
-      if (mgrRoot) mgrRoot.innerHTML = '';
+    /* Expanded panel below the head row */
+    .strain-panel {
+      padding: 10px 14px 12px;
+      background: #0a0a0a;
+      border: 1px solid #222;
+      border-top: none;
+      border-radius: 0 0 4px 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
-  }
-
-  // ─── CARRY CARDS (CAP / ENC / LIFT) ───
-  //
-  // Three cards at the top of the Inventory tab showing the character's
-  // current carry stats. Each card has:
-  //   - A current value (post-modifier)
-  //   - A base value (pre-modifier, if mods are in play)
-  //   - A toggle-to-expand modifier editor with named ± entries
-  //
-  // CAP and LIFT accept percent modifiers (+50% = ×1.5). ENC modifiers
-  // are additive to the % value directly. See char-derived.js for the
-  // math; this file is purely presentation + CRUD.
-
-  function renderCarryCards(carry, canEdit) {
-    if (!carry) return '';
-    const capOpen  = expandedCarryCards.has('cap');
-    const encOpen  = expandedCarryCards.has('enc');
-    const liftOpen = expandedCarryCards.has('lift');
-
-    // Over-capacity severity tint on ENC. Mirrors the Pain/Stress pill
-    // color scale so players read severity at a glance.
-    const encPct = carry.encPercent || 0;
-    const encSev = encPct >= 75 ? ' carry-crit'
-                 : encPct >= 50 ? ' carry-heavy'
-                 : encPct >= 25 ? ' carry-light'
-                 : ' carry-zero';
-
-    // Build the row body inline. The wrapper/head are added by
-    // wrapCollapsibleSection below so the whole row can be collapsed
-    // as a unit (click the "Carry" header). Storage:
-    //   prime.collapse.inventory.carry   (per-browser localStorage)
-    let row_html = '<div class="inv-carry-cards">';
-
-    // ── CAP CARD ──
-    row_html += renderCarryCard({
-      key:        'cap',
-      label:      'Carrying Capacity',
-      code:       'CAP',
-      open:       capOpen,
-      canEdit,
-      valueHtml:  `${fmt(carry.cap)} <span class="inv-carry-unit">lbs</span>`,
-      baseHtml:   (carry.capModTotal !== 0)
-                    ? `<span class="inv-carry-base">base ${fmt(carry.rawCap)} ${carry.capModTotal > 0 ? '+' : '−'} ${Math.abs(carry.capModTotal)}%</span>`
-                    : `<span class="inv-carry-base">base ${fmt(carry.rawCap)}</span>`,
-      description:'Maximum weight you can carry without penalty. Base: STR × 10. Abilities and modifiers adjust this.',
-      modifiers:  carry.capModifiers,
-      modUnit:    '%',
-      addFn:      'invAddCapMod',
-      updateFn:   'invUpdateCapMod',
-      deleteFn:   'invDeleteCapMod',
-      severityCls:''
-    });
-
-    // ── ENC CARD ──
-    const ratio = carry.cap > 0
-      ? `${fmt(carry.carried)} / ${fmt(carry.cap)} lbs`
-      : `${fmt(carry.carried)} lbs (no CAP)`;
-    const overBy = Math.max(0, carry.carried - carry.cap);
-    const ratioSub = overBy > 0
-      ? `<span class="inv-carry-base">over by ${fmt(overBy)} lbs</span>`
-      : `<span class="inv-carry-base">within CAP</span>`;
-    row_html += renderCarryCard({
-      key:        'enc',
-      label:      'Encumbrance',
-      code:       'ENC',
-      open:       encOpen,
-      canEdit,
-      valueHtml:  `${fmt(encPct)}<span class="inv-carry-unit">%</span>`,
-      baseHtml:   `<div class="inv-carry-ratio">${ratio}</div>${ratioSub}${carry.encModTotal !== 0 ? `<span class="inv-carry-base"> · mods ${carry.encModTotal > 0 ? '+' : '−'}${Math.abs(carry.encModTotal)}%</span>` : ''}`,
-      description:'Penalty from carrying weight above CAP. +10% per increment over CAP (continuous). Hits 100% at LIFT.',
-      modifiers:  carry.encModifiers,
-      modUnit:    '%',
-      addFn:      'invAddEncMod',
-      updateFn:   'invUpdateEncMod',
-      deleteFn:   'invDeleteEncMod',
-      severityCls: encSev
-    });
-
-    let liftBanner = '';
-    let liftSeverityCls = '';
-    if (carry.lift > 0) {
-      const over = carry.carried - carry.lift;
-      if (over >= 0) {
-        if (over === 0) {
-          liftBanner = `<div class="inv-carry-banner inv-carry-banner-warn">
-            <span class="inv-carry-banner-icon">⚠</span>
-            <span class="inv-carry-banner-txt"><strong>At LIFT.</strong> ENC is 100%. You cannot move without rolling to lift.</span>
-          </div>`;
-          liftSeverityCls = ' carry-heavy';
-        } else {
-          liftBanner = `<div class="inv-carry-banner inv-carry-banner-danger">
-            <span class="inv-carry-banner-icon">⛔</span>
-            <span class="inv-carry-banner-txt"><strong>Over LIFT by ${fmt(over)} lbs.</strong> You cannot carry this weight without a successful lift roll — drop something, or test STR to hoist it.</span>
-          </div>`;
-          liftSeverityCls = ' carry-crit';
-        }
-      } else if (carry.carried >= carry.lift * 0.9) {
-        const remaining = carry.lift - carry.carried;
-        liftBanner = `<div class="inv-carry-banner inv-carry-banner-note">
-          <span class="inv-carry-banner-icon">◉</span>
-          <span class="inv-carry-banner-txt">Nearing LIFT — ${fmt(remaining)} lbs until max.</span>
-        </div>`;
-        liftSeverityCls = ' carry-light';
-      }
+    .strain-panel-base {
+      font-size: 11px;
+      color: #888;
+      font-style: italic;
+      padding: 4px 8px;
+      background: #111;
+      border-radius: 3px;
+    }
+    .strain-panel-total {
+      font-size: 11px;
+      color: #888;
+      font-weight: 600;
+      padding-top: 8px;
+      border-top: 1px solid #1a1a1a;
+    }
+    /* The '%' suffix after the value input in a strain mod row */
+    .mod-unit {
+      font-size: 11px;
+      color: #666;
+      font-family: 'Consolas', 'Courier New', monospace;
+      margin-left: -4px;
     }
 
-    const fmtPct = (n) => `${n > 0 ? '+' : '−'}${Math.abs(n)}%`;
-    const liftParts = [];
-    if (carry.liftFromCapPct !== 0) liftParts.push(`${fmtPct(carry.liftFromCapPct)} from CAP`);
-    if (carry.liftModTotal      !== 0) liftParts.push(`${fmtPct(carry.liftModTotal)} from LIFT`);
-    const liftBaseHtml = liftParts.length === 0
-      ? `<span class="inv-carry-base">base ${fmt(carry.rawLift)}</span>`
-      : `<span class="inv-carry-base">base ${fmt(carry.rawLift)} · ${liftParts.join(' · ')}</span>`;
+    /* Expanded roll-modifier panel inside the card */
+    .ds-card.rollmod-open { border-color: #3a3018; }
+    .ds-rollmod-panel {
+      margin-top: 10px;
+      padding: 10px 0 2px;
+      border-top: 1px solid #2a2418;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 0;
+    }
+    /* Force inputs and flex rows inside the narrow card panel to respect
+       the card's width. Without min-width:0, inputs refuse to shrink below
+       their default `size` attribute — which pushes the × button visually
+       past the card's right edge and lets the neighbor card cover it. */
+    .ds-rollmod-panel .mod-item { min-width: 0; }
+    .ds-rollmod-panel .mod-name-input { min-width: 0; flex: 1 1 0; }
+    .ds-rollmod-panel .mod-val-input { width: 48px; flex: 0 0 48px; }
+    .ds-rollmod-panel .mod-delete { flex: 0 0 auto; }
+    .ds-rollmod-base {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 10px;
+      color: #888;
+    }
+    .ds-rm-base-label {
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      font-weight: 700;
+      color: #666;
+    }
+    .ds-rm-base-value {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 12px;
+      font-weight: 700;
+      color: #aaa;
+      font-variant-numeric: tabular-nums;
+    }
+    .ds-card-code { font-family: 'Consolas', 'Courier New', monospace; font-size: 9px; color: #555; font-weight: 400; letter-spacing: 0; }
+    .ds-card-formula { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #666; font-weight: 500; letter-spacing: 0; margin-bottom: 4px; }
+    .ds-card-value { font-size: 24px; font-weight: 700; color: #e8e8e8; font-variant-numeric: tabular-nums; line-height: 1.1; }
+    /* Strain value toggle — clickable wrapper around two alternate
+       displays: the full breakdown ("10 − 2.5") and the pre-computed
+       effective value ("7.5"). Card class 'strain-collapsed' flips which
+       one is visible. Cursor signals the value is clickable. */
+    .ds-card-penalty-toggle {
+      cursor: pointer;
+      -webkit-user-select: none;
+         -moz-user-select: none;
+              user-select: none;
+      border-radius: 3px;
+      padding: 0 2px;
+      margin: 0 -2px;
+      transition: background 0.1s;
+    }
+    .ds-card-penalty-toggle:hover { background: rgba(255,255,255,0.04); }
+    /* Both spans render inline by default; CSS below hides whichever one
+       is inactive for the current card state. */
+    .ds-card-penalty-expanded,
+    .ds-card-penalty-effective { display: inline; }
+    .ds-card.penalty-collapsed .ds-card-penalty-expanded { display: none; }
+    .ds-card:not(.penalty-collapsed) .ds-card-penalty-effective { display: none; }
+    /* The "− 2.5" part of the expanded view — red italic emphasis. */
+    .ds-card-penalty-reduction {
+      color: #e07878;
+      font-style: italic;
+      font-size: 17px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      margin-left: 2px;
+    }
+    /* The collapsed "7.5" effective value — tinted red italic so the
+       player sees it's a strain-reduced number, not the base stat. */
+    .ds-card-penalty-effective {
+      color: #e07878;
+      font-style: italic;
+      font-variant-numeric: tabular-nums;
+    }
+    .ds-card-error { color: #c87777; font-size: 14px; }
+    .ds-card-unit { font-size: 11px; font-weight: 500; color: #666; margin-left: 3px; }
 
-    // ── LIFT CARD ──
-    row_html += renderCarryCard({
-      key:        'lift',
-      label:      'Maximum Lift',
-      code:       'LIFT',
-      open:       liftOpen,
-      canEdit,
-      valueHtml:  `${fmt(carry.lift)} <span class="inv-carry-unit">lbs</span>`,
-      baseHtml:   liftBaseHtml,
-      description:'Absolute maximum you can ever carry without a roll. At this weight, ENC is 100% and you cannot move without rolling to "lift". Base: CAP × 11.',
-      modifiers:  carry.liftModifiers,
-      modUnit:    '%',
-      addFn:      'invAddLiftMod',
-      updateFn:   'invUpdateLiftMod',
-      deleteFn:   'invDeleteLiftMod',
-      severityCls: liftSeverityCls,
-      banner:     liftBanner
-    });
-
-    row_html += '</div>';
-
-    // Wrap the whole row in a collapsible section so the player can
-    // hide the full Carry block. Inventory groups below this row have
-    // their own per-group collapses (group.collapsed in the char doc);
-    // this one is separate and persists per-browser.
-    return wrapCollapsibleSection(
-      'prime.collapse.inventory.carry',
-      '<span class="inv-carry-head-text">Carry</span>',
-      row_html,
-      { wrapperClass: 'inv-carry-wrap', collapsibleClass: 'inv-carry-head', rerenderHandler: 'inventoryToggleCollapse' }
-    );
-  }
-
-  // One carry card. Shared markup for CAP / ENC / LIFT — they all have
-  // the same visual shape: big value, base/ratio sub-line, description,
-  // an optional banner (warnings/notices), and an expandable modifier
-  // editor.
-  function renderCarryCard(opts) {
-    const {
-      key, label, code, open, canEdit, valueHtml, baseHtml,
-      description, modifiers, modUnit, addFn, updateFn, deleteFn, severityCls,
-      banner
-    } = opts;
-    const mods = Array.isArray(modifiers) ? modifiers : [];
-    const modsClass = mods.length > 0 ? ' has-mods' : '';
-
-    let html = `<div class="inv-carry-card${open ? ' open' : ''}${modsClass}${severityCls || ''}">
-      <div class="inv-carry-head" onclick="invToggleCarryCard('${key}')" title="Click to ${open ? 'collapse' : 'expand'} ${label} modifiers">
-        <div class="inv-carry-label">
-          <span class="inv-carry-name">${escapeHtml(label)}</span>
-          <span class="inv-carry-code">${escapeHtml(code)}</span>
-        </div>
-        <div class="inv-carry-value">${valueHtml}</div>
-        <div class="inv-carry-sub">${baseHtml || ''}</div>
-      </div>
-      ${banner || ''}
-      <div class="inv-carry-desc">${escapeHtml(description || '')}</div>`;
-
-    if (open) {
-      html += `<div class="inv-carry-panel">`;
-      if (mods.length === 0) {
-        html += `<div class="inv-carry-empty">No modifiers. ${canEdit ? 'Add one below.' : ''}</div>`;
-      } else {
-        html += `<div class="inv-carry-mods">`;
-        mods.forEach((m, idx) => {
-          const name  = (m && m.name)  || '';
-          const value = (m && typeof m.value === 'number') ? m.value : 0;
-          html += `<div class="inv-carry-mod-row">`;
-          if (canEdit) {
-            html += `
-              <input type="text" class="inv-carry-mod-name"
-                     value="${escapeHtml(name)}"
-                     onchange="${updateFn}(${idx}, 'name', this.value)"
-                     placeholder="Name (e.g. Brawny Trait)"/>
-              <input type="number" class="inv-carry-mod-value"
-                     value="${value}" step="1"
-                     onchange="${updateFn}(${idx}, 'value', this.value)"/>
-              <span class="inv-carry-mod-unit">${escapeHtml(modUnit)}</span>
-              <button class="inv-carry-mod-del" onclick="${deleteFn}(${idx})" title="Remove modifier">×</button>`;
-          } else {
-            const sign = value > 0 ? '+' : (value < 0 ? '−' : '±');
-            html += `
-              <span class="inv-carry-mod-name readonly">${escapeHtml(name || '(unnamed)')}</span>
-              <span class="inv-carry-mod-value readonly">${sign}${Math.abs(value)}${escapeHtml(modUnit)}</span>`;
-          }
-          html += `</div>`;
-        });
-        html += `</div>`;
-      }
-      if (canEdit) {
-        html += `<button class="inv-carry-add" onclick="${addFn}()">+ Add Modifier</button>`;
-      }
-      html += `</div>`;
+    /* Speed conversions — opt-in per stat def via showSpeedConversions.
+       Small ⇅ caret button next to the value toggles an inline panel
+       with time/unit conversions (3s, 6s, /min, /hr, mph, km/h, m/s).
+       The panel math uses the EFFECTIVE (post-Penalty) value — what the
+       character can actually move right now — not the base. */
+    .ds-card-conv-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      margin-left: 6px;
+      padding: 0;
+      background: transparent;
+      border: 1px solid #2a2a2a;
+      border-radius: 3px;
+      color: #888;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+      transition: all .1s;
+      vertical-align: middle;
+      -webkit-user-select: none;
+         -moz-user-select: none;
+              user-select: none;
+    }
+    .ds-card-conv-toggle:hover {
+      background: #1a1a1a;
+      border-color: #3a3a3a;
+      color: #ccc;
+    }
+    .ds-card-conv-toggle.open {
+      background: #1a1a1a;
+      color: #e0e0e0;
+      border-color: #3a3a3a;
     }
 
-    html += `</div>`;
-    return html;
-  }
-
-  function toggleCarryCard(key) {
-    if (!key) return;
-    if (expandedCarryCards.has(key)) expandedCarryCards.delete(key);
-    else expandedCarryCards.add(key);
-    renderAll();
-  }
-
-  // ── CAP/LIFT/ENC modifier CRUD ──
-  // Three parallel arrays on the character object. Same patterns as
-  // painModifiers / stressModifiers — add a default-named entry,
-  // update per field, delete by index. Save after each change so
-  // the change persists even if the session ends mid-edit.
-
-  function addCarryMod(arrayKey, defaultName) {
-    if (!getCanEdit()) return;
-    const c = getCharData();
-    if (!c) return;
-    if (!Array.isArray(c[arrayKey])) c[arrayKey] = [];
-    c[arrayKey].push({ name: defaultName || '', value: 0 });
-    saveCharacter(getCharId(), c);
-    // Expand the card matching this array so the new row is visible.
-    const key = (arrayKey === 'capModifiers')  ? 'cap'
-             : (arrayKey === 'liftModifiers') ? 'lift'
-             : (arrayKey === 'encModifiers')  ? 'enc' : null;
-    if (key) expandedCarryCards.add(key);
-    renderAll();
-  }
-  function updateCarryMod(arrayKey, idx, field, raw) {
-    if (!getCanEdit()) return;
-    const c = getCharData();
-    if (!c || !Array.isArray(c[arrayKey]) || !c[arrayKey][idx]) return;
-    if (field === 'name') {
-      c[arrayKey][idx].name = String(raw || '');
-    } else if (field === 'value') {
-      const n = parseFloat(raw);
-      c[arrayKey][idx].value = Number.isFinite(n) ? n : 0;
+    .ds-card-conv-panel {
+      margin-top: 8px;
+      padding: 10px 12px;
+      background: #0a0a0a;
+      border: 1px solid #1a1a1a;
+      border-radius: 3px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
-    saveCharacter(getCharId(), c);
-    renderAll();
-  }
-  function deleteCarryMod(arrayKey, idx) {
-    if (!getCanEdit()) return;
-    const c = getCharData();
-    if (!c || !Array.isArray(c[arrayKey])) return;
-    c[arrayKey].splice(idx, 1);
-    saveCharacter(getCharId(), c);
-    renderAll();
-  }
-
-  function addCapMod()    { addCarryMod('capModifiers',  ''); }
-  function addLiftMod()   { addCarryMod('liftModifiers', ''); }
-  function addEncMod()    { addCarryMod('encModifiers',  ''); }
-  function updateCapMod(i,f,v)  { updateCarryMod('capModifiers',  i, f, v); }
-  function updateLiftMod(i,f,v) { updateCarryMod('liftModifiers', i, f, v); }
-  function updateEncMod(i,f,v)  { updateCarryMod('encModifiers',  i, f, v); }
-  function deleteCapMod(i)  { deleteCarryMod('capModifiers',  i); }
-  function deleteLiftMod(i) { deleteCarryMod('liftModifiers', i); }
-  function deleteEncMod(i)  { deleteCarryMod('encModifiers',  i); }
-
-  // Toggle a group's countsForEncumbrance flag. Called from the group
-  // header checkbox. Inverts the current effective value — if the
-  // group was counting (explicitly or by default), it stops counting;
-  // if it wasn't, it starts.
-  function toggleGroupEncumbrance(groupId) {
-    if (!getCanEdit()) return;
-    const c = getCharData();
-    if (!c) return;
-    const group = findGroup(groupId);
-    if (!group) return;
-    // Compute current effective state: onPerson defaults true, others false.
-    const currentlyCounts = (typeof group.countsForEncumbrance === 'boolean')
-      ? group.countsForEncumbrance
-      : (group.kind === 'onPerson');
-    group.countsForEncumbrance = !currentlyCounts;
-    saveCharacter(getCharId(), c);
-    renderAll();
-  }
-
-  // ─── GROUP RENDERER ───
-  //
-  // Each group is a top-level collapsible section. On-Person's body is
-  // the ruleset's body slots (each a sub-section). Custom groups have a
-  // flat contents array — containers and loose items at the top level.
-
-  function renderGroup(group, ruleset, inv, canEdit, depth) {
-    if (depth == null) depth = 0;
-    const collapsed = !!group.collapsed;
-    const isOnPerson = group.kind === 'onPerson';
-    const isSubgroup = depth > 0;
-
-    // Totals: weight and count across everything in the group,
-    // recursively including nested subgroups.
-    const { totalWeight, totalCount } = tallyArr(group.contents || []);
-
-    // Header actions. On-Person cannot be renamed or deleted. Custom
-    // groups and subgroups both allow it. Subgroups use the same
-    // rename/delete flow as top-level custom groups — the handlers
-    // walk the tree to find the target by id, so depth doesn't matter.
-    const extraHeaderActions = (!isOnPerson && canEdit) ? `
-      <button class="inv-group-btn" onclick="event.stopPropagation();invRenameGroup('${escapeHtml(group.id)}')" title="Rename group">✎</button>
-      <button class="inv-group-btn inv-group-btn-danger" onclick="event.stopPropagation();invDeleteGroup('${escapeHtml(group.id)}')" title="Delete group (and everything in it)">×</button>
-    ` : '';
-
-    // "Counts for encumbrance" toggle. On-Person defaults true (and
-    // stays true unless the player explicitly flips it off). Custom
-    // groups default false (must be turned on). The effective value:
-    //   explicit boolean on the group record wins;
-    //   otherwise fall back to the kind default.
-    // Inline button styled as a pill with an obvious on/off state.
-    // Click stops propagation so it doesn't also collapse the group.
-    const countsForEnc = (typeof group.countsForEncumbrance === 'boolean')
-      ? group.countsForEncumbrance
-      : (group.kind === 'onPerson');
-    const encTitle = countsForEnc
-      ? `Items in this group COUNT toward your Encumbrance. Click to stop counting.`
-      : `Items in this group do NOT count toward your Encumbrance. Click to start counting.`;
-    const encToggle = canEdit ? `
-      <button class="inv-group-enc-toggle${countsForEnc ? ' on' : ''}"
-              onclick="event.stopPropagation();invToggleGroupEncumbrance('${escapeHtml(group.id)}')"
-              title="${escapeHtml(encTitle)}">
-        ${countsForEnc ? '⚖ ENC' : '○ ENC'}
-      </button>` : (countsForEnc ? `<span class="inv-group-enc-badge">⚖ ENC</span>` : '');
-
-    const groupClasses = [
-      'inv-group',
-      collapsed ? 'collapsed' : '',
-      isOnPerson ? 'inv-group-onperson' : 'inv-group-custom',
-      isSubgroup ? 'inv-group-sub' : ''
-    ].filter(Boolean).join(' ');
-
-    // Subgroups are indented relative to their parent group's body.
-    // Depth * 16px matches the indent scheme used by container entries
-    // nested inside other containers.
-    const indentStyle = isSubgroup ? `style="margin-left:${depth * 16}px"` : '';
-
-    let html = `<div class="${groupClasses}" ${indentStyle}>
-      <div class="inv-group-head" onclick="invToggleGroupCollapse('${escapeHtml(group.id)}')">
-        <span class="inv-group-caret">${collapsed ? '▸' : '▾'}</span>
-        <span class="inv-group-label">${escapeHtml(group.name)}</span>
-        <span class="inv-group-meta">${totalCount} item${totalCount === 1 ? '' : 's'} · ${fmt(totalWeight)} lb${totalWeight === 1 ? '' : 's'}</span>
-        ${encToggle}
-        ${extraHeaderActions}
-      </div>`;
-
-    if (!collapsed) {
-      html += '<div class="inv-group-body">';
-
-      // Description banner at the top — custom groups and subgroups
-      // can both have one. On-Person traditionally doesn't.
-      if (!isOnPerson && group.description && group.description.trim()) {
-        html += `<div class="inv-group-desc">${escapeHtml(group.description)}</div>`;
-      }
-
-      // Walk contents: mix of entries and subgroups. Subgroups recurse
-      // via renderGroup with incremented depth; entries go through the
-      // normal entry renderer.
-      const contents = Array.isArray(group.contents) ? group.contents : [];
-      if (contents.length === 0) {
-        html += '<div class="inv-empty-row">Empty.</div>';
-      } else {
-        contents.forEach(node => {
-          if (isGroupNode(node)) {
-            // Nested subgroup. Recurse.
-            html += renderGroup(node, ruleset, inv, canEdit, depth + 1);
-          } else {
-            // Regular entry (container or item).
-            html += renderEntry(node, 0, canEdit);
-          }
-        });
-      }
-
-      // Action row at the bottom of every group's body. Three buttons:
-      // add a container, add a loose item, and add a subgroup (for
-      // further organizational nesting).
-      if (canEdit) {
-        html += `<div class="inv-group-actions">
-          <button class="inv-add-btn" onclick="invOpenAddContainer('${escapeHtml(group.id)}','group')">+ Add Container</button>
-          <button class="inv-add-btn inv-add-btn-ghost" onclick="invOpenAddItem('${escapeHtml(group.id)}','group')">+ Add Loose Item</button>
-          <button class="inv-add-btn inv-add-btn-ghost" onclick="invAddSubgroup('${escapeHtml(group.id)}')" title="Add a nested group inside this one (e.g. inside On-Person: Back, Belt, Holster).">+ Add Subgroup</button>
-        </div>`;
-      }
-
-      html += '</div>';
+    /* Context line — makes the Penalty linkage explicit. "Using effective
+       7.5 ft/sec (base 10 − 25% Penalty)". Dim by default; effective
+       value itself is brighter so it reads as the source of the math. */
+    .ds-conv-ctx {
+      font-size: 10px;
+      line-height: 1.3;
+      color: #777;
     }
-    html += '</div>';
-    return html;
-  }
+    .ds-conv-ctx-k {
+      font-weight: 600;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      color: #666;
+      margin-right: 4px;
+    }
+    .ds-conv-ctx-v {
+      color: #e0b870;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .ds-conv-ctx-sub {
+      color: #555;
+      font-style: italic;
+    }
+    /* Picker row — dropdown on the left, "=" separator, result on the
+       right. On narrow widths it wraps to two lines; the equals stays
+       with the result for readability. */
+    .ds-conv-picker {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 8px 10px;
+    }
+    .ds-conv-select {
+      background: #111;
+      border: 1px solid #2a2a2a;
+      color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 12px;
+      padding: 5px 8px;
+      border-radius: 3px;
+      outline: none;
+      flex: 1;
+      min-width: 180px;
+      cursor: pointer;
+    }
+    .ds-conv-select:focus {
+      border-color: #444;
+    }
+    .ds-conv-select option {
+      background: #111;
+      color: #e0e0e0;
+    }
+    .ds-conv-eq {
+      color: #555;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .ds-conv-result {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 16px;
+      font-weight: 700;
+      color: #e0e0e0;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: .02em;
+    }
+    /* When the conversion result uses the penalty toggle pattern, the
+       toggle wrapper and its child spans need their sizing set so the
+       main-value CSS defaults (17px red italic reduction, red italic
+       effective) don't leak in. The .penalty-collapsed class on the
+       parent card still controls which of the two spans is visible;
+       we only override size/color/style to match the panel's look. */
+    .ds-conv-result-wrap {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 0;
+      cursor: pointer;
+      border-radius: 3px;
+      padding: 0 2px;
+      margin: 0 -2px;
+      transition: background 0.1s;
+    }
+    .ds-conv-result-wrap:hover { background: rgba(255,255,255,0.04); }
+    .ds-conv-result.ds-card-penalty-expanded,
+    .ds-conv-result.ds-card-penalty-effective {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 16px;
+      font-weight: 700;
+      color: #e0e0e0;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: .02em;
+      font-style: normal;
+    }
+    /* Reduction inside the conversion result — red italic, smaller than
+       the main value's oversized reduction but still visually the
+       "amount lost to Penalty". */
+    .ds-conv-result .ds-card-penalty-reduction {
+      color: #e07878;
+      font-style: italic;
+      font-size: 14px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      margin-left: 4px;
+      margin-right: 2px;
+    }
+    /* Effective-state result: still bold/white, not the red italic
+       used on the main value. The context line already labels this
+       value as effective; a red tint here would be noisy. */
+    .ds-conv-result.ds-card-penalty-effective {
+      color: #e0e0e0;
+      font-style: normal;
+    }
+    .ds-conv-u {
+      font-family: 'Open Sans', sans-serif;
+      font-size: 10px;
+      font-weight: 500;
+      color: #666;
+      margin-left: 2px;
+    }
+    .ds-conv-sub {
+      font-family: 'Open Sans', sans-serif;
+      font-size: 10px;
+      color: #888;
+      font-weight: 400;
+      margin-left: 4px;
+      font-variant-numeric: tabular-nums;
+    }
+    .ds-card-desc { font-size: 11px; color: #666; line-height: 1.5; margin-top: 6px; font-style: italic; }
 
-  // ─── CATALOG VIEW ───
-  //
-  // Read-only browser of the ruleset's item catalog, organized by
-  // category. Mirrors the ruleset editor's structure but without any
-  // edit controls — players just see what exists in their world.
-  //
-  // Walks `ruleset.categories` as a tree via parent pointers, nests
-  // items under their categories. Items with null/missing category land
-  // under the built-in "Miscellaneous" bucket.
-  //
-  // Each item row shows name + dimensions + weight by default. Click
-  // to expand — description, container capacity (if it's a container),
-  // packing efficiency, default body slot, etc.
+    /* Hit locations */
+    .combat-section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #1a1a1a; }
+    .combat-section-head .combat-section-title { margin-bottom: 0; padding-bottom: 0; border-bottom: none; flex: 1; }
 
-  function renderCatalogView(ruleset, inv) {
-    const items = Array.isArray(ruleset.items) ? ruleset.items : [];
-    const categories = Array.isArray(ruleset.categories) ? ruleset.categories : [];
-
-    if (items.length === 0 && categories.length <= 1) {
-      return `<div class="inv-empty">This ruleset's catalog is empty. Open the ruleset editor's Inventory tab to add items and categories.</div>`;
+    /* Sub-section header inside a combat section (e.g. "Hit Locations" inside "Health").
+       Smaller than the main title; acts as a divider between the cards grid and
+       the locations list below it. */
+    .combat-subsection-head {
+      display: flex; align-items: center; gap: 10px;
+      margin: 16px 0 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .combat-subsection-title {
+      font-size: 10px; font-weight: 700;
+      letter-spacing: .14em; text-transform: uppercase;
+      color: #666;
+      flex: 1;
     }
 
-    // Group items by category id. Items with null or deleted categoryId
-    // fall into Miscellaneous automatically (the display-time fallback).
-    const itemsByCat = new Map();
-    const validCatIds = new Set(categories.map(c => c.id));
-    items.forEach(it => {
-      const cid = (it.categoryId && validCatIds.has(it.categoryId)) ? it.categoryId : 'cat_misc';
-      if (!itemsByCat.has(cid)) itemsByCat.set(cid, []);
-      itemsByCat.get(cid).push(it);
-    });
+    /* Health cards at the top of the Health section. Slightly tighter grid
+       than the default derived-stats grid so HP/FORT/etc. read as a compact
+       overview strip above the detailed hit location rows. */
+    .health-cards { margin-bottom: 4px; }
 
-    // Build a parent → children map so we can walk the tree.
-    const byParent = new Map();
-    categories.forEach(c => {
-      const pid = c.parentId || '__root__';
-      if (!byParent.has(pid)) byParent.set(pid, []);
-      byParent.get(pid).push(c);
-    });
+    .hl-edit-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #888; font-family: 'Open Sans', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 4px 12px; border-radius: 3px; cursor: pointer; }
+    .hl-edit-btn:hover { background: #222; border-color: #3f3f3f; color: #ccc; }
+    .hl-edit-btn.active { background: #2a2a2a; border-color: #555; color: #e0e0e0; }
 
-    // Also expose character-scoped custom defs at the top of the
-    // catalog, since the player might want to see those too. They
-    // don't live in the ruleset's categories — we synthesize a
-    // "Custom (this character only)" pseudo-section for them.
-    const customDefs = [];
-    (inv.customDefs.containers || []).forEach(d => customDefs.push(d));
-    (inv.customDefs.equipment  || []).forEach(d => customDefs.push(d));
+    .hl-list { display: flex; flex-direction: column; gap: 6px; }
+    .hl-row {
+      display: grid;
+      grid-template-columns: 110px 120px 1fr auto;
+      gap: 14px;
+      align-items: center;
+      background: #111;
+      border: 1px solid #1f1f1f;
+      border-radius: 4px;
+      padding: 10px 14px;
+    }
+    .hl-status-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #555;
+      text-align: right;
+    }
+    .hl-name { font-size: 13px; font-weight: 600; color: #ccc; }
+    .hl-bar-wrap { display: flex; align-items: center; gap: 10px; }
+    .hl-bar-bg { flex: 1; height: 12px; background: #0a0a0a; border: 1px solid #222; border-radius: 2px; overflow: hidden; display: flex; gap: 1px; padding: 1px; }
+    /* Segmented HP bar — one <span> per HP point. Colors set inline per-segment
+       based on damage phase. Segments have a tiny gap so they read as distinct
+       blocks. flex:1 + min-width:0 lets tiny segments on high-HP bars still
+       render cleanly without overflowing. */
+    .hl-seg { flex: 1 1 0; min-width: 2px; height: 100%; border-radius: 1px; transition: background-color 0.2s ease; }
+    .hl-bar-label { font-size: 11px; font-weight: 600; color: #aaa; font-variant-numeric: tabular-nums; min-width: 56px; text-align: right; }
+    .hl-controls { display: flex; align-items: center; gap: 4px; }
+    .hl-dmg-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 14px; font-weight: 700; width: 26px; height: 26px; padding: 0; border-radius: 3px; cursor: pointer; line-height: 1; }
+    .hl-dmg-btn:hover { background: #222; border-color: #3f3f3f; color: #fff; }
+    .hl-dmg-input { width: 52px; text-align: center; background: #0a0a0a; border: 1px solid #2a2a2a; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; font-weight: 600; padding: 4px; border-radius: 3px; outline: none; }
+    .hl-dmg-input:focus { border-color: #444; }
 
-    let html = `<div class="cat-view-header">
-      <div class="cat-view-title">Ruleset Catalog</div>
-      <div class="cat-view-sub">Browse-only view of every item this ruleset defines. Add items to your character from the Inventory view.</div>
-    </div>`;
+    /* Per-location damage state — color the status label and name */
+    .hl-status-disabled .hl-status-label       { color: #c89a5a; }
+    .hl-status-disabled .hl-name               { color: #c89a5a; }
+    .hl-status-destroyed .hl-status-label      { color: #c87777; }
+    .hl-status-destroyed .hl-name              { color: #c87777; }
+    .hl-status-destroyed                       { opacity: 0.92; }
+    .hl-status-definitelyDestroyed .hl-status-label { color: #8a3a3a; font-style: italic; }
+    .hl-status-definitelyDestroyed .hl-name    { color: #8a3a3a; text-decoration: line-through; }
+    .hl-status-definitelyDestroyed             { opacity: 0.72; }
+    .hl-row-error { background: #1a0d0d; border-color: #4a1a1a; }
+    .hl-error { color: #c87777; font-size: 11px; font-style: italic; grid-column: 2 / 5; }
 
-    // Custom section first — the player's own one-offs. Only renders if
-    // any exist so empty charDefs don't clutter the view.
-    if (customDefs.length > 0) {
-      html += renderCatalogCustomSection(customDefs);
+    /* Modifier editor panel (shown inline under a location or Body in edit mode) */
+    .hl-mod-panel { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 4px; padding: 10px 14px; margin: -2px 0 8px 14px; }
+    .mod-panel-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+    .mod-base { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #888; }
+    .mod-panel-hint { font-size: 10px; color: #555; font-style: italic; }
+    .mod-empty { font-size: 11px; color: #444; font-style: italic; padding: 4px 0 8px; }
+    .mod-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+    .mod-item { display: flex; align-items: center; gap: 8px; }
+    .mod-name-input { flex: 1; background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 8px; border-radius: 3px; outline: none; }
+    .mod-val-input { width: 54px; text-align: center; background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px; border-radius: 3px; outline: none; }
+    .mod-name-input:focus, .mod-val-input:focus { border-color: #444; }
+    .mod-delete { color: #555; cursor: pointer; font-size: 14px; padding: 0 4px; line-height: 1; user-select: none; }
+    .mod-delete:hover { color: #c84b4b; }
+    .mod-add-row { display: flex; align-items: center; gap: 8px; padding-top: 8px; border-top: 1px solid #1a1a1a; }
+    .mod-add-btn { background: #1a1a1a; border: 1px solid #333; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 5px 12px; border-radius: 3px; cursor: pointer; }
+    .mod-add-btn:hover { background: #222; border-color: #555; color: #ccc; }
+
+    /* Body pool block — segmented green→black bar + status */
+    .body-total { margin-top: 14px; padding: 12px 14px; background: #0e0e0e; border: 1px solid #222; border-radius: 4px; display: flex; flex-direction: column; gap: 10px; }
+    .body-top-row { display: flex; align-items: center; gap: 14px; }
+    .body-label { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #888; }
+    .body-value { font-size: 16px; font-weight: 700; color: #e0e0e0; font-variant-numeric: tabular-nums; flex: 1; }
+    .body-status { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .body-status-alive     { color: #7a9a7a; }
+    .body-status-impaired  { color: #c89a5a; }
+    .body-status-dead      { color: #c87777; }
+    .body-total-dead { border-color: #4a1a1a; background: #140808; }
+    .body-total-dead .body-value { color: #c87777; }
+    /* Body segmented bar: same visual treatment as hit-location bars, taller
+       since it carries more weight visually as the "overall status" indicator. */
+    .body-bar-bg { height: 14px; background: #0a0a0a; border: 1px solid #222; border-radius: 2px; overflow: hidden; display: flex; gap: 1px; padding: 1px; }
+
+    /* ─── SANITY ─── */
+    .san-section { }
+    .san-card-wrap { margin-bottom: 14px; }
+    .san-top-row {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 6px;
+    }
+    .san-label {
+      font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+      color: #888;
+    }
+    .san-nums {
+      font-size: 18px; font-weight: 700; color: #e8e8e8;
+      font-variant-numeric: tabular-nums;
+    }
+    .san-slash { color: #555; }
+    .san-max { color: #888; font-weight: 500; font-size: 14px; }
+    .san-status-pill {
+      font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+      padding: 3px 10px; border-radius: 10px;
+      margin-left: auto;
+      border: 1px solid;
+    }
+    .san-status-healthy  { color: #a0c0e0; background: #101826; border-color: #304058; }
+    .san-status-inShock  { color: #d6b860; background: #231f10; border-color: #5a4a22; }
+    .san-status-insane   { color: #e0a460; background: #251810; border-color: #6a4a22; }
+    .san-status-broken   { color: #ff4a4a; background: #2a0a0a; border-color: #7a1010; }
+
+    .san-penalty {
+      font-size: 11px; color: #a08060; font-style: italic;
+      margin-bottom: 10px;
+      padding: 6px 10px; background: #0a0a0a;
+      border-left: 2px solid #5a4a22;
     }
 
-    // Walk the ruleset's category tree. Render each category header,
-    // then its items (sorted alphabetically for browsability), then
-    // recurse into children.
-    const renderCatNode = (cat, depth) => {
-      const catItems = (itemsByCat.get(cat.id) || []).slice().sort(sortByName);
-      const children = byParent.get(cat.id) || [];
-      const collapsed = collapsedCatalogCats.has(cat.id);
-      const directCount = catItems.length;
-      // Total count through descendants — shown in the header to give
-      // a sense of how much lives under each branch without needing
-      // to expand every subcategory.
-      const totalCount = countItemsRecursive(cat, itemsByCat, byParent);
-
-      let out = `<div class="cat-view-section" style="margin-left:${depth * 18}px">
-        <div class="cat-view-section-head${children.length === 0 && directCount === 0 ? ' empty' : ''}" onclick="invToggleCatalogCat('${escapeHtml(cat.id)}')">
-          <span class="cat-view-caret">${collapsed ? '▸' : '▾'}</span>
-          <span class="cat-view-name">${escapeHtml(cat.name)}</span>
-          <span class="cat-view-count" title="${directCount} direct · ${totalCount} including subcategories">${directCount}${totalCount !== directCount ? ` / ${totalCount}` : ''}</span>
-        </div>`;
-
-      if (!collapsed) {
-        if (cat.description && cat.description.trim()) {
-          out += `<div class="cat-view-desc" style="margin-left:${(depth + 1) * 18}px">${escapeHtml(cat.description)}</div>`;
-        }
-        if (directCount === 0 && children.length === 0) {
-          out += `<div class="cat-view-empty-row" style="margin-left:${(depth + 1) * 18}px">Empty.</div>`;
-        } else {
-          catItems.forEach(it => { out += renderCatalogItem(it, depth + 1); });
-          children.forEach(ch => { out += renderCatNode(ch, depth + 1); });
-        }
-      }
-      out += `</div>`;
-      return out;
-    };
-
-    (byParent.get('__root__') || []).forEach(cat => { html += renderCatNode(cat, 0); });
-
-    return html;
-  }
-
-  // Helper: case-insensitive name sort. Used for alphabetical ordering
-  // within a category.
-  function sortByName(a, b) {
-    const an = (a.name || '').toLowerCase();
-    const bn = (b.name || '').toLowerCase();
-    return an < bn ? -1 : an > bn ? 1 : 0;
-  }
-
-  // Helper: recursively count items in a category and all descendants.
-  // Used for the "total" badge on category headers.
-  function countItemsRecursive(cat, itemsByCat, byParent) {
-    let n = (itemsByCat.get(cat.id) || []).length;
-    (byParent.get(cat.id) || []).forEach(ch => { n += countItemsRecursive(ch, itemsByCat, byParent); });
-    return n;
-  }
-
-  // The "Custom" synthetic section — character-scoped custom defs with
-  // a distinct visual treatment so users remember these aren't shared.
-  function renderCatalogCustomSection(customDefs) {
-    const sorted = customDefs.slice().sort(sortByName);
-    const collapsed = collapsedCatalogCats.has('__custom__');
-    let html = `<div class="cat-view-section cat-view-section-custom">
-      <div class="cat-view-section-head" onclick="invToggleCatalogCat('__custom__')">
-        <span class="cat-view-caret">${collapsed ? '▸' : '▾'}</span>
-        <span class="cat-view-name">Custom</span>
-        <span class="cat-view-custom-badge">this character only</span>
-        <span class="cat-view-count">${sorted.length}</span>
-      </div>`;
-    if (!collapsed) {
-      html += `<div class="cat-view-desc" style="margin-left:18px">One-off items and containers created on this character's sheet. Not visible to other characters.</div>`;
-      sorted.forEach(it => { html += renderCatalogItem(it, 1, /*isCustom=*/true); });
+    /* Segmented bar */
+    .san-bar {
+      height: 14px; background: #0a0a0a;
+      border: 1px solid #222; border-radius: 2px;
+      overflow: hidden; display: flex; gap: 1px; padding: 1px;
+      margin-bottom: 10px;
     }
-    html += `</div>`;
-    return html;
-  }
+    .san-seg { flex: 1; min-width: 2px; border-radius: 1px; }
 
-  // Render a single item row in the catalog view. Collapsed by default:
-  // name + container pill + dims + weight + Add button. Clicking the
-  // name region expands detail; clicking the Add button places the item
-  // on the character; clicking the Add dropdown shows target choices.
-  function renderCatalogItem(it, depth, isCustom) {
-    const dims = it.dimensions || { l: 0, w: 0, h: 0 };
-    const isContainer = !!it.containerOf;
-    const open = expandedCatalogItems.has(it.id);
-    const addMenuOpen = catalogAddMenuFor === it.id;
-    const containerPill = isContainer ? '<span class="cat-view-container-pill" title="Container — can hold other items">container</span>' : '';
-    const customPill = isCustom ? '<span class="cat-view-item-custom">custom</span>' : '';
-    const weight = it.weight || 0;
-    const hasDetail = !!(
-      (it.description && it.description.trim()) ||
-      it.containerOf ||
-      (it.legacyCategory && it.legacyCategory.trim())
-    );
-
-    const canEdit = getCanEdit();
-
-    // Clicking the caret/name area toggles the description panel.
-    // Clicking the Add button or its dropdown trigger is stopped from
-    // propagating so those don't also expand the row.
-    let html = `<div class="cat-view-item${open ? ' open' : ''}${hasDetail ? ' expandable' : ''}" style="margin-left:${depth * 18}px">
-      <div class="cat-view-item-head">
-        <div class="cat-view-item-main" ${hasDetail ? `onclick="invToggleCatalogItem('${escapeHtml(it.id)}')"` : ''}>
-          <span class="cat-view-item-caret">${hasDetail ? (open ? '▾' : '▸') : '•'}</span>
-          <span class="cat-view-item-name">${escapeHtml(it.name || '(unnamed)')}</span>
-          ${containerPill}
-          ${customPill}
-          <span class="cat-view-item-dims">${fmt(dims.l)}×${fmt(dims.w)}×${fmt(dims.h)} in</span>
-          <span class="cat-view-item-weight">${fmt(weight)} lb</span>
-        </div>`;
-
-    // Add button — owner-only. Split into two halves:
-    //   • Left: quick-add using smart default
-    //   • Right (▾): drop-down menu of explicit targets
-    if (canEdit) {
-      html += `<div class="cat-view-add-split">
-        <button class="cat-view-add-btn" onclick="event.stopPropagation();invCatalogQuickAdd('${escapeHtml(it.id)}')" title="Add to ${escapeHtml(smartDefaultLabel(it))}">+ Add</button>
-        <button class="cat-view-add-drop${addMenuOpen ? ' open' : ''}" onclick="event.stopPropagation();invCatalogToggleAddMenu('${escapeHtml(it.id)}')" title="Choose destination…">▾</button>
-      </div>`;
+    /* Controls row */
+    .san-controls {
+      display: flex; align-items: center; gap: 6px;
+    }
+    .san-dmg-input {
+      background: #111; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 13px; font-weight: 700;
+      padding: 5px 8px; border-radius: 3px; outline: none;
+      width: 70px; text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+    .san-dmg-input:focus { border-color: #444; }
+    .san-controls-ro .san-current-ro {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 13px; color: #aaa;
+      font-variant-numeric: tabular-nums;
     }
 
-    html += `</div>`;
+    /* Breaking Point reference panel */
+    .san-breakpoint {
+      margin-top: 14px;
+      padding: 12px 14px;
+      background: #140808;
+      border: 1px solid #4a1a1a;
+      border-radius: 4px;
+    }
+    .san-breakpoint-title {
+      font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+      color: #ff6a6a;
+      margin-bottom: 6px;
+    }
+    .san-breakpoint-intro {
+      font-size: 11px; color: #b08080; font-style: italic;
+      margin-bottom: 10px; line-height: 1.5;
+    }
+    .san-breakpoint-table {
+      display: flex; flex-direction: column; gap: 3px;
+    }
+    .san-bp-row {
+      display: grid;
+      grid-template-columns: 50px 150px 1fr;
+      gap: 10px;
+      padding: 6px 10px;
+      font-size: 11px;
+      border-radius: 3px;
+      background: #0a0505;
+      border: 1px solid #1a0a0a;
+      align-items: baseline;
+    }
+    .san-bp-roll {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 13px; font-weight: 700;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+    .san-bp-name {
+      font-weight: 700; letter-spacing: .04em;
+    }
+    .san-bp-desc { color: #888; line-height: 1.4; }
+    .san-bp-tier-best    { border-color: #3a5a3a; }
+    .san-bp-tier-best    .san-bp-roll { color: #a6c89a; }
+    .san-bp-tier-best    .san-bp-name { color: #a6c89a; }
+    .san-bp-tier-good    { border-color: #4a5a2a; }
+    .san-bp-tier-good    .san-bp-roll { color: #c8c06a; }
+    .san-bp-tier-good    .san-bp-name { color: #c8c06a; }
+    .san-bp-tier-neutral { border-color: #3a3a3a; }
+    .san-bp-tier-neutral .san-bp-roll { color: #aaa; }
+    .san-bp-tier-neutral .san-bp-name { color: #aaa; }
+    .san-bp-tier-bad     { border-color: #5a3a1a; }
+    .san-bp-tier-bad     .san-bp-roll { color: #d89860; }
+    .san-bp-tier-bad     .san-bp-name { color: #d89860; }
+    .san-bp-tier-worst   { border-color: #6a2a2a; }
+    .san-bp-tier-worst   .san-bp-roll { color: #e07878; }
+    .san-bp-tier-worst   .san-bp-name { color: #e07878; }
+    .san-bp-tier-fatal   { border-color: #7a1010; background: #1a0505; }
+    .san-bp-tier-fatal   .san-bp-roll { color: #ff2a2a; }
+    .san-bp-tier-fatal   .san-bp-name { color: #ff2a2a; }
 
-    // Floating drop-down menu for target choice — rendered inline so
-    // it naturally sits below its owner button. CSS pins it absolutely
-    // relative to the row.
-    if (addMenuOpen && canEdit) {
-      html += renderCatalogAddMenu(it);
+    @media (max-width: 600px) {
+      .san-bp-row { grid-template-columns: 40px 1fr; }
+      .san-bp-desc { grid-column: 1 / -1; padding-left: 50px; }
     }
 
-    // Detail panel — description, container capacity, default slot,
-    // etc. Rendered only when open AND there's something to show.
-    if (open && hasDetail) {
-      html += `<div class="cat-view-item-detail">`;
-      if (it.description && it.description.trim()) {
-        html += `<div class="cat-view-item-desc">${escapeHtml(it.description)}</div>`;
-      }
-      if (isContainer) {
-        const cof = it.containerOf;
-        const cofDims = cof.dimensions || { l: 0, w: 0, h: 0 };
-        const rawCap = (cofDims.l || 0) * (cofDims.w || 0) * (cofDims.h || 0);
-        const usable = rawCap * (cof.packingEfficiency || 0.75);
-        html += `<div class="cat-view-item-cap">
-          <span class="cat-view-item-cap-label">Capacity:</span>
-          <span class="cat-view-item-cap-val">${fmt(cofDims.l)}×${fmt(cofDims.w)}×${fmt(cofDims.h)} in · ${fmt(cof.packingEfficiency || 0.75)} packing · <b>${fmt(usable)} in³ usable</b></span>
-        </div>`;
-      }
-      // Note: item defs may carry a legacy `defaultSlot` field pointing
-      // at a body-slot code. Body slots no longer exist, so we don't
-      // show this field in the catalog detail panel.
-      if (it.legacyCategory && it.legacyCategory.trim()) {
-        html += `<div class="cat-view-item-legacy">
-          <span class="cat-view-item-cap-label">Legacy tag:</span>
-          <span class="cat-view-item-cap-val">${escapeHtml(it.legacyCategory)}</span>
-        </div>`;
-      }
-      html += `</div>`;
+    /* Power Pool */
+    .pp-desc { font-size: 12px; color: #888; line-height: 1.6; margin-bottom: 12px; font-style: italic; }
+    .pp-row { display: flex; align-items: center; gap: 16px; padding: 12px 14px; background: #111; border: 1px solid #1f1f1f; border-radius: 4px; flex-wrap: wrap; }
+    .pp-label { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #888; }
+    .pp-value { font-size: 22px; font-weight: 700; color: #e8e8e8; font-variant-numeric: tabular-nums; }
+    .pp-controls { display: flex; align-items: center; gap: 4px; }
+    .pp-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 16px; font-weight: 700; width: 30px; height: 30px; padding: 0; border-radius: 3px; cursor: pointer; line-height: 1; }
+    .pp-btn:hover:not(:disabled) { background: #222; border-color: #3f3f3f; color: #fff; }
+    .pp-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .pp-input { width: 60px; text-align: center; background: #0a0a0a; border: 1px solid #2a2a2a; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 16px; font-weight: 700; padding: 4px; border-radius: 3px; outline: none; }
+    .pp-input:focus { border-color: #444; }
+    .pp-cost { display: flex; flex-direction: column; gap: 2px; margin-left: auto; text-align: right; }
+    .pp-cost-total { font-size: 12px; font-weight: 600; color: #aaa; font-variant-numeric: tabular-nums; }
+    .pp-cost-next { font-size: 11px; color: #666; font-variant-numeric: tabular-nums; }
+    .pp-rate-note { font-size: 11px; color: #555; margin-top: 8px; font-style: italic; }
+
+    /* POWER resource bar — a spendable energy pool. Segmented; up to 10 segs
+       that scale as max grows. Player picks the fill color; depletion is black.
+       Sits in its own block within the Power Pool section, just above the
+       purchase row. */
+    .power-block { background: #111; border: 1px solid #1f1f1f; border-radius: 4px; padding: 12px 14px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 8px; }
+    .power-top-row { display: flex; align-items: center; gap: 12px; }
+    .power-label { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #888; }
+    /* Editable-looking label input. Transparent by default so it reads as a
+       label; picks up a subtle border when focused to hint it's editable.
+       Width auto-sizes via field-sizing (modern browsers) or a max-width cap. */
+    .power-name-input {
+      font-family: 'Open Sans', sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: #888;
+      background: transparent;
+      border: 1px solid transparent;
+      padding: 3px 6px;
+      border-radius: 3px;
+      outline: none;
+      min-width: 50px;
+      max-width: 220px;
+      width: auto;
+      cursor: text;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .power-name-input:hover { border-color: #2a2a2a; background: #0a0a0a; }
+    .power-name-input:focus { border-color: #444; background: #0a0a0a; color: #ccc; }
+    .power-name-input::placeholder { color: #444; }
+    .power-value { font-size: 18px; font-weight: 700; color: #e8e8e8; font-variant-numeric: tabular-nums; }
+    .power-seghint { font-size: 10px; color: #555; font-style: italic; margin-left: auto; }
+
+    /* Color picker — tiny swatch that triggers the native color input */
+    .power-color-picker { position: relative; display: inline-flex; align-items: center; cursor: pointer; margin-left: auto; }
+    .power-color-picker:has(+ .power-seghint) { margin-left: 0; }
+    .power-seghint + .power-color-picker { margin-left: 0; }
+    .power-color-picker input[type="color"] { position: absolute; opacity: 0; width: 100%; height: 100%; cursor: pointer; top: 0; left: 0; }
+    .power-color-swatch { display: inline-block; width: 18px; height: 18px; border-radius: 3px; border: 1px solid #333; transition: transform 0.15s; }
+    .power-color-picker:hover .power-color-swatch { transform: scale(1.1); border-color: #555; }
+
+    /* The bar itself. Taller than HP bars since it's THE spotlight resource. */
+    .power-bar-bg { height: 18px; background: #0a0a0a; border: 1px solid #222; border-radius: 3px; display: flex; gap: 2px; padding: 2px; }
+    .power-seg { flex: 1 1 0; min-width: 4px; height: 100%; border-radius: 2px; transition: background-color 0.2s ease; }
+
+    /* Spend/refill controls; mirrors hit location damage controls */
+    .power-controls { display: flex; align-items: center; gap: 6px; }
+    .power-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 16px; font-weight: 700; width: 30px; height: 30px; padding: 0; border-radius: 3px; cursor: pointer; line-height: 1; }
+    .power-btn:hover:not(:disabled) { background: #222; border-color: #3f3f3f; color: #fff; }
+    .power-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .power-input { width: 60px; text-align: center; background: #0a0a0a; border: 1px solid #2a2a2a; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 14px; font-weight: 700; padding: 6px; border-radius: 3px; outline: none; }
+    .power-input:focus { border-color: #444; }
+    /* ─── INJURIES ─── */
+    .injury-section { margin-top: 14px; }
+    .injury-head {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px;
+      background: #0e0e0e; border: 1px solid #222; border-radius: 4px;
+      cursor: pointer; user-select: none;
+      transition: background 0.15s;
+    }
+    .injury-head:hover { background: #141414; }
+    .injury-head-caret { color: #666; font-size: 10px; width: 10px; }
+    .injury-head-title { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #aaa; flex: 1; }
+    .injury-head-count { font-size: 11px; color: #666; font-variant-numeric: tabular-nums; }
+    .injury-add-btn { background: #1a1a1a; border: 1px solid #333; color: #ccc; font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 600; padding: 6px 14px; border-radius: 3px; cursor: pointer; white-space: nowrap; }
+    .injury-add-btn:hover { background: #222; border-color: #555; }
+    .injury-empty { font-size: 11px; color: #555; font-style: italic; padding: 8px 14px; }
+
+    /* Quick-add form: name + degree + Add on one row, location chips below */
+    .injury-quickadd-row {
+      display: grid;
+      grid-template-columns: 1fr 60px auto;
+      gap: 8px;
+      align-items: center;
+      padding: 10px 0 6px;
+    }
+    .qadd-inj-name, .qadd-inj-level {
+      background: #111; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 12px;
+      padding: 6px 10px; border-radius: 3px; outline: none;
+      box-sizing: border-box; width: 100%;
+    }
+    .qadd-inj-level { text-align: center; }
+    .qadd-inj-name:focus, .qadd-inj-level:focus { border-color: #444; }
+    @media (max-width: 600px) {
+      .injury-quickadd-row { grid-template-columns: 1fr; }
     }
 
-    html += `</div>`;
-    return html;
-  }
-
-  // Compute the short human-readable label for the smart default target
-  // of an item — used as the `+ Add` button's tooltip.
-  //
-  //   - Container with defaultSlot → "Back" (the slot's label)
-  //   - Container without defaultSlot → "Stowed" (or "a new Stowed group")
-  //   - Non-container → "Stowed"
-  //
-  // Purely descriptive; the actual placement logic lives in
-  // smartDefaultTarget below.
-  function smartDefaultLabel(it) {
-    const target = smartDefaultTarget(it);
-    if (!target) return 'your inventory';
-    if (target.kind === 'slot') {
-      const ruleset = getRuleset();
-      const slot = (ruleset.bodySlots || []).find(s => s.code === target.code);
-      return slot ? slot.label : target.code;
+    /* Location chip row for multi-select quickadd (AoE support) */
+    .injury-quickadd-locs {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      align-items: center;
+      padding: 0 0 12px;
     }
-    if (target.kind === 'group') {
-      const inv = ensureInventory();
-      const g = inv.groups.find(x => x.id === target.id);
-      return g ? g.name : 'a group';
+    .injury-quickadd-locs-label {
+      font-size: 9px; font-weight: 700; letter-spacing: .1em;
+      text-transform: uppercase; color: #666;
+      margin-right: 4px;
     }
-    if (target.kind === 'newGroup') return 'a new Stowed group';
-    return 'your inventory';
-  }
-
-  // Determine where a catalog item should go when the user quick-adds.
-  // Smart-default target selection for the catalog's quick-add button.
-  // Returns { kind, ...targetRef }. Falls back to creating a new group
-  // if nothing exists yet.
-  //
-  // Priority order:
-  //   1. An existing custom group named "Stowed" (case-insensitive)
-  //   2. First existing custom top-level group
-  //   3. On-Person (always exists; everything gets dumped in its root)
-  //
-  // Body slots no longer exist as targets. Items go into groups.
-  function smartDefaultTarget(it) {
-    const inv = ensureInventory();
-    const topLevel = inv.groups || [];
-
-    const customGroups = topLevel.filter(g => g.kind === 'custom');
-    const stowed = customGroups.find(g => (g.name || '').trim().toLowerCase() === 'stowed');
-    if (stowed) return { kind: 'group', id: stowed.id };
-    if (customGroups.length > 0) return { kind: 'group', id: customGroups[0].id };
-
-    // Fall back to On-Person's root (not any subgroup — user's choice
-    // to subdivide further is respected). On-Person is guaranteed to
-    // exist via ensureInventory.
-    const onPerson = topLevel.find(g => g.kind === 'onPerson');
-    if (onPerson) return { kind: 'group', id: onPerson.id };
-
-    // Extreme edge case — no groups at all. Ask for a new group to be
-    // created so the item has somewhere to live.
-    return { kind: 'newGroup' };
-  }
-
-  // Render the Add-target dropdown menu for an item. Lists every group
-  // and subgroup in the tree (indented), plus every container as a
-  // nested target. Body slots no longer exist.
-  function renderCatalogAddMenu(it) {
-    const inv = ensureInventory();
-
-    let html = `<div class="cat-view-add-menu">`;
-    html += `<div class="cat-view-add-menu-label">Add to:</div>`;
-
-    // Groups tree — walk every top-level group (On-Person + any custom
-    // ones) and recurse into subgroups. Each level gets an indent marker
-    // (a chevron-prefix) so the hierarchy reads correctly even inside a
-    // flat dropdown.
-    const topLevel = inv.groups || [];
-    if (topLevel.length > 0) {
-      html += `<div class="cat-view-add-menu-section">Groups</div>`;
-      const walk = (nodes, depth) => {
-        nodes.forEach(node => {
-          if (!node || !isGroupNode(node)) return;
-          const indent = depth === 0 ? '' : '&nbsp;'.repeat(depth * 3) + '└ ';
-          html += `<div class="cat-view-add-menu-opt" onclick="event.stopPropagation();invCatalogAddTo('${escapeHtml(it.id)}','group','${escapeHtml(node.id)}')">${indent}${escapeHtml(node.name)}</div>`;
-          if (Array.isArray(node.contents)) walk(node.contents, depth + 1);
-        });
-      };
-      walk(topLevel, 0);
+    .injury-loc-chip {
+      background: #0e0e0e;
+      border: 1px solid #2a2a2a;
+      color: #888;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .04em;
+      padding: 4px 10px;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+      white-space: nowrap;
+    }
+    .injury-loc-chip:hover { background: #181818; color: #bbb; border-color: #3a3a3a; }
+    .injury-loc-chip.on {
+      background: #1e2a1e;
+      border-color: #4a6a4a;
+      color: #b8d0b0;
+    }
+    .injury-loc-chip.on:hover { background: #223322; }
+    .injury-loc-chip-all {
+      margin-right: 2px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
     }
 
-    // Existing containers — find every container in the inventory tree
-    // and offer it as a nested target. Names include the container's
-    // position for disambiguation.
-    const containerTargets = collectContainerTargets();
-    if (containerTargets.length > 0) {
-      html += `<div class="cat-view-add-menu-section">Inside Container</div>`;
-      containerTargets.forEach(c => {
-        html += `<div class="cat-view-add-menu-opt" onclick="event.stopPropagation();invCatalogAddTo('${escapeHtml(it.id)}','container','${escapeHtml(c.id)}')">${escapeHtml(c.label)}</div>`;
-      });
+    /* "Hit Locations" divider text between the quick-add and the groups */
+    .injury-divider {
+      font-size: 9px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+      color: #555;
+      padding: 10px 0 4px;
+      border-bottom: 1px solid #1a1a1a;
+      margin-bottom: 6px;
     }
 
-    html += `<div class="cat-view-add-menu-divider"></div>`;
-    html += `<div class="cat-view-add-menu-opt cat-view-add-menu-opt-new" onclick="event.stopPropagation();invCatalogAddToNewGroup('${escapeHtml(it.id)}')">+ Create new group…</div>`;
-
-    html += `</div>`;
-    return html;
-  }
-
-  // Walk the full group tree and collect every container entry as a
-  // dropdown-ready target. Labels include the ancestor context so
-  // identical container names in different groups are disambiguated.
-  function collectContainerTargets() {
-    const inv = ensureInventory();
-    const results = [];
-    const visit = (arr, ancestorLabel) => {
-      if (!Array.isArray(arr)) return;
-      arr.forEach(node => {
-        if (!node || typeof node !== 'object') return;
-        if (isGroupNode(node)) {
-          // Subgroup — recurse, using the subgroup's name as the new
-          // ancestor context.
-          visit(node.contents, node.name);
-        } else if (entryIsContainer(node)) {
-          const name = entryName(node);
-          const label = ancestorLabel ? `${name} · in ${ancestorLabel}` : name;
-          results.push({ id: node.id, label });
-          visit(node.contents, name);
-        }
-      });
-    };
-    (inv.groups || []).forEach(g => visit(g.contents, g.name));
-    return results;
-  }
-
-  // ─── TALLY HELPERS ───
-  //
-  // Recursively sum weight and item counts for a given scope. Weight
-  // flows all the way up — a pouch inside a backpack inside a trunk
-  // contributes to all three tallies.
-
-  function tallyEntry(entry) {
-    // Weight comes from the entry's snapshot (the post-Turn-A source of
-    // truth). Reading from the def would miss:
-    //   1. One-off custom items (defId is null; no def to read)
-    //   2. Edited entries whose snapshot diverged from the def
-    //   3. Entries whose def was deleted from the catalogue
-    // entryWeight() handles all three — falls through from snapshot to
-    // def to zero.
-    const qty = entry.quantity || 1;
-    let weight = entryWeight(entry) * qty;
-    let count = qty;
-    if (Array.isArray(entry.contents)) {
-      entry.contents.forEach(c => {
-        const sub = tallyEntry(c);
-        weight += sub.weight;
-        count += sub.count;
-      });
+    /* Location group (collapsible sub-header per hit location) */
+    .injury-loc-groups { display: flex; flex-direction: column; gap: 6px; }
+    .injury-loc-group { background: transparent; }
+    .injury-loc-head {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 10px;
+      background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 3px;
+      cursor: pointer; user-select: none;
+      transition: background 0.15s;
     }
-    return { weight, count };
-  }
+    .injury-loc-head:hover { background: #111; }
+    .injury-loc-caret { color: #666; font-size: 10px; width: 10px; }
+    .injury-loc-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #b8b8b8; flex: 1; }
+    .injury-loc-count { font-size: 10px; color: #666; font-variant-numeric: tabular-nums; }
+    .injury-loc-group.open .injury-loc-head { margin-bottom: 4px; }
 
-  // Sum weight and item count across a contents array. The array may
-  // contain entries (counted via tallyEntry) AND subgroups (recursed
-  // into — groups themselves contribute zero but their contents roll
-  // up). Used for group headers across all nesting levels.
-  function tallyArr(arr) {
-    let totalWeight = 0;
-    let totalCount = 0;
-    (arr || []).forEach(node => {
-      if (!node || typeof node !== 'object') return;
-      if (isGroupNode(node)) {
-        // Subgroup — recurse. Groups themselves have no weight / aren't
-        // counted as items; their contents contribute.
-        const t = tallyArr(node.contents || []);
-        totalWeight += t.totalWeight;
-        totalCount += t.totalCount;
-      } else {
-        const t = tallyEntry(node);
-        totalWeight += t.weight;
-        totalCount += t.count;
-      }
-    });
-    return { totalWeight, totalCount };
-  }
+    /* Injury list (inside a location group) */
+    .injury-list { display: flex; flex-direction: column; gap: 4px; padding-left: 14px; border-left: 1px solid #1a1a1a; margin-left: 8px; }
 
-  // ─── ENTRY RENDERERS ───
-  //
-  // An entry is either a container (renders as a collapsible card with
-  // contents + add buttons inside) or a leaf item (renders as a single
-  // row). Depth controls left indentation so nesting reads clearly.
-
-  function renderEntry(entry, depth, canEdit) {
-    if (entryIsContainer(entry)) {
-      return renderContainerEntry(entry, depth, canEdit);
+    .injury-card {
+      background: #0d0d0d; border: 1px solid #1f1f1f; border-radius: 4px;
+      overflow: hidden;
     }
-    return renderItemEntry(entry, depth, canEdit);
-  }
+    .injury-card-head {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 12px;
+      cursor: pointer; user-select: none;
+      transition: background 0.15s;
+      flex-wrap: wrap;
+    }
+    .injury-card-head:hover { background: #141414; }
+    .injury-caret { color: #666; font-size: 10px; flex: 0 0 10px; }
+    .injury-name { font-size: 13px; font-weight: 600; color: #e0e0e0; min-width: 80px; flex: 1 1 120px; }
 
-  function renderContainerEntry(entry, depth, canEdit) {
-    // Post-snapshot, we can render an entry even when its def is gone
-    // from the ruleset/customDefs — the snapshot carries all the
-    // display data. Only fall back to the placeholder if we have
-    // literally no snapshot AND no def (shouldn't happen after
-    // ensureInventory has run, but defensive).
-    const def = getDefForEntry(entry);
-    const snap = entry.snapshot;
-    if (!def && !snap) {
-      return `<div class="inv-entry inv-entry-missing" style="margin-left:${depth * 16}px">
-        <span class="inv-entry-name">(no data: ${escapeHtml(entry.defId || '')})</span>
-        ${canEdit ? `<button class="inv-row-btn" onclick="invRemoveEntry('${escapeHtml(entry.id)}')">Remove</button>` : ''}
-      </div>`;
+    .injury-degree {
+      font-size: 11px; font-weight: 700;
+      color: #d8d8d8;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: .02em;
+      white-space: nowrap;
+    }
+    .injury-base-note { color: #666; font-weight: 400; font-size: 10px; }
+
+    /* Inline +/- quickmod controls on the injury header. Small, unobtrusive.
+       Clicks stop propagating so they don't toggle the card's expand. */
+    .injury-quickmod { display: inline-flex; gap: 2px; }
+    .injury-qm-btn {
+      background: #141414; border: 1px solid #2a2a2a; color: #aaa;
+      font-family: 'Open Sans', sans-serif; font-size: 12px; font-weight: 700;
+      width: 22px; height: 22px; padding: 0;
+      border-radius: 3px; cursor: pointer; line-height: 1;
+    }
+    .injury-qm-btn:hover { background: #1f1f1f; border-color: #444; color: #fff; }
+    .injury-qm-btn:active { background: #2a2a2a; }
+
+    /* × delete button on the injury card header — far right, subtle by
+       default, red accent on hover so accidental clicks are visible. */
+    .injury-quickdelete {
+      margin-left: auto;
+      background: transparent;
+      border: 1px solid transparent;
+      color: #555;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      width: 22px; height: 22px; padding: 0;
+      border-radius: 3px; cursor: pointer; line-height: 1;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .injury-quickdelete:hover {
+      background: #2a0a0a;
+      border-color: #6a2a2a;
+      color: #e06060;
     }
 
-    const open = expandedEntries.has(entry.id);
-    const stats = computeContainerStats(entry);
-    const spec = innerSpec(entry);
-    const dims = (spec && spec.dimensions) || { l: 0, w: 0, h: 0 };
-    const name = entryName(entry);
-    // Outer dimensions come from the entry's own snapshot — this lets
-    // in-sheet edits change just this instance's size without touching
-    // other instances of the same def.
-    const outerDims = entryDimensions(entry);
-    const hasOverflow = stats.volumeOver || stats.dimIssues.length > 0;
-
-    let badge = '';
-    if (hasOverflow) {
-      const parts = [];
-      if (stats.volumeOver) parts.push(`Vol +${fmt(stats.volumeOverBy)} in³`);
-      if (stats.dimIssues.length > 0) parts.push(`${stats.dimIssues.length} dim issue${stats.dimIssues.length === 1 ? '' : 's'}`);
-      const tipParts = [];
-      if (stats.volumeOver) {
-        tipParts.push(`Volume: using ${fmt(stats.usedVolume)}/${fmt(stats.availableVolume)} in³ (${fmt(stats.volumeOverBy)} over).`);
-      }
-      if (stats.dimIssues.length > 0) {
-        tipParts.push('Items exceeding container\'s longest dimension:');
-        stats.dimIssues.forEach(d => {
-          const child = (entry.contents || []).find(c => c.id === d.entryId);
-          const childName = child ? entryName(child) : '(?)';
-          tipParts.push(`• ${childName} (${fmt(d.itemVal)} > ${fmt(d.contVal)})`);
-        });
-      }
-      tipParts.push('GM adjudicates what\'s physically possible.');
-      badge = `<span class="inv-overflow-pill" title="${escapeHtml(tipParts.join('\n'))}">${parts.join(' · ')}</span>`;
+    /* Location shown as a visible pill on the injury card header */
+    .injury-loc-pill {
+      font-size: 10px; font-weight: 600; letter-spacing: .06em;
+      text-transform: uppercase;
+      color: #c8c8c8;
+      background: #1e1e24;
+      border: 1px solid #333;
+      padding: 3px 9px;
+      border-radius: 10px;
+      white-space: nowrap;
     }
 
-    const pct = stats.availableVolume > 0
-      ? Math.min(999, Math.round((stats.usedVolume / stats.availableVolume) * 100))
-      : 0;
+    .injury-rate { font-size: 10px; color: #aaa; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .injury-norate { color: #556; font-style: italic; }
 
-    // Build an explanatory tooltip for the capacity cell so players
-    // hovering over "1200/3024 in³" can see what those numbers mean.
-    // Shows the raw volume and packing efficiency that produced the
-    // "available" figure.
-    const rawVolume = (dims.l || 0) * (dims.w || 0) * (dims.h || 0);
-    const pkEff = spec ? (spec.packingEfficiency || 0.75) : 0.75;
-    const capTip = `Used / usable volume.\nUsable = ${fmt(dims.l)}×${fmt(dims.w)}×${fmt(dims.h)} (${fmt(rawVolume)} in³ raw) × ${fmt(pkEff)} packing efficiency = ${fmt(stats.availableVolume)} in³.\nPacking efficiency accounts for wasted space between irregular items.`;
+    /* Trauma badges next to the injury header — colored by tier */
+    .injury-trauma-badges { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+    .trauma-badge {
+      font-size: 10px; font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+      border: 1px solid;
+      white-space: nowrap;
+      cursor: help;
+    }
+    .trauma-badge.tt-minor      { background: #1a2218; border-color: #3a4a34; color: #a6c89a; }
+    .trauma-badge.tt-moderate   { background: #231f10; border-color: #5a4a22; color: #d6b860; }
+    .trauma-badge.tt-major      { background: #2a1e12; border-color: #604028; color: #d89860; }
+    .trauma-badge.tt-massive    { background: #2a1312; border-color: #6a2a28; color: #e07878; }
+    .trauma-badge.tt-monumental { background: #2a1010; border-color: #7a1a1a; color: #e55a5a; }
+    .trauma-badge.tt-mega       { background: #1e0808; border-color: #8a1010; color: #ff4a4a; }
+    .trauma-badge.tt-mythical   { background: #0a0505; border-color: #b00000; color: #ff2222; }
 
-    const isEditing = editingEntryId === entry.id;
+    /* Severity color accents on the left edge of the injury card */
+    .injury-card.severity-none       { border-left: 3px solid #2a2a2a; }
+    .injury-card.severity-minor      { border-left: 3px solid #6a8a4a; }
+    .injury-card.severity-moderate   { border-left: 3px solid #b8a040; }
+    .injury-card.severity-major      { border-left: 3px solid #c88a3a; }
+    .injury-card.severity-massive    { border-left: 3px solid #c85a3a; }
+    .injury-card.severity-monumental { border-left: 3px solid #a82a2a; }
+    .injury-card.severity-mega       { border-left: 3px solid #7a1a1a; }
+    .injury-card.severity-mythical   { border-left: 3px solid #441010; }
 
-    // Armor pill — containers can also be armor (e.g. a tactical
-    // vest that holds magazines). Reads the new top-level snap.armor
-    // integer.
-    const armorVal = snap && Number.isFinite(snap.armor) ? snap.armor : 0;
-    const armorWorn = snap && snap.armorWorn;
-    const armorTip = armorVal > 0
-      ? `Armor ${armorVal}${armorWorn && armorWorn.coverage && armorWorn.coverage.length ? ' — covers ' + armorWorn.coverage.join(', ') : ''}`
-      : '';
-    const armorPill = armorVal > 0
-      ? `<span class="inv-entry-armor-pill" title="${armorTip}">Armor ${armorVal}</span>`
-      : '';
+    .injury-card-body {
+      padding: 12px 14px;
+      background: #0a0a0a;
+      border-top: 1px solid #1a1a1a;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .injury-fields { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; }
+    .injury-field { display: flex; flex-direction: column; gap: 4px; }
+    .injury-field span { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #666; }
+    .injury-field input, .injury-field select, .injury-field textarea,
+    .trauma-field input, .trauma-field textarea, .trauma-name-input, .trauma-tier-select {
+      background: #111; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 12px;
+      padding: 5px 8px; border-radius: 3px; outline: none;
+      width: 100%; box-sizing: border-box;
+    }
+    .injury-field input:focus, .injury-field select:focus, .injury-field textarea:focus,
+    .trauma-field input:focus, .trauma-field textarea:focus,
+    .trauma-name-input:focus, .trauma-tier-select:focus { border-color: #444; }
+    .injury-field textarea, .trauma-field textarea { resize: vertical; min-height: 36px; font-family: inherit; }
+    .injury-field-desc { margin-top: 4px; }
+    .injury-fields-ro { font-size: 12px; color: #aaa; display: flex; flex-direction: column; gap: 4px; }
+    .injury-fields-ro .ro-label { color: #666; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; margin-right: 6px; }
+    .injury-desc-ro { color: #888; font-style: italic; margin-top: 2px; }
 
-    let html = `<div class="inv-entry inv-entry-container${open ? ' open' : ''}${isEditing ? ' editing' : ''}" style="margin-left:${depth * 16}px">
-      <div class="inv-entry-head" onclick="invToggleEntry('${escapeHtml(entry.id)}')">
-        <span class="inv-entry-caret">${open ? '▾' : '▸'}</span>
-        <span class="inv-entry-icon" title="Container">▣</span>
-        <span class="inv-entry-name">${escapeHtml(name)}${armorPill}</span>
-        <span class="inv-entry-dims">${fmt(outerDims.l)}×${fmt(outerDims.w)}×${fmt(outerDims.h)} in</span>
-        <span class="inv-entry-capacity" title="${escapeHtml(capTip)}">${fmt(stats.usedVolume)}/${fmt(stats.availableVolume)} in³ (${pct}%)</span>
-        <span class="inv-entry-weight">${fmt(stats.totalWeight)} lb</span>
-        ${badge}
-        ${canEdit ? `<button class="inv-row-btn inv-row-btn-edit" onclick="event.stopPropagation();invOpenEntryEdit('${escapeHtml(entry.id)}')" title="Edit this instance (changes only this one, not the template).">✎</button>` : ''}
-        ${canEdit ? `<button class="inv-row-btn inv-row-btn-danger" onclick="event.stopPropagation();invRemoveEntry('${escapeHtml(entry.id)}')" title="Remove this container (and everything inside)">×</button>` : ''}
-      </div>
-      ${renderDurabilityRow(entry, canEdit)}`;
+    .injury-rate-info { font-size: 11px; color: #888; font-style: italic; padding: 6px 10px; background: #111; border-radius: 3px; }
 
-    // Inline edit panel for this container. Renders between the head
-    // and the contents body so the user can see their container stay
-    // in place while tweaking its fields. The panel is wide enough to
-    // hold L×W×H rows and a description field.
-    if (isEditing) {
-      html += renderEntryEditPanel(entry, /*asContainer=*/true, depth);
+    .injury-mod-block { background: #080808; border: 1px solid #1a1a1a; border-radius: 3px; padding: 10px 12px; }
+    .injury-mod-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+    .injury-mod-title { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #aaa; }
+    .injury-mod-hint { font-size: 10px; color: #555; font-style: italic; }
+
+    /* Traumas (the full editor block in an expanded injury card) */
+    .trauma-block { background: #080808; border: 1px solid #1a1a1a; border-radius: 3px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+    .trauma-head { display: flex; align-items: baseline; gap: 10px; }
+    .trauma-title { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #aaa; flex: 1; }
+    .trauma-count { font-size: 10px; color: #666; }
+    .trauma-empty { font-size: 11px; color: #555; font-style: italic; }
+    .trauma-list { display: flex; flex-direction: column; gap: 8px; }
+    .trauma-card { background: #0e0e0e; border: 1px solid #222; border-radius: 3px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+    .trauma-card.editing { gap: 8px; }
+    .trauma-card-head { display: flex; align-items: center; gap: 8px; }
+    .trauma-tier { font-size: 10px; color: #888; font-weight: 600; letter-spacing: .04em; }
+    .trauma-name { font-size: 12px; font-weight: 600; color: #ccc; }
+    .trauma-tier-select { width: 110px; }
+    .trauma-name-input { flex: 1; }
+    .trauma-field { display: flex; flex-direction: column; gap: 3px; }
+    .trauma-field span { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #666; }
+    .trauma-desc { font-size: 11px; color: #888; font-style: italic; }
+    .trauma-system { font-size: 11px; color: #b8a068; }
+    .trauma-sys-label { color: #666; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; font-size: 9px; margin-right: 4px; }
+    .trauma-add-row { display: flex; }
+    .trauma-add-btn { background: #111; border: 1px solid #2a2a2a; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 10px; padding: 5px 12px; border-radius: 3px; cursor: pointer; }
+    .trauma-add-btn:hover { background: #1a1a1a; border-color: #444; color: #ccc; }
+
+    .injury-delete-row { display: flex; justify-content: flex-end; padding-top: 4px; border-top: 1px solid #1a1a1a; }
+    .injury-delete-btn { background: transparent; border: 1px solid #3a1a1a; color: #8a3a3a; font-family: 'Open Sans', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 4px 10px; border-radius: 3px; cursor: pointer; }
+    .injury-delete-btn:hover { background: #2a0a0a; border-color: #6a2a2a; color: #c85a5a; }
+
+    /* ═══ INVENTORY TAB ═══
+     * Body slots render as collapsible sections. Containers inside a
+     * slot render as cards that expand to show their contents. Nested
+     * containers indent 16px per depth level.
+     * Overflow state (too much volume, dimensions exceed container)
+     * surfaces as a red pill with tooltip detail — GM adjudicates.
+     */
+    .inv-empty { font-size: 13px; color: #666; padding: 24px; text-align: center; }
+
+    /* Slot section container */
+    .inv-slot-section { border: 1px solid #1a1a1a; border-radius: 4px; margin-bottom: 8px; background: #0d0d0d; overflow: hidden; }
+    .inv-slot-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; user-select: none; background: #111; border-bottom: 1px solid #1a1a1a; }
+    .inv-slot-section.collapsed .inv-slot-head { border-bottom: none; }
+    .inv-slot-head:hover { background: #161616; }
+    .inv-slot-caret { font-size: 10px; color: #666; width: 10px; display: inline-block; }
+    .inv-slot-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #ccc; flex: 1; }
+    .inv-slot-meta { font-size: 11px; color: #666; font-variant-numeric: tabular-nums; }
+    .inv-slot-stowed { border-color: #222; background: #0a0a0a; }
+    .inv-slot-stowed .inv-slot-head { background: #0e0e0e; }
+    .inv-slot-body { padding: 8px 10px; }
+    .inv-empty-row { font-size: 11px; color: #555; font-style: italic; padding: 6px 8px; }
+    .inv-slot-actions { display: flex; gap: 6px; padding: 6px 8px 2px; }
+
+    /* Entry rows (container or item) */
+    .inv-entry { margin-bottom: 3px; }
+    .inv-entry-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: #111; border: 1px solid #1a1a1a; border-radius: 3px; cursor: pointer; user-select: none; transition: border-color .1s, background .1s; }
+    .inv-entry-head:hover { background: #161616; border-color: #2a2a2a; }
+    .inv-entry.open > .inv-entry-head { border-color: #3a3a3a; background: #151515; }
+    .inv-entry-head-item { cursor: default; }
+    .inv-entry-head-item:hover { background: #111; border-color: #1a1a1a; }
+    .inv-entry-caret { font-size: 10px; color: #666; width: 10px; display: inline-block; }
+    .inv-entry-icon { font-size: 11px; color: #666; width: 12px; text-align: center; }
+    .inv-entry-name { font-size: 12px; font-weight: 500; color: #e0e0e0; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .inv-entry-dims { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #777; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .inv-entry-capacity { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #888; font-variant-numeric: tabular-nums; white-space: nowrap; cursor: help; }
+    .inv-entry-weight { font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; color: #aaa; font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 500; }
+    .inv-entry-qty { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+    .inv-qty-val { font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; color: #aaa; font-variant-numeric: tabular-nums; min-width: 24px; text-align: center; }
+    .inv-qty-btn { background: #0a0a0a; border: 1px solid #222; color: #888; font-family: 'Open Sans', sans-serif; font-size: 12px; width: 20px; height: 20px; border-radius: 3px; cursor: pointer; line-height: 1; padding: 0; }
+    .inv-qty-btn:hover:not(:disabled) { background: #1a1a1a; border-color: #444; color: #ccc; }
+    .inv-qty-btn:disabled { opacity: 0.3; cursor: default; }
+
+    /* Overflow pill — red warning */
+    .inv-overflow-pill { background: #2a0d0d; border: 1px solid #6a2020; color: #d88; font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 2px 8px; border-radius: 3px; white-space: nowrap; cursor: help; }
+
+    /* Remove button on each row */
+    .inv-row-btn { background: transparent; border: none; color: #555; font-size: 16px; cursor: pointer; padding: 0 6px; line-height: 1; }
+    .inv-row-btn:hover { color: #c84b4b; }
+    .inv-row-btn-danger:hover { color: #c84b4b; }
+    .inv-row-btn-edit { font-size: 13px; color: #666; }
+    .inv-row-btn-edit:hover { color: #e0b060; }
+
+    /* ═══ INLINE ENTRY EDIT PANEL ═══
+     * Expands inline below a container/item row when the ✎ is clicked.
+     * Reuses the same field + dims-row layout as the custom-def form in
+     * the picker modal. Tinted amber-ish so the editing state stands
+     * out visually from normal browse. */
+    .inv-entry.editing { background: #141004; border: 1px solid #3a2c10; border-radius: 4px; }
+    .inv-edit-panel { background: #0d0a02; border: 1px solid #2a2010; border-radius: 4px; padding: 12px 14px; margin: 4px 16px 10px; }
+    .inv-edit-panel-title { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #caa060; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #2a2010; }
+    .inv-edit-panel-hint { font-weight: 400; letter-spacing: 0; text-transform: none; color: #776040; margin-left: 6px; font-style: italic; }
+    .inv-edit-panel .inv-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+    .inv-edit-panel .inv-field label { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; }
+    .inv-edit-panel .inv-field input, .inv-edit-panel .inv-field textarea {
+      background: #0a0a0a; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 9px;
+      border-radius: 3px; outline: none; width: 100%;
+    }
+    .inv-edit-panel .inv-field input:focus, .inv-edit-panel .inv-field textarea:focus { border-color: #5a4820; }
+    .inv-edit-panel .inv-field textarea { resize: vertical; min-height: 44px; line-height: 1.5; }
+    .inv-edit-panel .inv-dims-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .inv-edit-panel .inv-dims-row input { text-align: center; font-family: 'Consolas', 'Courier New', monospace; }
+
+    /* Dimension preset quick-pick dropdown — used across entry edit,
+       catalog manager, and custom item form. The select is styled
+       darker than the adjacent number inputs so it reads as a helper
+       control rather than a primary field. */
+    .inv-dims-preset-row {
+      display: flex; align-items: center; margin-bottom: 4px;
+    }
+    .inv-dims-hint {
+      font-weight: 400; color: #555; font-size: 9px;
+      text-transform: none; letter-spacing: 0;
+    }
+    .item-preset-select {
+      background: #0a0a0a; border: 1px solid #222; color: #c8c8c8;
+      font-family: 'Open Sans', sans-serif; font-size: 11px;
+      padding: 4px 8px; border-radius: 3px; outline: none;
+      max-width: 300px; cursor: pointer;
+      transition: border-color 0.1s, color 0.1s;
+    }
+    .item-preset-select:hover { border-color: #3a2a1a; color: #d4a574; }
+    .item-preset-select:focus { border-color: #5a4820; }
+    .item-preset-select option { background: #111; color: #e0e0e0; }
+    .inv-edit-panel .inv-pair-row { display: grid; grid-template-columns: 140px 1fr; gap: 14px; }
+    .inv-edit-panel .inv-container-block { border: 1px dashed #2a2010; border-radius: 4px; padding: 10px 12px; margin-top: 6px; background: #0a0802; }
+    .inv-edit-panel .inv-container-block-title { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #caa060; margin-bottom: 8px; }
+    .inv-edit-panel-actions { display: flex; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #2a2010; }
+
+    /* Entry body (container contents) */
+    .inv-entry-body { padding: 4px 0 4px 8px; border-left: 2px solid #1a1a1a; margin-left: 14px; margin-top: 2px; }
+    .inv-entry-actions { display: flex; gap: 6px; padding: 4px 0; }
+
+    /* Entry states */
+    .inv-entry-container > .inv-entry-head { border-color: #222; }
+    .inv-entry-item > .inv-entry-head { background: #0d0d0d; }
+    .inv-entry-missing { background: #1a0d0d; border: 1px dashed #6a2020; border-radius: 3px; padding: 6px 10px; display: flex; align-items: center; gap: 10px; }
+    .inv-entry-missing .inv-entry-name { color: #c88; font-style: italic; font-size: 11px; }
+
+    /* Add buttons */
+    .inv-add-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #ccc; font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 500; padding: 5px 12px; border-radius: 3px; cursor: pointer; }
+    .inv-add-btn:hover { background: #222; border-color: #3a3a3a; }
+    .inv-add-btn-ghost { background: transparent; color: #888; }
+    .inv-add-btn-ghost:hover { color: #ccc; background: #151515; }
+    .inv-add-btn-sm { font-size: 10px; padding: 3px 10px; }
+    /* Promote-to-catalogue button — amber to match the edit panel theme
+     * and visually distinguish from the normal Save. Pushed to the
+     * right of the actions row via margin-left:auto so it visually
+     * reads as a secondary/separate action from Save & Cancel. */
+    .inv-add-btn-promote { background: #1a1406; border-color: #2a2010; color: #caa060; margin-left: auto; }
+    .inv-add-btn-promote:hover { background: #241a08; border-color: #3a2c10; color: #e0b870; }
+
+    /* Modal for Add Container / Add Item */
+    .inv-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .inv-modal { background: #111; border: 1px solid #2a2a2a; border-radius: 6px; max-width: 600px; width: 100%; max-height: 80vh; display: flex; flex-direction: column; overflow: hidden; }
+    .inv-modal-head { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid #1a1a1a; background: #161616; }
+    .inv-modal-title { font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #ccc; flex: 1; }
+    .inv-modal-sub { font-size: 11px; color: #888; }
+    .inv-modal-close { background: transparent; border: none; color: #666; font-size: 22px; cursor: pointer; line-height: 1; padding: 0 4px; }
+    .inv-modal-close:hover { color: #ccc; }
+    .inv-modal-body { padding: 8px; overflow-y: auto; flex: 1; }
+    .inv-modal-empty { font-size: 12px; color: #666; padding: 24px; text-align: center; font-style: italic; }
+    .inv-modal-opt { padding: 10px 14px; border: 1px solid transparent; border-radius: 3px; cursor: pointer; margin-bottom: 3px; transition: all .1s; }
+    .inv-modal-opt:hover { background: #1a1a1a; border-color: #333; }
+    .inv-modal-opt-name { font-size: 13px; font-weight: 500; color: #e0e0e0; margin-bottom: 3px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .inv-modal-cat { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #777; background: #0a0a0a; border: 1px solid #222; padding: 1px 6px; border-radius: 2px; }
+    .inv-modal-dual { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #8a8; background: #0a1a0a; border: 1px solid #2a4a2a; padding: 1px 6px; border-radius: 2px; }
+    .inv-modal-opt-meta { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #888; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
+    .inv-modal-opt-desc { font-size: 11px; color: #888; line-height: 1.5; }
+
+    /* Picker modal section labels — split options into Personal
+     * Catalogue (character-scoped) and Ruleset Catalogue (shared).
+     * Small muted headers above each group. First one has no top
+     * border; subsequent ones do to separate sections visually. */
+    .inv-modal-section-label { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #888; padding: 10px 14px 6px; border-top: 1px solid #1a1a1a; margin-top: 4px; display: flex; align-items: center; gap: 8px; cursor: help; }
+    .inv-modal-section-label:first-child { border-top: none; margin-top: 0; padding-top: 4px; }
+    .inv-modal-section-count { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #666; font-weight: 500; letter-spacing: 0; }
+
+    /* ── Groups layer ──
+     * On-Person wraps the body-slot sections. Custom groups (Stowed,
+     * Vehicle, Stash, etc.) live as siblings. Each group is a top-level
+     * collapsible with a header, contents, and action buttons. */
+    .inv-group { margin-bottom: 10px; border: 1px solid #1a1a1a; border-radius: 5px; background: #0a0a0a; overflow: hidden; }
+    .inv-group-onperson { border-color: #2a2a2a; }
+    .inv-group-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; user-select: none; background: #131313; border-bottom: 1px solid #1a1a1a; }
+    .inv-group.collapsed .inv-group-head { border-bottom: none; }
+    .inv-group-head:hover { background: #181818; }
+    .inv-group-caret { font-size: 11px; color: #888; width: 10px; display: inline-block; }
+    .inv-group-label { font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #e0e0e0; flex: 1; }
+    .inv-group-onperson .inv-group-label { color: #cfe3f6; }
+    .inv-group-meta { font-size: 11px; color: #888; font-variant-numeric: tabular-nums; margin-right: 6px; }
+    .inv-group-btn { background: transparent; border: 1px solid #222; color: #777; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 2px 8px; border-radius: 3px; cursor: pointer; }
+    .inv-group-btn:hover { color: #ccc; border-color: #444; }
+    .inv-group-btn-danger:hover { color: #c84b4b; border-color: #6a2020; }
+    .inv-group-body { padding: 10px 12px 12px; }
+    .inv-group-desc { font-size: 12px; color: #999; line-height: 1.55; padding: 6px 10px 10px; margin: -4px 0 8px; border-bottom: 1px solid #1a1a1a; white-space: pre-wrap; font-style: italic; }
+    .inv-group-actions { display: flex; gap: 6px; padding: 6px 2px 2px; flex-wrap: wrap; }
+
+    /* Subgroups — nested groups living inside another group's contents.
+     * Slightly tinted background, thinner header, smaller label. Indent
+     * is applied inline via style="margin-left: Npx". */
+    .inv-group-sub { background: #0d0d0d; margin-bottom: 6px; border-color: #1f1f1f; }
+    .inv-group-sub > .inv-group-head { padding: 6px 12px; background: #0f0f0f; }
+    .inv-group-sub > .inv-group-head:hover { background: #141414; }
+    .inv-group-sub > .inv-group-head .inv-group-label { font-size: 11px; letter-spacing: .08em; color: #c8c8c8; }
+    .inv-group-sub > .inv-group-body { padding: 8px 10px 10px; }
+
+    /* Add-group button at the bottom of the tab */
+    .inv-add-group-row { display: flex; align-items: center; gap: 12px; margin: 16px 0 4px; padding: 8px 4px; }
+    .inv-add-group-hint { font-size: 11px; color: #666; font-style: italic; }
+
+    /* "custom" pill — shown on character-local defs in the picker modal */
+    .inv-modal-custom { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #c8a; background: #1a0a1a; border: 1px solid #3a2a3a; padding: 1px 6px; border-radius: 2px; }
+
+    /* Picker row: flex header so the × delete button sits on the right */
+    .inv-modal-opt-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 3px; }
+    .inv-modal-opt-delete { background: transparent; border: 1px solid #3a1a1a; color: #8a3a3a; font-family: 'Open Sans', sans-serif; font-size: 14px; width: 22px; height: 22px; border-radius: 3px; cursor: pointer; padding: 0; line-height: 1; flex-shrink: 0; }
+    .inv-modal-opt-delete:hover { background: #2a0a0a; border-color: #6a2a2a; color: #c85a5a; }
+
+    /* Item description panel — shown when the row is clicked open */
+    .inv-entry-name-clickable { cursor: pointer; }
+    .inv-entry-name-clickable:hover { color: #fff; }
+    .inv-entry-info-caret { font-size: 9px; color: #666; margin-left: 6px; }
+
+    /* Armor pill — inline on item/container entries when the snapshot
+       carries an armor block. Matches the ruleset editor's warm-metal
+       palette so the pill reads the same in both places. */
+    .inv-entry-armor-pill {
+      display: inline-block;
+      font-size: 9px; font-weight: 600;
+      letter-spacing: .06em; text-transform: uppercase;
+      color: #caa060;
+      background: #1a1408; border: 1px solid #3a2a14;
+      padding: 1px 6px; border-radius: 2px;
+      margin-left: 8px; vertical-align: middle;
+      cursor: help;
     }
 
-    if (open) {
-      html += '<div class="inv-entry-body">';
-      const contents = Array.isArray(entry.contents) ? entry.contents : [];
-      if (contents.length === 0) {
-        html += `<div class="inv-empty-row" style="margin-left:${(depth + 1) * 16}px">Empty.</div>`;
-      } else {
-        contents.forEach(child => { html += renderEntry(child, depth + 1, canEdit); });
-      }
-      if (canEdit) {
-        html += `<div class="inv-entry-actions" style="margin-left:${(depth + 1) * 16}px">
-          <button class="inv-add-btn inv-add-btn-sm" onclick="invOpenAddContainer('${escapeHtml(entry.id)}',true)">+ Container</button>
-          <button class="inv-add-btn inv-add-btn-sm inv-add-btn-ghost" onclick="invOpenAddItem('${escapeHtml(entry.id)}','container')">+ Item</button>
-        </div>`;
-      }
-      html += '</div>';
+    /* Durability row — appears below an entry's name row when tracking
+       is on. Compact inline layout: label, value, state badge,
+       instance chips, damage input, clear button. Muted/olive palette
+       so it reads as metadata rather than primary UI. */
+    .inv-entry-dur-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 4px 12px 4px 36px;
+      background: #0a0a0a; border-top: 1px solid #1a1a1a;
+      font-size: 11px; font-family: 'Consolas', 'Courier New', monospace;
+    }
+    .inv-entry-dur-label {
+      font-size: 9px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #666;
+    }
+    .inv-entry-dur-value {
+      color: #c8c8c8; font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .inv-entry-dur-state {
+      font-size: 9px; font-weight: 700; letter-spacing: .06em;
+      text-transform: uppercase;
+      padding: 1px 6px; border-radius: 2px;
+      font-family: 'Open Sans', sans-serif;
+    }
+    .inv-entry-dur-state-ok {
+      background: #081a0d; color: #8ab48a; border: 1px solid #1e3a24;
+    }
+    .inv-entry-dur-state-warn {
+      background: #2a1f08; color: #d4a574; border: 1px solid #5a4820;
+    }
+    .inv-entry-dur-state-bad {
+      background: #2a0808; color: #e07070; border: 1px solid #5a2020;
+    }
+    .inv-entry-dur-instances {
+      display: inline-flex; gap: 3px; align-items: center;
+      flex-wrap: wrap; margin-left: 6px;
+    }
+    .inv-entry-dur-chip {
+      display: inline-block;
+      font-size: 10px; font-weight: 600;
+      color: #c88; background: #1a0a0a; border: 1px solid #3a1a1a;
+      padding: 1px 6px; border-radius: 2px; cursor: pointer;
+      font-variant-numeric: tabular-nums;
+      transition: background 0.1s, border-color 0.1s, color 0.1s;
+    }
+    .inv-entry-dur-chip:hover {
+      background: #2a0f0f; border-color: #5a2020; color: #e0a0a0;
+    }
+    .inv-entry-dur-chip.readonly { cursor: help; }
+    .inv-entry-dur-input {
+      width: 60px; padding: 2px 6px;
+      background: #0f0f0f; border: 1px solid #222; color: #e0e0e0;
+      font-size: 11px; font-family: 'Consolas', 'Courier New', monospace;
+      border-radius: 2px; outline: none; text-align: center;
+      font-variant-numeric: tabular-nums;
+      margin-left: auto;
+    }
+    .inv-entry-dur-input:focus { border-color: #444; }
+    .inv-entry-dur-input::placeholder { color: #555; }
+    .inv-entry-dur-clear {
+      font-size: 10px; font-weight: 600; letter-spacing: .04em;
+      padding: 2px 8px;
+      background: #1a1a1a; color: #888;
+      border: 1px solid #2a2a2a; border-radius: 2px;
+      cursor: pointer; font-family: 'Open Sans', sans-serif;
+      transition: background 0.1s, color 0.1s, border-color 0.1s;
+    }
+    .inv-entry-dur-clear:hover {
+      background: #251010; color: #c88; border-color: #3a1a1a;
     }
 
-    html += '</div>';
-    return html;
-  }
+    /* Edit panel subsection — groups related fields under a small label */
+    .inv-edit-panel-subsection {
+      margin-top: 10px; padding-top: 10px;
+      border-top: 1px solid #2a2010;
+    }
+    .inv-edit-panel-sub-label {
+      font-size: 9px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #caa060;
+      margin-bottom: 6px;
+    }
+    .inv-entry-info { background: #0d0d0d; border: 1px solid #1a1a1a; border-top: none; border-radius: 0 0 3px 3px; padding: 8px 12px; margin-top: -1px; font-size: 12px; color: #bbb; line-height: 1.55; }
+    .inv-entry-info-desc { white-space: pre-wrap; }
+    .inv-entry-info-notes { margin-top: 6px; padding-top: 6px; border-top: 1px solid #1a1a1a; color: #999; white-space: pre-wrap; }
+    .inv-entry-info-label { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #777; margin-right: 4px; }
 
-  function renderItemEntry(entry, depth, canEdit) {
-    // Post-snapshot, we can render even with no def. Placeholder only
-    // fires in pathological cases (no snapshot AND no def).
-    const def = getDefForEntry(entry);
-    const snap = entry.snapshot;
-    if (!def && !snap) {
-      return `<div class="inv-entry inv-entry-missing" style="margin-left:${depth * 16}px">
-        <span class="inv-entry-name">(no data: ${escapeHtml(entry.defId || '')})</span>
-        ${canEdit ? `<button class="inv-row-btn" onclick="invRemoveEntry('${escapeHtml(entry.id)}')">Remove</button>` : ''}
-      </div>`;
+    /* Weapon readout block — shown on inventory entries that have a
+       snapshotted weapon. Sits below the info panel and visually
+       distinct from it (a subtle accent border and title). Layout is
+       two-column so Attack/Damage read side by side on wider sheets
+       and stack on mobile. */
+    .inv-weapon { background: #0c0c0c; border: 1px solid #1e1e1e; border-top: none; padding: 10px 12px; font-size: 12px; color: #c8c8c8; }
+    .inv-weapon-title { display: flex; align-items: center; gap: 8px; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #d4a574; margin-bottom: 8px; }
+    .inv-weapon-kind-pill { background: #2a2016; color: #d4a574; font-size: 9px; font-weight: 600; letter-spacing: .08em; padding: 2px 6px; border-radius: 3px; }
+    .inv-weapon-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+    @media (max-width: 720px) { .inv-weapon-grid { grid-template-columns: 1fr; } }
+    .inv-weapon-roll { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 3px; padding: 7px 10px; }
+    .inv-weapon-roll-label { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #888; margin-bottom: 3px; }
+    .inv-weapon-roll-main { font-family: 'Courier New', monospace; font-size: 14px; font-weight: 600; color: #e8e8e8; margin-bottom: 3px; }
+    .inv-weapon-roll-pool { color: #a8c4de; }
+    .inv-weapon-roll-flat { color: #d4a574; }
+    .inv-weapon-roll-slots { font-size: 10px; color: #888; line-height: 1.5; }
+    .inv-weapon-roll-slot { display: inline-block; margin-right: 8px; }
+    .inv-weapon-roll-error { font-size: 10px; color: #cc6666; font-style: italic; }
+    .inv-weapon-roll-send { background: #1a1a1a; border: 1px solid #2a2a2a; color: #aaa; font-size: 10px; font-weight: 500; padding: 3px 8px; border-radius: 3px; cursor: pointer; margin-top: 5px; }
+    .inv-weapon-roll-send:hover { background: #2a2a2a; color: #d4a574; border-color: #3a3a2a; }
+
+    /* Ranged-specific: AMMO tracker + ROF line. AMMO has +/- buttons
+       mirroring the quantity-tick pattern used elsewhere. */
+    .inv-weapon-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 6px; font-size: 11px; color: #aaa; }
+    .inv-weapon-chip { display: inline-flex; align-items: center; gap: 4px; background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 3px; padding: 2px 8px; }
+    .inv-weapon-chip-label { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #777; }
+    .inv-weapon-chip-val { color: #e0e0e0; font-weight: 500; }
+    .inv-weapon-ammo { display: inline-flex; align-items: center; gap: 3px; background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 3px; padding: 2px 4px; }
+    .inv-weapon-ammo-btn { background: #151515; border: 1px solid #2a2a2a; color: #aaa; font-size: 11px; font-weight: 600; width: 18px; height: 18px; border-radius: 2px; cursor: pointer; padding: 0; line-height: 1; }
+    .inv-weapon-ammo-btn:hover:not(:disabled) { background: #2a2a2a; color: #d4a574; }
+    .inv-weapon-ammo-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .inv-weapon-ammo-val { font-size: 12px; font-weight: 600; color: #e8e8e8; min-width: 28px; text-align: center; }
+    .inv-weapon-ammo-sep { color: #555; font-size: 11px; }
+    .inv-weapon-ammo-max { color: #888; font-size: 11px; }
+
+    .inv-weapon-ranges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+    .inv-weapon-range { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 3px; padding: 2px 8px; font-size: 10px; color: #bbb; }
+    .inv-weapon-range-label { color: #777; font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin-right: 3px; }
+
+    .inv-weapon-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .inv-weapon-tag { background: #1a1515; border: 1px solid #3a2a1a; color: #d4a574; font-size: 10px; padding: 2px 8px; border-radius: 3px; cursor: help; }
+
+    /* Grouped tag rows — on-sheet weapon card */
+    .inv-weapon-tags-grouped { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+    .inv-weapon-tag-group { border: 1px solid #1a1a1a; border-radius: 3px; background: #0a0a0a; }
+    .inv-weapon-tag-grouphead {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 8px;
+      font-size: 9px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #888;
+      cursor: pointer; user-select: none;
+      transition: background 0.1s, color 0.1s;
+    }
+    .inv-weapon-tag-grouphead:hover { background: #121212; color: #aaa; }
+    .inv-weapon-tag-group.collapsed .inv-weapon-tag-grouphead { color: #666; }
+    .inv-weapon-tag-caret { width: 10px; text-align: center; color: #666; }
+    .inv-weapon-tag-grouphead:hover .inv-weapon-tag-caret { color: #999; }
+    .inv-weapon-tag-groupname { flex: 1; }
+    .inv-weapon-tag-groupcount {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-variant-numeric: tabular-nums; color: #666; font-size: 9px;
+    }
+    .inv-weapon-tag-grouptags {
+      display: flex; flex-wrap: wrap; gap: 4px;
+      padding: 0 8px 6px;
     }
 
-    const name = entryName(entry);
-    const dims = entryDimensions(entry);
-    const qty = entry.quantity || 1;
-    const totalWeight = entryWeight(entry) * qty;
-    // Legacy category string — only ruleset items carry this.
-    // Prefer snapshot's copy, fall back to def.category for very old
-    // pre-snapshot data.
-    const legacyCat = (snap && snap.legacyCategory) || (def && def.category) || '';
-    const catLabel = legacyCat ? ` · ${legacyCat}` : '';
-    const description = entryDescription(entry);
-    // Weapons are expandable too — the weapon readout collapses with
-    // the namecard. A plain item with no description but a weapon
-    // snapshot still gets a clickable name that toggles the weapon
-    // card underneath. `hasInfo` stays narrow ("has text content")
-    // so the info panel only renders when there's text; `hasExpandable`
-    // is the broader trigger for making the whole entry collapsible.
-    const hasText = !!((description && description.trim()) || (entry.notes && entry.notes.trim()));
-    const hasWeapon = !!(snap && snap.weapon);
-    const hasExpandable = hasText || hasWeapon;
-    const infoOpen = expandedInfo.has(entry.id);
-
-    // Hover tooltip: first ~80 chars of description as a title attribute
-    // on the name. Full description shows when the row is clicked.
-    const tooltip = hasText
-      ? escapeHtml(truncate((description || entry.notes || '').replace(/\s+/g, ' ').trim(), 80))
-      : (hasWeapon ? 'Click to show/hide weapon stats' : '');
-    // If there's expandable content, the name is clickable.
-    const nameAttrs = hasExpandable
-      ? ` class="inv-entry-name inv-entry-name-clickable" title="${tooltip}" onclick="invToggleItemInfo('${escapeHtml(entry.id)}')"`
-      : ` class="inv-entry-name"`;
-
-    const isEditing = editingEntryId === entry.id;
-
-    // Armor pill — shown inline on the entry row when the item has a
-    // non-zero Armor rating. Reads the new top-level snap.armor integer
-    // (not the legacy object shape). Tooltip adds coverage when the
-    // item is also wearable armor (armorWorn facet populated).
-    const armorVal = snap && Number.isFinite(snap.armor) ? snap.armor : 0;
-    const armorWorn = snap && snap.armorWorn;
-    const armorTip = armorVal > 0
-      ? `Armor ${armorVal}${armorWorn && armorWorn.coverage && armorWorn.coverage.length ? ' — covers ' + armorWorn.coverage.join(', ') : ''}`
-      : '';
-    const armorPill = armorVal > 0
-      ? `<span class="inv-entry-armor-pill" title="${armorTip}">Armor ${armorVal}</span>`
-      : '';
-
-    let html = `<div class="inv-entry inv-entry-item${infoOpen ? ' info-open' : ''}${isEditing ? ' editing' : ''}" style="margin-left:${depth * 16}px">
-      <div class="inv-entry-head inv-entry-head-item">
-        <span class="inv-entry-icon" title="Item">◆</span>
-        <span${nameAttrs}>${escapeHtml(name)}${escapeHtml(catLabel)}${armorPill}${hasExpandable ? `<span class="inv-entry-info-caret">${infoOpen ? '▾' : '▸'}</span>` : ''}</span>
-        <span class="inv-entry-qty">${canEdit
-          ? `<button class="inv-qty-btn" onclick="invTickQty('${escapeHtml(entry.id)}',-1)" title="Decrease quantity" ${qty <= 1 ? 'disabled' : ''}>−</button>`
-          : ''}
-          <span class="inv-qty-val">×${qty}</span>
-          ${canEdit
-          ? `<button class="inv-qty-btn" onclick="invTickQty('${escapeHtml(entry.id)}',1)" title="Increase quantity">+</button>`
-          : ''}
-        </span>
-        <span class="inv-entry-dims">${fmt(dims.l)}×${fmt(dims.w)}×${fmt(dims.h)} in</span>
-        <span class="inv-entry-weight">${fmt(totalWeight)} lb</span>
-        ${canEdit ? `<button class="inv-row-btn inv-row-btn-edit" onclick="invOpenEntryEdit('${escapeHtml(entry.id)}')" title="Edit this instance (changes only this one, not the template).">✎</button>` : ''}
-        ${canEdit ? `<button class="inv-row-btn inv-row-btn-danger" onclick="invRemoveEntry('${escapeHtml(entry.id)}')" title="Remove this item">×</button>` : ''}
-      </div>
-      ${renderDurabilityRow(entry, canEdit)}`;
-
-    // Inline edit panel for plain items — simpler than the container
-    // version (no inner dims / packing fields).
-    if (isEditing) {
-      html += renderEntryEditPanel(entry, /*asContainer=*/false, depth);
+    /* Grouped tag checkboxes — weapon snapshot editor */
+    .inv-weapon-editor-tag-group {
+      margin-bottom: 4px;
+      border: 1px solid #1a1a1a; border-radius: 3px; background: #0a0a0a;
+    }
+    .inv-weapon-editor-tag-grouphead {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 8px;
+      font-size: 9px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #888;
+      cursor: pointer; user-select: none;
+      transition: background 0.1s, color 0.1s;
+    }
+    .inv-weapon-editor-tag-grouphead:hover { background: #121212; color: #aaa; }
+    .inv-weapon-editor-tag-group.collapsed .inv-weapon-editor-tag-grouphead { color: #666; }
+    .inv-weapon-editor-tag-caret { width: 10px; text-align: center; color: #666; }
+    .inv-weapon-editor-tag-grouphead:hover .inv-weapon-editor-tag-caret { color: #999; }
+    .inv-weapon-editor-tag-groupname { flex: 1; }
+    .inv-weapon-editor-tag-groupcount {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-variant-numeric: tabular-nums; color: #666; font-size: 9px;
+    }
+    .inv-weapon-editor-tag-group-selected {
+      font-family: inherit; font-size: 9px;
+      padding: 1px 5px; border-radius: 2px;
+      background: #2a1f14; color: #d4a574; border: 1px solid #3a2a1a;
+      font-weight: 600; letter-spacing: .04em; text-transform: none;
+    }
+    .inv-weapon-editor-tag-group .inv-weapon-editor-tags {
+      padding: 4px 8px 6px;
     }
 
-    if (infoOpen && hasText) {
-      const desc = (description || '').trim();
-      const notes = (entry.notes || '').trim();
-      html += `<div class="inv-entry-info">`;
-      if (desc) {
-        html += `<div class="inv-entry-info-desc">${escapeHtml(desc)}</div>`;
-      }
-      if (notes) {
-        html += `<div class="inv-entry-info-notes"><span class="inv-entry-info-label">Notes:</span> ${escapeHtml(notes)}</div>`;
-      }
-      html += `</div>`;
+    /* Grouped tag checkboxes — Add Item custom form and catalog manager */
+    .inv-weapon-draft-tags {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      margin-top: 4px;
+    }
+    .inv-weapon-draft-tag {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 8px;
+      background: #1a1a1a; border: 1px solid #2a2a2a;
+      border-radius: 4px; font-size: 11px; cursor: pointer;
+    }
+    .inv-weapon-draft-tag input[type="checkbox"] { margin: 0; cursor: pointer; }
+    .inv-weapon-draft-tags-grouped {
+      display: flex; flex-direction: column; gap: 4px; margin-top: 4px;
+    }
+    .inv-weapon-draft-tag-group {
+      border: 1px solid #1a1a1a; border-radius: 3px; background: #0a0a0a;
+    }
+    .inv-weapon-draft-tag-grouphead {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 8px;
+      font-size: 9px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #888;
+      cursor: pointer; user-select: none;
+      transition: background 0.1s, color 0.1s;
+    }
+    .inv-weapon-draft-tag-grouphead:hover { background: #121212; color: #aaa; }
+    .inv-weapon-draft-tag-group.collapsed .inv-weapon-draft-tag-grouphead { color: #666; }
+    .inv-weapon-draft-tag-caret { width: 10px; text-align: center; color: #666; }
+    .inv-weapon-draft-tag-grouphead:hover .inv-weapon-draft-tag-caret { color: #999; }
+    .inv-weapon-draft-tag-groupname { flex: 1; }
+    .inv-weapon-draft-tag-groupcount {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-variant-numeric: tabular-nums; color: #666; font-size: 9px;
+    }
+    .inv-weapon-draft-tag-selected {
+      font-family: inherit; font-size: 9px;
+      padding: 1px 5px; border-radius: 2px;
+      background: #2a1f14; color: #d4a574; border: 1px solid #3a2a1a;
+      font-weight: 600; letter-spacing: .04em;
+    }
+    .inv-weapon-draft-tag-group .inv-weapon-draft-tags {
+      padding: 4px 8px 6px;
     }
 
-    // Weapon readout — only shows when the entry is expanded (the
-    // namecard caret controls it) AND the snapshot carries a weapon.
-    // Non-weapon items skip this block entirely.
-    if (infoOpen && hasWeapon) {
-      html += renderWeaponReadout(entry);
+    /* ── Weapon readout redesign (Turn 1) ── */
+    /* Penalty pill next to the dice pool — click the pool to toggle */
+    .inv-weapon-penalty-pill {
+      display: inline-block; margin-left: 6px;
+      font-size: 9px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase;
+      padding: 1px 5px; border-radius: 2px;
+      background: #2a1616; color: #d88a8a;
+      border: 1px solid #3a1f1f;
+      vertical-align: middle;
+    }
+    .inv-weapon-penalty-pill.raw {
+      background: #151a10; color: #a8c878; border-color: #2a301a;
+    }
+    .inv-weapon-roll-pool, .inv-weapon-roll-flat {
+      cursor: pointer;
+      transition: opacity 0.1s;
+    }
+    .inv-weapon-roll-pool:hover, .inv-weapon-roll-flat:hover {
+      opacity: 0.8;
     }
 
-    html += `</div>`;
-    return html;
-  }
+    /* Per-slot breakdown with category coloring */
+    .inv-weapon-slot-stat { color: #a8c4de; }       /* stat — blue */
+    .inv-weapon-slot-statmod { color: #d4a574; }    /* statmod — gold */
+    .inv-weapon-slot-skill { color: #9ed0a8; }      /* skill — green */
+    .inv-weapon-slot-const { color: #c8b8e8; }      /* weapon const — lavender */
+    .inv-weapon-slot-literal { color: #888; }       /* literal — muted */
+    .inv-weapon-slot-unknown { color: #cc6666; }    /* unknown — error red */
+    .inv-weapon-slot-was { color: #666; font-size: 9px; margin-left: 2px; }
 
-  // Weapon readout block. Designed as a self-contained mini dice
-  // calculator — players read the numbers off the card, type them
-  // into their Discord dicebot, and roll. The Roll Calc integration
-  // ("→ Roll Calc" button) is a secondary convenience, not the
-  // primary workflow.
-  //
-  // Layout:
-  //   [Attack block]
-  //     Dice pool: "DEX(6) + Melee(3) = 9D10" (click to toggle raw vs penalty-reduced)
-  //     Flat bonus: "+2" (DEXMOD)
-  //     Difficulty row: base 6 + chips (secondary skill -1, pain +1, etc.), final number
-  //     Slot breakdown per term — category-coded colors
-  //     "→ Roll Calc" button (secondary)
-  //   [Damage block]
-  //     Same structure, with an extra "ATK result" input for the
-  //     chain-from-attack-to-damage flow
-  //   [Chips row]  — DMG, PEN, range info, AMMO, ROF
-  //   [Melee range bands] OR ranged range info
-  //   [Tags]
-  //
-  // Per-instance UI state (entry.weaponUI) carries:
-  //   showRawAttack  — boolean; toggles raw vs penalty-reduced for Attack
-  //   showRawDamage  — boolean; same for Damage
-  //   atkResult      — number or null; the attack roll's contested
-  //                     result, used to compute final damage dice
-  //   (overrides and current range live in entry.weaponOverrides and
-  //   entry.currentRange — those drive actual resolver state)
-  function renderWeaponReadout(entry) {    const snap = entry && entry.snapshot;
-    const weapon = snap && snap.weapon;
-    if (!weapon || (weapon.kind !== 'melee' && weapon.kind !== 'ranged')) return '';
+    /* Tiny skill-tier badge (P / S / Sp) */
+    .inv-weapon-tier-badge {
+      display: inline-block;
+      margin-left: 3px;
+      font-size: 8px; font-weight: 700;
+      padding: 0 4px; border-radius: 2px;
+      background: #1a2218; color: #9ed0a8;
+      border: 1px solid #253322;
+      vertical-align: middle;
+    }
+    .inv-weapon-tier-badge.secondary { background: #1a1e28; color: #a8c4de; border-color: #252a35; }
+    .inv-weapon-tier-badge.specialty { background: #281a28; color: #d4a4d4; border-color: #35253a; }
 
-    const character = ctx.getCharData();
-    const ruleset   = ctx.getRuleset();
+    /* Difficulty row — base 6 plus chips (range, skill mitigation, etc) */
+    .inv-weapon-diff-row {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+      margin-top: 5px; padding-top: 5px;
+      border-top: 1px dashed #1a1a1a;
+      font-size: 10px;
+    }
+    .inv-weapon-diff-label {
+      font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+      color: #777;
+    }
+    .inv-weapon-diff-val {
+      font-family: 'Courier New', monospace; font-weight: 600; color: #e8a8a8;
+      font-size: 12px;
+    }
+    .inv-weapon-diff-chip {
+      background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 3px;
+      padding: 1px 6px; color: #aaa; font-size: 9px;
+    }
+    .inv-weapon-diff-chip.mitigation { color: #9ed0a8; border-color: #253322; }
+    .inv-weapon-diff-chip.penalty { color: #e8a8a8; border-color: #352525; }
+    .inv-weapon-diff-chip.wasted { opacity: 0.45; text-decoration: line-through; }
 
-    let penaltyPct = 0;
-    try {
-      const derived = computeDerivedStats(character, ruleset);
-      penaltyPct = (derived && derived.penalty && derived.penalty.percent) || 0;
-    } catch (_) { penaltyPct = 0; }
+    /* ATK contested-result input on the damage block */
+    .inv-weapon-atk-row {
+      display: flex; align-items: center; gap: 6px;
+      margin-top: 5px; padding-top: 5px;
+      border-top: 1px dashed #1a1a1a;
+      font-size: 10px;
+    }
+    .inv-weapon-atk-label {
+      font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+      color: #777;
+    }
+    .inv-weapon-atk-placeholder {
+      font-family: 'Courier New', monospace;
+      color: #666; font-style: italic; font-size: 10px;
+    }
+    .inv-weapon-atk-input {
+      background: #0a0a0a; border: 1px solid #222; color: #e8e8e8;
+      font-family: 'Courier New', monospace;
+      font-size: 11px; padding: 2px 6px; border-radius: 2px;
+      width: 52px; text-align: center;
+      outline: none;
+    }
+    .inv-weapon-atk-input:focus { border-color: #3a5878; }
+    .inv-weapon-atk-val {
+      font-family: 'Courier New', monospace;
+      color: #d4a574; font-weight: 600; font-size: 11px;
+    }
+    .inv-weapon-atk-clear {
+      background: none; border: none; color: #666; cursor: pointer;
+      font-size: 14px; line-height: 1; padding: 0 2px;
+    }
+    .inv-weapon-atk-clear:hover { color: #cc6666; }
+    .inv-weapon-atk-note {
+      font-size: 9px; color: #555; font-style: italic;
+    }
 
-    const ui = entry.weaponUI || {};
-    const overrides = entry.weaponOverrides || null;
-    const atkResult = Number.isFinite(ui.atkResult) ? ui.atkResult : null;
-    const currentRange = Number.isFinite(entry.currentRange) ? entry.currentRange : null;
-    // Rapidfire: how many EXTRA AMMO the player wants to spend this
-    // round, split into two buckets — Damage (boosts DMGMOD, provokes
-    // recoil) and Sweep (widens Rapidfire Sweep cube, no recoil).
-    // 0+0 = normal single shot. Only meaningful for ranged weapons.
-    // Legacy `rapidfireExtra` field (single bucket) auto-migrates
-    // into damageExtra on first read.
-    const rapidfireSplit = readRapidfireSplit(ui, weapon.kind);
+    /* "Custom" badge when entry has overrides */
+    .inv-weapon-custom-badge {
+      font-size: 9px; font-weight: 600; letter-spacing: .05em;
+      padding: 1px 5px; border-radius: 2px;
+      background: #281e15; color: #d4a574;
+      border: 1px solid #352a1a;
+      margin-left: 6px;
+    }
 
-    // Resolve TWICE:
-    //   resolved        — with overrides applied (what the user currently sees)
-    //   defaultResolved — with NO overrides (so each slot knows its original
-    //                     variable name for the override map key). Slots are
-    //                     paired by index between the two results.
-    // Performance is fine — two cheap compiles + evaluations per weapon.
-    const resolved = resolveWeapon(weapon, character, ruleset, overrides, atkResult, penaltyPct, rapidfireSplit, currentRange);
-    if (!resolved) return '';
-    const defaultResolved = overrides
-      ? resolveWeapon(weapon, character, ruleset, null, atkResult, penaltyPct, rapidfireSplit, currentRange)
-      : resolved;
+    /* ── Turn 2 additions: slot picker, reset button, range selector ── */
+    /* Inline <select> styled to blend with the slot text */
+    .inv-weapon-slot-select {
+      background: transparent;
+      border: none;
+      border-bottom: 1px dotted #555;
+      color: inherit;           /* matches the slot's category color */
+      font-family: inherit;
+      font-size: inherit;
+      font-weight: inherit;
+      padding: 0 14px 0 0;
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      outline: none;
+      background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+                        linear-gradient(135deg, currentColor 50%, transparent 50%);
+      background-position: calc(100% - 6px) 50%, calc(100% - 2px) 50%;
+      background-size: 4px 4px, 4px 4px;
+      background-repeat: no-repeat;
+      opacity: 0.92;
+    }
+    .inv-weapon-slot-select:hover {
+      border-bottom-color: currentColor;
+      opacity: 1;
+    }
+    .inv-weapon-slot-select:focus {
+      border-bottom-color: currentColor;
+      outline: none;
+    }
+    /* <option> elements render in the browser's native dropdown UA —
+       these styles apply inside the popup where supported. */
+    .inv-weapon-slot-select option { background: #0a0a0a; color: #e0e0e0; }
+    .inv-weapon-slot-select optgroup { background: #0a0a0a; color: #888; font-style: italic; }
 
-    // Compute range-based Difficulty chip for the Attack block. Works
-    // for both melee (map distance onto weapon's bands) and ranged
-    // (map distance past weapon's base range in successive bands).
-    // Returns { band, label } or null when no range set.
-    let rangeChip = null;
-    if (currentRange != null) {
+    /* Reset-to-def button in the weapon title bar */
+    .inv-weapon-reset-btn {
+      background: #1a1515; border: 1px solid #3a2a1a;
+      color: #d4a574; font-size: 9px; font-weight: 700;
+      letter-spacing: .08em; text-transform: uppercase;
+      padding: 3px 8px; border-radius: 3px; cursor: pointer;
+      font-family: inherit;
+    }
+    .inv-weapon-reset-btn:hover { background: #2a1e18; border-color: #4a3525; color: #e8b585; }
+
+    /* Engagement-range selector row */
+    .inv-weapon-range-row {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+      margin-top: 8px; padding: 6px 0;
+      border-top: 1px dashed #1a1a1a;
+      font-size: 11px;
+    }
+    .inv-weapon-range-row-label {
+      font-size: 9px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #777;
+    }
+    .inv-weapon-range-input {
+      background: #0a0a0a; border: 1px solid #222; color: #e8e8e8;
+      font-family: 'Courier New', monospace;
+      font-size: 11px; padding: 2px 6px; border-radius: 2px;
+      width: 56px; text-align: center; outline: none;
+    }
+    .inv-weapon-range-input:focus { border-color: #3a5878; }
+    .inv-weapon-range-unit { font-size: 10px; color: #666; }
+    .inv-weapon-range-clear {
+      background: none; border: none; color: #666; cursor: pointer;
+      font-size: 14px; line-height: 1; padding: 0 2px;
+    }
+    .inv-weapon-range-clear:hover { color: #cc6666; }
+    .inv-weapon-range-band {
+      background: #1a1815; border: 1px solid #3a2f1a; color: #e8a874;
+      font-family: 'Courier New', monospace;
+      font-size: 10px; padding: 1px 6px; border-radius: 2px;
+      margin-left: auto;
+    }
+    .inv-weapon-range-band.none { background: #0a0a0a; border-color: #1a1a1a; color: #666; }
+
+    /* Clickable melee band chips (reuses .inv-weapon-range base) */
+    .inv-weapon-range.clickable { cursor: pointer; transition: background 0.1s, border-color 0.1s; }
+    .inv-weapon-range.clickable:hover { background: #151515; border-color: #2a2a2a; }
+    .inv-weapon-range.clickable.active {
+      background: #1a1815; border-color: #3a2f1a;
+      color: #e8a874;
+    }
+    .inv-weapon-range.clickable.active .inv-weapon-range-label { color: #b88558; }
+
+    /* ── Per-instance weapon stat editor ── */
+    .inv-weapon-edit-btn {
+      background: #131519; border: 1px solid #2a2f35;
+      color: #a8c4de; font-size: 9px; font-weight: 700;
+      letter-spacing: .08em; text-transform: uppercase;
+      padding: 3px 8px; border-radius: 3px; cursor: pointer;
+      font-family: inherit; margin-right: 4px;
+    }
+    .inv-weapon-edit-btn:hover { background: #1a2030; border-color: #3a5878; color: #cfe3f6; }
+    .inv-weapon-edit-btn.on { background: #1f2c3a; border-color: #3a5878; color: #cfe3f6; }
+
+    .inv-weapon-editor {
+      background: #0a0a0a; border: 1px dashed #2a2a2a; border-radius: 3px;
+      padding: 8px 10px; margin-bottom: 10px;
+      font-size: 11px;
+    }
+    .inv-weapon-editor-title {
+      font-size: 9px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #888; margin-bottom: 8px;
+    }
+    .inv-weapon-editor-row {
+      display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 6px;
+    }
+    .inv-weapon-editor-field { display: flex; flex-direction: column; gap: 3px; min-width: 80px; }
+    .inv-weapon-editor-field label {
+      font-size: 9px; font-weight: 600; letter-spacing: .05em;
+      text-transform: uppercase; color: #888;
+    }
+    .inv-weapon-editor-field input,
+    .inv-weapon-editor-field select {
+      background: #0a0a0a; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 11px;
+      padding: 4px 8px; border-radius: 3px; outline: none;
+      min-width: 70px;
+    }
+    .inv-weapon-editor-field input:focus,
+    .inv-weapon-editor-field select:focus { border-color: #444; }
+    .inv-weapon-editor-hint { font-weight: 400; color: #555; text-transform: none; font-size: 8px; }
+    .inv-weapon-editor-subhead {
+      font-size: 9px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #888;
+      margin-top: 10px; margin-bottom: 4px;
+    }
+    .inv-weapon-editor-empty { font-size: 10px; color: #666; padding: 2px 0; }
+    .inv-weapon-editor-band {
+      display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
+    }
+    .inv-weapon-editor-band-label {
+      font-size: 10px; color: #888; min-width: 64px;
+    }
+    .inv-weapon-editor-band input {
+      background: #0a0a0a; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 11px; padding: 3px 6px; border-radius: 3px;
+      width: 64px; text-align: center; outline: none;
+    }
+    .inv-weapon-editor-band input:focus { border-color: #444; }
+    .inv-weapon-editor-sep { color: #555; }
+    .inv-weapon-editor-unit { font-size: 10px; color: #666; }
+    .inv-weapon-editor-del {
+      background: none; border: none; color: #666; cursor: pointer;
+      font-size: 14px; line-height: 1; padding: 0 4px;
+      margin-left: auto;
+    }
+    .inv-weapon-editor-del:hover { color: #cc6666; }
+    .inv-weapon-editor-add {
+      background: #131519; border: 1px solid #2a2f35;
+      color: #a8c4de; font-size: 10px; padding: 4px 10px;
+      border-radius: 3px; cursor: pointer; font-family: inherit;
+      margin-top: 4px;
+    }
+    .inv-weapon-editor-add:hover { background: #1a2030; border-color: #3a5878; color: #cfe3f6; }
+    .inv-weapon-editor-tags {
+      display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px;
+    }
+    .inv-weapon-editor-tag {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 8px; background: #0a0a0a;
+      border: 1px solid #1a1a1a; border-radius: 3px;
+      font-size: 10px; color: #bbb; cursor: pointer;
+    }
+    .inv-weapon-editor-tag:hover { border-color: #2a2a2a; }
+    .inv-weapon-editor-tag input[type="checkbox"] { margin: 0; cursor: pointer; }
+
+    /* ── Rapidfire selector (ranged only) ── */
+    .inv-weapon-rf-row {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+      margin-bottom: 10px; padding: 7px 10px;
+      background: #0f0c0a; border: 1px solid #2a1f18; border-radius: 3px;
+      font-size: 11px;
+    }
+    .inv-weapon-rf-label {
+      font-size: 10px; font-weight: 700; letter-spacing: .1em;
+      text-transform: uppercase; color: #d4a574;
+    }
+    .inv-weapon-rf-extra-label { font-size: 10px; color: #888; }
+    .inv-weapon-rf-input {
+      background: #0a0a0a; border: 1px solid #2a1f18; color: #e8e8e8;
+      font-family: 'Courier New', monospace;
+      font-size: 12px; padding: 3px 6px; border-radius: 2px;
+      width: 52px; text-align: center; outline: none;
+    }
+    .inv-weapon-rf-input:focus { border-color: #4a3525; }
+    .inv-weapon-rf-input:disabled { opacity: 0.4; cursor: not-allowed; }
+    .inv-weapon-rf-max { color: #666; font-size: 10px; }
+    .inv-weapon-rf-clear {
+      background: none; border: none; color: #666; cursor: pointer;
+      font-size: 14px; line-height: 1; padding: 0 2px;
+    }
+    .inv-weapon-rf-clear:hover { color: #cc6666; }
+    .inv-weapon-rf-chips {
+      display: flex; flex-wrap: wrap; gap: 5px;
+      margin-left: auto;
+    }
+    .inv-weapon-rf-chip {
+      font-size: 10px; padding: 2px 7px; border-radius: 2px;
+      border: 1px solid #2a2a2a; background: #0a0a0a;
+      font-family: 'Courier New', monospace;
+    }
+    .inv-weapon-rf-chip.rf-dmgmod {
+      color: #e8a874; border-color: #3a2f1a; background: #1a1815;
+    }
+    .inv-weapon-rf-chip.rf-recoil {
+      color: #e8a8a8; border-color: #352525; background: #1a1515;
+    }
+    .inv-weapon-rf-chip.rf-controlled {
+      color: #9ed0a8; border-color: #253322; background: #151a10;
+      font-style: italic;
+    }
+    .inv-weapon-rf-chip.rf-rof {
+      color: #9ed0a8; border-color: #253322;
+    }
+    .inv-weapon-rf-chip.rf-cost {
+      color: #aaa; border-color: #2a2a2a;
+    }
+    .inv-weapon-rf-chip.rf-sweep {
+      color: #c0b8e8; border-color: #2a2540; background: #15131f;
+    }
+    .inv-weapon-rf-chip.rf-stab {
+      color: #b5d0d8; border-color: #1e3038; background: #0f1a1e;
+    }
+    .inv-weapon-rf-hint {
+      font-size: 10px; color: #666; font-style: italic;
+      margin-left: auto; max-width: 50%; text-align: right;
+    }
+    .inv-weapon-rf-sublabel {
+      font-size: 9px; font-weight: 600; letter-spacing: .08em;
+      text-transform: uppercase; color: #888;
+      cursor: help;
+    }
+    .inv-weapon-rf-divider {
+      font-size: 14px; color: #444; font-weight: 300;
+      margin: 0 2px;
+    }
+    .inv-weapon-rf-disabled {
+      font-size: 10px; color: #555; font-style: italic;
+      padding: 2px 6px; border: 1px dashed #2a2a2a; border-radius: 3px;
+      cursor: help;
+    }
+    .inv-weapon-sweep-hint {
+      font-size: 9px; color: #666; font-style: italic;
+      margin-left: 6px;
+    }
+    .inv-weapon-sweep-shotgun {
+      font-size: 9px; padding: 1px 6px; margin-left: 6px;
+      background: #2a1818; color: #e8a8a8;
+      border: 1px solid #3a2525; border-radius: 2px;
+      font-weight: 600; letter-spacing: .05em;
+      text-transform: uppercase; cursor: help;
+    }
+
+    /* Custom-def form inside the modal — same field shape as edit-ruleset */
+    .inv-custom-form .inv-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+    .inv-custom-form .inv-field label { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; }
+    .inv-custom-form .inv-field input, .inv-custom-form .inv-field textarea {
+      background: #0a0a0a; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 10px;
+      border-radius: 3px; outline: none; width: 100%;
+    }
+    .inv-custom-form .inv-field input:focus, .inv-custom-form .inv-field textarea:focus { border-color: #444; }
+    .inv-custom-form .inv-field textarea { resize: vertical; min-height: 44px; line-height: 1.5; }
+    .inv-custom-form .inv-dims-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .inv-custom-form .inv-dims-row input { text-align: center; font-family: 'Consolas', 'Courier New', monospace; }
+    .inv-custom-form .inv-toggle-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .inv-custom-form .inv-toggle { display: inline-block; cursor: pointer; user-select: none; padding: 5px 12px; border: 1px solid #222; border-radius: 3px; background: #0a0a0a; color: #555; font-size: 11px; font-weight: 500; }
+    .inv-custom-form .inv-toggle:hover { border-color: #444; color: #888; }
+    .inv-custom-form .inv-toggle.on { background: #1f2c3a; border-color: #3a5878; color: #cfe3f6; }
+    .inv-custom-form .inv-toggle-hint { font-size: 11px; color: #666; }
+    .inv-custom-form .inv-container-block { border: 1px dashed #2a2a2a; border-radius: 4px; padding: 10px 12px; margin-top: 6px; background: #0c0c0c; }
+    .inv-custom-form .inv-container-block-title { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #888; margin-bottom: 8px; }
+    .inv-modal-actions { display: flex; gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #1a1a1a; }
+    .inv-modal-custom-row { display: flex; align-items: center; gap: 10px; padding: 10px 4px 2px; margin-top: 8px; border-top: 1px solid #1a1a1a; }
+    .inv-modal-custom-hint { font-size: 10px; color: #666; font-style: italic; }
+
+    /* ═══ INVENTORY / CATALOG VIEW TOGGLE ═══
+     * Top-right header bar inside the Inventory tab. Two buttons, only
+     * one active. Same visual language as the sheet's top-level tabs so
+     * it reads as "sub-tab". Manage Catalogue button sits on the right. */
+    .inv-view-toggle { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid #1a1a1a; flex-wrap: wrap; }
+    .inv-view-toggle-left { display: flex; gap: 4px; }
+    .inv-view-btn { background: transparent; border: 1px solid #1a1a1a; color: #888; font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 500; padding: 6px 16px; border-radius: 3px; cursor: pointer; letter-spacing: .04em; text-transform: uppercase; }
+    .inv-view-btn:hover { background: #111; color: #ccc; border-color: #2a2a2a; }
+    .inv-view-btn.on { background: #1a1a1a; color: #e0e0e0; border-color: #3a3a3a; cursor: default; }
+
+    .inv-manage-btn { background: transparent; border: 1px solid #2a2010; color: #caa060; font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 500; padding: 6px 14px; border-radius: 3px; cursor: pointer; letter-spacing: .04em; transition: all .1s; }
+    .inv-manage-btn:hover { background: #1a1406; border-color: #3a2c10; color: #e0b870; }
+
+    /* ═══ CARRY CARDS (CAP / ENC / LIFT) ═══
+     * Three cards at the top of the Inventory tab summarizing the
+     * character's carry state. Same collapse/expand pattern as the
+     * Pain/Stress pills — click header to toggle a modifier editor.
+     * ENC gets a severity tint on its value based on current %. */
+    .inv-carry-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .inv-carry-card {
+      background: #0a0a0a;
+      border: 1px solid #1a1a1a;
+      border-radius: 4px;
+      overflow: hidden;
+      transition: border-color .1s;
+    }
+    .inv-carry-card:hover { border-color: #2a2a2a; }
+    .inv-carry-card.open { border-color: #3a3a3a; }
+    .inv-carry-card.has-mods { border-color: #2a2010; }
+    .inv-carry-card.open.has-mods { border-color: #3a2c10; }
+
+    .inv-carry-head {
+      padding: 10px 14px 4px;
+      cursor: pointer;
+      user-select: none;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      grid-template-rows: auto auto;
+      gap: 2px 12px;
+    }
+    .inv-carry-head:hover { background: #111; }
+
+    .inv-carry-label {
+      grid-column: 1;
+      grid-row: 1;
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .inv-carry-name {
+      font-family: 'Open Sans', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #888;
+    }
+    .inv-carry-code {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 9px;
+      font-weight: 600;
+      color: #555;
+      letter-spacing: .1em;
+    }
+    .inv-carry-value {
+      grid-column: 2;
+      grid-row: 1 / 3;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 22px;
+      font-weight: 700;
+      color: #e0e0e0;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      align-self: center;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .inv-carry-unit {
+      font-family: 'Open Sans', sans-serif;
+      font-size: 10px;
+      font-weight: 500;
+      color: #666;
+      margin-left: 2px;
+    }
+    .inv-carry-sub {
+      grid-column: 1;
+      grid-row: 2;
+      font-size: 10px;
+      color: #666;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.3;
+    }
+    .inv-carry-base {
+      color: #666;
+    }
+    .inv-carry-ratio {
+      color: #aaa;
+      font-weight: 600;
+    }
+    .inv-carry-desc {
+      padding: 4px 14px 10px;
+      font-size: 10px;
+      color: #666;
+      line-height: 1.4;
+      font-style: italic;
+    }
+
+    /* Banner — warning/notice callout inside a carry card. Sits between
+       the head and the description. Three severity tiers use different
+       border/background tints to match the rest of the severity scale.
+       Icon is rendered inline; the text explains the condition in
+       mechanical terms ("cannot carry without a roll" etc.). */
+    .inv-carry-banner {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 7px 12px;
+      margin: 2px 10px 6px;
+      border-radius: 3px;
+      font-size: 11px;
+      line-height: 1.4;
+      border: 1px solid;
+    }
+    .inv-carry-banner-icon {
+      font-size: 13px;
+      line-height: 1.3;
+      flex-shrink: 0;
+    }
+    .inv-carry-banner-txt { flex: 1; }
+    .inv-carry-banner-txt strong {
+      font-weight: 700;
+      letter-spacing: .02em;
+    }
+    .inv-carry-banner-note {
+      background: #0f1208;
+      border-color: #2a3a18;
+      color: #a0c080;
+    }
+    .inv-carry-banner-warn {
+      background: #181208;
+      border-color: #3a2c10;
+      color: #e0b870;
+    }
+    .inv-carry-banner-danger {
+      background: #1a0a0a;
+      border-color: #4a1a1a;
+      color: #e09090;
+    }
+    .inv-carry-banner-danger .inv-carry-banner-txt strong {
+      color: #e07878;
+    }
+
+    /* ENC severity tint — mirrors the Pain/Stress pill color scale.
+       Applies to the big numeric value only; base/desc stay neutral. */
+    .inv-carry-card.carry-zero  .inv-carry-value { color: #e0e0e0; }
+    .inv-carry-card.carry-light .inv-carry-value { color: #e0c870; }
+    .inv-carry-card.carry-heavy .inv-carry-value { color: #e09870; }
+    .inv-carry-card.carry-crit  .inv-carry-value { color: #e07878; }
+
+    /* Expanded modifier editor panel. Same mental model as pain/stress
+       pill panels: a list of named ± rows, each editable, plus an
+       add button. Readonly mode (other players viewing the sheet)
+       shows values without input controls. */
+    .inv-carry-panel {
+      padding: 8px 14px 12px;
+      border-top: 1px solid #151515;
+      background: #070707;
+    }
+    .inv-carry-empty {
+      font-size: 11px;
+      color: #555;
+      font-style: italic;
+      padding: 4px 0 8px;
+    }
+    .inv-carry-mods {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 8px;
+    }
+    .inv-carry-mod-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .inv-carry-mod-name {
+      flex: 1;
+      min-width: 0;
+      background: #111;
+      border: 1px solid #222;
+      color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 3px;
+      outline: none;
+    }
+    .inv-carry-mod-name:focus { border-color: #3a3a3a; }
+    .inv-carry-mod-name.readonly {
+      border: none;
+      background: transparent;
+      padding: 4px 0;
+      color: #ccc;
+    }
+    .inv-carry-mod-value {
+      width: 56px;
+      background: #111;
+      border: 1px solid #222;
+      color: #e0e0e0;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 6px;
+      border-radius: 3px;
+      outline: none;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      -moz-appearance: textfield;
+    }
+    .inv-carry-mod-value::-webkit-outer-spin-button,
+    .inv-carry-mod-value::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .inv-carry-mod-value:focus { border-color: #3a3a3a; }
+    .inv-carry-mod-value.readonly {
+      border: none;
+      background: transparent;
+      padding: 4px 0;
+      color: #ccc;
+    }
+    .inv-carry-mod-unit {
+      color: #666;
+      font-size: 10px;
+      font-family: 'Open Sans', sans-serif;
+      margin-left: -2px;
+    }
+    .inv-carry-mod-del {
+      background: transparent;
+      border: 1px solid #2a1a1a;
+      color: #a05050;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border-radius: 3px;
+      cursor: pointer;
+      line-height: 1;
+      transition: all .1s;
+    }
+    .inv-carry-mod-del:hover {
+      background: #2a1212;
+      border-color: #4a2a2a;
+      color: #d07070;
+    }
+    .inv-carry-add {
+      background: transparent;
+      border: 1px dashed #2a2a2a;
+      color: #888;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 5px 10px;
+      border-radius: 3px;
+      cursor: pointer;
+      width: 100%;
+      letter-spacing: .04em;
+      transition: all .1s;
+    }
+    .inv-carry-add:hover {
+      background: #0f0f0f;
+      border-color: #3a3a3a;
+      color: #ccc;
+    }
+
+    /* Group-header "count for encumbrance" toggle. A pill button that
+       flips state per click. ON state: amber (matches the "⚖ ENC" idea
+       of a scale weighing on you). OFF state: dim grey with hollow
+       bullet. Read-only viewers see a neutral badge when counting. */
+    .inv-group-enc-toggle {
+      background: transparent;
+      border: 1px solid #1a1a1a;
+      color: #555;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 3px;
+      cursor: pointer;
+      letter-spacing: .04em;
+      transition: all .1s;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .inv-group-enc-toggle:hover {
+      background: #111;
+      color: #888;
+      border-color: #2a2a2a;
+    }
+    .inv-group-enc-toggle.on {
+      background: #1a1406;
+      border-color: #3a2c10;
+      color: #caa060;
+    }
+    .inv-group-enc-toggle.on:hover {
+      background: #2a1f0a;
+      border-color: #4a3a18;
+      color: #e0b870;
+    }
+    .inv-group-enc-badge {
+      font-family: 'Open Sans', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      color: #caa060;
+      letter-spacing: .04em;
+      padding: 3px 0;
+    }
+
+    /* ═══ MANAGE PERSONAL CATALOGUE MODAL ═══
+     * Wider than the picker modals since cards have full edit forms.
+     * Cards are collapsible with a head row (name + dims + weight +
+     * delete) and an expanded body (full edit form). */
+    .inv-modal-manage { max-width: 720px; }
+    .inv-manage-card { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 4px; margin-bottom: 6px; overflow: hidden; transition: border-color .1s; }
+    .inv-manage-card:hover { border-color: #2a2a2a; }
+    .inv-manage-card.open { border-color: #3a2c10; background: #0d0a02; }
+    .inv-manage-card-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; user-select: none; }
+    .inv-manage-card.open .inv-manage-card-head { border-bottom: 1px solid #2a2010; }
+    .inv-manage-card-caret { font-size: 10px; color: #888; width: 10px; display: inline-block; }
+    .inv-manage-card-name { flex: 1; font-size: 13px; font-weight: 500; color: #e0e0e0; display: flex; align-items: center; gap: 8px; }
+    .inv-manage-card-name.empty { color: #555; font-style: italic; }
+    .inv-manage-card-dims { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #777; font-variant-numeric: tabular-nums; }
+    .inv-manage-card-weight { font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; color: #aaa; font-variant-numeric: tabular-nums; font-weight: 500; }
+
+    .inv-manage-card-body { padding: 12px 14px; background: #0a0802; }
+    .inv-manage-card-body .inv-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+    .inv-manage-card-body .inv-field label { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; }
+    .inv-manage-card-body .inv-field input, .inv-manage-card-body .inv-field textarea {
+      background: #0a0a0a; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 9px;
+      border-radius: 3px; outline: none; width: 100%;
+    }
+    .inv-manage-card-body .inv-field input:focus, .inv-manage-card-body .inv-field textarea:focus { border-color: #5a4820; }
+    .inv-manage-card-body .inv-field textarea { resize: vertical; min-height: 44px; line-height: 1.5; }
+    .inv-manage-card-body .inv-dims-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .inv-manage-card-body .inv-dims-row input { text-align: center; font-family: 'Consolas', 'Courier New', monospace; }
+    .inv-manage-card-body .inv-pair-row { display: grid; grid-template-columns: 140px 1fr; gap: 14px; }
+    .inv-manage-card-body .inv-container-block { border: 1px dashed #2a2010; border-radius: 4px; padding: 10px 12px; margin-top: 6px; background: #050401; }
+    .inv-manage-card-body .inv-container-block-title { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #caa060; margin-bottom: 8px; }
+    .inv-manage-card-body .inv-toggle-row { display: flex; align-items: center; gap: 10px; margin: 4px 0 10px; }
+    .inv-manage-card-body .inv-toggle { background: #0a0a0a; border: 1px solid #222; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 10px; border-radius: 3px; cursor: pointer; user-select: none; }
+    .inv-manage-card-body .inv-toggle.on { background: #1a2010; border-color: #3a4820; color: #cfe3a6; }
+    .inv-manage-card-body .inv-toggle-hint { font-size: 10px; color: #666; font-style: italic; }
+
+    .inv-manage-add-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 4px 4px; margin-top: 14px; border-top: 1px solid #1a1a1a; }
+    .inv-manage-add-hint { font-size: 10px; color: #666; font-style: italic; flex: 1; min-width: 180px; }
+
+    /* Empty state shown when the personal catalogue has no defs yet. */
+    .inv-cat-mgr-empty { font-size: 12px; color: #888; line-height: 1.55; padding: 24px 20px; text-align: center; font-style: italic; }
+
+    /* Section labels inside the manager — "Containers" and "Items"
+     * split the rows into groups so the modal doesn't read as a
+     * single undifferentiated pile. Count pill on the right. */
+    .inv-cat-mgr-section-label { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #caa060; padding: 12px 4px 6px; margin-top: 6px; border-top: 1px solid #2a2010; display: flex; align-items: center; gap: 8px; }
+    .inv-cat-mgr-section-label:first-child { border-top: none; margin-top: 0; padding-top: 4px; }
+    .inv-cat-mgr-section-count { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #776040; font-weight: 500; letter-spacing: 0; }
+
+    /* Pills in the row head — container (green) and "on sheet"
+     * reference counter (muted amber). */
+    .inv-cat-mgr-container-pill { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #8a8; background: #0a1a0a; border: 1px solid #2a4a2a; padding: 1px 6px; border-radius: 2px; flex-shrink: 0; }
+    .inv-cat-mgr-ref-pill { font-size: 9px; font-weight: 500; color: #caa060; background: #0d0a02; border: 1px solid #2a2010; padding: 1px 6px; border-radius: 2px; flex-shrink: 0; cursor: help; font-family: 'Consolas', 'Courier New', monospace; letter-spacing: 0; text-transform: none; }
+
+    /* Inline "new def" form rendered at the top of the manager when
+     * the user clicks + New Container / + New Item. Similar visual
+     * language to the card-body editor but with a distinct header
+     * so the user knows this is a create flow, not an edit. */
+    .inv-cat-mgr-new-form { background: #0d0a02; border: 1px solid #3a2c10; border-radius: 4px; padding: 14px; margin-bottom: 14px; }
+    .inv-cat-mgr-new-title { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #caa060; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #2a2010; }
+    .inv-cat-mgr-new-form .inv-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+    .inv-cat-mgr-new-form .inv-field label { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; }
+    .inv-cat-mgr-new-form .inv-field input, .inv-cat-mgr-new-form .inv-field textarea {
+      background: #0a0a0a; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 6px 9px;
+      border-radius: 3px; outline: none; width: 100%;
+    }
+    .inv-cat-mgr-new-form .inv-field input:focus, .inv-cat-mgr-new-form .inv-field textarea:focus { border-color: #5a4820; }
+    .inv-cat-mgr-new-form .inv-field textarea { resize: vertical; min-height: 44px; line-height: 1.5; }
+    .inv-cat-mgr-new-form .inv-dims-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .inv-cat-mgr-new-form .inv-dims-row input { text-align: center; font-family: 'Consolas', 'Courier New', monospace; }
+    .inv-cat-mgr-new-form .inv-pair-row { display: grid; grid-template-columns: 140px 1fr; gap: 14px; }
+    .inv-cat-mgr-new-form .inv-container-block { border: 1px dashed #2a2010; border-radius: 4px; padding: 10px 12px; margin-top: 6px; background: #050401; }
+    .inv-cat-mgr-new-form .inv-container-block-title { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #caa060; margin-bottom: 8px; }
+    .inv-cat-mgr-new-form .inv-toggle-row { display: flex; align-items: center; gap: 10px; margin: 4px 0 10px; }
+    .inv-cat-mgr-new-form .inv-toggle { background: #0a0a0a; border: 1px solid #222; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 10px; border-radius: 3px; cursor: pointer; user-select: none; }
+    .inv-cat-mgr-new-form .inv-toggle.on { background: #1a2010; border-color: #3a4820; color: #cfe3a6; }
+    .inv-cat-mgr-new-form .inv-toggle-hint { font-size: 10px; color: #666; font-style: italic; }
+
+    /* ═══ CATALOG VIEW ═══
+     * Read-only tree of the ruleset's items grouped by category. Each
+     * category is collapsible; each item expands for detail. Visual
+     * language intentionally distinct from the inventory view so it
+     * reads as "this is browse, not manage." */
+    .cat-view-header { padding: 0 4px 14px; margin-bottom: 8px; border-bottom: 1px solid #1a1a1a; }
+    .cat-view-title { font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #cfe3f6; margin-bottom: 4px; }
+    .cat-view-sub { font-size: 11px; color: #777; line-height: 1.4; }
+
+    .cat-view-section { margin-bottom: 4px; }
+    .cat-view-section-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: #0e0e0e; border: 1px solid #1a1a1a; border-radius: 3px; cursor: pointer; user-select: none; transition: border-color .1s; }
+    .cat-view-section-head:hover { background: #131313; border-color: #2a2a2a; }
+    .cat-view-section-head.empty { opacity: 0.6; }
+    .cat-view-caret { font-size: 10px; color: #888; width: 10px; display: inline-block; }
+    .cat-view-name { flex: 1; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #ccc; }
+    .cat-view-count { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #777; font-variant-numeric: tabular-nums; }
+
+    /* "Custom" pseudo-section gets a subtle violet tint to mark it as
+     * character-local rather than ruleset-defined. */
+    .cat-view-section-custom .cat-view-section-head { border-color: #2a1a2a; background: #120a12; }
+    .cat-view-section-custom .cat-view-name { color: #c8a; }
+    .cat-view-custom-badge { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #a8c; background: #1a0a1a; border: 1px solid #3a2a3a; padding: 1px 6px; border-radius: 2px; }
+
+    .cat-view-desc { font-size: 11px; color: #888; line-height: 1.55; padding: 6px 10px 8px; font-style: italic; }
+    .cat-view-empty-row { font-size: 11px; color: #555; font-style: italic; padding: 4px 10px; }
+
+    /* Item rows */
+    .cat-view-item { margin: 3px 0 3px 18px; }
+    .cat-view-item-caret { font-size: 10px; color: #666; width: 10px; display: inline-block; }
+    .cat-view-item-name { flex: 1; font-size: 12px; font-weight: 500; color: #e0e0e0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cat-view-container-pill { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #6a9; background: #0a1a0a; border: 1px solid #2a4a2a; padding: 1px 6px; border-radius: 2px; flex-shrink: 0; }
+    .cat-view-item-custom { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #a8c; background: #1a0a1a; border: 1px solid #3a2a3a; padding: 1px 6px; border-radius: 2px; flex-shrink: 0; }
+    .cat-view-item-dims { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #777; font-variant-numeric: tabular-nums; white-space: nowrap; flex-shrink: 0; }
+    .cat-view-item-weight { font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; color: #aaa; font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 500; flex-shrink: 0; }
+
+    /* Detail panel (shown when item is expanded) */
+    .cat-view-item-detail { background: #0a0a0a; border: 1px solid #1a1a1a; border-top: none; border-radius: 0 0 3px 3px; padding: 10px 14px; margin-top: -1px; }
+    .cat-view-item-desc { font-size: 12px; color: #ccc; line-height: 1.55; white-space: pre-wrap; margin-bottom: 8px; }
+    .cat-view-item-cap, .cat-view-item-slot, .cat-view-item-legacy { font-size: 11px; color: #888; line-height: 1.5; margin: 3px 0; }
+    .cat-view-item-cap-label { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #777; margin-right: 6px; }
+    .cat-view-item-cap-val { font-family: 'Consolas', 'Courier New', monospace; font-variant-numeric: tabular-nums; color: #aaa; }
+    .cat-view-item-cap-val b { color: #e0e0e0; font-weight: 700; }
+
+    /* ═══ Catalog "+ Add" split button ═══
+     * Sits on the right of each item row. Left half is the quick-add;
+     * right half is a ▾ that opens the target dropdown. The row header
+     * uses flex; cat-view-item-main takes remaining width and the split
+     * button is fixed at the end. */
+    .cat-view-item-head { display: flex; align-items: center; gap: 0; }
+    .cat-view-item-main { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; padding: 5px 10px; background: #0d0d0d; border: 1px solid #1a1a1a; border-radius: 3px 0 0 3px; border-right: none; transition: border-color .1s, background .1s; }
+    .cat-view-item.expandable .cat-view-item-main { cursor: pointer; }
+    .cat-view-item.expandable .cat-view-item-main:hover { background: #131313; border-color: #2a2a2a; }
+    .cat-view-item.open > .cat-view-item-head > .cat-view-item-main { border-color: #3a3a3a; background: #151515; }
+
+    /* Split-button container */
+    .cat-view-add-split { display: flex; flex-shrink: 0; border: 1px solid #1a1a1a; border-radius: 0 3px 3px 0; overflow: hidden; background: #0d0d0d; }
+    .cat-view-add-btn { background: transparent; border: none; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 500; padding: 5px 10px; cursor: pointer; letter-spacing: .02em; transition: background .1s, color .1s; }
+    .cat-view-add-btn:hover { background: #1a2a1a; color: #cfe3cf; }
+    .cat-view-add-drop { background: transparent; border: none; border-left: 1px solid #1a1a1a; color: #777; font-family: 'Open Sans', sans-serif; font-size: 11px; width: 24px; padding: 0; cursor: pointer; transition: background .1s, color .1s; }
+    .cat-view-add-drop:hover { background: #1a1a1a; color: #ccc; }
+    .cat-view-add-drop.open { background: #1a1a1a; color: #e0e0e0; }
+
+    /* Add-target dropdown menu — renders inline in the row's DOM, but
+     * visually sits as a floating panel below. Uses margin-top offset
+     * to sit flush with the button. Max-height + overflow so a ruleset
+     * with many containers doesn't push the whole catalog around. */
+    .cat-view-add-menu { background: #111; border: 1px solid #2a2a2a; border-radius: 3px; padding: 6px 0; margin: 2px 0 8px auto; max-width: 340px; max-height: 360px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.6); }
+    .cat-view-add-menu-label { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #666; padding: 4px 12px 8px; border-bottom: 1px solid #1a1a1a; }
+    .cat-view-add-menu-section { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; padding: 8px 12px 4px; }
+    .cat-view-add-menu-opt { font-size: 12px; color: #ccc; padding: 6px 14px; cursor: pointer; transition: background .08s, color .08s; }
+    .cat-view-add-menu-opt:hover { background: #1a2a1a; color: #fff; }
+    .cat-view-add-menu-opt-new { color: #8a9; font-style: italic; }
+    .cat-view-add-menu-opt-new:hover { background: #0a1a0a; color: #cfe3cf; }
+    .cat-view-add-menu-divider { height: 1px; background: #1a1a1a; margin: 6px 0; }
+
+    /* Toast confirmation for catalog adds */
+    .inv-add-toast { background: #0f2418; border: 1px solid #2a4a2a; color: #cfe3cf; font-size: 11px; font-weight: 500; padding: 8px 14px; border-radius: 4px; margin-bottom: 10px; animation: inv-toast-fade 3s ease-out forwards; }
+    @keyframes inv-toast-fade {
+      0%   { opacity: 0; transform: translateY(-4px); }
+      8%   { opacity: 1; transform: translateY(0); }
+      80%  { opacity: 1; }
+      100% { opacity: 0; }
+    }
+
+  </style>
+</head>
+<body>
+<script>injectNav();</script>
+
+<div class="page">
+  <div id="loading" class="empty">
+    <div id="loading-text">Loading...</div>
+    <!-- Diagnostic log — only shown if something stalls. The script writes
+         step markers here so we can see exactly which point broke if the
+         normal loading never completes. Hidden by default; revealed after
+         3s if loading still shows. -->
+    <div id="loading-diag" style="display:none;margin-top:20px;text-align:left;font-family:'Consolas',monospace;font-size:11px;color:#888;background:#0a0a0a;border:1px solid #222;padding:10px;border-radius:4px;max-width:600px;margin-left:auto;margin-right:auto;max-height:400px;overflow-y:auto"></div>
+  </div>
+  <script>
+    // Diagnostic step logger — records every phase of the load so we can
+    // see where it stalls even if no exception is thrown. Reveals itself
+    // 3 seconds in if the loading screen is still visible.
+    window.__loadDiag = [];
+    window.__logStep = function(msg) {
+      const ts = Date.now();
+      window.__loadDiag.push({ ts, msg });
       try {
-        if (weapon.kind === 'melee') {
-          rangeChip = meleeBandFor(resolved.ranges, currentRange);
-        } else {
-          rangeChip = rangedBandFor(resolved.range, currentRange);
+        const el = document.getElementById('loading-diag');
+        if (el) {
+          const line = document.createElement('div');
+          line.textContent = '• ' + msg;
+          el.appendChild(line);
         }
-      } catch (_) { rangeChip = null; }
-    }
-
-    const kindLabel = resolved.kind === 'melee' ? 'Melee' : 'Ranged';
-    const hasOverride = !!(overrides && (
-      (overrides.attack && Object.keys(overrides.attack).length > 0) ||
-      (overrides.damage && Object.keys(overrides.damage).length > 0)
-    ));
-    const hasAnyInstanceState = hasOverride
-      || currentRange != null
-      || atkResult != null
-      || rapidfireSplit.damage > 0
-      || rapidfireSplit.sweep > 0;
-
-    const customBadge = hasOverride
-      ? '<span class="inv-weapon-custom-badge" title="This weapon has per-instance slot overrides. Click Reset to clear.">custom</span>'
-      : '';
-    const resetBtn = hasAnyInstanceState
-      ? `<button class="inv-weapon-reset-btn" onclick="invWeaponResetOverrides('${escapeHtml(entry.id)}')" title="Clear all slot overrides, range, and ATK result for this weapon">Reset to def</button>`
-      : '';
-    const canEdit = ctx.getCanEdit();
-    const editOpen = !!(ui.editOpen);
-    const editBtn = canEdit
-      ? `<button class="inv-weapon-edit-btn${editOpen ? ' on' : ''}" onclick="invWeaponToggleEdit('${escapeHtml(entry.id)}')" title="${editOpen ? 'Close the weapon stat editor' : 'Edit damage dice, PEN, range, tags for this specific weapon'}">${editOpen ? '✓ Edit stats' : 'Edit stats'}</button>`
-      : '';
-
-    let html = `<div class="inv-weapon">
-      <div class="inv-weapon-title">
-        <span>Weapon</span>
-        <span class="inv-weapon-kind-pill">${kindLabel}</span>
-        ${customBadge}
-        <span style="flex:1"></span>
-        ${editBtn}
-        ${resetBtn}
-      </div>
-      ${editOpen ? renderWeaponSnapshotEditor(entry) : ''}
-      ${renderWeaponRapidfireSelector(entry, resolved)}
-      <div class="inv-weapon-grid">
-        ${renderWeaponRollBlock(entry, 'Attack', resolved.attack, {
-          showRaw:       !!ui.showRawAttack,
-          penaltyPct,
-          isAttack:      true,
-          defaultSlots:  defaultResolved.attack.diceSlots.concat(defaultResolved.attack.flatSlots),
-          rangeChip,
-          rapidfire:     resolved.rapidfire || null
-        })}
-        ${renderWeaponRollBlock(entry, 'Damage', resolved.damage, {
-          showRaw:       !!ui.showRawDamage,
-          penaltyPct,
-          isAttack:      false,
-          atkResult,
-          defaultSlots:  defaultResolved.damage.diceSlots.concat(defaultResolved.damage.flatSlots)
-        })}
-      </div>`;
-
-    // Chips row — DMG, PEN, range info.
-    const chips = [];
-    chips.push(`<span class="inv-weapon-chip"><span class="inv-weapon-chip-label">DMG</span><span class="inv-weapon-chip-val">${resolved.dice}D10</span></span>`);
-    chips.push(`<span class="inv-weapon-chip"><span class="inv-weapon-chip-label">PEN</span><span class="inv-weapon-chip-val">${resolved.pen}</span></span>`);
-    if (resolved.kind === 'ranged') {
-      // Range chip — if Scoped, show both base and aimed range so
-      // player can see the magnification payoff at a glance.
-      if (resolved.scoped) {
-        chips.push(`<span class="inv-weapon-chip" title="Base range ${resolved.range}ft; ${resolved.scoped.magnification}× scope takes it to ${resolved.scoped.aimedRange}ft when Aimed.">
-          <span class="inv-weapon-chip-label">Range</span>
-          <span class="inv-weapon-chip-val">${resolved.range}ft / ${resolved.scoped.aimedRange}ft scoped</span>
-        </span>`);
-      } else {
-        chips.push(`<span class="inv-weapon-chip"><span class="inv-weapon-chip-label">Range</span><span class="inv-weapon-chip-val">${resolved.range}ft</span></span>`);
-      }
-      chips.push(`<span class="inv-weapon-chip"><span class="inv-weapon-chip-label">DMGMOD</span><span class="inv-weapon-chip-val">${resolved.dmgmod >= 0 ? '+' : ''}${resolved.dmgmod}</span></span>`);
-      chips.push(renderAmmoTracker(entry, resolved));
-      chips.push(renderRofChip(resolved));
-    }
-    html += `<div class="inv-weapon-row">${chips.join('')}</div>`;
-
-    // Engagement-range selector — distance input + (for melee) the
-    // clickable band strip. Distance is stored as feet on
-    // entry.currentRange. Clicking a melee band chip auto-fills the
-    // distance to that band's start.
-    html += renderWeaponRangeSelector(entry, weapon, resolved, currentRange, rangeChip);
-
-    // Shotgun close-range indicator — shows the active damage zone
-    // (if any) when an engagement range is set. Informational only;
-    // the damage block applies the bonus directly to the dice pool.
-    if (resolved.shotgun && currentRange != null) {
-      const zone = pickShotgunZone(resolved.shotgun, currentRange);
-      if (zone) {
-        html += `<div class="inv-weapon-shotgun-zone" title="Shotgun close-range bonus is applied to the Damage roll's dice pool. Doesn't affect DMGMOD or recoil.">
-          <span class="inv-weapon-shotgun-zone-label">Shotgun zone</span>
-          <span class="inv-weapon-shotgun-zone-val">+${zone.bonus} damage <span class="inv-weapon-shotgun-zone-range">(${zone.label}, ≤${fmt(zone.maxDist)}ft)</span></span>
-        </div>`;
-      }
-    }
-
-    // Rapidfire Sweep info panel — shown when the tag is present.
-    // Not an interactive calculator (the player pairs it with the
-    // existing Rapidfire selector); just shows the formula and a
-    // live example at the current AMMO spend.
-    if (resolved.rapidfireSweep) {
-      html += renderRapidfireSweepInfo(entry, resolved);
-    }
-
-    // Tags — grouped by category when the ruleset defines any tag
-    // categories beyond the default Uncategorized. Each group header
-    // is clickable to collapse just that group's pills. When only
-    // Uncategorized is populated (typical for rulesets that haven't
-    // adopted tag categories yet), renders the old flat pill row so
-    // nothing breaks.
-    if (Array.isArray(resolved.tags) && resolved.tags.length > 0) {
-      const rulesetNow = getRuleset();
-      const groups = groupTagsByCategory(resolved.tags, rulesetNow);
-      const singleUncat = groups.length === 1 && groups[0].cat.id === 'tcat_uncategorized';
-      if (singleUncat) {
-        html += `<div class="inv-weapon-tags">`;
-        groups[0].tags.forEach(t => {
-          const desc = t.description ? escapeHtml(t.description) : escapeHtml(t.name || '');
-          html += `<span class="inv-weapon-tag" title="${desc}">${escapeHtml(t.name || '')}</span>`;
-        });
-        html += `</div>`;
-      } else {
-        const scope = 'display:' + entry.id;
-        const collapsedSet = getCollapsedTagCats(scope);
-        html += `<div class="inv-weapon-tags-grouped">`;
-        groups.forEach(g => {
-          const collapsed = collapsedSet.has(g.cat.id);
-          const caret = collapsed ? '▸' : '▾';
-          const label = `${escapeHtml(g.cat.name)}`;
-          html += `<div class="inv-weapon-tag-group${collapsed ? ' collapsed' : ''}">
-            <div class="inv-weapon-tag-grouphead" onclick="invWeaponToggleTagCatCollapse('${escapeHtml(scope)}','${escapeHtml(g.cat.id)}')" title="${collapsed ? 'Expand' : 'Collapse'} ${label}">
-              <span class="inv-weapon-tag-caret">${caret}</span>
-              <span class="inv-weapon-tag-groupname">${label}</span>
-              <span class="inv-weapon-tag-groupcount">${g.tags.length}</span>
-            </div>`;
-          if (!collapsed) {
-            html += `<div class="inv-weapon-tag-grouptags">`;
-            g.tags.forEach(t => {
-              const desc = t.description ? escapeHtml(t.description) : escapeHtml(t.name || '');
-              html += `<span class="inv-weapon-tag" title="${desc}">${escapeHtml(t.name || '')}</span>`;
-            });
-            html += `</div>`;
-          }
-          html += `</div>`;
-        });
-        html += `</div>`;
-      }
-    }
-
-    html += `</div>`;
-    return html;
-  }
-
-  // Engagement-range selector row. Melee and ranged weapons differ:
-  //   Melee  — show clickable band chips (Band 0: 0-1ft, Band 1: 1-2ft, ...)
-  //            plus a distance input for arbitrary values. Clicking a band
-  //            fills the distance to that band's start.
-  //   Ranged — just a distance input. The computed band comes from
-  //            rangedBandFor(weapon.range, distance) which doubles the
-  //            difficulty zone each band past the base range.
-  //
-  // Always shows the current computed band label when a range is set.
-  function renderWeaponRangeSelector(entry, weapon, resolved, currentRange, rangeChip) {
-    const id = escapeHtml(entry.id);
-    const distVal = currentRange != null ? String(currentRange) : '';
-    const distInput = `<input type="number" class="inv-weapon-range-input" min="0" step="1"
-                              value="${escapeHtml(distVal)}"
-                              placeholder="ft"
-                              onchange="invWeaponSetRange('${id}',this.value)"
-                              onkeydown="if(event.key==='Enter'){invWeaponSetRange('${id}',this.value);this.blur();}">`;
-    const clearBtn = currentRange != null
-      ? `<button class="inv-weapon-range-clear" onclick="invWeaponSetRange('${id}','')" title="Clear range">×</button>`
-      : '';
-    const bandLabel = rangeChip
-      ? `<span class="inv-weapon-range-band">${escapeHtml(rangeChip.label)}</span>`
-      : '<span class="inv-weapon-range-band none">base</span>';
-
-    let html = `<div class="inv-weapon-range-row">
-      <span class="inv-weapon-range-row-label">Engagement range</span>
-      ${distInput}<span class="inv-weapon-range-unit">ft</span>
-      ${clearBtn}
-      ${bandLabel}
-    </div>`;
-
-    // Melee: show the band strip, clickable. Each chip snaps distance
-    // to the band's start (user can fine-tune with the input).
-    if (resolved.kind === 'melee' && Array.isArray(resolved.ranges) && resolved.ranges.length > 0) {
-      html += `<div class="inv-weapon-ranges">`;
-      resolved.ranges.forEach((band, i) => {
-        const s = (band && typeof band === 'object' && !Array.isArray(band))
-          ? (Number.isFinite(band.s) ? band.s : 0)
-          : (Array.isArray(band) && Number.isFinite(band[0]) ? band[0] : 0);
-        const e = (band && typeof band === 'object' && !Array.isArray(band))
-          ? (Number.isFinite(band.e) ? band.e : 0)
-          : (Array.isArray(band) && Number.isFinite(band[1]) ? band[1] : 0);
-        const active = rangeChip && rangeChip.band === i ? ' active' : '';
-        html += `<span class="inv-weapon-range clickable${active}" onclick="invWeaponSetRange('${id}',${s})" title="Click to snap to ${fmt(s)}ft">
-          <span class="inv-weapon-range-label">+${i}</span>${fmt(s)}–${fmt(e)}ft
-        </span>`;
-      });
-      html += `</div>`;
-    }
-    return html;
-  }
-
-  // ─── RAPIDFIRE SELECTOR ────────────────────────────────────────────
-  //
-  // Two-input split control. The player divides EXTRA AMMO between
-  // two pools:
-  //   • Damage — +DMGMOD, provokes recoil (absorbed by ROF + Stabilization)
-  //   • Sweep  — widens the Rapidfire Sweep cube, NO recoil, NO damage bonus
-  //
-  // Both pools share the weapon's magazine: total extra = damage + sweep,
-  // capped at maxAmmo − 1 (need 1 for the base shot). The setter clamps
-  // the last-edited field to whatever the other field has left.
-  //
-  // The sweep input only appears for weapons tagged Rapidfire Sweep
-  // AND with ROF ≥ 2. Non-sweep weapons get a single Damage input.
-  function renderWeaponRapidfireSelector(entry, resolved) {
-    if (!resolved || resolved.kind !== 'ranged') return '';
-    const id = escapeHtml(entry.id);
-    const ui = entry.weaponUI || {};
-    const split = readRapidfireSplit(ui, resolved.kind);
-    const dmgExtra = split.damage;
-    const swpExtra = split.sweep;
-
-    const ammoMax = (resolved.ammo && Number.isFinite(resolved.ammo.resolved))
-      ? Math.max(0, Math.floor(resolved.ammo.resolved))
-      : 0;
-    const maxExtra = Math.max(0, ammoMax - 1);
-    const roomDmg = Math.max(0, maxExtra - swpExtra);  // damage can go up to cap − sweep
-    const roomSwp = Math.max(0, maxExtra - dmgExtra);  // sweep can go up to cap − damage
-
-    const sweepAvailable = !!(resolved.rapidfireSweep && resolved.rapidfireSweep.available);
-
-    // Chips — only shown when at least one pool has AMMO committed.
-    let chipsHtml = '';
-    if (resolved.rapidfire) {
-      const rf = resolved.rapidfire;
-      if (rf.damageExtra > 0 || rf.sweepExtra > 0) {
-        if (rf.damageExtra > 0) {
-          chipsHtml += `<span class="inv-weapon-rf-chip rf-dmgmod" title="Each AMMO in the Damage pool adds +1 to DMGMOD. Flows into the Damage formula.">+${rf.dmgmodBonus} DMGMOD → ${rf.effectiveDmgmod}</span>`;
-        }
-        if (rf.recoilDifficulty > 0) {
-          chipsHtml += `<span class="inv-weapon-rf-chip rf-recoil" title="Recoil: ${rf.totalExtra} extra AMMO kicks the weapon like effective DMGMOD ${rf.recoilRef} (base ${rf.baseDmgmod} + ${rf.damageExtra} damage + ${rf.sweepExtra} sweep); STR ${rf.strVal} falls short by ${rf.overCapacity}. Capped at total extra ammo ${rf.totalExtra}.">+${rf.recoilDifficulty} Difficulty (recoil)</span>`;
-        } else {
-          chipsHtml += `<span class="inv-weapon-rf-chip rf-controlled" title="STR ${rf.strVal} handles effective recoil ${rf.recoilRef} (base ${rf.baseDmgmod} + ${rf.totalExtra} extra AMMO). No recoil difficulty.">controlled · no recoil</span>`;
-        }
-        if (rf.rofMitigation > 0) {
-          chipsHtml += `<span class="inv-weapon-rf-chip rf-rof" title="ROF ${rf.rofValue} absorbs ${rf.rofMitigation} point(s) of recoil.">ROF absorbs −${rf.rofMitigation}</span>`;
-        }
-        if (rf.stabilizationMitigation > 0) {
-          chipsHtml += `<span class="inv-weapon-rf-chip rf-stab" title="${escapeHtml(rf.stabilizationLabel || 'Stabilization')} absorbs ${rf.stabilizationMitigation} point(s) of recoil.">${escapeHtml(rf.stabilizationLabel || 'Stabilization')} absorbs −${rf.stabilizationMitigation}</span>`;
-        }
-      }
-      if (rf.sweepExtra > 0 && resolved.rapidfireSweep) {
-        const rs = resolved.rapidfireSweep;
-        const side = Number.isFinite(rs.sideLen) ? fmt(rs.sideLen) : '0';
-        const vol  = Number.isFinite(rs.volume)  ? fmt(rs.volume)  : '0';
-        const shotgunSuffix = rs.shotgun ? ' ×2 shotgun' : '';
-        const shotgunTitle = rs.shotgun ? ' Shotgun tag doubles the sweep AOE (each sweep AMMO counts double for sizing).' : '';
-        chipsHtml += `<span class="inv-weapon-rf-chip rf-sweep" title="Rapidfire Sweep cube: ${side}×${side}×${side}ft (${vol} cu ft). Reshape freely (line, cone, zig-zag). AMMO spent on sweep does NOT boost damage.${shotgunTitle}">sweep ${side}×${side}×${side}ft${shotgunSuffix}</span>`;
-      }
-      chipsHtml += `<span class="inv-weapon-rf-chip rf-cost" title="Total AMMO this action: 1 base shot + ${rf.damageExtra} damage + ${rf.sweepExtra} sweep.">${rf.totalAmmoCost} AMMO / shot</span>`;
-    } else if (dmgExtra === 0 && swpExtra === 0 && maxExtra > 0) {
-      chipsHtml = `<span class="inv-weapon-rf-hint">Damage boosts DMGMOD (recoil risk). Sweep widens the AOE cube. Split AMMO between them.</span>`;
-    } else if (maxExtra === 0) {
-      chipsHtml = `<span class="inv-weapon-rf-hint">Weapon's AMMO cap is 1 — no extra to spend.</span>`;
-    }
-
-    // Damage input — always present on ranged weapons.
-    const dmgInput = `<input type="number" class="inv-weapon-rf-input" min="0" max="${roomDmg}" step="1" value="${escapeHtml(String(dmgExtra))}"
-                            ${maxExtra === 0 ? 'disabled' : ''}
-                            onchange="invWeaponSetRapidfireDamage('${id}',this.value)"
-                            onkeydown="if(event.key==='Enter'){invWeaponSetRapidfireDamage('${id}',this.value);this.blur();}">`;
-    const dmgClear = dmgExtra > 0
-      ? `<button class="inv-weapon-rf-clear" onclick="invWeaponSetRapidfireDamage('${id}','0')" title="Clear damage pool">×</button>`
-      : '';
-
-    // Sweep input — only when tag + ROF conditions satisfied.
-    let sweepControl = '';
-    if (sweepAvailable) {
-      const swpInput = `<input type="number" class="inv-weapon-rf-input" min="0" max="${roomSwp}" step="1" value="${escapeHtml(String(swpExtra))}"
-                              ${maxExtra === 0 ? 'disabled' : ''}
-                              onchange="invWeaponSetRapidfireSweep('${id}',this.value)"
-                              onkeydown="if(event.key==='Enter'){invWeaponSetRapidfireSweep('${id}',this.value);this.blur();}">`;
-      const swpClear = swpExtra > 0
-        ? `<button class="inv-weapon-rf-clear" onclick="invWeaponSetRapidfireSweep('${id}','0')" title="Clear sweep pool">×</button>`
-        : '';
-      sweepControl = `<span class="inv-weapon-rf-divider">+</span>
-        <span class="inv-weapon-rf-sublabel" title="AMMO dedicated to widening the Rapidfire Sweep cube. Does NOT grant damage bonus.">sweep</span>
-        ${swpInput}
-        ${swpClear}`;
-    } else if (resolved.rapidfireSweep && !resolved.rapidfireSweep.available) {
-      // Tag is present but ROF < 2 — surface why sweep isn't usable.
-      sweepControl = `<span class="inv-weapon-rf-disabled" title="Rapidfire Sweep requires ROF ≥ 2.">sweep unavailable (ROF &lt; 2)</span>`;
-    }
-
-    return `<div class="inv-weapon-rf-row">
-      <span class="inv-weapon-rf-label">Rapidfire</span>
-      <span class="inv-weapon-rf-sublabel" title="AMMO dedicated to +DMGMOD on the damage roll. Risks recoil Difficulty.">damage</span>
-      ${dmgInput}
-      ${dmgClear}
-      ${sweepControl}
-      <span class="inv-weapon-rf-max">total cap: ${maxExtra}</span>
-      <span class="inv-weapon-rf-chips">${chipsHtml}</span>
-    </div>`;
-  }
-
-  // ─── TAG-DRIVEN DISPLAY HELPERS ────────────────────────────────────
-
-  // Pick the shotgun close-range damage zone that applies at a given
-  // distance. Returns { bonus, maxDist, label } or null if the target
-  // is past all zones (no bonus). Zones are ordered closest-first.
-  function pickShotgunZone(shotgunInfo, distance) {
-    if (!shotgunInfo || !Array.isArray(shotgunInfo.zones)) return null;
-    if (!Number.isFinite(distance) || distance < 0) return null;
-    for (let i = 0; i < shotgunInfo.zones.length; i++) {
-      const z = shotgunInfo.zones[i];
-      if (distance <= z.maxDist) return z;
-    }
-    return null;
-  }
-
-  // Rapidfire Sweep info panel — shows the area coverage formula +
-  // a live computation at the current rapidfire AMMO spend. Readonly:
-  // player reads it and makes sweep decisions outside the sheet.
-  function renderRapidfireSweepInfo(entry, resolved) {
-    const sweep = resolved.rapidfireSweep;
-    if (!sweep) return '';
-    if (!sweep.available) {
-      return `<div class="inv-weapon-sweep-panel unavailable" title="Rapidfire Sweep requires a weapon with ROF ≥ 2. This weapon's current ROF is ${sweep.rofValue}.">
-        <span class="inv-weapon-sweep-label">Rapidfire Sweep</span>
-        <span class="inv-weapon-sweep-unavailable">unavailable — requires ROF ≥ 2 (current ROF ${sweep.rofValue})</span>
-      </div>`;
-    }
-    // Live preview — use the sweep-pool spend from weaponUI. Falls
-    // back to a 2-AMMO example if nothing committed (shows the
-    // minimum effective cube).
-    const ui = entry.weaponUI || {};
-    const split = readRapidfireSplit(ui, resolved.kind);
-    const committed = split.sweep;           // what the player actually chose
-    const previewAmmo = committed >= 2 ? committed : 2;
-    const isPreview = committed < 2;
-    const result = sweep.computeArea(previewAmmo);
-    const side = result.sideLen;
-    const sideRounded = Math.round(side * 10) / 10;
-    const volRounded = Math.round(result.volume);
-    const multiplier = sweep.multiplier || 1;
-    const sideDelta = 2.5 * sweep.rofValue * multiplier;
-    const shotgunBadge = sweep.shotgun
-      ? ` <span class="inv-weapon-sweep-shotgun" title="Shotgun tag doubles effective sweep AOE (each sweep AMMO counts double for sizing).">×2 shotgun</span>`
-      : '';
-    const stateHtml = isPreview
-      ? `<span class="inv-weapon-sweep-example">preview: ${previewAmmo} sweep AMMO → ${sideRounded}×${sideRounded}×${sideRounded}ft <span class="inv-weapon-sweep-area">(${volRounded} cu ft)</span></span>
-         <span class="inv-weapon-sweep-hint">set Rapidfire → sweep field to commit</span>`
-      : `<span class="inv-weapon-sweep-example">${previewAmmo} sweep AMMO → ${sideRounded}×${sideRounded}×${sideRounded}ft <span class="inv-weapon-sweep-area">(${volRounded} cu ft)</span></span>`;
-    return `<div class="inv-weapon-sweep-panel" title="Cube side = 2.5 × ROF × (AMMO − 1)${sweep.shotgun ? ' × 2 (shotgun)' : ''}. Reshape freely — line, cone, zig-zag, dome. AMMO spent on sweep does NOT grant Rapidfire damage bonus.">
-      <span class="inv-weapon-sweep-label">Rapidfire Sweep${shotgunBadge}</span>
-      <span class="inv-weapon-sweep-formula">side +${sideDelta}ft / extra AMMO</span>
-      ${stateHtml}
-    </div>`;
-  }
-
-  // ─── WEAPON SNAPSHOT EDITOR ────────────────────────────────────────
-  //
-  // Inline compact editor for the weapon's intrinsic stats (dice,
-  // PEN, range bands, DMGMOD, AMMO, ROF, tags, kind). Edits write
-  // directly to entry.snapshot.weapon so they're per-instance — the
-  // catalogue def isn't touched. Rendered when entry.weaponUI.editOpen
-  // is true; collapsed otherwise (so weapon cards stay compact).
-  //
-  // Only owners/GMs can edit — the caller gates on getCanEdit().
-  // Tags list pulls from ruleset.weaponTags; kind-specific fields
-  // only render for the matching kind.
-  function renderWeaponSnapshotEditor(entry) {
-    const weapon = entry && entry.snapshot && entry.snapshot.weapon;
-    if (!weapon) return '';
-    const id = escapeHtml(entry.id);
-    const kind = weapon.kind === 'ranged' ? 'ranged' : 'melee';
-    const dice = Number.isFinite(weapon.dice) ? weapon.dice : 0;
-    const pen  = Number.isFinite(weapon.pen)  ? weapon.pen  : 0;
-
-    let html = `<div class="inv-weapon-editor">
-      <div class="inv-weapon-editor-title">Weapon stats — edits apply to THIS weapon only, not the catalogue def</div>
-      <div class="inv-weapon-editor-row">
-        <div class="inv-weapon-editor-field">
-          <label>Kind</label>
-          <select onchange="invWeaponSnapSetKind('${id}',this.value)">
-            <option value="melee"${kind === 'melee' ? ' selected' : ''}>Melee</option>
-            <option value="ranged"${kind === 'ranged' ? ' selected' : ''}>Ranged</option>
-          </select>
-        </div>
-        <div class="inv-weapon-editor-field">
-          <label>Damage Dice</label>
-          <input type="number" step="1" min="0" value="${escapeHtml(String(dice))}"
-                 oninput="invWeaponSnapUpdate('${id}','dice',this.value)">
-        </div>
-        <div class="inv-weapon-editor-field">
-          <label>PEN</label>
-          <input type="number" step="1" min="0" value="${escapeHtml(String(pen))}"
-                 oninput="invWeaponSnapUpdate('${id}','pen',this.value)">
-        </div>
-      </div>`;
-
-    if (kind === 'melee') {
-      const ranges = Array.isArray(weapon.ranges) ? weapon.ranges : [];
-      html += `<div class="inv-weapon-editor-subhead">Range Bands <span class="inv-weapon-editor-hint">(each band adds +1 Difficulty; empty = trivial range)</span></div>`;
-      if (ranges.length === 0) {
-        html += `<div class="inv-weapon-editor-empty">No range bands defined.</div>`;
-      } else {
-        ranges.forEach((band, bi) => {
-          const s = (band && typeof band === 'object' && !Array.isArray(band))
-            ? (Number.isFinite(band.s) ? band.s : 0)
-            : (Array.isArray(band) && Number.isFinite(band[0]) ? band[0] : 0);
-          const e = (band && typeof band === 'object' && !Array.isArray(band))
-            ? (Number.isFinite(band.e) ? band.e : 0)
-            : (Array.isArray(band) && Number.isFinite(band[1]) ? band[1] : 0);
-          html += `<div class="inv-weapon-editor-band">
-            <span class="inv-weapon-editor-band-label">Band ${bi} (+${bi})</span>
-            <input type="number" step="0.5" min="0" value="${escapeHtml(String(s))}" placeholder="Start"
-                   onchange="invWeaponSnapUpdateRange('${id}',${bi},'start',this.value)">
-            <span class="inv-weapon-editor-sep">–</span>
-            <input type="number" step="0.5" min="0" value="${escapeHtml(String(e))}" placeholder="End"
-                   onchange="invWeaponSnapUpdateRange('${id}',${bi},'end',this.value)">
-            <span class="inv-weapon-editor-unit">ft</span>
-            <button class="inv-weapon-editor-del" onclick="invWeaponSnapRemoveRange('${id}',${bi})" title="Remove band">×</button>
-          </div>`;
-        });
-      }
-      html += `<button class="inv-weapon-editor-add" onclick="invWeaponSnapAddRange('${id}')">+ Add Band</button>`;
-    } else {
-      const range  = Number.isFinite(weapon.range)  ? weapon.range  : 0;
-      const dmgmod = Number.isFinite(weapon.dmgmod) ? weapon.dmgmod : 0;
-      const ammo   = weapon.ammo != null ? weapon.ammo : '';
-      const rof    = weapon.rof  != null ? weapon.rof  : '';
-      html += `<div class="inv-weapon-editor-row">
-        <div class="inv-weapon-editor-field">
-          <label>Range (ft)</label>
-          <input type="number" step="1" min="0" value="${escapeHtml(String(range))}"
-                 oninput="invWeaponSnapUpdate('${id}','range',this.value)">
-        </div>
-        <div class="inv-weapon-editor-field">
-          <label>DMGMOD</label>
-          <input type="number" step="1" value="${escapeHtml(String(dmgmod))}"
-                 oninput="invWeaponSnapUpdate('${id}','dmgmod',this.value)">
-        </div>
-        <div class="inv-weapon-editor-field">
-          <label>AMMO <span class="inv-weapon-editor-hint">(number or formula)</span></label>
-          <input type="text" value="${escapeHtml(String(ammo))}"
-                 onchange="invWeaponSnapUpdate('${id}','ammo',this.value)">
-        </div>
-        <div class="inv-weapon-editor-field">
-          <label>ROF <span class="inv-weapon-editor-hint">(number or formula)</span></label>
-          <input type="text" value="${escapeHtml(String(rof))}"
-                 onchange="invWeaponSnapUpdate('${id}','rof',this.value)">
-        </div>
-      </div>`;
-    }
-
-    // Tags — pull from the ruleset's weaponTags catalogue, grouped by
-    // the tag-category tree. Each tag is a checkbox; toggling calls
-    // weaponSnapToggleTag. Group headers are clickable to collapse.
-    const ruleset = getRuleset();
-    const rsTags = Array.isArray(ruleset && ruleset.weaponTags) ? ruleset.weaponTags : [];
-    const weaponTagIds = Array.isArray(weapon.tags) ? weapon.tags : [];
-    html += `<div class="inv-weapon-editor-subhead">Tags</div>`;
-    if (rsTags.length === 0) {
-      html += `<div class="inv-weapon-editor-empty">No weapon tags defined in this ruleset.</div>`;
-    } else {
-      const groups = groupTagsByCategory(rsTags, ruleset);
-      const scope = 'editor:' + entry.id;
-      const collapsedSet = getCollapsedTagCats(scope);
-      const singleUncat = groups.length === 1 && groups[0].cat.id === 'tcat_uncategorized';
-      const renderCheckbox = (t) => {
-        const checked = weaponTagIds.includes(t.id) ? ' checked' : '';
-        const descAttr = t.description ? ` title="${escapeHtml(t.description)}"` : '';
-        return `<label class="inv-weapon-editor-tag"${descAttr}>
-          <input type="checkbox"${checked} onchange="invWeaponSnapToggleTag('${id}','${escapeHtml(t.id)}',this.checked)">
-          ${escapeHtml(t.name || t.id)}
-        </label>`;
-      };
-      if (singleUncat) {
-        html += `<div class="inv-weapon-editor-tags">`;
-        groups[0].tags.forEach(t => { html += renderCheckbox(t); });
-        html += `</div>`;
-      } else {
-        groups.forEach(g => {
-          const collapsed = collapsedSet.has(g.cat.id);
-          const caret = collapsed ? '▸' : '▾';
-          const selectedCount = g.tags.filter(t => weaponTagIds.includes(t.id)).length;
-          const badge = selectedCount > 0 ? ` <span class="inv-weapon-editor-tag-group-selected">${selectedCount} selected</span>` : '';
-          html += `<div class="inv-weapon-editor-tag-group${collapsed ? ' collapsed' : ''}">
-            <div class="inv-weapon-editor-tag-grouphead" onclick="invWeaponToggleTagCatCollapse('${escapeHtml(scope)}','${escapeHtml(g.cat.id)}')" title="${collapsed ? 'Expand' : 'Collapse'} ${escapeHtml(g.cat.name)}">
-              <span class="inv-weapon-editor-tag-caret">${caret}</span>
-              <span class="inv-weapon-editor-tag-groupname">${escapeHtml(g.cat.name)}</span>
-              <span class="inv-weapon-editor-tag-groupcount">${g.tags.length}</span>${badge}
-            </div>`;
-          if (!collapsed) {
-            html += `<div class="inv-weapon-editor-tags">`;
-            g.tags.forEach(t => { html += renderCheckbox(t); });
-            html += `</div>`;
-          }
-          html += `</div>`;
-        });
-      }
-    }
-    html += `</div>`;
-    return html;
-  }
-
-  // Single Attack / Damage roll block.
-  //
-  // opts:
-  //   showRaw    — boolean; when true display raw numbers, when false
-  //                display penalty-reduced numbers. Click on the pool
-  //                or flat readouts toggles this per weapon.
-  //   penaltyPct — penalty percentage (0-100). Only used to decide
-  //                whether to show the raw/reduced toggle at all (if
-  //                there's no penalty, both values are identical).
-  //   isAttack   — true for Attack block. Drives the Difficulty row
-  //                (chips for secondary/specialty skill mitigation —
-  //                only relevant to attack rolls, not damage).
-  //   atkResult  — damage only; contested attack result if the player
-  //                has entered one. Shown in the readout as either
-  //                the literal value or a "[ATK]" placeholder.
-  function renderWeaponRollBlock(entry, label, roll, opts) {
-    if (!roll) return '';
-    opts = opts || {};
-    const which = label.toLowerCase();
-    if (roll.error) {
-      return `<div class="inv-weapon-roll">
-        <div class="inv-weapon-roll-label">${label}</div>
-        <div class="inv-weapon-roll-error">${escapeHtml(roll.error)}</div>
-      </div>`;
-    }
-
-    // ─── DIFFICULTY (attack only) ───────────────────────────────────
-    // Compute final Difficulty up front so we can use it in the flat
-    // bonus calc (STATMOD shifts by 6 − finalDiff on attacks). For
-    // damage blocks, difficulty is null and no shift applies.
-    //
-    // additions: positive contributions (Range +N from engagement)
-    // mitigation: negative offsets from skill tier (secondary −1,
-    //             specialty −2), capped at additions — mitigation
-    //             cannot lower Difficulty below the base 6.
-    let finalDiff = null;
-    let diffAdditions = 0;
-    let diffMitigation = 0;
-    let diffChipsHtml = '';
-    if (opts.isAttack) {
-      const additionChips = [];
-      const mitigationChips = [];
-      if (opts.rangeChip && Number.isFinite(opts.rangeChip.band) && opts.rangeChip.band > 0) {
-        diffAdditions += opts.rangeChip.band;
-        additionChips.push({
-          label: `Range ${opts.rangeChip.label}`,
-          delta: opts.rangeChip.band,
-          cls: 'penalty'
-        });
-      }
-      // Rapidfire: pre-ROF recoil difficulty is the addition; ROF
-      // mitigation is a dedicated mitigation chip. Skill mitigation
-      // (secondary/specialty) can then further offset what ROF
-      // didn't absorb, following the standard mitigation rules.
-      const rf = opts.rapidfire;
-      if (rf && rf.recoilDifficulty > 0) {
-        diffAdditions += rf.recoilDifficulty;
-        additionChips.push({
-          label: `Rapidfire recoil (+${rf.totalExtra} ammo: ${rf.damageExtra} damage + ${rf.sweepExtra} sweep, STR ${rf.strVal} vs effective ${rf.recoilRef})`,
-          delta: rf.recoilDifficulty,
-          cls: 'penalty'
-        });
-        if (rf.rofMitigation > 0) {
-          diffMitigation += rf.rofMitigation;
-          mitigationChips.push({
-            label: `ROF ${rf.rofValue} absorbs recoil`,
-            delta: -rf.rofMitigation,
-            cls: 'mitigation'
-          });
-        }
-        // Stabilization absorbs whatever ROF didn't. Resolver already
-        // computed the capped amount; we just echo it into the
-        // Difficulty row as an additional mitigation chip.
-        if (rf.stabilizationMitigation > 0) {
-          diffMitigation += rf.stabilizationMitigation;
-          mitigationChips.push({
-            label: `${rf.stabilizationLabel || 'Stabilization'} absorbs recoil`,
-            delta: -rf.stabilizationMitigation,
-            cls: 'mitigation'
-          });
-        }
-      }
-      roll.diceSlots.forEach(s => {
-        if (s.category === 'skill') {
-          if (s.skillTier === 'secondary') {
-            diffMitigation += 1;
-            mitigationChips.push({ label: `${s.label} (secondary)`, delta: -1, cls: 'mitigation' });
-          } else if (s.skillTier === 'specialty') {
-            diffMitigation += 2;
-            mitigationChips.push({ label: `${s.label} (specialty)`, delta: -2, cls: 'mitigation' });
-          }
-        }
-      });
-      const effectiveMitigation = Math.min(diffMitigation, diffAdditions);
-      finalDiff = 6 + diffAdditions - effectiveMitigation;
-
-      const chips = additionChips.concat(mitigationChips.map(c => {
-        const wasted = diffMitigation > diffAdditions;
-        return wasted
-          ? Object.assign({}, c, { label: c.label + ' — already at base', wasted: true })
-          : c;
-      }));
-      diffChipsHtml = chips.map(c => {
-        const sign = c.delta >= 0 ? '+' : '−';
-        const extraCls = c.wasted ? ' wasted' : '';
-        return `<span class="inv-weapon-diff-chip ${c.cls || ''}${extraCls}" title="${escapeHtml(c.label)}">${sign}${Math.abs(c.delta)} ${escapeHtml(c.label)}</span>`;
-      }).join('');
-    }
-
-    // ─── POOL + FLAT ────────────────────────────────────────────────
-    // Penalty reduces the dice pool (stat + skill). Flat bonus
-    // (STATMOD) is NOT affected by penalty but IS affected by
-    // Difficulty: each point of Difficulty above 6 costs 1 flat,
-    // each point below 6 gives 1 flat. Applied once per formula
-    // regardless of how many statmod terms appear (STATMOD is
-    // conceptually a single bonus even if composed of multiple
-    // *MOD references).
-    const hasPenalty = opts.penaltyPct > 0 && (
-      roll.dicePool !== roll.dicePoolReduced
-    );
-    const pool = opts.showRaw ? roll.dicePool : roll.dicePoolReduced;
-    const baseFlat = roll.flatBonus;      // penalty no longer affects flat
-    const hasStatmod = roll.flatSlots.some(s => s.category === 'statmod');
-    // Difficulty-STATMOD coupling — attack only, and only if the
-    // formula actually references a STATMOD.
-    const diffStatmodShift = (opts.isAttack && hasStatmod && finalDiff != null)
-      ? (6 - finalDiff)
-      : 0;
-    const flat = baseFlat + diffStatmodShift;
-    const rawKey = opts.isAttack ? 'showRawAttack' : 'showRawDamage';
-    const toggleAttrs = hasPenalty
-      ? `onclick="invWeaponToggleRaw('${escapeHtml(entry.id)}','${escapeHtml(rawKey)}')" style="cursor:pointer" title="Click to ${opts.showRaw ? 'apply' : 'remove'} ${opts.penaltyPct}% Penalty"`
-      : '';
-
-    // Main display: dice pool + flat bonus.
-    const flatStr = flat === 0 ? '' :
-                    (flat > 0 ? ` + ${flat}` : ` − ${Math.abs(flat)}`);
-    const dicePart = `<span class="inv-weapon-roll-pool">${pool}D10</span>`;
-    const flatPart = flat !== 0
-      ? `<span class="inv-weapon-roll-flat">${flatStr}</span>`
-      : '';
-
-    // Penalty badge — tiny pill next to the main value. Only shown
-    // when penalty is actually reducing the dice pool. (Penalty no
-    // longer affects flat bonus so the badge is pool-only now.)
-    const penaltyBadge = hasPenalty
-      ? `<span class="inv-weapon-penalty-pill">${opts.showRaw ? 'raw' : `−${opts.penaltyPct}%`}</span>`
-      : '';
-
-    // Slot breakdown — one per term. Color by category: stat/statmod
-    // with penalty-reduction visual when active; skill with tier
-    // badge; weapon consts in neutral. Stat and skill slots become
-    // <select> pickers so the user can swap the variable (writes to
-    // entry.weaponOverrides).
-    //
-    // We pair each live slot with the SAME POSITION in the pre-override
-    // resolve (opts.defaultSlots). That pre-override slot's label is
-    // the ORIGINAL variable name, which is what we need as the
-    // override-map key. If the two result arrays happen to differ in
-    // length (shouldn't in normal operation), we fall back to using
-    // the live slot's own label.
-    const defaultSlots = Array.isArray(opts.defaultSlots) ? opts.defaultSlots : null;
-    const pairSlot = (liveSlot, i) => {
-      const def = defaultSlots && defaultSlots[i];
-      const fromVar = (def && def.label) ? def.label : liveSlot.label;
-      return renderWeaponSlot(entry, liveSlot, opts, fromVar, which);
+        if (console && console.log) console.log('[load] ' + msg);
+      } catch (e) {}
     };
-    // diceSlots + flatSlots concat follows the same order in both
-    // resolves (extractAdditiveTerms walks the AST deterministically).
-    // Indexing starts at 0 and runs across both arrays, so dice slots
-    // use indices 0..N-1 and flat slots start at N.
-    const diceCount = roll.diceSlots.length;
-    const diceSlotsHtml = roll.diceSlots.map((s, i) => pairSlot(s, i)).join('');
-    const flatSlotsHtml = roll.flatSlots.length > 0
-      ? '<br>' + roll.flatSlots.map((s, i) => pairSlot(s, diceCount + i)).join('')
-      : '';
-
-    // Difficulty row — attack only. Uses the finalDiff + chips already
-    // computed at the top of this function. Also shows the STATMOD
-    // coupling as a separate chip when the formula references any
-    // statmod (so the player can see the flat-bonus shift).
-    let difficultyHtml = '';
-    if (opts.isAttack && finalDiff != null) {
-      // Add a STATMOD-shift chip to the chips row when it applies.
-      let augmentedChipsHtml = diffChipsHtml;
-      if (diffStatmodShift !== 0) {
-        const sign = diffStatmodShift > 0 ? '+' : '−';
-        const cls = diffStatmodShift > 0 ? 'mitigation' : 'penalty';
-        const title = diffStatmodShift > 0
-          ? `STATMOD +${diffStatmodShift} (Difficulty ${finalDiff} is ${Math.abs(diffStatmodShift)} below base 6)`
-          : `STATMOD ${diffStatmodShift} (Difficulty ${finalDiff} is ${Math.abs(diffStatmodShift)} above base 6)`;
-        augmentedChipsHtml += `<span class="inv-weapon-diff-chip ${cls}" title="${escapeHtml(title)}">${sign}${Math.abs(diffStatmodShift)} STATMOD</span>`;
-      }
-      difficultyHtml = `<div class="inv-weapon-diff-row">
-        <span class="inv-weapon-diff-label">Difficulty</span>
-        <span class="inv-weapon-diff-val">${finalDiff}</span>
-        ${augmentedChipsHtml ? `<span class="inv-weapon-diff-chips">${augmentedChipsHtml}</span>` : ''}
-      </div>`;
-    }
-
-    // ATK input — damage block only. Two modes:
-    //   - placeholder: no atkResult entered. Shows "[ATK]" text and a
-    //     small "+" button to reveal an input.
-    //   - filled: atkResult present. Shows the number with a clear (×)
-    //     button. The damage dice pool above ALREADY reflects the
-    //     added ATK (resolver bakes it in), so no further math needed.
-    let atkRowHtml = '';
-    if (!opts.isAttack) {
-      const atk = opts.atkResult;
-      if (atk == null) {
-        atkRowHtml = `<div class="inv-weapon-atk-row">
-          <span class="inv-weapon-atk-label">ATK result</span>
-          <span class="inv-weapon-atk-placeholder" title="The total from your attack roll (the contested result). Add it so this damage pool shows the real final number.">
-            [not rolled]
-          </span>
-          <input type="number" class="inv-weapon-atk-input" placeholder="e.g. 5"
-                 onchange="invWeaponSetAtk('${escapeHtml(entry.id)}',this.value)"
-                 onkeydown="if(event.key==='Enter'){invWeaponSetAtk('${escapeHtml(entry.id)}',this.value);}">
-        </div>`;
-      } else {
-        atkRowHtml = `<div class="inv-weapon-atk-row">
-          <span class="inv-weapon-atk-label">ATK result</span>
-          <span class="inv-weapon-atk-val">${atk}</span>
-          <button class="inv-weapon-atk-clear" onclick="invWeaponSetAtk('${escapeHtml(entry.id)}','')" title="Clear — start a new attack">×</button>
-          <span class="inv-weapon-atk-note">already rolled in to the dice pool above</span>
-        </div>`;
-      }
-    }
-
-    return `<div class="inv-weapon-roll">
-      <div class="inv-weapon-roll-label">${label}</div>
-      <div class="inv-weapon-roll-main" ${toggleAttrs}>${dicePart}${flatPart}${penaltyBadge}</div>
-      <div class="inv-weapon-roll-slots">${diceSlotsHtml}${flatSlotsHtml}</div>
-      ${difficultyHtml}
-      ${atkRowHtml}
-      <button class="inv-weapon-roll-send" onclick="invWeaponToRollCalc('${escapeHtml(entry.id)}','${which}')" title="Send this roll to the Roll Calculator">→ Roll Calc</button>
-    </div>`;
-  }
-
-  // Single slot (term) in a roll's breakdown. Color-coded by category:
-  //   stat / statmod — orange-ish, shown with the penalty-reduced
-  //                    value when Penalty is in effect
-  //   skill          — cyan, with tier badge (P/S/Sp for primary/secondary/specialty)
-  //   weaponConst    — neutral gray (DMG, PEN, ATK)
-  //   literal        — gray (rare — raw numbers in the formula)
-  //
-  // For stat and skill slots, the label becomes a native `<select>` so
-  // the user can swap the variable without navigating away. Changing
-  // the select calls invWeaponSetSlotOverride which writes to
-  // entry.weaponOverrides and re-renders.
-  //
-  // Arguments:
-  //   entry    — inventory entry (for the id in onchange)
-  //   slot     — the live (post-override) slot from the resolver
-  //   opts     — roll-block opts (showRaw, penaltyPct, isAttack, ...)
-  //   fromVar  — the ORIGINAL variable name at this slot position, used
-  //              as the override-map key. Needed because `slot.label`
-  //              already reflects the overridden identifier.
-  //   whichRoll — 'attack' | 'damage', the override sub-map to target.
-  function renderWeaponSlot(entry, slot, opts, fromVar, whichRoll) {
-    const showRaw = !!opts.showRaw;
-    const value = showRaw ? slot.value : (Number.isFinite(slot.valueReduced) ? slot.valueReduced : slot.value);
-    const absVal = Math.abs(value);
-    const signStr = slot.sign < 0 ? '−' : '';
-    // Category color class — defined in the CSS block.
-    let clsColor = 'inv-weapon-slot-const';
-    if      (slot.category === 'stat')    clsColor = 'inv-weapon-slot-stat';
-    else if (slot.category === 'statmod') clsColor = 'inv-weapon-slot-statmod';
-    else if (slot.category === 'skill')   clsColor = 'inv-weapon-slot-skill';
-    else if (slot.category === 'literal') clsColor = 'inv-weapon-slot-literal';
-    else if (slot.category === 'unknown') clsColor = 'inv-weapon-slot-unknown';
-    // Tier badge — tiny letter pill after skill name.
-    let tierBadge = '';
-    if (slot.category === 'skill' && slot.skillTier) {
-      const letter = slot.skillTier === 'primary' ? 'P'
-                   : slot.skillTier === 'secondary' ? 'S'
-                   : slot.skillTier === 'specialty' ? 'Sp'
-                   : '';
-      if (letter) tierBadge = `<span class="inv-weapon-tier-badge ${slot.skillTier}" title="${slot.skillTier}">${letter}</span>`;
-    }
-    // Reduction indicator — show a tiny "(was N)" when we're viewing
-    // penalty-reduced and it's actually reduced from the raw value.
-    let reductionHint = '';
-    if (!showRaw && slot.valueReduced != null && Math.abs(slot.value) !== Math.abs(slot.valueReduced)) {
-      reductionHint = ` <span class="inv-weapon-slot-was">(was ${Math.abs(slot.value)})</span>`;
-    }
-
-    // Decide whether this slot gets a picker. Stats and skills do;
-    // statmods (derived from their base stat, not independently
-    // pickable), weapon constants, literals, and unknowns don't.
-    const pickable = (slot.category === 'stat' || slot.category === 'skill')
-                     && fromVar && whichRoll;
-    if (!pickable) {
-      return `<span class="inv-weapon-roll-slot ${clsColor}">${escapeHtml(slot.label)}${tierBadge}:${signStr}${absVal}${reductionHint}</span>`;
-    }
-
-    // Build the select. Current value (slot.label) is pre-selected.
-    // Options come from buildSlotPickerOptions which looks at the
-    // ruleset (stats) or the character (skills across tiers).
-    const picker = buildSlotPickerOptions(slot.category);
-    const idAttr = escapeHtml(entry.id);
-    const fromAttr = escapeHtml(fromVar);
-    const rollAttr = escapeHtml(whichRoll);
-    const currentLabel = slot.label;
-
-    let optsHtml = '';
-    if (picker.flat) {
-      optsHtml = picker.flat.map(o => {
-        const sel = (o.value === currentLabel) ? ' selected' : '';
-        return `<option value="${escapeHtml(o.value)}"${sel}>${escapeHtml(o.label)}</option>`;
-      }).join('');
-    } else if (Array.isArray(picker.groups)) {
-      optsHtml = picker.groups.map(g => {
-        if (!g.items || g.items.length === 0) return '';
-        const items = g.items.map(o => {
-          // Match against both the raw label (for exact-name skills
-          // like "Melee") and the sanitized form (for spaces → none),
-          // since the current slot label comes back sanitized.
-          const sanitized = String(o.value).replace(/[^A-Za-z0-9_]+/g, '');
-          const sel = (o.value === currentLabel || sanitized === currentLabel) ? ' selected' : '';
-          return `<option value="${escapeHtml(o.value)}"${sel}>${escapeHtml(o.label)}</option>`;
-        }).join('');
-        return `<optgroup label="${escapeHtml(g.label)}">${items}</optgroup>`;
-      }).join('');
-    }
-
-    // If the current slot's value is missing from the picker (e.g. a
-    // formula variable the character doesn't have a matching skill
-    // for), inject it as a disabled option so the select still shows
-    // something sensible rather than defaulting to option[0].
-    if (optsHtml.indexOf(' selected>') === -1) {
-      optsHtml = `<option value="${escapeHtml(currentLabel)}" selected disabled>${escapeHtml(currentLabel)} (unknown)</option>${optsHtml}`;
-    }
-
-    const select = `<select class="inv-weapon-slot-select"
-                            onchange="invWeaponSetSlotOverride('${idAttr}','${rollAttr}','${fromAttr}',this.value)"
-                            title="Swap this slot for a different ${slot.category}. Select the original to reset.">
-      ${optsHtml}
-    </select>`;
-    return `<span class="inv-weapon-roll-slot ${clsColor}">${select}${tierBadge}:${signStr}${absVal}${reductionHint}</span>`;
-  }
-
-  // AMMO tracker chip — shows "current / max" with +/- buttons. The
-  // max comes from the resolved AMMO formula; current is stored on
-  // entry.currentAmmo (lazy-init to max on first interaction so melee
-  // entries and freshly-added ranged ones don't litter with initial
-  // currentAmmo values). Decrement fires invWeaponDecAmmo which
-  // writes entry.currentAmmo and saves.
-  function renderAmmoTracker(entry, resolved) {
-    const ammo = resolved.ammo || { resolved: 0, raw: 0, error: null };
-    if (ammo.error) {
-      return `<span class="inv-weapon-chip" title="${escapeHtml(ammo.error)}"><span class="inv-weapon-chip-label">AMMO</span><span class="inv-weapon-chip-val" style="color:#cc6666">err</span></span>`;
-    }
-    const max = Number.isFinite(ammo.resolved) ? ammo.resolved : 0;
-    // Lazy-init: entry.currentAmmo absent → treat as max.
-    const cur = (typeof entry.currentAmmo === 'number')
-      ? Math.max(0, Math.min(max, entry.currentAmmo))
-      : max;
-    const canEdit = getCanEdit();
-    const formulaTip = (typeof ammo.raw === 'string' && ammo.raw !== String(ammo.resolved))
-      ? ` (${ammo.raw})` : '';
-    return `<span class="inv-weapon-ammo" title="AMMO ${cur}/${max}${formulaTip}">
-      <span class="inv-weapon-chip-label">AMMO</span>
-      ${canEdit ? `<button class="inv-weapon-ammo-btn" onclick="invWeaponAdjustAmmo('${escapeHtml(entry.id)}',-1)" ${cur <= 0 ? 'disabled' : ''} title="Spend 1 AMMO">−</button>` : ''}
-      <span class="inv-weapon-ammo-val">${cur}</span>
-      <span class="inv-weapon-ammo-sep">/</span>
-      <span class="inv-weapon-ammo-max">${max}</span>
-      ${canEdit ? `<button class="inv-weapon-ammo-btn" onclick="invWeaponAdjustAmmo('${escapeHtml(entry.id)}',1)" ${cur >= max ? 'disabled' : ''} title="Reload 1 AMMO">+</button>` : ''}
-      ${canEdit ? `<button class="inv-weapon-ammo-btn" onclick="invWeaponReloadAmmo('${escapeHtml(entry.id)}')" title="Reload to max" style="width:auto;padding:0 6px;font-size:9px;letter-spacing:.05em">FULL</button>` : ''}
-    </span>`;
-  }
-
-  // ROF chip — shows the level + flavor label. rofFlavor maps -1..4
-  // to Single-Fire / Action / Semi / Auto / Full / Chain.
-  function renderRofChip(resolved) {
-    const rof = resolved.rof || { resolved: 0, raw: 0, error: null };
-    if (rof.error) {
-      return `<span class="inv-weapon-chip" title="${escapeHtml(rof.error)}"><span class="inv-weapon-chip-label">ROF</span><span class="inv-weapon-chip-val" style="color:#cc6666">err</span></span>`;
-    }
-    const level = Number.isFinite(rof.resolved) ? rof.resolved : 0;
-    const flavor = rofFlavor(level);
-    const label = flavor ? `${level} · ${flavor.label}` : String(level);
-    const tip = flavor ? `${flavor.label} — approx ${flavor.perAmmo} projectile${flavor.perAmmo === 1 ? '' : 's'} per ammo` : '';
-    return `<span class="inv-weapon-chip" title="${escapeHtml(tip)}"><span class="inv-weapon-chip-label">ROF</span><span class="inv-weapon-chip-val">${escapeHtml(label)}</span></span>`;
-  }
-
-  // Truncate a string to a max length, adding "…" if truncated. Avoids
-  // breaking mid-word when possible — trims back to the previous space
-  // rather than cutting a word in half.
-  function truncate(s, max) {
-    if (!s || s.length <= max) return s || '';
-    const cut = s.slice(0, max);
-    const lastSpace = cut.lastIndexOf(' ');
-    return (lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut) + '…';
-  }
-
-  // ─── INLINE ENTRY EDIT ───
-  //
-  // Per-instance edit panel that tweaks the entry's snapshot. The def
-  // is never touched — edits stay local to this one entry. The panel
-  // renders inline (not as a modal) between the entry's head row and
-  // its contents, so the user can see their container's new dimensions
-  // affect its capacity math live.
-  //
-  // Flow:
-  //   • User clicks ✎ → openEntryEdit(id) copies snapshot into editDraft
-  //   • User types → updateEditDraft(field, value) mutates draft
-  //   • User clicks Save → saveEntryEdit writes draft back to snapshot + persists
-  //   • User clicks Cancel → cancelEntryEdit discards draft, closes panel
-
-  function renderEntryEditPanel(entry, asContainer, depth) {
-    if (!editDraft) return '';
-    const d = editDraft;
-    // Indentation lines up with the entry body so the panel reads as
-    // belonging to the entry above it.
-    const margin = (depth + 1) * 16;
-
-    let html = `<div class="inv-edit-panel" style="margin-left:${margin}px" onclick="event.stopPropagation()">
-      <div class="inv-edit-panel-title">Edit this ${asContainer ? 'container' : 'item'} <span class="inv-edit-panel-hint">— changes apply only to this instance</span></div>
-
-      <div class="inv-field">
-        <label>Name</label>
-        <input type="text" value="${escapeHtml(d.name || '')}" oninput="invUpdateEditDraft('name',this.value)" placeholder="e.g. Duffel Bag">
-      </div>
-
-      <div class="inv-field">
-        <label>Description</label>
-        <textarea rows="2" oninput="invUpdateEditDraft('description',this.value)" placeholder="Optional — notes, flavor text, condition.">${escapeHtml(d.description || '')}</textarea>
-      </div>
-
-      <div class="inv-pair-row">
-        <div class="inv-field">
-          <label>Weight (lbs)</label>
-          <input type="number" step="0.1" min="0" value="${escapeHtml(String(d.weight || 0))}" oninput="invUpdateEditDraft('weight',this.value)">
-        </div>
-        <div class="inv-field">
-          <label>Dimensions (L × W × H, inches) <span class="inv-dims-hint">— pick a preset to autofill</span></label>
-          <div class="inv-dims-preset-row">
-            <select class="item-preset-select"
-                    onchange="invApplyPresetToEditDraft(this.value); this.value='';"
-                    title="Pick a shape to autofill dimensions (and weight when the preset has one).">
-              ${buildDimensionPresetOptions()}
-            </select>
-          </div>
-          <div class="inv-dims-row">
-            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.l || 0))}" placeholder="L" oninput="invUpdateEditDraft('l',this.value)">
-            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.w || 0))}" placeholder="W" oninput="invUpdateEditDraft('w',this.value)">
-            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.h || 0))}" placeholder="H" oninput="invUpdateEditDraft('h',this.value)">
-          </div>
-        </div>
-      </div>`;
-
-    // Container-only fields: inner dimensions + packing efficiency.
-    // These live in snapshot.containerOf.
-    if (asContainer) {
-      html += `<div class="inv-container-block">
-        <div class="inv-container-block-title">Container Capacity</div>
-        <div class="inv-field">
-          <label>Inner Dimensions (L × W × H, inches)</label>
-          <div class="inv-dims-row">
-            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.innerL || 0))}" placeholder="L" oninput="invUpdateEditDraft('innerL',this.value)">
-            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.innerW || 0))}" placeholder="W" oninput="invUpdateEditDraft('innerW',this.value)">
-            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.innerH || 0))}" placeholder="H" oninput="invUpdateEditDraft('innerH',this.value)">
-          </div>
-        </div>
-        <div class="inv-field" style="max-width:260px">
-          <label title="Fraction of the inner L×W×H volume that can actually hold items.">Packing Efficiency (0.1 – 1.0)</label>
-          <input type="number" step="0.05" min="0.1" max="1.0" value="${escapeHtml(String(d.innerPacking != null ? d.innerPacking : 0.75))}" oninput="invUpdateEditDraft('innerPacking',this.value)">
-          <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">1.0 = fitted case · 0.75 = typical bag · 0.5 = loose sack</div>
-        </div>
-      </div>`;
-    }
-
-    html += `<div class="inv-edit-panel-subsection">
-      <div class="inv-edit-panel-sub-label">Durability Tracking</div>
-      <div class="inv-toggle-row">
-        <span class="inv-toggle${entry.durabilityTracked ? ' on' : ''}"
-              onclick="invDurabilityToggleTracked('${escapeHtml(entry.id)}')">
-          ${entry.durabilityTracked ? '✓ Track durability' : 'Track durability'}
-        </span>
-        <span class="inv-toggle-hint">Turn on to track this item's wear — shows a Dur row on the entry where you can log damage instances. Off by default; most items don't need it unless they're actively under threat.</span>
-      </div>
-    </div>`;
-
-    html += `<div class="inv-edit-panel-actions">
-      <button class="inv-add-btn" onclick="invSaveEntryEdit()">Save</button>
-      <button class="inv-add-btn inv-add-btn-ghost" onclick="invCancelEntryEdit()">Cancel</button>
-      <button class="inv-add-btn inv-add-btn-promote" onclick="invPromoteEntryToCatalogue()" title="Copy this instance's current fields (name, dimensions, weight, description, capacity) into your personal catalogue as a reusable template. Does not modify this instance.">Save to Personal Catalogue</button>
-    </div>`;
-
-    html += `</div>`;
-    return html;
-  }
-
-  // Open the edit panel for a given entry. Copies the entry's snapshot
-  // into a draft object so the user can tweak without mutating the
-  // persisted data until Save is clicked.
-  function openEntryEdit(entryId) {
-    if (!getCanEdit()) return;
-    const entry = findEntry(entryId);
-    if (!entry) return;
-    const snap = entrySnapshot(entry);
-    const isContainer = entryIsContainer(entry);
-    const dims = snap.dimensions || { l: 0, w: 0, h: 0 };
-    const innerDims = (snap.containerOf && snap.containerOf.dimensions) || { l: 0, w: 0, h: 0 };
-    editDraft = {
-      name:         snap.name || '',
-      description:  snap.description || '',
-      weight:       snap.weight || 0,
-      l:            dims.l || 0,
-      w:            dims.w || 0,
-      h:            dims.h || 0,
-      isContainer,
-      innerL:       innerDims.l || 0,
-      innerW:       innerDims.w || 0,
-      innerH:       innerDims.h || 0,
-      innerPacking: (snap.containerOf && Number.isFinite(snap.containerOf.packingEfficiency))
-        ? snap.containerOf.packingEfficiency
-        : 0.75
-    };
-    editingEntryId = entryId;
-    renderAll();
-  }
-
-  // Patch a single field in the edit draft as the user types. Numeric
-  // fields get coerced; text fields pass through. Does NOT re-render —
-  // the inputs are self-managing and re-rendering would steal focus.
-  function updateEditDraft(field, value) {
-    if (!editDraft) return;
-    const numericFields = new Set(['weight','l','w','h','innerL','innerW','innerH','innerPacking']);
-    if (numericFields.has(field)) {
-      const n = parseFloat(value);
-      editDraft[field] = Number.isFinite(n) && n >= 0 ? n : 0;
-    } else {
-      editDraft[field] = typeof value === 'string' ? value : '';
-    }
-  }
-
-  // Apply a ruleset dimension preset to the active edit draft. Fills
-  // L/W/H from the preset's dimensions, and weight if the preset
-  // carries a non-zero weight. Empty preset id ("— pick a preset —"
-  // sentinel) is a no-op. Caller is expected to clear the dropdown
-  // (`this.value=''`) after — keeps the select reusable.
-  function applyPresetToEditDraft(presetId) {
-    if (!editDraft || !presetId) return;
-    const ruleset = getRuleset() || {};
-    const presets = Array.isArray(ruleset.dimensionPresets) ? ruleset.dimensionPresets : [];
-    const p = presets.find(x => x.id === presetId);
-    if (!p) return;
-    const dims = p.dimensions || { l: 0, w: 0, h: 0 };
-    editDraft.l = Number.isFinite(dims.l) ? dims.l : 0;
-    editDraft.w = Number.isFinite(dims.w) ? dims.w : 0;
-    editDraft.h = Number.isFinite(dims.h) ? dims.h : 0;
-    if (Number.isFinite(p.weight) && p.weight > 0) editDraft.weight = p.weight;
-    renderAll();
-  }
-
-  // Apply a ruleset dimension preset to the modal's custom-form draft
-  // (accessed via activeModal.customDraft). Same semantics as the
-  // edit-draft version above. Used by the Add Item → Custom form.
-  function applyPresetToCustomDraft(presetId) {
-    if (!activeModal || !activeModal.customDraft || !presetId) return;
-    const ruleset = getRuleset() || {};
-    const presets = Array.isArray(ruleset.dimensionPresets) ? ruleset.dimensionPresets : [];
-    const p = presets.find(x => x.id === presetId);
-    if (!p) return;
-    const dims = p.dimensions || { l: 0, w: 0, h: 0 };
-    const d = activeModal.customDraft;
-    d.l = Number.isFinite(dims.l) ? dims.l : 0;
-    d.w = Number.isFinite(dims.w) ? dims.w : 0;
-    d.h = Number.isFinite(dims.h) ? dims.h : 0;
-    if (Number.isFinite(p.weight) && p.weight > 0) d.weight = p.weight;
-    renderAll();
-  }
-
-  // Apply a ruleset dimension preset to a catalog-manager draft
-  // (either an existing def being edited, or the "new def" draft).
-  // `target` is the draft key: a def id, or '__new__'.
-  function applyPresetToCatMgrDraft(target, presetId) {
-    if (!presetId) return;
-    const ruleset = getRuleset() || {};
-    const presets = Array.isArray(ruleset.dimensionPresets) ? ruleset.dimensionPresets : [];
-    const p = presets.find(x => x.id === presetId);
-    if (!p) return;
-    const draft = (target === '__new__')
-      ? catalogManager.newDraft
-      : catalogManager.drafts.get(target);
-    if (!draft) return;
-    const dims = p.dimensions || { l: 0, w: 0, h: 0 };
-    draft.l = Number.isFinite(dims.l) ? dims.l : 0;
-    draft.w = Number.isFinite(dims.w) ? dims.w : 0;
-    draft.h = Number.isFinite(dims.h) ? dims.h : 0;
-    if (Number.isFinite(p.weight) && p.weight > 0) draft.weight = p.weight;
-    renderAll();
-  }
-
-  // Commit the draft back to the entry's snapshot and save.
-  async function saveEntryEdit() {
-    if (!editDraft || !editingEntryId) return;
-    const entry = findEntry(editingEntryId);
-    if (!entry) { cancelEntryEdit(); return; }
-    const d = editDraft;
-
-    // Build the new snapshot from the draft. containerOf is included
-    // only when the entry was already a container (we don't promote/
-    // demote container-ness from the inline edit panel — that's too
-    // surprising a change to make here; user should remove and re-add).
-    //
-    // Preserve the weapon block verbatim — the inline edit panel only
-    // covers name/description/dimensions/weight, never weapon stats.
-    // Wiping weapon here would silently strip the Weapon readout for
-    // any item being "just renamed". Weapon edits have their own
-    // dedicated editor (renderWeaponSnapshotEditor / the Edit stats
-    // button on the weapon card). legacyCategory is preserved for the
-    // same reason.
-    const prevSnap = entry.snapshot || {};
-    const newSnapshot = {
-      name:           (d.name || '').trim() || '(unnamed)',
-      description:    (d.description || '').trim(),
-      dimensions:     { l: d.l || 0, w: d.w || 0, h: d.h || 0 },
-      weight:         d.weight || 0,
-      containerOf:    d.isContainer ? {
-        dimensions:        { l: d.innerL || 0, w: d.innerW || 0, h: d.innerH || 0 },
-        packingEfficiency: clampEff(d.innerPacking, 0.75)
-      } : null,
-      legacyCategory: prevSnap.legacyCategory || '',
-      weapon:         prevSnap.weapon || null,
-      // Preserve size/armor/armorWorn verbatim — the inline edit panel
-      // doesn't expose these fields. Wiping them here would strip the
-      // Armor/Durability pills from any piece being "just renamed".
-      size:           Number.isFinite(prevSnap.size) ? prevSnap.size : 3,
-      armor:          Number.isFinite(prevSnap.armor) ? prevSnap.armor : 0,
-      armorWorn:      prevSnap.armorWorn || null
-    };
-    entry.snapshot = newSnapshot;
-
-    editingEntryId = null;
-    editDraft = null;
-    renderAll();
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  // Discard the draft and close the panel. No save call.
-  function cancelEntryEdit() {
-    editingEntryId = null;
-    editDraft = null;
-    renderAll();
-  }
-
-  // "Save to Personal Catalogue" — copies the entry's CURRENT snapshot
-  // into a new catalog def so the user can pick it again later from
-  // the Add Container / Add Item modals. The entry on the sheet is
-  // NOT modified — it stays a free-standing instance with its own
-  // snapshot. The catalog def gets a fresh id; if a def with the same
-  // name already exists, we warn so the user doesn't accidentally
-  // shadow their existing one.
-  //
-  // Uses the current edit draft if the panel is open (so edits-in-flight
-  // get promoted too). If no panel is open, uses the entry's snapshot
-  // as-is. Either way, the promotion is just a copy — the entry's
-  // defId is not rewritten to point at the new catalog def. That keeps
-  // the mental model simple: "catalog is templates for future picks;
-  // existing instances are self-contained."
-  async function promoteEntryToCatalogue() {
-    if (!getCanEdit()) return;
-    if (!editingEntryId) return;
-    const entry = findEntry(editingEntryId);
-    if (!entry) return;
-
-    // Source the snapshot data from the current draft (edits-in-flight
-    // should propagate) OR the entry's stored snapshot as a fallback.
-    const source = editDraft || null;
-    const snap = entry.snapshot || {};
-
-    const name = (source ? source.name : snap.name || '').trim();
-    if (!name) { alert('Please enter a name before saving to the catalogue.'); return; }
-
-    const inv = ensureInventory();
-
-    // Duplicate-name check across both custom buckets. Warns rather
-    // than blocks — user might genuinely want two "Rifle Case" defs
-    // (e.g. short and long versions). Confirm lets them proceed.
-    const existingNames = [
-      ...(inv.customDefs.containers || []).map(x => (x.name || '').toLowerCase()),
-      ...(inv.customDefs.equipment  || []).map(x => (x.name || '').toLowerCase())
-    ];
-    if (existingNames.includes(name.toLowerCase())) {
-      if (!confirm(`A catalogue entry named "${name}" already exists. Save another copy anyway?`)) return;
-    }
-
-    // Build the def fields from the draft (if present) or snapshot.
-    const dims = source
-      ? { l: source.l || 0, w: source.w || 0, h: source.h || 0 }
-      : (snap.dimensions || { l: 0, w: 0, h: 0 });
-    const weight = source ? (source.weight || 0) : (snap.weight || 0);
-    const description = (source ? source.description : snap.description || '').trim();
-    const isContainer = !!(snap.containerOf || (source && source.isContainer));
-
-    // Inner-container fields: prefer the draft, fall back to snapshot.
-    const innerDims = source
-      ? { l: source.innerL || 0, w: source.innerW || 0, h: source.innerH || 0 }
-      : ((snap.containerOf && snap.containerOf.dimensions) || { l: 0, w: 0, h: 0 });
-    const innerPacking = source
-      ? clampEff(source.innerPacking, 0.75)
-      : ((snap.containerOf && Number.isFinite(snap.containerOf.packingEfficiency)) ? snap.containerOf.packingEfficiency : 0.75);
-
-    let def;
-    if (isContainer) {
-      // Legacy container schema — top-level packingEfficiency, dimensions
-      // represent inner capacity. Matches the shape other custom
-      // containers use on this character.
-      def = {
-        id: _nextInvId('cust_cont'),
-        name,
-        description,
-        dimensions: { l: innerDims.l || dims.l || 0, w: innerDims.w || dims.w || 0, h: innerDims.h || dims.h || 0 },
-        weight,
-        packingEfficiency: innerPacking
-      };
-      inv.customDefs.containers.push(def);
-    } else {
-      def = {
-        id: _nextInvId('cust_eq'),
-        name,
-        description,
-        dimensions: dims,
-        weight,
-        category: '',
-        weaponId: null,
-        containerOf: null
-      };
-      inv.customDefs.equipment.push(def);
-    }
-
-    // Ephemeral toast-style confirmation via the catalog-add toast
-    // mechanism (already wired to fade after 3s). Keeps the feedback
-    // loop short.
-    lastAddToast = `Saved "${name}" to your personal catalogue.`;
-    renderAll();
-    setTimeout(() => {
-      if (lastAddToast && lastAddToast.startsWith('Saved "')) {
-        lastAddToast = null;
-        renderAll();
+    setTimeout(function() {
+      const loadingEl = document.getElementById('loading');
+      const diagEl = document.getElementById('loading-diag');
+      if (loadingEl && loadingEl.style.display !== 'none' && diagEl) {
+        diagEl.style.display = 'block';
+        const hint = document.createElement('div');
+        hint.style.cssText = 'margin-top:10px;padding-top:10px;border-top:1px solid #333;color:#888';
+        hint.innerHTML = 'Loading is taking longer than expected. Steps reached above. If the list is empty, the script did not start — likely a module import error. Press <kbd>F12</kbd> and check the Console tab for details.';
+        diagEl.appendChild(hint);
       }
     }, 3000);
+    window.__logStep('HTML parsed, pre-module script ran');
+    window.__logStep('window.RULESET_DEFAULTS: ' + (window.RULESET_DEFAULTS ? 'loaded' : 'MISSING'));
+    window.__logStep('window.normalizeRuleset: ' + (typeof window.normalizeRuleset === 'function' ? 'loaded' : 'MISSING'));
+  </script>
+  <div id="char-content" style="display:none">
 
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  // ─── PERSONAL CATALOGUE MANAGER ───
-  //
-  // Standalone modal for CRUD on the character's custom defs. Opened
-  // from the inventory tab header. Separate from the Add Container/Add
-  // Item picker flow — creating a def here does NOT place it on the
-  // sheet. That keeps the two flows mentally distinct:
-  //
-  //   • Picker's + Custom: "I need this thing, and it's going HERE"
-  //   • Manager:           "I'm building my catalogue, no placement yet"
-
-  function renderCatalogManager() {
-    const root = document.getElementById('inv-catalog-manager-root');
-    if (!root) return;
-    if (!catalogManager.open) { root.innerHTML = ''; return; }
-
-    const inv = ensureInventory();
-    const containers = (inv.customDefs.containers || []);
-    const equipment  = (inv.customDefs.equipment  || []);
-    const total = containers.length + equipment.length;
-
-    let body = '';
-    if (total === 0 && !catalogManager.newDraft) {
-      body = `<div class="inv-cat-mgr-empty">
-        Your personal catalogue is empty. Create one-off items and containers that only exist on this character — they won't appear on other characters' sheets or in the shared ruleset.
-      </div>`;
-    }
-
-    // New-def inline form at the top if the user clicked + New X.
-    if (catalogManager.newDraft) {
-      body += renderCatalogManagerNewForm();
-    }
-
-    // Containers section
-    if (containers.length > 0) {
-      body += `<div class="inv-cat-mgr-section-label">Containers <span class="inv-cat-mgr-section-count">${containers.length}</span></div>`;
-      body += containers.map(def => renderCatalogManagerRow(def, 'container')).join('');
-    }
-
-    // Equipment section
-    if (equipment.length > 0) {
-      body += `<div class="inv-cat-mgr-section-label">Items <span class="inv-cat-mgr-section-count">${equipment.length}</span></div>`;
-      body += equipment.map(def => renderCatalogManagerRow(def, 'equipment')).join('');
-    }
-
-    const addRow = `<div class="inv-manage-add-row">
-      <button class="inv-add-btn" onclick="invCatMgrStartNew('container')">+ New Container</button>
-      <button class="inv-add-btn inv-add-btn-ghost" onclick="invCatMgrStartNew('equipment')">+ New Item</button>
-      <span class="inv-manage-add-hint">New defs land here in your personal catalogue — they don't appear on your sheet until you add them through the normal flow.</span>
-    </div>`;
-
-    root.innerHTML = `<div class="inv-modal-backdrop" onclick="invCatMgrCloseIfBackdrop(event)">
-      <div class="inv-modal inv-modal-manage" onclick="event.stopPropagation()">
-        <div class="inv-modal-head">
-          <div class="inv-modal-title">Personal Catalogue</div>
-          <div class="inv-modal-sub">One-off items and containers for this character only.</div>
-          <button class="inv-modal-close" onclick="invCatMgrClose()">×</button>
-        </div>
-        <div class="inv-modal-body">
-          ${body}
-          ${addRow}
-        </div>
-      </div>
-    </div>`;
-  }
-
-  // Render one row in the manager. Collapsed shows summary (name, dims,
-  // weight, container pill, delete ×). Expanded shows the full edit
-  // form (same fields as renderEntryEditPanel but targeting the def
-  // directly instead of a snapshot).
-  function renderCatalogManagerRow(def, defKind) {
-    const isContainer = defKind === 'container' || (defKind === 'equipment' && !!def.containerOf);
-    const expanded = catalogManager.expandedDefIds.has(def.id);
-    const dims = def.dimensions || { l: 0, w: 0, h: 0 };
-    const weight = def.weight || 0;
-    const containerPill = isContainer ? '<span class="inv-cat-mgr-container-pill">container</span>' : '';
-    const dualPill = (defKind === 'equipment' && def.containerOf) ? '<span class="inv-modal-dual">dual-role</span>' : '';
-    // Reference count — how many instances of this def exist on the
-    // sheet. Shown as a pill so the user knows editing the def could
-    // conceptually affect N rows (but post-snapshot, it doesn't — only
-    // NEW placements use the current def fields).
-    let refCount = 0;
-    walkTree(e => { if (e.defId === def.id) refCount++; });
-    const refPill = refCount > 0 ? `<span class="inv-cat-mgr-ref-pill" title="${refCount} instance${refCount === 1 ? '' : 's'} of this def currently on the sheet. Existing instances keep their own snapshot data — edits here only affect NEW placements from the picker.">${refCount} on sheet</span>` : '';
-
-    let html = `<div class="inv-manage-card${expanded ? ' open' : ''}">
-      <div class="inv-manage-card-head" onclick="invCatMgrToggleRow('${escapeHtml(def.id)}')">
-        <span class="inv-manage-card-caret">${expanded ? '▾' : '▸'}</span>
-        <span class="inv-manage-card-name">${escapeHtml(def.name || '(unnamed)')}</span>
-        ${containerPill}
-        ${dualPill}
-        ${refPill}
-        <span class="inv-manage-card-dims">${fmt(dims.l)}×${fmt(dims.w)}×${fmt(dims.h)} in</span>
-        <span class="inv-manage-card-weight">${fmt(weight)} lb</span>
-        <button class="inv-row-btn inv-row-btn-danger" onclick="event.stopPropagation();invCatMgrDelete('${escapeHtml(defKind)}','${escapeHtml(def.id)}')" title="Delete this def from your personal catalogue. Existing sheet instances are preserved.">×</button>
-      </div>`;
-
-    if (expanded) {
-      html += renderCatalogManagerEditForm(def, defKind);
-    }
-    html += `</div>`;
-    return html;
-  }
-
-  // Inline edit form for an existing def in the manager. Mirrors the
-  // custom-def form from the picker flow but without the auto-place
-  // step — save writes the def, that's it.
-  function renderCatalogManagerEditForm(def, defKind) {
-    // Seed the draft if not already present. Pattern: edit is always
-    // against a working draft; save copies draft → def.
-    if (!catalogManager.drafts.has(def.id)) {
-      seedCatalogManagerDraft(def, defKind);
-    }
-    const d = catalogManager.drafts.get(def.id);
-    const isContainer = defKind === 'container';
-    const isDualCapable = defKind === 'equipment';
-    const hasContainerBlock = isContainer || (isDualCapable && d.alsoContainer);
-
-    let html = `<div class="inv-manage-card-body">
-      <div class="inv-field">
-        <label>Name</label>
-        <input type="text" value="${escapeHtml(d.name || '')}" oninput="invCatMgrDraft('${escapeHtml(def.id)}','name',this.value)" placeholder="e.g. My Heirloom Knife">
+    <div class="sheet-wrap">
+      <div class="sheet-tabs">
+        <div class="sheet-tab active" id="sheet-tab-overview" onclick="switchSheetTab('overview')">Overview</div>
+        <div class="sheet-tab"        id="sheet-tab-combat"   onclick="switchSheetTab('combat')">Combat</div>
+        <div class="sheet-tab"        id="sheet-tab-inventory" onclick="switchSheetTab('inventory')">Inventory</div>
       </div>
 
-      <div class="inv-field">
-        <label>Description</label>
-        <textarea rows="2" oninput="invCatMgrDraft('${escapeHtml(def.id)}','description',this.value)" placeholder="Optional — flavor text, special properties, condition.">${escapeHtml(d.description || '')}</textarea>
+      <div class="sheet-body">
+
+        <!-- ═══════════════ OVERVIEW PANEL ═══════════════ -->
+        <div class="sheet-panel active" id="panel-overview">
+
+    <div class="char-card">
+      <div class="char-picture" id="picture-slot" onclick="triggerPicUpload()">
+        <div class="char-picture-placeholder" id="pic-placeholder">Click to add picture</div>
+        <img id="char-img" style="display:none">
+        <input type="file" id="pic-input" accept="image/*" onchange="handlePicChange(event)">
       </div>
-
-      <div class="inv-pair-row">
-        <div class="inv-field">
-          <label>Weight (lbs)</label>
-          <input type="number" step="0.1" min="0" value="${escapeHtml(String(d.weight || 0))}" oninput="invCatMgrDraft('${escapeHtml(def.id)}','weight',this.value)">
-        </div>
-        <div class="inv-field">
-          <label>Dimensions (L × W × H, inches) <span class="inv-dims-hint">— pick a preset to autofill</span></label>
-          <div class="inv-dims-preset-row">
-            <select class="item-preset-select"
-                    onchange="invApplyPresetToCatMgrDraft('${escapeHtml(def.id)}', this.value); this.value='';"
-                    title="Pick a shape to autofill dimensions (and weight when the preset has one).">
-              ${buildDimensionPresetOptions()}
-            </select>
+      <div class="char-bio-col">
+        <div class="char-header">
+          <div class="char-header-left">
+            <div class="char-name" id="char-name"></div>
+            <div class="char-archetype" id="char-archetype"></div>
+            <div class="char-power-bar" id="char-power-bar"></div>
           </div>
-          <div class="inv-dims-row">
-            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.l || 0))}" placeholder="L" oninput="invCatMgrDraft('${escapeHtml(def.id)}','l',this.value)">
-            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.w || 0))}" placeholder="W" oninput="invCatMgrDraft('${escapeHtml(def.id)}','w',this.value)">
-            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.h || 0))}" placeholder="H" oninput="invCatMgrDraft('${escapeHtml(def.id)}','h',this.value)">
+          <div class="char-quip-box" id="char-quip" onclick="editQuip()"></div>
+        </div>
+        <div class="section-title">Profile <span id="bio-edit-btn" class="edit-btn" style="display:none" onclick="event.stopPropagation();editBio()">Edit</span></div>
+        <div id="bio-view"><div class="bio-prose" id="bio-prose"></div></div>
+        <div id="bio-edit" style="display:none">
+          <div class="field"><label>Name</label><input type="text" id="e-name" oninput="updatePreview()"></div>
+          <div class="field"><label>Sex</label><input type="text" id="e-sex" oninput="updatePreview()"></div>
+          <div class="field"><label>Age</label><input type="text" id="e-age" oninput="updatePreview()"></div>
+          <div class="field"><label>Ethnicity</label><input type="text" id="e-ethnicity" oninput="updatePreview()"></div>
+          <div class="field"><label>Paradigm</label><input type="text" id="e-paradigm" oninput="updatePreview()"></div>
+          <div class="field"><label>Archetype</label><input type="text" id="e-archetype" oninput="updatePreview()"></div>
+          <div class="field"><label>Residence</label><input type="text" id="e-residence" oninput="updatePreview()"></div>
+          <div class="field"><label>World (Playgroup)</label><select id="e-playgroup" onchange="updatePreview()"><option value="">None — not in active play</option></select></div>
+          <div class="field"><label>Appearance</label><textarea id="e-appearance" oninput="updatePreview()"></textarea></div>
+          <div class="btn-row">
+            <button class="save-btn" onclick="saveBio()">Save</button>
+            <button class="save-btn" onclick="cancelBio()" style="border-color:#333;color:#888">Cancel</button>
+            <span class="save-msg" id="bio-msg"></span>
           </div>
-        </div>
-      </div>`;
-
-    // Dual-role toggle — only shown for equipment (container defs are
-    // always containers; converting requires delete + recreate).
-    if (isDualCapable) {
-      html += `<div class="inv-toggle-row">
-        <span class="inv-toggle${d.alsoContainer ? ' on' : ''}" onclick="invCatMgrDraft('${escapeHtml(def.id)}','alsoContainer',${!d.alsoContainer})">${d.alsoContainer ? '✓ Also a container' : 'Also a container'}</span>
-        <span class="inv-toggle-hint">Turn on to let this item hold other items (backpacks, pouches, holsters).</span>
-      </div>`;
-    }
-
-    if (hasContainerBlock) {
-      html += `<div class="inv-container-block">
-        <div class="inv-container-block-title">Container Capacity</div>
-        <div class="inv-field">
-          <label>Inner Dimensions (L × W × H, inches)</label>
-          <div class="inv-dims-row">
-            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.innerL || 0))}" placeholder="L" oninput="invCatMgrDraft('${escapeHtml(def.id)}','innerL',this.value)">
-            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.innerW || 0))}" placeholder="W" oninput="invCatMgrDraft('${escapeHtml(def.id)}','innerW',this.value)">
-            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.innerH || 0))}" placeholder="H" oninput="invCatMgrDraft('${escapeHtml(def.id)}','innerH',this.value)">
-          </div>
-        </div>
-        <div class="inv-field" style="max-width:260px">
-          <label title="Fraction of the inner L×W×H volume that can actually hold items.">Packing Efficiency (0.1 – 1.0)</label>
-          <input type="number" step="0.05" min="0.1" max="1.0" value="${escapeHtml(String(d.innerPacking != null ? d.innerPacking : 0.75))}" oninput="invCatMgrDraft('${escapeHtml(def.id)}','innerPacking',this.value)">
-          <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">1.0 = fitted case · 0.75 = typical bag · 0.5 = loose sack</div>
-        </div>
-      </div>`;
-    }
-
-    // Weapon block — equipment only. Renders underneath the container
-    // toggle so an item can be BOTH a weapon AND a container (think
-    // a staff with a hidden compartment — unusual but not
-    // impossible). Container-kind defs skip this entirely.
-    if (defKind === 'equipment') {
-      html += renderCatalogManagerWeaponBlock(d, def.id);
-    }
-
-    html += `<div class="inv-edit-panel-actions">
-      <button class="inv-add-btn" onclick="invCatMgrSaveEdit('${escapeHtml(defKind)}','${escapeHtml(def.id)}')">Save Changes</button>
-      <button class="inv-add-btn inv-add-btn-ghost" onclick="invCatMgrCollapseRow('${escapeHtml(def.id)}')">Cancel</button>
-    </div>`;
-
-    html += `</div>`;
-    return html;
-  }
-
-  // Render the inline form for creating a new def. Appears at the top
-  // of the modal when the user clicks + New Container / + New Item.
-  function renderCatalogManagerNewForm() {
-    const d = catalogManager.newDraft;
-    const kind = catalogManager.newKind;
-    const isContainer = kind === 'container';
-    const isDualCapable = kind === 'equipment';
-    const hasContainerBlock = isContainer || (isDualCapable && d.alsoContainer);
-    const title = isContainer ? 'New Container' : 'New Item';
-
-    let html = `<div class="inv-cat-mgr-new-form">
-      <div class="inv-cat-mgr-new-title">${escapeHtml(title)}</div>
-
-      <div class="inv-field">
-        <label>Name</label>
-        <input type="text" value="${escapeHtml(d.name || '')}" oninput="invCatMgrNewDraft('name',this.value)" placeholder="e.g. ${isContainer ? 'Leather Satchel' : 'Lockpicks'}" autofocus>
-      </div>
-
-      <div class="inv-field">
-        <label>Description</label>
-        <textarea rows="2" oninput="invCatMgrNewDraft('description',this.value)" placeholder="Optional — flavor text, special properties.">${escapeHtml(d.description || '')}</textarea>
-      </div>
-
-      <div class="inv-pair-row">
-        <div class="inv-field">
-          <label>Weight (lbs)</label>
-          <input type="number" step="0.1" min="0" value="${escapeHtml(String(d.weight || 0))}" oninput="invCatMgrNewDraft('weight',this.value)">
-        </div>
-        <div class="inv-field">
-          <label>Dimensions (L × W × H, inches) <span class="inv-dims-hint">— pick a preset to autofill</span></label>
-          <div class="inv-dims-preset-row">
-            <select class="item-preset-select"
-                    onchange="invApplyPresetToCatMgrDraft('__new__', this.value); this.value='';"
-                    title="Pick a shape to autofill dimensions (and weight when the preset has one).">
-              ${buildDimensionPresetOptions()}
-            </select>
-          </div>
-          <div class="inv-dims-row">
-            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.l || 0))}" placeholder="L" oninput="invCatMgrNewDraft('l',this.value)">
-            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.w || 0))}" placeholder="W" oninput="invCatMgrNewDraft('w',this.value)">
-            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.h || 0))}" placeholder="H" oninput="invCatMgrNewDraft('h',this.value)">
-          </div>
-        </div>
-      </div>`;
-
-    if (isDualCapable) {
-      html += `<div class="inv-toggle-row">
-        <span class="inv-toggle${d.alsoContainer ? ' on' : ''}" onclick="invCatMgrNewDraft('alsoContainer',${!d.alsoContainer})">${d.alsoContainer ? '✓ Also a container' : 'Also a container'}</span>
-        <span class="inv-toggle-hint">Turn on to let this item hold other items.</span>
-      </div>`;
-    }
-
-    if (hasContainerBlock) {
-      html += `<div class="inv-container-block">
-        <div class="inv-container-block-title">Container Capacity</div>
-        <div class="inv-field">
-          <label>Inner Dimensions (L × W × H, inches)</label>
-          <div class="inv-dims-row">
-            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.innerL || 0))}" placeholder="L" oninput="invCatMgrNewDraft('innerL',this.value)">
-            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.innerW || 0))}" placeholder="W" oninput="invCatMgrNewDraft('innerW',this.value)">
-            <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.innerH || 0))}" placeholder="H" oninput="invCatMgrNewDraft('innerH',this.value)">
-          </div>
-        </div>
-        <div class="inv-field" style="max-width:260px">
-          <label>Packing Efficiency (0.1 – 1.0)</label>
-          <input type="number" step="0.05" min="0.1" max="1.0" value="${escapeHtml(String(d.innerPacking != null ? d.innerPacking : 0.75))}" oninput="invCatMgrNewDraft('innerPacking',this.value)">
-          <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">1.0 = fitted case · 0.75 = typical bag · 0.5 = loose sack</div>
-        </div>
-      </div>`;
-    }
-
-    // Weapon block — equipment only, same as the edit form. Routes
-    // through invCatMgrNewDraft / *-NewWeapon* handlers via the
-    // '__new__' target sentinel.
-    if (kind === 'equipment') {
-      html += renderCatalogManagerWeaponBlock(d, '__new__');
-    }
-
-    html += `<div class="inv-edit-panel-actions">
-      <button class="inv-add-btn" onclick="invCatMgrSaveNew()">Save to Catalogue</button>
-      <button class="inv-add-btn inv-add-btn-ghost" onclick="invCatMgrCancelNew()">Cancel</button>
-    </div>`;
-
-    html += `</div>`;
-    return html;
-  }
-
-  // Shared weapon-block renderer used by both the edit form and the
-  // new form. Parameterized by `target`: pass a def id for edit mode
-  // (all mutations route through invCatMgrDraft / invCatMgrWeaponRange
-  // / invCatMgrWeaponTag with the def id), or pass the sentinel
-  // '__new__' for the new-item form (routes through invCatMgrNewDraft
-  // and the new-specific variants).
-  //
-  // The block only renders for equipment-kind drafts — containers
-  // can't be weapons (you don't attack with a backpack). Container
-  // forms simply skip this block entirely.
-  //
-  // Data shape on the draft:
-  //   isWeapon:       bool     — master toggle; false hides everything below
-  //   weaponKind:     'melee' | 'ranged'
-  //   weaponDice:     number   — D10 count for damage dice
-  //   weaponPen:      number   — armor pierced
-  //   weaponRanges:   [{s,e},...]  — melee only. Stored as objects
-  //                                    not [s,e] tuples because
-  //                                    Firestore rejects nested arrays.
-  //   weaponRange:    number   — ranged only, base range in feet
-  //   weaponDmgmod:   number   — ranged only, flat damage bonus + recoil req
-  //   weaponAmmo:     string   — number OR formula (preserved as-entered)
-  //   weaponRof:      string   — number OR formula
-  //   weaponTags:     string[] — array of ruleset weapon tag ids
-  function renderCatalogManagerWeaponBlock(draft, target) {
-    // Routing table — build onclick/oninput call sites based on which
-    // form this block is inside. Three targets:
-    //   def.id (e.g. 'eq_blah')   — existing personal-catalogue row
-    //                               being edited (catMgr)
-    //   '__new__'                 — the personal-catalogue "new item"
-    //                               form (catMgr)
-    //   '__custom__'              — the one-off custom item modal
-    //                               (renderCustomForm)
-    const isNew    = (target === '__new__');
-    const isCustom = (target === '__custom__');
-    // Field update site. CatMgr edit uses 3-arg (id,field,value);
-    // CatMgr new and custom form both use 2-arg (field,value) against
-    // different module handlers.
-    const upd = (field, valExpr) => {
-      if (isCustom) return `invUpdateCustomDraft('${escapeHtml(field)}',${valExpr})`;
-      if (isNew)    return `invCatMgrNewDraft('${escapeHtml(field)}',${valExpr})`;
-      return `invCatMgrDraft('${escapeHtml(target)}','${escapeHtml(field)}',${valExpr})`;
-    };
-    const rngAdd    = () => {
-      if (isCustom) return `invCustomDraftWeaponAddRange()`;
-      if (isNew)    return `invCatMgrNewWeaponAddRange()`;
-      return `invCatMgrWeaponAddRange('${escapeHtml(target)}')`;
-    };
-    const rngRemove = (bi) => {
-      if (isCustom) return `invCustomDraftWeaponRemoveRange(${bi})`;
-      if (isNew)    return `invCatMgrNewWeaponRemoveRange(${bi})`;
-      return `invCatMgrWeaponRemoveRange('${escapeHtml(target)}',${bi})`;
-    };
-    const rngUpdate = (bi, which) => {
-      if (isCustom) return `invCustomDraftWeaponUpdateRange(${bi},'${which}',this.value)`;
-      if (isNew)    return `invCatMgrNewWeaponUpdateRange(${bi},'${which}',this.value)`;
-      return `invCatMgrWeaponUpdateRange('${escapeHtml(target)}',${bi},'${which}',this.value)`;
-    };
-    const tagToggle = (tagId) => {
-      if (isCustom) return `invCustomDraftWeaponToggleTag('${escapeHtml(tagId)}',this.checked)`;
-      if (isNew)    return `invCatMgrNewWeaponToggleTag('${escapeHtml(tagId)}',this.checked)`;
-      return `invCatMgrWeaponToggleTag('${escapeHtml(target)}','${escapeHtml(tagId)}',this.checked)`;
-    };
-
-    const isWeapon = !!draft.isWeapon;
-
-    // Toggle row — master on/off for the weapon block. Same visual
-    // pattern as "Also a container."
-    let html = `<div class="inv-toggle-row">
-      <span class="inv-toggle${isWeapon ? ' on' : ''}" onclick="${upd('isWeapon', !isWeapon)}">${isWeapon ? '✓ Also a weapon' : 'Also a weapon'}</span>
-      <span class="inv-toggle-hint">Turn on to make this a weapon — reveals damage dice, PEN, range, and tags. Roll formulas come from the ruleset.</span>
-    </div>`;
-
-    if (!isWeapon) return html;
-
-    const kind = draft.weaponKind === 'ranged' ? 'ranged' : 'melee';
-    const dice   = Number.isFinite(draft.weaponDice)   ? draft.weaponDice   : 0;
-    const pen    = Number.isFinite(draft.weaponPen)    ? draft.weaponPen    : 0;
-    const range  = Number.isFinite(draft.weaponRange)  ? draft.weaponRange  : 0;
-    const dmgmod = Number.isFinite(draft.weaponDmgmod) ? draft.weaponDmgmod : 0;
-
-    html += `<div class="inv-container-block">
-      <div class="inv-container-block-title">Weapon Properties</div>
-
-      <div class="inv-pair-row">
-        <div class="inv-field" style="max-width:200px">
-          <label>Kind</label>
-          <select onchange="${upd('weaponKind', 'this.value')}">
-            <option value="melee"${kind === 'melee' ? ' selected' : ''}>Melee</option>
-            <option value="ranged"${kind === 'ranged' ? ' selected' : ''}>Ranged</option>
-          </select>
-        </div>
-        <div class="inv-field" style="max-width:120px">
-          <label>Damage Dice</label>
-          <input type="number" step="1" min="0" value="${escapeHtml(String(dice))}"
-                 oninput="${upd('weaponDice', 'this.value')}">
-        </div>
-        <div class="inv-field" style="max-width:120px">
-          <label>PEN</label>
-          <input type="number" step="1" min="0" value="${escapeHtml(String(pen))}"
-                 oninput="${upd('weaponPen', 'this.value')}">
-        </div>
-      </div>`;
-
-    if (kind === 'melee') {
-      const ranges = Array.isArray(draft.weaponRanges) ? draft.weaponRanges : [];
-      html += `<div class="inv-field">
-        <label>Range Bands (feet)</label>
-        <div style="font-size:10px;color:#666;line-height:1.4;margin-bottom:4px">
-          Each band adds +1 Difficulty over the previous. Band 0 is +0, Band 1 is +1, etc. Leave empty for trivial range.
-        </div>`;
-      if (ranges.length === 0) {
-        html += `<div style="font-size:11px;color:#666;padding:4px 0">No range bands defined.</div>`;
-      } else {
-        ranges.forEach((band, bi) => {
-          // Support both {s,e} (new) and [s,e] (legacy). Defensive reads
-          // so half-migrated data still renders.
-          const s = (band && typeof band === 'object' && !Array.isArray(band))
-            ? (Number.isFinite(band.s) ? band.s : 0)
-            : (Array.isArray(band) && Number.isFinite(band[0]) ? band[0] : 0);
-          const e = (band && typeof band === 'object' && !Array.isArray(band))
-            ? (Number.isFinite(band.e) ? band.e : 0)
-            : (Array.isArray(band) && Number.isFinite(band[1]) ? band[1] : 0);
-          html += `<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
-            <span style="font-size:11px;color:#888;min-width:58px">Band ${bi} (+${bi})</span>
-            <input type="number" step="0.5" min="0" value="${escapeHtml(String(s))}" placeholder="Start"
-                   style="max-width:80px"
-                   oninput="${rngUpdate(bi, 'start')}">
-            <span style="color:#666">–</span>
-            <input type="number" step="0.5" min="0" value="${escapeHtml(String(e))}" placeholder="End"
-                   style="max-width:80px"
-                   oninput="${rngUpdate(bi, 'end')}">
-            <span style="color:#666;font-size:11px">ft</span>
-            <span class="delete-x" style="margin-left:6px"
-                  onclick="${rngRemove(bi)}" title="Remove band">×</span>
-          </div>`;
-        });
-      }
-      html += `<button class="inv-add-btn inv-add-btn-sm inv-add-btn-ghost" style="margin-top:4px"
-                      onclick="${rngAdd()}">+ Add Band</button>
-      </div>`;
-    } else {
-      // ranged
-      const ammo = (draft.weaponAmmo == null) ? '' : String(draft.weaponAmmo);
-      const rof  = (draft.weaponRof  == null) ? '' : String(draft.weaponRof);
-      html += `<div class="inv-pair-row">
-        <div class="inv-field" style="max-width:140px">
-          <label>Base Range (ft)</label>
-          <input type="number" step="1" min="0" value="${escapeHtml(String(range))}"
-                 oninput="${upd('weaponRange', 'this.value')}">
-          <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">+0 within base, +1 (R→2R), +2 (2R→3R), longshot ×3 per band after.</div>
-        </div>
-        <div class="inv-field" style="max-width:120px">
-          <label>Weapon DMGMOD</label>
-          <input type="number" step="1" value="${escapeHtml(String(dmgmod))}"
-                 oninput="${upd('weaponDmgmod', 'this.value')}">
-          <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">Flat damage bonus + sets Recoil STR requirement.</div>
         </div>
       </div>
-      <div class="inv-pair-row">
-        <div class="inv-field">
-          <label>AMMO (number or formula)</label>
-          <input type="text" value="${escapeHtml(ammo)}" placeholder="e.g. 6  or  STR"
-                 oninput="${upd('weaponAmmo', 'this.value')}">
-          <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">Literal magazine size or a formula like <code>STR</code> or <code>DEXMOD+2</code>.</div>
-        </div>
-        <div class="inv-field">
-          <label>ROF (number or formula)</label>
-          <input type="text" value="${escapeHtml(rof)}" placeholder="e.g. 1  or  (DEXMOD/2)-1"
-                 oninput="${upd('weaponRof', 'this.value')}">
-          <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">-1 Single · 0 Action · 1 Semi · 2 Auto · 3 Full · 4 Chain.</div>
-        </div>
-      </div>`;
-    }
-
-    // Tag checkboxes — pulled from the active ruleset's catalogue,
-    // grouped by tag-category. Empty ruleset shows a hint. Tooltip
-    // carries the description. Scope key makes the collapse state
-    // per-row so different edits (catMgr row N vs the new-item row
-    // vs the custom item modal) keep independent collapse state.
-    const ruleset = getRuleset() || {};
-    const rsTags = Array.isArray(ruleset.weaponTags) ? ruleset.weaponTags : [];
-    const tagIds = Array.isArray(draft.weaponTags) ? draft.weaponTags : [];
-    html += `<div class="inv-field">
-      <label>Tags</label>`;
-    if (rsTags.length === 0) {
-      html += `<div style="font-size:11px;color:#888;padding:4px 0">This ruleset has no weapon tags defined. The ruleset author can add them under Derived Stats &amp; Combat → Weapon Tags.</div>`;
-    } else {
-      const scopeKey = isCustom ? 'custom:__custom__'
-                      : isNew   ? 'catmgr:__new__'
-                                : 'catmgr:' + target;
-      const groups = groupTagsByCategory(rsTags, ruleset);
-      const singleUncat = groups.length === 1 && groups[0].cat.id === 'tcat_uncategorized';
-      const collapsedSet = getCollapsedTagCats(scopeKey);
-      const renderCheckbox = (t) => {
-        const checked = tagIds.includes(t.id) ? ' checked' : '';
-        const name = escapeHtml(t.name || t.id);
-        const desc = escapeHtml(t.description || '');
-        return `<label class="inv-weapon-draft-tag" title="${desc}">
-          <input type="checkbox"${checked} onchange="${tagToggle(t.id)}">
-          ${name}
-        </label>`;
-      };
-      if (singleUncat) {
-        html += `<div class="inv-weapon-draft-tags">`;
-        groups[0].tags.forEach(t => { html += renderCheckbox(t); });
-        html += `</div>`;
-      } else {
-        html += `<div class="inv-weapon-draft-tags-grouped">`;
-        groups.forEach(g => {
-          const collapsed = collapsedSet.has(g.cat.id);
-          const caret = collapsed ? '▸' : '▾';
-          const selectedCount = g.tags.filter(t => tagIds.includes(t.id)).length;
-          const badge = selectedCount > 0 ? ` <span class="inv-weapon-draft-tag-selected">${selectedCount}</span>` : '';
-          html += `<div class="inv-weapon-draft-tag-group${collapsed ? ' collapsed' : ''}">
-            <div class="inv-weapon-draft-tag-grouphead" onclick="invWeaponToggleTagCatCollapse('${escapeHtml(scopeKey)}','${escapeHtml(g.cat.id)}')" title="${collapsed ? 'Expand' : 'Collapse'} ${escapeHtml(g.cat.name)}">
-              <span class="inv-weapon-draft-tag-caret">${caret}</span>
-              <span class="inv-weapon-draft-tag-groupname">${escapeHtml(g.cat.name)}</span>
-              <span class="inv-weapon-draft-tag-groupcount">${g.tags.length}</span>${badge}
-            </div>`;
-          if (!collapsed) {
-            html += `<div class="inv-weapon-draft-tags">`;
-            g.tags.forEach(t => { html += renderCheckbox(t); });
-            html += `</div>`;
-          }
-          html += `</div>`;
-        });
-        html += `</div>`;
-      }
-    }
-    html += `</div></div>`;   // /inv-container-block
-
-    return html;
-  }
-
-  // Seed a draft object from an existing def. Copies all the editable
-  // fields into a flat shape the form can bind to.
-  function seedCatalogManagerDraft(def, defKind) {
-    const dims = def.dimensions || { l: 0, w: 0, h: 0 };
-    // Container defs carry packingEfficiency at top level (legacy
-    // schema) AND may have a containerOf block (post-unification).
-    // Equipment defs use containerOf only. We support both.
-    let innerDims = { l: 0, w: 0, h: 0 };
-    let innerPacking = 0.75;
-    let alsoContainer = false;
-    if (defKind === 'container') {
-      if (def.containerOf) {
-        innerDims = def.containerOf.dimensions || dims;
-        innerPacking = Number.isFinite(def.containerOf.packingEfficiency) ? def.containerOf.packingEfficiency : 0.75;
-      } else {
-        innerDims = dims;
-        innerPacking = Number.isFinite(def.packingEfficiency) ? def.packingEfficiency : 0.75;
-      }
-    } else if (def.containerOf) {
-      alsoContainer = true;
-      innerDims = def.containerOf.dimensions || { l: 0, w: 0, h: 0 };
-      innerPacking = Number.isFinite(def.containerOf.packingEfficiency) ? def.containerOf.packingEfficiency : 0.75;
-    }
-    // Weapon fields — only relevant for equipment defs (container
-    // defs can't be weapons). If the def has a weapon block, seed all
-    // its fields; otherwise the draft gets isWeapon=false and empty
-    // defaults, so toggling the weapon on in the form reveals them.
-    // Tags are copied as a fresh array so edits don't mutate the def
-    // until save.
-    const w = (defKind === 'equipment' && def.weapon) ? def.weapon : null;
-    const weaponFields = {
-      isWeapon:       !!w,
-      weaponKind:     w ? (w.kind || 'melee') : 'melee',
-      weaponDice:     w && Number.isFinite(w.dice)   ? w.dice   : 1,
-      weaponPen:      w && Number.isFinite(w.pen)    ? w.pen    : 0,
-      weaponRanges:   w && Array.isArray(w.ranges)
-                        ? w.ranges.map(b => {
-                            if (b && typeof b === 'object' && !Array.isArray(b)) {
-                              return {
-                                s: Number.isFinite(b.s) ? b.s : 0,
-                                e: Number.isFinite(b.e) ? b.e : 0
-                              };
-                            }
-                            if (Array.isArray(b) && b.length >= 2) {
-                              return {
-                                s: Number.isFinite(b[0]) ? b[0] : 0,
-                                e: Number.isFinite(b[1]) ? b[1] : 0
-                              };
-                            }
-                            return { s: 0, e: 0 };
-                          })
-                        : [],
-      weaponRange:    w && Number.isFinite(w.range)  ? w.range  : 30,
-      weaponDmgmod:   w && Number.isFinite(w.dmgmod) ? w.dmgmod : 0,
-      // ammo/rof can be a number OR a formula string; draft stores the
-      // same shape the form typed in, save coerces.
-      weaponAmmo:     w ? (w.ammo != null ? String(w.ammo) : '1') : '1',
-      weaponRof:      w ? (w.rof  != null ? String(w.rof)  : '0') : '0',
-      weaponTags:     w && Array.isArray(w.tags) ? w.tags.slice() : []
-    };
-    catalogManager.drafts.set(def.id, Object.assign({
-      name:         def.name || '',
-      description:  def.description || '',
-      weight:       def.weight || 0,
-      l:            dims.l || 0,
-      w:            dims.w || 0,
-      h:            dims.h || 0,
-      alsoContainer,
-      innerL:       innerDims.l || 0,
-      innerW:       innerDims.w || 0,
-      innerH:       innerDims.h || 0,
-      innerPacking
-    }, weaponFields));
-  }
-
-  // ── Handlers ──
-
-  function openManageCatalog() {
-    if (!getCanEdit()) return;
-    catalogManager.open = true;
-    catalogManager.expandedDefIds.clear();
-    catalogManager.drafts.clear();
-    catalogManager.newDraft = null;
-    catalogManager.newKind = null;
-    renderAll();
-  }
-
-  function catMgrClose() {
-    catalogManager.open = false;
-    catalogManager.expandedDefIds.clear();
-    catalogManager.drafts.clear();
-    catalogManager.newDraft = null;
-    catalogManager.newKind = null;
-    renderAll();
-  }
-
-  function catMgrCloseIfBackdrop(ev) {
-    if (!ev || ev.target === ev.currentTarget) catMgrClose();
-  }
-
-  function catMgrToggleRow(defId) {
-    if (catalogManager.expandedDefIds.has(defId)) {
-      catalogManager.expandedDefIds.delete(defId);
-      // Drop any pending draft when collapsing — matches the Cancel
-      // behavior of the inline edit panel on the sheet.
-      catalogManager.drafts.delete(defId);
-    } else {
-      // Only one row expanded at a time — keeps the UI focused and
-      // avoids stale drafts piling up.
-      catalogManager.expandedDefIds.clear();
-      catalogManager.drafts.clear();
-      catalogManager.expandedDefIds.add(defId);
-    }
-    renderCatalogManager();
-  }
-
-  function catMgrCollapseRow(defId) {
-    catalogManager.expandedDefIds.delete(defId);
-    catalogManager.drafts.delete(defId);
-    renderCatalogManager();
-  }
-
-  // Update a single field in a per-def draft.
-  function catMgrDraft(defId, field, value) {
-    const d = catalogManager.drafts.get(defId);
-    if (!d) return;
-    applyDraftField(d, field, value, /*isNew=*/false);
-  }
-
-  // Save the draft back to the def and persist.
-  // ── Weapon range-band + tag handlers ──
-  //
-  // Range bands are stored as an array of [start, end] pairs. Adding
-  // a band chains start = previous band's end, so typing 0-1, 1-2,
-  // 2-3 is quick. Removing a band splices. Tag toggles flip the
-  // ruleset-tag-id in or out of the weaponTags array.
-  //
-  // Two variants exist: one targets an EDIT draft (looked up by defId
-  // in catalogManager.drafts), the other targets the NEW draft
-  // (catalogManager.newDraft). The split exists because the two
-  // drafts have different lookup keys — there's no way to write a
-  // single handler covering both without introducing a sentinel
-  // argument everywhere, and the variants are just thin wrappers.
-
-  function _getEditDraft(defId) {
-    return catalogManager.drafts.get(defId);
-  }
-  function _getNewDraft() {
-    return catalogManager.newDraft;
-  }
-
-  // Helpers working on any draft (edit or new) — pass the draft in.
-  // Range bands are stored as {s, e} objects because Firestore doesn't
-  // support nested arrays. Legacy [s, e] entries get converted in
-  // place on first touch.
-  function _weaponAddRange(d) {
-    if (!d) return;
-    if (!Array.isArray(d.weaponRanges)) d.weaponRanges = [];
-    const prev = d.weaponRanges[d.weaponRanges.length - 1];
-    const prevEnd = prev
-      ? (prev && typeof prev === 'object' && !Array.isArray(prev)
-          ? (Number(prev.e) || 0)
-          : (Array.isArray(prev) ? (Number(prev[1]) || 0) : 0))
-      : 0;
-    d.weaponRanges.push({ s: prevEnd, e: prevEnd + 1 });
-    renderCatalogManager();
-  }
-  function _weaponRemoveRange(d, bandIdx) {
-    if (!d || !Array.isArray(d.weaponRanges)) return;
-    d.weaponRanges.splice(bandIdx, 1);
-    renderCatalogManager();
-  }
-  function _weaponUpdateRange(d, bandIdx, which, value) {
-    if (!d || !Array.isArray(d.weaponRanges)) return;
-    let band = d.weaponRanges[bandIdx];
-    if (!band) return;
-    // Convert legacy [s, e] in place to the {s, e} shape.
-    if (Array.isArray(band)) {
-      band = { s: Number(band[0]) || 0, e: Number(band[1]) || 0 };
-      d.weaponRanges[bandIdx] = band;
-    }
-    const n = parseFloat(value);
-    const safe = Number.isFinite(n) && n >= 0 ? n : 0;
-    if (which === 'start') band.s = safe;
-    else if (which === 'end') band.e = safe;
-    // No re-render — user might still be typing the other side.
-  }
-  function _weaponToggleTag(d, tagId, on) {
-    if (!d) return;
-    if (!Array.isArray(d.weaponTags)) d.weaponTags = [];
-    const idx = d.weaponTags.indexOf(tagId);
-    if (on && idx < 0) d.weaponTags.push(tagId);
-    else if (!on && idx >= 0) d.weaponTags.splice(idx, 1);
-    // No re-render — checkbox visual handled by browser.
-  }
-
-  // Edit-draft variants — wire up via invCatMgrWeapon* window handlers.
-  function catMgrWeaponAddRange(defId)                       { _weaponAddRange(_getEditDraft(defId)); }
-  function catMgrWeaponRemoveRange(defId, bandIdx)           { _weaponRemoveRange(_getEditDraft(defId), bandIdx); }
-  function catMgrWeaponUpdateRange(defId, bandIdx, w, value) { _weaponUpdateRange(_getEditDraft(defId), bandIdx, w, value); }
-  function catMgrWeaponToggleTag(defId, tagId, on)           { _weaponToggleTag(_getEditDraft(defId), tagId, on); }
-
-  // New-draft variants — invCatMgrNewWeapon* window handlers.
-  function catMgrNewWeaponAddRange()                       { _weaponAddRange(_getNewDraft()); }
-  function catMgrNewWeaponRemoveRange(bandIdx)             { _weaponRemoveRange(_getNewDraft(), bandIdx); }
-  function catMgrNewWeaponUpdateRange(bandIdx, w, value)   { _weaponUpdateRange(_getNewDraft(), bandIdx, w, value); }
-  function catMgrNewWeaponToggleTag(tagId, on)             { _weaponToggleTag(_getNewDraft(), tagId, on); }
-
-  async function catMgrSaveEdit(defKind, defId) {
-    const inv = ensureInventory();
-    const bucket = defKind === 'container' ? inv.customDefs.containers : inv.customDefs.equipment;
-    const def = bucket.find(x => x.id === defId);
-    if (!def) return;
-    const d = catalogManager.drafts.get(defId);
-    if (!d) return;
-
-    const name = (d.name || '').trim();
-    if (!name) { alert('Please enter a name.'); return; }
-
-    // Write back. Shape varies by kind — containers use legacy
-    // packingEfficiency at top-level (matches how saveCustomDef creates
-    // them); equipment uses containerOf block.
-    def.name = name;
-    def.description = (d.description || '').trim();
-    def.dimensions = { l: d.l || 0, w: d.w || 0, h: d.h || 0 };
-    def.weight = d.weight || 0;
-    if (defKind === 'container') {
-      def.packingEfficiency = clampEff(d.innerPacking, 0.75);
-      // Legacy container defs use dimensions as inner dims. If the user
-      // entered different innerDims, sync them back to dimensions so
-      // the legacy schema stays coherent.
-      def.dimensions = { l: d.innerL || d.l || 0, w: d.innerW || d.w || 0, h: d.innerH || d.h || 0 };
-    } else {
-      def.containerOf = d.alsoContainer ? {
-        dimensions: { l: d.innerL || 0, w: d.innerW || 0, h: d.innerH || 0 },
-        packingEfficiency: clampEff(d.innerPacking, 0.75)
-      } : null;
-      // Weapon block — equipment only. If the draft has isWeapon on,
-      // write a coerced weapon object; otherwise clear to null so an
-      // item that used to be a weapon but isn't anymore doesn't keep
-      // stale data.
-      def.weapon = d.isWeapon ? buildWeaponFromDraft(d) : null;
-    }
-
-    // Drop the draft and close the row.
-    catalogManager.drafts.delete(defId);
-    catalogManager.expandedDefIds.delete(defId);
-    renderCatalogManager();
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  // Coerce a flat draft's weapon fields into the def.weapon schema.
-  // Mirrors coerceWeapon in ruleset-defaults.js — if the draft data is
-  // malformed the returned object may not match the coercer's output
-  // exactly, but the coercer runs again at ruleset-load time so any
-  // drift gets cleaned up on the next session. We're just building a
-  // "best effort" save shape here.
-  function buildWeaponFromDraft(d) {
-    const kind = d.weaponKind === 'ranged' ? 'ranged' : 'melee';
-    const dice = Number.isFinite(d.weaponDice) ? Math.max(0, Math.floor(d.weaponDice)) : 0;
-    const pen  = Number.isFinite(d.weaponPen)  ? Math.max(0, Math.floor(d.weaponPen))  : 0;
-    const tags = Array.isArray(d.weaponTags) ? d.weaponTags.slice() : [];
-    if (kind === 'melee') {
-      // Bands as {s, e} objects — Firestore doesn't accept nested
-      // arrays. Accept either shape on input (legacy drafts may still
-      // have [s, e]), normalize to objects on output.
-      const ranges = Array.isArray(d.weaponRanges)
-        ? d.weaponRanges.map(b => {
-            let s, e;
-            if (b && typeof b === 'object' && !Array.isArray(b)) {
-              s = Number(b.s); e = Number(b.e);
-            } else if (Array.isArray(b) && b.length >= 2) {
-              s = Number(b[0]); e = Number(b[1]);
-            } else {
-              return null;
-            }
-            if (!Number.isFinite(s) || !Number.isFinite(e)) return null;
-            if (e < s) return null;
-            return { s, e };
-          }).filter(Boolean)
-        : [];
-      return { kind: 'melee', dice, pen, tags, ranges };
-    }
-    // ranged
-    const range  = Number.isFinite(d.weaponRange)  ? Math.max(0, d.weaponRange)  : 0;
-    const dmgmod = Number.isFinite(d.weaponDmgmod) ? d.weaponDmgmod : 0;
-    // ammo/rof: store as number if the draft value is a clean numeric
-    // string, otherwise preserve as formula string. Empty string → 0.
-    const asNum = (raw, fallback) => {
-      const s = (raw == null) ? '' : String(raw).trim();
-      if (!s) return fallback;
-      const n = Number(s);
-      if (Number.isFinite(n) && s === String(n)) return n;
-      return s;
-    };
-    return {
-      kind: 'ranged',
-      dice, pen, tags,
-      range,
-      dmgmod,
-      ammo: asNum(d.weaponAmmo, 0),
-      rof:  asNum(d.weaponRof,  0)
-    };
-  }
-
-  // Instance-preserving delete from the manager. Reuses the same
-  // implementation as the picker modal's × — confirms, removes the
-  // def, leaves sheet instances alone (their snapshots carry them).
-  async function catMgrDelete(defKind, defId) {
-    await deleteCustomDef(defKind, defId);
-    // deleteCustomDef re-renders the picker modal (activeModal) which
-    // isn't what's open here. Re-render the manager so the row drops.
-    renderCatalogManager();
-  }
-
-  // Start the inline "new def" form at the top of the modal. kind
-  // determines whether it's a container or equipment draft.
-  function catMgrStartNew(kind) {
-    catalogManager.newKind = kind;
-    catalogManager.newDraft = {
-      name: '',
-      description: '',
-      weight: 0,
-      l: 0, w: 0, h: 0,
-      alsoContainer: false,
-      innerL: 0, innerW: 0, innerH: 0,
-      innerPacking: 0.75,
-      // Weapon defaults — only surfaced in the form for equipment
-      // kind. Container-kind drafts never see the weapon toggle.
-      isWeapon: false,
-      weaponKind: 'melee',
-      weaponDice: 1,
-      weaponPen: 0,
-      weaponRanges: [],
-      weaponRange: 30,
-      weaponDmgmod: 0,
-      weaponAmmo: '1',
-      weaponRof:  '0',
-      weaponTags: []
-    };
-    renderCatalogManager();
-  }
-
-  function catMgrCancelNew() {
-    catalogManager.newDraft = null;
-    catalogManager.newKind = null;
-    renderCatalogManager();
-  }
-
-  function catMgrNewDraft(field, value) {
-    const d = catalogManager.newDraft;
-    if (!d) return;
-    applyDraftField(d, field, value, /*isNew=*/true);
-  }
-
-  // Shared field-application logic for both edit drafts and the new
-  // draft. Centralizes the field-type dispatch: scalar numerics, the
-  // container toggle (which needs a re-render to show/hide the
-  // container fields), weapon-specific fields with their own numeric /
-  // string / boolean rules, and fall-through for plain string fields.
-  //
-  // Fields that mutate the DOM structure (isWeapon, weaponKind,
-  // alsoContainer) trigger a re-render; field edits that just change
-  // a value (dice, PEN, range, ammo formula, etc.) skip the re-render
-  // so the input keeps focus mid-typing. This mirrors the behavior
-  // of the ruleset-side item editor.
-  function applyDraftField(d, field, value, isNew) {
-    // Dimensions / weights — numeric, >= 0.
-    const nonNegativeNumeric = new Set(['weight','l','w','h','innerL','innerW','innerH','innerPacking']);
-    if (nonNegativeNumeric.has(field)) {
-      const n = parseFloat(value);
-      d[field] = Number.isFinite(n) && n >= 0 ? n : 0;
-      return;
-    }
-
-    // Container dual-role toggle — re-render so the container block
-    // appears/disappears.
-    if (field === 'alsoContainer') {
-      d[field] = !!value;
-      renderCatalogManager();
-      return;
-    }
-
-    // ── Weapon fields ──
-    if (field === 'isWeapon') {
-      d.isWeapon = !!value;
-      renderCatalogManager();   // show/hide the whole weapon block
-      return;
-    }
-    if (field === 'weaponKind') {
-      // Swapping kind wipes the old kind's data, same as the
-      // ruleset-side item editor. The re-render reveals the new
-      // kind-specific fields.
-      if (value !== 'melee' && value !== 'ranged') return;
-      d.weaponKind = value;
-      if (value === 'melee') {
-        // Going ranged → melee clears range-specific defaults so the
-        // old range/dmgmod/ammo/rof don't linger invisibly.
-        d.weaponRanges = d.weaponRanges || [];
-      } else {
-        // Going melee → ranged, seed defaults if they're missing.
-        if (!Number.isFinite(d.weaponRange))  d.weaponRange  = 30;
-        if (!Number.isFinite(d.weaponDmgmod)) d.weaponDmgmod = 0;
-        if (d.weaponAmmo == null || d.weaponAmmo === '') d.weaponAmmo = '1';
-        if (d.weaponRof  == null || d.weaponRof  === '') d.weaponRof  = '0';
-      }
-      renderCatalogManager();
-      return;
-    }
-    if (field === 'weaponDice' || field === 'weaponPen' || field === 'weaponRange') {
-      const n = parseFloat(value);
-      d[field] = Number.isFinite(n) && n >= 0 ? n : 0;
-      return;
-    }
-    if (field === 'weaponDmgmod') {
-      // Allow negatives — some cursed/miscalibrated weapons have -N.
-      const n = parseFloat(value);
-      d.weaponDmgmod = Number.isFinite(n) ? n : 0;
-      return;
-    }
-    if (field === 'weaponAmmo' || field === 'weaponRof') {
-      // Stored as-typed so the user can enter either a plain number
-      // ("6") or a formula ("STR" or "(DEXMOD/2)-1"). The save path
-      // coerces pure-numeric strings into numbers before writing to
-      // def.weapon.ammo / def.weapon.rof.
-      d[field] = (typeof value === 'string') ? value : '';
-      return;
-    }
-
-    // Default fallback — plain string fields (name, description).
-    d[field] = typeof value === 'string' ? value : '';
-  }
-
-  // Commit the new-def draft to the customDefs bucket. Does NOT
-  // instantiate on the sheet — the manager is about catalog CRUD, not
-  // placement.
-  async function catMgrSaveNew() {
-    const d = catalogManager.newDraft;
-    const kind = catalogManager.newKind;
-    if (!d || !kind) return;
-    const name = (d.name || '').trim();
-    if (!name) { alert('Please enter a name.'); return; }
-    const inv = ensureInventory();
-
-    let def;
-    if (kind === 'container') {
-      def = {
-        id: _nextInvId('cust_cont'),
-        name,
-        description: (d.description || '').trim(),
-        dimensions: { l: d.l || 0, w: d.w || 0, h: d.h || 0 },
-        weight: d.weight || 0,
-        packingEfficiency: clampEff(d.innerPacking, 0.75)
-      };
-      // Container dimensions double as inner dims in the legacy schema.
-      // If the user entered different innerDims, prefer those.
-      if (d.innerL || d.innerW || d.innerH) {
-        def.dimensions = { l: d.innerL || d.l || 0, w: d.innerW || d.w || 0, h: d.innerH || d.h || 0 };
-      }
-      inv.customDefs.containers.push(def);
-    } else {
-      def = {
-        id: _nextInvId('cust_eq'),
-        name,
-        description: (d.description || '').trim(),
-        dimensions: { l: d.l || 0, w: d.w || 0, h: d.h || 0 },
-        weight: d.weight || 0,
-        category: '',
-        weaponId: null,
-        containerOf: d.alsoContainer ? {
-          dimensions: { l: d.innerL || 0, w: d.innerW || 0, h: d.innerH || 0 },
-          packingEfficiency: clampEff(d.innerPacking, 0.75)
-        } : null,
-        // Weapon block — only present when the draft had isWeapon on.
-        // Null omitted for non-weapon equipment to keep the stored
-        // shape minimal; the coercer handles missing vs null the same way.
-        weapon: d.isWeapon ? buildWeaponFromDraft(d) : null
-      };
-      inv.customDefs.equipment.push(def);
-    }
-
-    catalogManager.newDraft = null;
-    catalogManager.newKind = null;
-    renderCatalogManager();
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  // ─── MODALS: ADD CONTAINER / ADD ITEM ───
-  //
-  // Both modals pull from the ruleset's items catalog plus the
-  // character's custom defs. The Container modal filters to items with
-  // a containerOf block (those are the things that can hold stuff).
-  // The Item modal shows the full catalog.
-  //
-  // NOTE: In Turn 4 this gets replaced with a category-tree picker that
-  // lets users drill down by category. For now the picker is flat.
-
-  function renderActiveModal() {
-    const root = document.getElementById('inv-modal-root');
-    if (!root) return;
-    if (!activeModal) { root.innerHTML = ''; return; }
-
-    // Custom-def form takes over the modal when open. When the user is
-    // filling in their one-off item, we don't want the catalog list
-    // cluttering up the view.
-    if (activeModal.showCustomForm) {
-      root.innerHTML = renderCustomForm();
-      return;
-    }
-
-    // Group edit form (Add Group / Rename Group) — a simple two-field
-    // dialog for the group's name and description. Separate modal kind
-    // because it has nothing in common with the picker modals.
-    if (activeModal.kind === 'groupEdit') {
-      root.innerHTML = renderGroupEditModal();
-      return;
-    }
-
-    const ruleset = getRuleset();
-    const inv = ensureInventory();
-
-    // Collect all candidate defs from both sources. Each entry carries
-    // its `kind` (for instantiation's defKind field — container or
-    // equipment based on whether def.containerOf is set) and its
-    // `source` (for the UI "custom" pill).
-    const allDefs = [];
-    (ruleset.items || []).forEach(def => {
-      const kind = def.containerOf ? 'container' : 'equipment';
-      allDefs.push({ kind, def, source: 'ruleset' });
-    });
-    (inv.customDefs.containers || []).forEach(def => {
-      allDefs.push({ kind: 'container', def, source: 'custom' });
-    });
-    (inv.customDefs.equipment || []).forEach(def => {
-      const kind = def.containerOf ? 'container' : 'equipment';
-      allDefs.push({ kind, def, source: 'custom' });
-    });
-
-    if (activeModal.kind === 'container') {
-      // Containers only. Use the `kind` field we assigned when
-      // collecting allDefs — it's already normalized across both
-      // legacy (top-level packingEfficiency, no containerOf block)
-      // and unified (containerOf block) def shapes. Checking
-      // o.def.containerOf directly would miss legacy custom container
-      // defs, which live in customDefs.containers but carry their
-      // packing data at the top level.
-      const options = allDefs.filter(o => o.kind === 'container');
-      root.innerHTML = renderModal({
-        title: 'Add Container',
-        subtitle: activeModal.targetLabel || '',
-        options,
-        emptyMsg: 'No containers in this ruleset yet. Use "+ Custom" below to make a one-off for this character, or open the ruleset editor\'s Inventory tab to add reusable ones.',
-        onPickAttr: 'invPickContainerDef',
-        customKind: 'container'
-      });
-    } else if (activeModal.kind === 'item') {
-      // Items only. Same authoritative-kind rule as above — excluding
-      // everything classified as 'container', whether that's a ruleset
-      // item with containerOf, a custom equipment with containerOf
-      // (dual-role), or a legacy custom container with top-level
-      // packingEfficiency.
-      const options = allDefs.filter(o => o.kind !== 'container');
-      root.innerHTML = renderModal({
-        title: 'Add Item',
-        subtitle: activeModal.targetLabel || '',
-        options,
-        emptyMsg: 'No items in this ruleset yet. Use "+ Custom" below to make a one-off for this character, or open the ruleset editor\'s Inventory tab to add reusable ones.',
-        onPickAttr: 'invPickItemDef',
-        customKind: 'equipment'
-      });
-    }
-  }
-
-  function renderModal({ title, subtitle, options, emptyMsg, onPickAttr, customKind }) {
-    // Split options into two visually-separate sections:
-    //   • Personal Catalogue — character-scoped custom defs
-    //   • Ruleset Catalogue  — defs from the shared ruleset
-    // When both are empty, show the emptyMsg.
-    const personal = options.filter(o => o.source === 'custom');
-    const ruleset  = options.filter(o => o.source === 'ruleset');
-
-    // Build option row markup. Same shape for both sections.
-    const optRow = (opt) => {
-      const d = opt.def.dimensions || { l: 0, w: 0, h: 0 };
-      const cat = opt.def.category ? `<span class="inv-modal-cat">${escapeHtml(opt.def.category)}</span>` : '';
-      const isContainerDual = opt.kind === 'equipment' && opt.def.containerOf;
-      const dualPill = isContainerDual ? '<span class="inv-modal-dual">dual-role</span>' : '';
-      // Personal-catalogue entries get a × delete button. Deletion now
-      // removes ONLY the def itself — existing instances on the sheet
-      // are preserved (they render as "deleted def" placeholders and
-      // can be kept or manually removed by the user).
-      const deleteBtn = opt.source === 'custom'
-        ? `<button class="inv-modal-opt-delete" onclick="event.stopPropagation();invDeleteCustomDef('${escapeHtml(opt.kind)}','${escapeHtml(opt.def.id)}')" title="Delete from personal catalogue. Existing instances on the sheet are preserved.">×</button>`
-        : '';
-      return `<div class="inv-modal-opt" onclick="${onPickAttr}('${escapeHtml(opt.kind)}','${escapeHtml(opt.def.id)}')">
-        <div class="inv-modal-opt-header">
-          <div class="inv-modal-opt-name">${escapeHtml(opt.def.name)}${cat}${dualPill}</div>
-          ${deleteBtn}
-        </div>
-        <div class="inv-modal-opt-meta">${fmt(d.l)}×${fmt(d.w)}×${fmt(d.h)} in · ${fmt(opt.def.weight || 0)} lb</div>
-        ${opt.def.description ? `<div class="inv-modal-opt-desc">${escapeHtml(opt.def.description)}</div>` : ''}
-      </div>`;
-    };
-
-    // Build the list. When one section is empty, show only the other
-    // with no header (to avoid a dangling "Personal Catalogue" label
-    // over nothing). When both are empty, fall back to emptyMsg.
-    let listHtml = '';
-    if (options.length === 0) {
-      listHtml = `<div class="inv-modal-empty">${escapeHtml(emptyMsg)}</div>`;
-    } else {
-      if (personal.length > 0) {
-        listHtml += `<div class="inv-modal-section-label" title="Items you've made specifically for this character. Not visible on other characters.">Personal Catalogue <span class="inv-modal-section-count">${personal.length}</span></div>`;
-        listHtml += personal.map(optRow).join('');
-      }
-      if (ruleset.length > 0) {
-        listHtml += `<div class="inv-modal-section-label" title="Items defined in the shared ruleset. Available to every character using this ruleset.">Ruleset Catalogue <span class="inv-modal-section-count">${ruleset.length}</span></div>`;
-        listHtml += ruleset.map(optRow).join('');
-      }
-    }
-
-    // "+ Custom" button at the bottom lets the user define a one-off
-    // container/item right from the sheet without leaving the flow.
-    // The new one lands in the Personal Catalogue at the top of the
-    // modal next time they open it.
-    const customBtn = customKind
-      ? `<div class="inv-modal-custom-row">
-          <button class="inv-add-btn" onclick="invOpenCustomForm('${escapeHtml(customKind)}')">+ Custom ${customKind === 'container' ? 'Container' : 'Item'}…</button>
-          <span class="inv-modal-custom-hint">Adds a one-off to your sheet. To save it for reuse, use the ✎ pencil → "Save to Personal Catalogue".</span>
-        </div>`
-      : '';
-
-    return `<div class="inv-modal-backdrop" onclick="invCloseModal(event)">
-      <div class="inv-modal" onclick="event.stopPropagation()">
-        <div class="inv-modal-head">
-          <div class="inv-modal-title">${escapeHtml(title)}</div>
-          ${subtitle ? `<div class="inv-modal-sub">${escapeHtml(subtitle)}</div>` : ''}
-          <button class="inv-modal-close" onclick="invCloseModal()">×</button>
-        </div>
-        <div class="inv-modal-body">
-          ${listHtml}
-          ${customBtn}
+      <div class="char-etc-col">
+        <div class="etc-title">Notes</div>
+        <div class="etc-content" id="etc-content" onclick="editEtc()">—</div>
+        <textarea id="etc-edit" style="display:none;width:100%;background:#111;border:1px solid #222;color:#e0e0e0;font-family:'Open Sans',sans-serif;font-size:12px;padding:8px;border-radius:4px;outline:none;resize:vertical;min-height:200px;line-height:1.6"></textarea>
+        <div id="etc-btn-row" style="display:none;margin-top:8px">
+          <button class="save-btn" onclick="saveEtc()" style="font-size:11px;padding:4px 12px">Save</button>
+          <button class="save-btn" onclick="cancelEtc()" style="font-size:11px;padding:4px 12px;margin-left:6px;border-color:#333;color:#888">Cancel</button>
         </div>
       </div>
-    </div>`;
-  }
+    </div>
 
-  // ─── CUSTOM DEF FORM ───
-  //
-  // In-modal form for creating a character-scoped one-off def. Saves to
-  // inv.customDefs and immediately instantiates an entry at the modal's
-  // target. Pattern matches the ruleset editor's card layout so it feels
-  // familiar, just collapsed into a form.
-
-  function renderCustomForm() {
-    const draft = activeModal.customDraft || {};
-    const isContainer = activeModal.customKind === 'container';
-    const isContainerDual = !!draft.alsoContainer;
-    const title = isContainer ? 'New Container (one-off)' : 'New Item (one-off)';
-
-    return `<div class="inv-modal-backdrop" onclick="invCloseModal(event)">
-      <div class="inv-modal" onclick="event.stopPropagation()">
-        <div class="inv-modal-head">
-          <div class="inv-modal-title">${escapeHtml(title)}</div>
-          <div class="inv-modal-sub">${escapeHtml(activeModal.targetLabel || '')}</div>
-          <button class="inv-modal-close" onclick="invCloseModal()">×</button>
-        </div>
-        <div class="inv-modal-body inv-custom-form">
-
-          <div class="inv-field">
-            <label>Name</label>
-            <input type="text" id="inv-custom-name" value="${escapeHtml(draft.name || '')}" placeholder="${escapeHtml(isContainer ? 'Duct-tape Satchel' : 'Lucky Zippo')}" oninput="invUpdateCustomDraft('name',this.value)">
-          </div>
-
-          <div class="inv-field">
-            <label>Description</label>
-            <textarea rows="3" id="inv-custom-desc" placeholder="Optional — flavor, special properties, notes." oninput="invUpdateCustomDraft('description',this.value)">${escapeHtml(draft.description || '')}</textarea>
-          </div>
-
-          ${!isContainer ? `<div class="inv-field">
-            <label>Category (optional)</label>
-            <input type="text" value="${escapeHtml(draft.category || '')}" placeholder="firearm, melee, ammo, tool, armor, misc" oninput="invUpdateCustomDraft('category',this.value)">
-          </div>` : ''}
-
-          <div class="inv-field">
-            <label>Dimensions (L × W × H, inches) <span class="inv-dims-hint">— pick a preset to autofill</span></label>
-            <div class="inv-dims-preset-row">
-              <select class="item-preset-select"
-                      onchange="invApplyPresetToCustomDraft(this.value); this.value='';"
-                      title="Pick a shape to autofill dimensions (and weight when the preset has one).">
-                ${buildDimensionPresetOptions()}
-              </select>
-            </div>
-            <div class="inv-dims-row">
-              <input type="number" step="0.25" min="0" value="${escapeHtml(String(draft.l || 0))}" placeholder="L" oninput="invUpdateCustomDraft('l',this.value)">
-              <input type="number" step="0.25" min="0" value="${escapeHtml(String(draft.w || 0))}" placeholder="W" oninput="invUpdateCustomDraft('w',this.value)">
-              <input type="number" step="0.25" min="0" value="${escapeHtml(String(draft.h || 0))}" placeholder="H" oninput="invUpdateCustomDraft('h',this.value)">
+    <div class="mental-card">
+      <div class="mental-col">
+        <div class="mental-col-header">
+          <div class="mental-col-title" style="position:relative;cursor:default" onmouseenter="document.getElementById('mo-tip').style.display='block'" onmouseleave="document.getElementById('mo-tip').style.display='none'">Moral Obligations
+            <div id="mo-tip" style="display:none;position:absolute;left:0;top:100%;margin-top:6px;background:#1a1a1a;border:1px solid #333;border-radius:4px;padding:10px 12px;font-size:11px;color:#aaa;width:320px;z-index:1000;line-height:1.6;font-weight:400;letter-spacing:0;text-transform:none">
+              <p style="margin-bottom:8px">When you roll poorly on a Mental Health Check you must allocate a number of Break Points equal to 6 − Result. You may choose to allocate some of these to taking on a Moral Obligation, rather than the alternatives.</p>
+              <p style="margin-bottom:8px">A Moral Obligation's requirements depend on its scale; a Minor Obligation is 1 Break Point, while a Mythical Obligation is 7. Your GM must approve of your chosen Obligation; your Obligation must be intuitive to its originating Mental Health Check.</p>
+              <p style="margin-bottom:8px">Each Obligation you have results in +1 Difficulty to any and all Mental Health Checks you make, until the Obligation is resolved or abandoned.</p>
+              <p>If you choose to abandon an Obligation, you must reroll the original Mental Health Check at +1 Difficulty, and allocate a number of Break Points as normal, with an additional amount equal to what was spent on the abandoned Obligation.</p>
             </div>
           </div>
-
-          <div class="inv-field">
-            <label>Weight (lbs)</label>
-            <input type="number" step="0.1" min="0" value="${escapeHtml(String(draft.weight || 0))}" oninput="invUpdateCustomDraft('weight',this.value)" style="max-width:140px">
-          </div>
-
-          ${isContainer ? `<div class="inv-field" style="max-width:260px">
-            <label title="Fraction of the container's raw L×W×H volume that can actually hold items. 1.0 = perfectly-fitted hard case, 0.75 = typical soft bag, 0.5 = loose sack or odd shape.">Packing Efficiency (0.1 – 1.0)</label>
-            <input type="number" step="0.05" min="0.1" max="1.0" value="${escapeHtml(String(draft.packingEfficiency || 0.75))}" oninput="invUpdateCustomDraft('packingEfficiency',this.value)">
-            <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">1.0 = fitted case · 0.75 = typical bag · 0.5 = loose sack</div>
-          </div>` : `
-          <div class="inv-toggle-row">
-            <span class="inv-toggle${isContainerDual ? ' on' : ''}" onclick="invUpdateCustomDraft('alsoContainer',${!isContainerDual})">${isContainerDual ? '✓ Also a container' : 'Also a container'}</span>
-            <span class="inv-toggle-hint">Toggle for ammo pouches, quivers, holsters.</span>
-          </div>
-          ${isContainerDual ? `<div class="inv-container-block">
-            <div class="inv-container-block-title">Container Capacity</div>
-            <div class="inv-field">
-              <label>Inner Dimensions (L × W × H, inches)</label>
-              <div class="inv-dims-row">
-                <input type="number" step="0.25" min="0" value="${escapeHtml(String(draft.innerL || 0))}" placeholder="L" oninput="invUpdateCustomDraft('innerL',this.value)">
-                <input type="number" step="0.25" min="0" value="${escapeHtml(String(draft.innerW || 0))}" placeholder="W" oninput="invUpdateCustomDraft('innerW',this.value)">
-                <input type="number" step="0.25" min="0" value="${escapeHtml(String(draft.innerH || 0))}" placeholder="H" oninput="invUpdateCustomDraft('innerH',this.value)">
-              </div>
-            </div>
-            <div class="inv-field" style="max-width:260px">
-              <label title="Fraction of the inner L×W×H volume that can actually hold items. 1.0 = perfectly-fitted hard case, 0.75 = typical soft bag, 0.5 = loose sack or odd shape.">Packing Efficiency (0.1 – 1.0)</label>
-              <input type="number" step="0.05" min="0.1" max="1.0" value="${escapeHtml(String(draft.innerPacking || 0.75))}" oninput="invUpdateCustomDraft('innerPacking',this.value)">
-              <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">1.0 = fitted case · 0.75 = typical bag · 0.5 = loose sack</div>
-            </div>
-          </div>` : ''}
-          ${renderCatalogManagerWeaponBlock(draft, '__custom__')}`}
-
-          <div class="inv-modal-actions">
-            <button class="inv-add-btn" onclick="invSaveCustomDef()">Save &amp; Add</button>
-            <button class="inv-add-btn inv-add-btn-ghost" onclick="invCancelCustomForm()">Cancel</button>
-          </div>
-
+          <span class="edit-btn" id="obligations-edit-btn" style="display:none" onclick="event.stopPropagation();editObligations()">Edit</span>
+        </div>
+        <div id="obligations-view"></div>
+        <div id="obligations-edit-mode" style="display:none">
+          <div id="obligations-list"></div>
+          <button class="add-entry-btn" id="add-obligation-btn" onclick="addObligation()">+ Add</button>
+          <div style="margin-top:10px"><button class="save-btn" onclick="doneObligations()" style="font-size:11px;padding:4px 14px">Done</button></div>
         </div>
       </div>
-    </div>`;
-  }
-
-  // ─── GROUP EDIT MODAL ───
-  //
-  // Single modal shared by Add Group, Add Subgroup, and Rename Group.
-  // activeModal.groupEditMode ('add' | 'addSubgroup' | 'edit') drives
-  // the header label, hint text, and the saveGroup handler's target.
-
-  function renderGroupEditModal() {
-    const draft = activeModal.groupDraft || {};
-    const mode = activeModal.groupEditMode || 'add';
-    const isAdd = mode === 'add';
-    const isSub = mode === 'addSubgroup';
-    const title = isAdd ? 'New Group' : isSub ? 'New Subgroup' : 'Edit Group';
-    let hint = '';
-    let placeholder = 'e.g. Vehicle, Safe House, Stash';
-    if (isAdd) {
-      hint = 'Groups are top-level buckets for things not on your body — e.g. Vehicle, Stash, Safe House.';
-    } else if (isSub) {
-      // Find parent name for a more grounded hint.
-      const parent = findGroup(activeModal.groupParentId);
-      const parentName = parent ? parent.name : 'this group';
-      hint = `Creates a subgroup inside "${parentName}". Use subgroups to organize things — e.g. inside On-Person: Back, Belt, Holster; inside Vehicle: Glove Box, Trunk.`;
-      placeholder = 'e.g. Back, Belt, Glove Box, Bedroom';
-    }
-
-    return `<div class="inv-modal-backdrop" onclick="invCloseModal(event)">
-      <div class="inv-modal" onclick="event.stopPropagation()">
-        <div class="inv-modal-head">
-          <div class="inv-modal-title">${escapeHtml(title)}</div>
-          ${hint ? `<div class="inv-modal-sub">${escapeHtml(hint)}</div>` : ''}
-          <button class="inv-modal-close" onclick="invCloseModal()">×</button>
+      <div class="mental-col">
+        <div class="mental-col-header">
+          <div class="mental-col-title" style="position:relative;cursor:default" onmouseenter="document.getElementById('morals-tip').style.display='block'" onmouseleave="document.getElementById('morals-tip').style.display='none'">Morals
+            <div id="morals-tip" style="display:none;position:absolute;left:0;top:100%;margin-top:6px;background:#1a1a1a;border:1px solid #333;border-radius:4px;padding:10px 12px;font-size:11px;color:#aaa;width:340px;z-index:1000;line-height:1.6;font-weight:400;letter-spacing:0;text-transform:none">
+              <p style="margin-bottom:8px">Morals are one-word concepts which encompass broad ethical value-and-belief systems; they intentionally lack descriptions as their one-words should be enough. If there is reasonable debate over what is, or isn't pertinent to a Moral, then it likely is pertinent.</p>
+              <p style="margin-bottom:8px">When you violate, compromise, or otherwise are met with situations that go against your Morals, you must make a Mental Health Check with +/− Difficulty dependent on the scale of the infraction. Minor infractions are at −2, Moderate −1, Major +0 and so on so-forth.</p>
+              <p style="margin-bottom:8px">After your Mental Health Check you must allocate a number of "Break Points" equal to 6 − Result to your choice/combination of Moral Obligations, Short-term Trauma, Long-term Trauma, or through an immediate Breakdown.</p>
+              <p style="margin-bottom:8px">Alternatively if you affirm/fulfill your Morals, you may make a Mental Health Check to recover SAN instead; the amount of SAN recovered is equal to Result.</p>
+              <p style="margin-bottom:8px">Morals are scaled based on how important / integral they are to you; Minor Morals are rolled at −2, Moderate at −1, Major at +0, Massive at +1, so-on so-forth. The inverse is true for Moral Affirmations.</p>
+              <p>When you create your Character, you must allocate "10 Moral points" in Morals, with a Minor Moral being worth 1, a Moderate Moral 2, and so-on so-forth, based on how important each Moral is to your Character; there is no limit to the amount of Morals you may take, so long as you meet your spending limit for Moral Points.</p>
+            </div>
+          </div>
+          <span class="edit-btn" id="morals-edit-btn" style="display:none" onclick="event.stopPropagation();editMorals()">Edit</span>
         </div>
-        <div class="inv-modal-body inv-custom-form">
-
-          <div class="inv-field">
-            <label>Name</label>
-            <input type="text" value="${escapeHtml(draft.name || '')}" placeholder="${escapeHtml(placeholder)}" oninput="invUpdateGroupDraft('name',this.value)" autofocus>
-          </div>
-
-          <div class="inv-field">
-            <label>Description</label>
-            <textarea rows="4" placeholder="Optional — what is this? Where is it? What's its purpose?" oninput="invUpdateGroupDraft('description',this.value)">${escapeHtml(draft.description || '')}</textarea>
-          </div>
-
-          <div class="inv-modal-actions">
-            <button class="inv-add-btn" onclick="invSaveGroup()">${(isAdd || isSub) ? 'Create' : 'Save'}</button>
-            <button class="inv-add-btn inv-add-btn-ghost" onclick="invCloseModal()">Cancel</button>
-          </div>
-
+        <div id="morals-view"><div class="moral-cards" id="moral-cards-display"></div></div>
+        <div id="morals-edit-mode" style="display:none">
+          <div id="morals-by-ruleset"></div>
+          <div style="margin-top:10px"><button class="save-btn" onclick="doneMorals()" style="font-size:11px;padding:4px 14px">Done</button></div>
         </div>
       </div>
-    </div>`;
-  }
-
-  // ─── HANDLERS ───
-
-  function toggleSlot(slotCode) {
-    if (collapsedSlots.has(slotCode)) collapsedSlots.delete(slotCode);
-    else collapsedSlots.add(slotCode);
-    renderAll();
-  }
-
-  function toggleEntry(id) {
-    if (expandedEntries.has(id)) expandedEntries.delete(id);
-    else expandedEntries.add(id);
-    renderAll();
-  }
-
-  // Click on an item row toggles its description panel. Separate state
-  // set from containers so the two semantics don't tangle.
-  function toggleItemInfo(id) {
-    if (expandedInfo.has(id)) expandedInfo.delete(id);
-    else expandedInfo.add(id);
-    renderAll();
-  }
-
-  // ─── CATALOG VIEW HANDLERS ───
-
-  function setViewMode(mode) {
-    if (mode !== 'inventory' && mode !== 'catalog') return;
-    if (viewMode === mode) return;
-    viewMode = mode;
-    renderAll();
-  }
-
-  function toggleCatalogCat(id) {
-    if (collapsedCatalogCats.has(id)) collapsedCatalogCats.delete(id);
-    else collapsedCatalogCats.add(id);
-    renderAll();
-  }
-
-  function toggleCatalogItem(id) {
-    if (expandedCatalogItems.has(id)) expandedCatalogItems.delete(id);
-    else expandedCatalogItems.add(id);
-    // Close any open add-menu when expanding/collapsing — keeps UI tidy.
-    catalogAddMenuFor = null;
-    renderAll();
-  }
-
-  // Toggle the "Add to..." dropdown for a specific catalog item. Only
-  // one menu is open at a time — opening a new one closes any previous.
-  function catalogToggleAddMenu(id) {
-    catalogAddMenuFor = (catalogAddMenuFor === id) ? null : id;
-    renderAll();
-  }
-
-  // Quick-add: place the catalog item using the smart default target,
-  // no dropdown. The add button's main half calls this.
-  async function catalogQuickAdd(id) {
-    const ruleset = getRuleset();
-    const def = (ruleset.items || []).find(x => x.id === id)
-             || findCustomDefById(id);
-    if (!def) return;
-    const target = smartDefaultTarget(def);
-    if (!target) return;
-    await catalogPlaceItem(def, target);
-  }
-
-  // Explicit-target add: user picked a specific destination from the
-  // dropdown. target is { kind, code?, id? } matching the row the user
-  // clicked.
-  async function catalogAddTo(itemId, targetKind, targetId) {
-    const ruleset = getRuleset();
-    const def = (ruleset.items || []).find(x => x.id === itemId)
-             || findCustomDefById(itemId);
-    if (!def) return;
-    let target;
-    if (targetKind === 'slot')      target = { kind: 'slot',      code: targetId };
-    else if (targetKind === 'group') target = { kind: 'group',     id:   targetId };
-    else if (targetKind === 'container') target = { kind: 'container', id: targetId };
-    else return;
-    await catalogPlaceItem(def, target);
-  }
-
-  // "Create new group…" option — prompts for a name, creates the group,
-  // then places the item there. Menu closes after.
-  async function catalogAddToNewGroup(itemId) {
-    const ruleset = getRuleset();
-    const def = (ruleset.items || []).find(x => x.id === itemId)
-             || findCustomDefById(itemId);
-    if (!def) return;
-    const name = prompt('Name for the new group:', 'Stowed');
-    if (!name || !name.trim()) return;
-    const inv = ensureInventory();
-    const newGroup = {
-      id: _nextInvId('grp'),
-      name: name.trim(),
-      description: '',
-      kind: 'custom',
-      collapsed: false,
-      contents: []
-    };
-    inv.groups.push(newGroup);
-    await catalogPlaceItem(def, { kind: 'group', id: newGroup.id });
-  }
-
-  // Look up a custom def by id from either customDefs bucket.
-  // Returns null if not found.
-  function findCustomDefById(id) {
-    const inv = ensureInventory();
-    return (inv.customDefs.containers || []).find(x => x.id === id)
-        || (inv.customDefs.equipment  || []).find(x => x.id === id)
-        || null;
-  }
-
-  // Unified placement path. Builds the inventory entry, routes it to
-  // the right array based on target.kind, and saves. Sets a toast
-  // message describing where it went.
-  async function catalogPlaceItem(def, target) {
-    const inv = ensureInventory();
-    const ruleset = getRuleset();
-    const defKind = def.containerOf ? 'container' : 'equipment';
-    // Snapshot is baked at placement time. The `def` argument itself
-    // is the current def — we pass a synthetic entry with just the
-    // defId to buildSnapshotFromDef, which re-resolves it against the
-    // current ruleset/customDefs. This keeps the snapshot logic in one
-    // place rather than duplicating the field-copying here.
-    const newEntry = {
-      id: _nextId(),
-      defId: def.id,
-      defKind,
-      quantity: 1,
-      snapshot: buildSnapshotFromDef({ defId: def.id }, ruleset, inv)
-    };
-    if (def.containerOf) newEntry.contents = [];
-
-    let whereLabel = '';
-    if (target.kind === 'group') {
-      // Accept any group in the tree (On-Person, custom top-level,
-      // or nested subgroups). findGroup walks the whole structure.
-      const g = findGroup(target.id);
-      if (!g || !isGroupNode(g)) return;
-      if (!Array.isArray(g.contents)) g.contents = [];
-      g.contents.push(newEntry);
-      whereLabel = g.name;
-    } else if (target.kind === 'container') {
-      const parent = findEntry(target.id);
-      if (!parent) return;
-      if (!Array.isArray(parent.contents)) parent.contents = [];
-      parent.contents.push(newEntry);
-      expandedEntries.add(parent.id);
-      whereLabel = `inside ${entryName(parent)}`;
-    } else if (target.kind === 'newGroup') {
-      // Smart default asked for a new "Stowed" group because no suitable
-      // existing target was found. Create it, then place the item.
-      const newGroup = {
-        id: _nextInvId('grp'),
-        name: 'Stowed',
-        description: '',
-        kind: 'custom',
-        collapsed: false,
-        contents: [newEntry]
-      };
-      inv.groups.push(newGroup);
-      whereLabel = newGroup.name;
-    } else {
-      return;
-    }
-
-    if (def.containerOf) expandedEntries.add(newEntry.id);
-
-    // Close any open menu and prepare the toast for the next render.
-    catalogAddMenuFor = null;
-    lastAddToast = `Added ${def.name} → ${whereLabel}`;
-
-    renderAll();
-    // Toast auto-clears after a few seconds — schedule a re-render
-    // with the toast null so the confirmation fades on its own.
-    setTimeout(() => {
-      if (lastAddToast) {
-        lastAddToast = null;
-        renderAll();
-      }
-    }, 3000);
-
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  // ─── GROUP HANDLERS ───
-  //
-  // Groups now form a tree: On-Person + any custom top-level groups at
-  // the root, with arbitrary subgroups nested inside each. Every
-  // handler here walks the tree via findGroup so it works at any depth.
-  //
-  // On-Person is special — it can't be renamed or deleted, but
-  // subgroups INSIDE On-Person can be (they're just custom groups).
-
-  async function toggleGroupCollapse(groupId) {
-    const g = findGroup(groupId);
-    if (!g) return;
-    g.collapsed = !g.collapsed;
-    renderAll();
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  // addGroup and renameGroup open the shared Group Edit modal. Actual
-  // persistence happens in saveGroup when the user hits Save.
-
-  function addGroup() {
-    if (!getCanEdit()) return;
-    activeModal = {
-      kind: 'groupEdit',
-      groupEditMode: 'add',
-      groupDraft: { name: '', description: '' }
-    };
-    renderActiveModal();
-  }
-
-  // Add a subgroup inside an existing group (or subgroup). The parent
-  // is identified by id and located via findGroup so any depth works.
-  // Opens the same Group Edit modal in add-subgroup mode — on save,
-  // the new subgroup is pushed into the parent's contents rather than
-  // onto the top-level inv.groups.
-  function addSubgroup(parentGroupId) {
-    if (!getCanEdit()) return;
-    const parent = findGroup(parentGroupId);
-    if (!parent) return;
-    activeModal = {
-      kind: 'groupEdit',
-      groupEditMode: 'addSubgroup',
-      groupParentId: parentGroupId,
-      groupDraft: { name: '', description: '' }
-    };
-    renderActiveModal();
-  }
-
-  function renameGroup(groupId) {
-    if (!getCanEdit()) return;
-    const g = findGroup(groupId);
-    if (!g || g.kind === 'onPerson') return;
-    activeModal = {
-      kind: 'groupEdit',
-      groupEditMode: 'edit',
-      groupEditId: groupId,
-      groupDraft: { name: g.name || '', description: g.description || '' }
-    };
-    renderActiveModal();
-  }
-
-  function updateGroupDraft(field, value) {
-    if (!activeModal || activeModal.kind !== 'groupEdit') return;
-    if (!activeModal.groupDraft) activeModal.groupDraft = {};
-    activeModal.groupDraft[field] = typeof value === 'string' ? value : '';
-    // Don't re-render — inputs are self-updating. Re-rendering would
-    // steal focus from the field being typed into.
-  }
-
-  async function saveGroup() {
-    if (!activeModal || activeModal.kind !== 'groupEdit') return;
-    const draft = activeModal.groupDraft || {};
-    const name = (draft.name || '').trim();
-    if (!name) {
-      alert('Please enter a name.');
-      return;
-    }
-    const description = (draft.description || '').trim();
-    const inv = ensureInventory();
-
-    if (activeModal.groupEditMode === 'add') {
-      // Top-level custom group — pushed into inv.groups.
-      inv.groups.push({
-        id: _nextInvId('grp'),
-        name,
-        description,
-        kind: 'custom',
-        collapsed: false,
-        contents: []
-      });
-    } else if (activeModal.groupEditMode === 'addSubgroup') {
-      // Subgroup — pushed into the parent's contents. Parent may be
-      // at any depth in the tree, so findGroup does the walk.
-      const parent = findGroup(activeModal.groupParentId);
-      if (!parent) { closeModal(); return; }
-      if (!Array.isArray(parent.contents)) parent.contents = [];
-      parent.contents.push({
-        id: _nextInvId('grp'),
-        name,
-        description,
-        kind: 'custom',
-        collapsed: false,
-        contents: []
-      });
-    } else if (activeModal.groupEditMode === 'edit') {
-      const g = findGroup(activeModal.groupEditId);
-      if (!g || g.kind === 'onPerson') { closeModal(); return; }
-      g.name = name;
-      g.description = description;
-    }
-
-    closeModal();
-    renderAll();
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  // Delete a group or subgroup. Walks the tree to find the node and
-  // the parent array it lives in, then splices it out. On-Person is
-  // guarded — can't delete. Confirm dialog with item count if non-empty.
-  async function deleteGroup(groupId) {
-    if (!getCanEdit()) return;
-    const g = findGroup(groupId);
-    if (!g || g.kind === 'onPerson') return;
-    const itemCount = Array.isArray(g.contents) ? g.contents.length : 0;
-    if (itemCount > 0) {
-      if (!confirm(`Delete "${g.name}" and everything inside (${itemCount} item${itemCount === 1 ? '' : 's'})? This cannot be undone.`)) return;
-    } else {
-      if (!confirm(`Delete "${g.name}"?`)) return;
-    }
-    // Remove from the tree — walk both top-level and nested contents.
-    const inv = ensureInventory();
-    const removeFrom = (arr) => {
-      if (!Array.isArray(arr)) return false;
-      for (let i = 0; i < arr.length; i++) {
-        const node = arr[i];
-        if (!node || typeof node !== 'object') continue;
-        if (node.id === groupId && isGroupNode(node)) {
-          arr.splice(i, 1);
-          return true;
-        }
-        if (isGroupNode(node) && removeFrom(node.contents)) return true;
-      }
-      return false;
-    };
-    // Top-level groups live in inv.groups; subgroups live in a group's
-    // contents. Try top-level first.
-    if (!removeFrom(inv.groups)) {
-      // Must be a subgroup — walk each top-level group's contents.
-      for (const top of inv.groups || []) {
-        if (removeFrom(top.contents)) break;
-      }
-    }
-    renderAll();
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  // ─── ADD FLOW HANDLERS ───
-  //
-  // `target` identifies where the new entry goes. Possible shapes:
-  //   { targetKind: 'slot',      target: slotCode }   → inv.bySlot[slotCode]
-  //   { targetKind: 'group',     target: groupId }    → group.contents
-  //   { targetKind: 'container', target: entryId }    → entry.contents
-  //
-  // The legacy '__stowed__' code is translated into the Stowed group if
-  // one exists (unlikely to hit this path post-migration, but defensive).
-
-  function resolveTargetLabel(target, targetKind) {
-    if (targetKind === 'container') {
-      const parent = findEntry(target);
-      return parent ? `Inside: ${entryName(parent)}` : '';
-    }
-    if (targetKind === 'group') {
-      // Walks the full tree so subgroup labels work. On-Person and
-      // nested subgroups all render correctly.
-      const g = findGroup(target);
-      return g ? `To: ${g.name}` : '';
-    }
-    // Legacy 'slot' targeting — no-op after the slot → group refactor.
-    return '';
-  }
-
-  function openAddContainer(target, targetKind) {
-    if (!getCanEdit()) return;
-    // Back-compat: second arg used to be a boolean `fromContainer`.
-    // Normalize to the new targetKind.
-    if (targetKind === true) targetKind = 'container';
-    // Default to 'group' — any caller passing no kind assumes a group
-    // target. The old 'slot' default no longer makes sense post-refactor.
-    if (!targetKind) targetKind = 'group';
-    activeModal = {
-      kind: 'container',
-      target,
-      targetKind,
-      targetLabel: resolveTargetLabel(target, targetKind),
-      showCustomForm: false
-    };
-    renderActiveModal();
-  }
-
-  function openAddItem(target, targetKind) {
-    if (!getCanEdit()) return;
-    if (!targetKind) targetKind = 'group';
-    activeModal = {
-      kind: 'item',
-      target,
-      targetKind,
-      targetLabel: resolveTargetLabel(target, targetKind),
-      showCustomForm: false
-    };
-    renderActiveModal();
-  }
-
-  function closeModal() {
-    activeModal = null;
-    const root = document.getElementById('inv-modal-root');
-    if (root) root.innerHTML = '';
-  }
-
-  // ─── CUSTOM DEF FORM HANDLERS ───
-
-  function openCustomForm(customKind) {
-    if (!activeModal) return;
-    activeModal.showCustomForm = true;
-    activeModal.customKind = customKind;
-    activeModal.customDraft = {
-      name: '',
-      description: '',
-      category: '',
-      l: 6, w: 3, h: 1,
-      weight: 0.5,
-      packingEfficiency: 0.75,
-      alsoContainer: false,
-      innerL: 0, innerW: 0, innerH: 0,
-      innerPacking: 0.75,
-      // Weapon fields — match the schema used by the personal-catalogue
-      // draft so renderCatalogManagerWeaponBlock + buildWeaponFromDraft
-      // can be shared. `isWeapon` false means the weapon block is
-      // collapsed and no weapon data gets attached to the snapshot on
-      // save.
-      isWeapon:      false,
-      weaponKind:    'melee',
-      weaponDice:    1,
-      weaponPen:     0,
-      weaponRanges:  [],
-      weaponRange:   30,
-      weaponDmgmod:  0,
-      weaponAmmo:    '1',
-      weaponRof:     '0',
-      weaponTags:    []
-    };
-    renderActiveModal();
-  }
-
-  function cancelCustomForm() {
-    if (!activeModal) return;
-    activeModal.showCustomForm = false;
-    activeModal.customDraft = null;
-    renderActiveModal();
-  }
-
-  // Delete a custom def from the character's catalog. Also rips out
-  // every inventory entry that references it — otherwise those entries
-  // would render as "(deleted def)" and clutter the sheet. Confirms
-  // before deleting if there are live instances.
-  async function deleteCustomDef(defKind, defId) {
-    if (!getCanEdit()) return;
-    const inv = ensureInventory();
-    const bucket = defKind === 'container' ? inv.customDefs.containers : inv.customDefs.equipment;
-    const def = bucket.find(x => x.id === defId);
-    if (!def) return;
-
-    // Count references so we can inform the user. Instances are NOT
-    // auto-removed — they persist as "deleted def" placeholders on
-    // the sheet. User can remove them individually or re-create the
-    // def to restore their display. This matches users' intuition:
-    // deleting a template shouldn't nuke their actual stuff.
-    let refCount = 0;
-    walkTree(entry => { if (entry.defId === defId) refCount++; });
-
-    const msg = refCount > 0
-      ? `Remove "${def.name}" from your personal catalogue?\n\n${refCount} instance${refCount === 1 ? '' : 's'} on your sheet will remain (shown as "deleted def") until you remove ${refCount === 1 ? 'it' : 'them'} manually.`
-      : `Remove "${def.name}" from your personal catalogue?`;
-    if (!confirm(msg)) return;
-
-    // Drop the def — leave instances alone.
-    const idx = bucket.findIndex(x => x.id === defId);
-    if (idx >= 0) bucket.splice(idx, 1);
-
-    renderActiveModal();   // refresh the picker so the row disappears
-    renderAll();           // refresh the sheet so orphaned entries re-render
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  function updateCustomDraft(field, value) {
-    if (!activeModal || !activeModal.customDraft) return;
-    const d = activeModal.customDraft;
-    // Numeric fields — coerce, clamp non-negative. Text fields pass through.
-    const numericFields = new Set(['l','w','h','weight','packingEfficiency','innerL','innerW','innerH','innerPacking']);
-    // Weapon numeric fields. PEN/dice/range can't go negative; dmgmod
-    // is signed (for penalty weapons).
-    const weaponNumericNonNeg = new Set(['weaponDice','weaponPen','weaponRange']);
-    const weaponNumericSigned = new Set(['weaponDmgmod']);
-    // Weapon text fields — stored as strings so formulas like "STR+1"
-    // survive. buildWeaponFromDraft coerces numeric strings back to
-    // numbers when saving.
-    const weaponTextFields = new Set(['weaponAmmo','weaponRof']);
-
-    if (numericFields.has(field)) {
-      const n = parseFloat(value);
-      d[field] = Number.isFinite(n) && n >= 0 ? n : 0;
-    } else if (weaponNumericNonNeg.has(field)) {
-      const n = parseFloat(value);
-      d[field] = Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
-    } else if (weaponNumericSigned.has(field)) {
-      const n = parseFloat(value);
-      d[field] = Number.isFinite(n) ? Math.floor(n) : 0;
-    } else if (weaponTextFields.has(field)) {
-      d[field] = (value == null) ? '' : String(value);
-    } else if (field === 'alsoContainer') {
-      d[field] = !!value;
-      renderActiveModal();
-      return;
-    } else if (field === 'isWeapon') {
-      // Boolean toggle coming in as 'true'/'false' from the toggle
-      // span's onclick-string, or as an actual boolean.
-      d[field] = (value === true || value === 'true');
-      renderActiveModal();
-      return;
-    } else if (field === 'weaponKind') {
-      // Kind swap rebuilds the kind-specific fields on the draft so
-      // switching melee↔ranged doesn't leave stale ranges or ammo.
-      const v = (value === 'ranged') ? 'ranged' : 'melee';
-      d.weaponKind = v;
-      if (v === 'melee') {
-        // Kill ranged-only fields so they don't leak into the save.
-        d.weaponRanges = Array.isArray(d.weaponRanges) ? d.weaponRanges : [];
-        d.weaponRange  = 0;
-        d.weaponDmgmod = 0;
-        d.weaponAmmo   = '0';
-        d.weaponRof    = '0';
-      } else {
-        d.weaponRanges = [];
-        d.weaponRange  = Number.isFinite(d.weaponRange) && d.weaponRange > 0 ? d.weaponRange : 30;
-        d.weaponAmmo   = d.weaponAmmo || '1';
-        d.weaponRof    = d.weaponRof  || '0';
-      }
-      renderActiveModal();
-      return;
-    } else {
-      d[field] = typeof value === 'string' ? value : '';
-    }
-    // Most text/number tweaks don't need a re-render — the inputs are
-    // self-updating. Only structural changes (toggles, kind-swap)
-    // re-render above.
-  }
-
-  // Custom-form weapon range-band handlers. Mirror the catalog-manager
-  // helpers but target activeModal.customDraft instead of
-  // catalogManager.drafts, and call renderActiveModal() for UI refresh.
-  // Band shape is { s, e } objects — Firestore doesn't allow nested
-  // arrays, so we never emit [s, e] tuples.
-  function customDraftWeaponAddRange() {
-    if (!activeModal || !activeModal.customDraft) return;
-    const d = activeModal.customDraft;
-    if (!Array.isArray(d.weaponRanges)) d.weaponRanges = [];
-    const prev = d.weaponRanges[d.weaponRanges.length - 1];
-    const prevEnd = prev
-      ? (prev && typeof prev === 'object' && !Array.isArray(prev)
-          ? (Number(prev.e) || 0)
-          : (Array.isArray(prev) ? (Number(prev[1]) || 0) : 0))
-      : 0;
-    d.weaponRanges.push({ s: prevEnd, e: prevEnd + 1 });
-    renderActiveModal();
-  }
-  function customDraftWeaponRemoveRange(bandIdx) {
-    if (!activeModal || !activeModal.customDraft) return;
-    const d = activeModal.customDraft;
-    if (!Array.isArray(d.weaponRanges)) return;
-    d.weaponRanges.splice(bandIdx, 1);
-    renderActiveModal();
-  }
-  function customDraftWeaponUpdateRange(bandIdx, which, value) {
-    if (!activeModal || !activeModal.customDraft) return;
-    const d = activeModal.customDraft;
-    if (!Array.isArray(d.weaponRanges)) return;
-    let band = d.weaponRanges[bandIdx];
-    if (!band) return;
-    if (Array.isArray(band)) {
-      band = { s: Number(band[0]) || 0, e: Number(band[1]) || 0 };
-      d.weaponRanges[bandIdx] = band;
-    }
-    const n = parseFloat(value);
-    const safe = Number.isFinite(n) && n >= 0 ? n : 0;
-    if (which === 'start') band.s = safe;
-    else if (which === 'end') band.e = safe;
-    // No re-render — user may still be typing the other side.
-  }
-  function customDraftWeaponToggleTag(tagId, on) {
-    if (!activeModal || !activeModal.customDraft) return;
-    const d = activeModal.customDraft;
-    if (!Array.isArray(d.weaponTags)) d.weaponTags = [];
-    const idx = d.weaponTags.indexOf(tagId);
-    if (on && idx < 0) d.weaponTags.push(tagId);
-    else if (!on && idx >= 0) d.weaponTags.splice(idx, 1);
-    // Tag toggle doesn't re-render the whole modal — the checkbox
-    // state is tracked by the browser. If we DID re-render, the
-    // cursor position in any focused input would be lost.
-  }
-
-  // Create a one-off entry from the inline custom form in the picker
-  // modal. NO catalog side effect — the entry is built directly with
-  // its own snapshot and placed on the sheet. To promote it into the
-  // personal catalogue later, the user hits "Save to Personal Catalogue"
-  // from the entry's pencil-edit panel.
-  //
-  // Kept named `saveCustomDef` for back-compat with existing window
-  // handler wiring. Despite the name, no def is written to customDefs.
-  async function saveCustomDef() {
-    if (!activeModal || !activeModal.customDraft) return;
-    const d = activeModal.customDraft;
-    const name = (d.name || '').trim();
-    if (!name) {
-      alert('Please enter a name.');
-      return;
-    }
-    const isContainer = activeModal.customKind === 'container';
-
-    // Build the snapshot directly from the draft — this is what
-    // getDefForEntry fallback would synthesize anyway, so we just
-    // construct it up front. defId stays null because there's no
-    // backing catalog def.
-    const snapshot = {
-      name,
-      description: (d.description || '').trim(),
-      dimensions:  { l: d.l || 0, w: d.w || 0, h: d.h || 0 },
-      weight:      d.weight || 0,
-      containerOf: null,
-      legacyCategory: ''
-    };
-    if (isContainer) {
-      snapshot.containerOf = {
-        dimensions:        { l: d.l || 0, w: d.w || 0, h: d.h || 0 },
-        packingEfficiency: clampEff(d.packingEfficiency, 0.75)
-      };
-    } else if (d.alsoContainer) {
-      snapshot.containerOf = {
-        dimensions:        { l: d.innerL || 0, w: d.innerW || 0, h: d.innerH || 0 },
-        packingEfficiency: clampEff(d.innerPacking, 0.75)
-      };
-    }
-    // Weapon block — same shape the ruleset's coerceWeapon produces,
-    // built from the draft via buildWeaponFromDraft (shared with the
-    // personal catalogue manager). Only attached when the user
-    // toggled "Also a weapon"; containers never get one.
-    if (!isContainer && d.isWeapon) {
-      snapshot.weapon = buildWeaponFromDraft(d);
-    } else {
-      snapshot.weapon = null;
-    }
-    // Custom item form doesn't expose size/armor/armorWorn authoring
-    // yet — future enhancement. For now, custom items created on the
-    // character sheet get default SIZE 3 (Small), zero material Armor,
-    // and no wearable-armor facet. Authors who want those fields
-    // should create the item in the personal catalogue or the
-    // ruleset editor instead.
-    snapshot.size      = 3;
-    snapshot.armor     = 0;
-    snapshot.armorWorn = null;
-
-    const isContainerRole = !!snapshot.containerOf;
-    const defKind = isContainerRole ? 'container' : 'equipment';
-
-    // Place it directly. `instantiateAndPlaceOneOff` is a sibling of
-    // instantiateAndPlace that doesn't require a catalog def — it
-    // takes the pre-built snapshot instead.
-    await instantiateAndPlaceOneOff(defKind, snapshot, isContainerRole);
-  }
-
-  function clampEff(v, fallback) {
-    const n = Number.isFinite(v) ? v : parseFloat(v);
-    if (!Number.isFinite(n)) return fallback;
-    return Math.max(0.1, Math.min(1.0, n));
-  }
-
-  // Shared instantiation path — used by catalog-picked defs AND by the
-  // just-created custom def flow. Builds an entry, routes to the right
-  // container array based on targetKind, saves.
-  async function instantiateAndPlace(defKind, defId, isContainerRole) {
-    const inv = ensureInventory();
-    const ruleset = getRuleset();
-    // Build the new entry with its snapshot baked in right away. The
-    // snapshot is what the sheet reads for display + calculation, so
-    // future def edits/deletes don't affect this instance.
-    const newEntry = {
-      id: _nextId(),
-      defId,
-      defKind,
-      quantity: 1,
-      snapshot: buildSnapshotFromDef({ defId }, ruleset, inv)
-    };
-    if (isContainerRole) newEntry.contents = [];
-
-    const tgt = activeModal.target;
-    const tkind = activeModal.targetKind;
-    let placed = false;
-    if (tkind === 'container') {
-      const parent = findEntry(tgt);
-      if (parent) {
-        if (!Array.isArray(parent.contents)) parent.contents = [];
-        parent.contents.push(newEntry);
-        expandedEntries.add(parent.id);
-        placed = true;
-      }
-    } else if (tkind === 'group') {
-      // Accept placements into any group or subgroup (On-Person, custom
-      // top-level groups, and nested subgroups all qualify). findGroup
-      // walks the full tree.
-      const g = findGroup(tgt);
-      if (g && isGroupNode(g)) {
-        if (!Array.isArray(g.contents)) g.contents = [];
-        g.contents.push(newEntry);
-        placed = true;
-      }
-    } else if (tkind === 'slot') {
-      // Legacy 'slot' targeting — body slots are gone, so this path
-      // is a no-op. Kept so any stale menu callers don't throw.
-      placed = false;
-    }
-
-    if (!placed) { closeModal(); return; }
-
-    if (isContainerRole) expandedEntries.add(newEntry.id);
-    closeModal();
-    renderAll();
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  // One-off variant: used when the user creates an item via the
-  // "+ Custom" form in the picker. Takes a pre-built snapshot instead
-  // of a defId — no catalog def exists yet. The entry's defId is null
-  // so lookups correctly report "no def" and fall through to snapshot.
-  async function instantiateAndPlaceOneOff(defKind, snapshot, isContainerRole) {
-    const inv = ensureInventory();
-    const newEntry = {
-      id: _nextId(),
-      defId: null,              // no backing def — purely a one-off
-      defKind,
-      quantity: 1,
-      snapshot: snapshot        // already pre-built by caller
-    };
-    if (isContainerRole) newEntry.contents = [];
-
-    const tgt = activeModal.target;
-    const tkind = activeModal.targetKind;
-    let placed = false;
-    if (tkind === 'container') {
-      const parent = findEntry(tgt);
-      if (parent) {
-        if (!Array.isArray(parent.contents)) parent.contents = [];
-        parent.contents.push(newEntry);
-        expandedEntries.add(parent.id);
-        placed = true;
-      }
-    } else if (tkind === 'group') {
-      // Accept placements into any group or subgroup (On-Person, custom
-      // top-level groups, and nested subgroups all qualify). findGroup
-      // walks the full tree.
-      const g = findGroup(tgt);
-      if (g && isGroupNode(g)) {
-        if (!Array.isArray(g.contents)) g.contents = [];
-        g.contents.push(newEntry);
-        placed = true;
-      }
-    } else if (tkind === 'slot') {
-      // Legacy 'slot' targeting — body slots are gone, so this path
-      // is a no-op. Kept so any stale menu callers don't throw.
-      placed = false;
-    }
-
-    if (!placed) { closeModal(); return; }
-
-    if (isContainerRole) expandedEntries.add(newEntry.id);
-    closeModal();
-    renderAll();
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  async function pickContainerDef(defKind, defId) {
-    if (!activeModal || activeModal.kind !== 'container') return;
-    // Container picks are always container-role.
-    await instantiateAndPlace(defKind, defId, /*isContainerRole=*/true);
-  }
-
-  async function pickItemDef(defKind, defId) {
-    if (!activeModal || activeModal.kind !== 'item') return;
-    // An item can secretly also be a container if its def has a
-    // containerOf block — that flag flows through to entryIsContainer.
-    const def = defKind === 'equipment' ? getEquipmentDef(defId) : getContainerDef(defId);
-    const isContainerRole = !!(def && def.containerOf) || defKind === 'container';
-    await instantiateAndPlace(defKind, defId, isContainerRole);
-  }
-
-  async function tickQty(id, delta) {
-    if (!getCanEdit()) return;
-    const entry = findEntry(id);
-    if (!entry) return;
-    const next = Math.max(1, (entry.quantity || 1) + delta);
-    if (next === entry.quantity) return;
-    entry.quantity = next;
-    renderAll();
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  // ── WEAPON HANDLERS ──
-  //
-  // AMMO bookkeeping lives on the entry itself (entry.currentAmmo) so
-  // it's per-instance state rather than per-def. Lazy-init: if the
-  // entry doesn't have currentAmmo yet, treat as full (max) on first
-  // adjustment. This keeps snapshots clean for ranged weapons the
-  // player hasn't interacted with, and means melee entries never
-  // accidentally carry a currentAmmo number.
-
-  // Compute the resolved AMMO max for a weapon entry. Returns null
-  // when the entry isn't a ranged weapon or when the ammo formula
-  // errors out (unresolved variables, parse failure). Callers should
-  // treat null as "don't touch currentAmmo."
-  function resolvedAmmoMax(entry) {
-    const snap = entry && entry.snapshot;
-    const weapon = snap && snap.weapon;
-    if (!weapon || weapon.kind !== 'ranged') return null;
-    const resolved = resolveWeapon(weapon, getCharData(), getRuleset());
-    if (!resolved || !resolved.ammo || resolved.ammo.error) return null;
-    const n = resolved.ammo.resolved;
-    return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : null;
-  }
-
-  // Read the per-entry rapidfire split from weaponUI, migrating
-  // legacy single-field data (ui.rapidfireExtra) into the new
-  // damage-extra field. Returns `{damage, sweep}` with integer ≥ 0
-  // values, or `{damage: 0, sweep: 0}` for melee / missing data.
-  // The legacy field is NOT deleted here — a subsequent save via a
-  // rapidfire setter will write only the new fields, and this helper
-  // continues to fall back to it safely for older data.
-  function readRapidfireSplit(ui, kind) {
-    if (kind !== 'ranged' || !ui) return { damage: 0, sweep: 0 };
-    // Prefer the new split fields. Fall back to legacy value for
-    // damage-extra when the new ones are absent.
-    let damage = 0;
-    let sweep = 0;
-    if (Number.isFinite(ui.rapidfireDamageExtra) && ui.rapidfireDamageExtra > 0) {
-      damage = Math.floor(ui.rapidfireDamageExtra);
-    } else if (Number.isFinite(ui.rapidfireExtra) && ui.rapidfireExtra > 0) {
-      damage = Math.floor(ui.rapidfireExtra);
-    }
-    if (Number.isFinite(ui.rapidfireSweepExtra) && ui.rapidfireSweepExtra > 0) {
-      sweep = Math.floor(ui.rapidfireSweepExtra);
-    }
-    return { damage, sweep };
-  }
-
-  async function weaponAdjustAmmo(id, delta) {
-    if (!getCanEdit()) return;
-    const entry = findEntry(id);
-    if (!entry) return;
-    const max = resolvedAmmoMax(entry);
-    if (max == null) return;
-    // Lazy init: first interaction treats current as max.
-    const cur = (typeof entry.currentAmmo === 'number')
-      ? Math.max(0, Math.min(max, entry.currentAmmo))
-      : max;
-    const next = Math.max(0, Math.min(max, cur + delta));
-    if (next === cur) return;
-    entry.currentAmmo = next;
-    renderAll();
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  async function weaponReloadAmmo(id) {
-    if (!getCanEdit()) return;
-    const entry = findEntry(id);
-    if (!entry) return;
-    const max = resolvedAmmoMax(entry);
-    if (max == null) return;
-    if (entry.currentAmmo === max) return;
-    entry.currentAmmo = max;
-    renderAll();
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  // Toggle the raw-vs-penalty-reduced display on a weapon's roll block.
-  // rawKey is either 'showRawAttack' or 'showRawDamage' — which half of
-  // the card to flip. State lives on entry.weaponUI so each inventory
-  // item independently remembers which mode it's in. Saves to Firestore
-  // so the toggle persists across sessions.
-  async function weaponToggleRaw(id, rawKey) {
-    const entry = findEntry(id);
-    if (!entry) return;
-    if (!entry.weaponUI || typeof entry.weaponUI !== 'object') entry.weaponUI = {};
-    // Only these two keys are meaningful — guard against stray input.
-    if (rawKey !== 'showRawAttack' && rawKey !== 'showRawDamage') return;
-    entry.weaponUI[rawKey] = !entry.weaponUI[rawKey];
-    renderAll();
-    // Toggle state is a display preference so non-editors can flip it
-    // in the UI too, but only editors have permission to persist. Skip
-    // the save for read-only viewers.
-    if (getCanEdit()) {
-      try { await save(); } catch (e) { console.error('inventory save failed', e); }
-    }
-  }
-
-  // Store an ATK contested result on a weapon entry. Empty string
-  // clears the value (back to the "[not rolled]" placeholder). Accepts
-  // numeric input — anything non-numeric clears. The resolver uses
-  // entry.weaponUI.atkResult to inject ATK into the damage formula.
-  async function weaponSetAtk(id, value) {
-    const entry = findEntry(id);
-    if (!entry) return;
-    if (!entry.weaponUI || typeof entry.weaponUI !== 'object') entry.weaponUI = {};
-    const raw = (value == null) ? '' : String(value).trim();
-    if (!raw) {
-      entry.weaponUI.atkResult = null;
-    } else {
-      const n = Number(raw);
-      entry.weaponUI.atkResult = Number.isFinite(n) ? Math.floor(n) : null;
-    }
-    renderAll();
-    if (getCanEdit()) {
-      try { await save(); } catch (e) { console.error('inventory save failed', e); }
-    }
-  }
-
-  // ─── WEAPON SNAPSHOT EDITING ─────────────────────────────────────
-  //
-  // Players can edit the intrinsic weapon stats per-instance by
-  // flipping weaponUI.editOpen and writing to entry.snapshot.weapon
-  // directly. Because snapshots are per-inventory-entry (deep-cloned
-  // from the catalogue def at add-time), these edits only affect
-  // this one character's copy of the weapon — the catalogue def is
-  // untouched. Common use case: player picks up an improvised
-  // weapon or a homebrew variant and wants to tweak dice/PEN/range
-  // without creating a new catalogue entry.
-
-  // Flip a tag-category's collapsed state for a given scope. Scope is
-  // a short key like 'display:<entryId>' or 'editor:<entryId>' that
-  // lets the same category be collapsed independently in different UI
-  // panels. Non-persisted (session-only); a page reload resets it to
-  // all-expanded. No save call — nothing to write.
-  function weaponToggleTagCatCollapse(scope, categoryId) {
-    const set = getCollapsedTagCats(scope);
-    if (set.has(categoryId)) set.delete(categoryId);
-    else set.add(categoryId);
-    renderAll();
-  }
-
-  // ── DURABILITY TRACKING HANDLERS ──
-  //
-  // All per-entry state. Toggle `durabilityTracked` controls visibility
-  // of the durability UI; default off. When on, `durabilityInstances`
-  // holds an array of numbers. Each hit adds an instance; the effective
-  // damage and current durability derive from instances + Construction.
-  //
-  // Ruleset defs DO NOT carry this state — it's always per-instance
-  // since the same item in different characters' hands accumulates
-  // different wear. The snapshot also doesn't carry it; it lives
-  // directly on the entry as `entry.durabilityTracked` and
-  // `entry.durabilityInstances`.
-
-  async function durabilityToggleTracked(id) {
-    if (!getCanEdit()) return;
-    const entry = findEntry(id);
-    if (!entry) return;
-    entry.durabilityTracked = !entry.durabilityTracked;
-    // Starting tracking with no prior instances — leave instances empty
-    // so the entry reads at max durability. Stopping tracking preserves
-    // any accumulated instances so the GM can re-enable without losing
-    // the record; the UI just hides them.
-    if (!Array.isArray(entry.durabilityInstances)) entry.durabilityInstances = [];
-    renderAll();
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  async function durabilityAddInstance(id, amountStr) {
-    if (!getCanEdit()) return;
-    const entry = findEntry(id);
-    if (!entry) return;
-    const n = parseFloat(amountStr);
-    if (!Number.isFinite(n) || n <= 0) return;
-    if (!Array.isArray(entry.durabilityInstances)) entry.durabilityInstances = [];
-    entry.durabilityInstances.push(n);
-    renderAll();
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  async function durabilityRemoveInstance(id, idx) {
-    if (!getCanEdit()) return;
-    const entry = findEntry(id);
-    if (!entry || !Array.isArray(entry.durabilityInstances)) return;
-    if (idx < 0 || idx >= entry.durabilityInstances.length) return;
-    entry.durabilityInstances.splice(idx, 1);
-    renderAll();
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  async function durabilityClear(id) {
-    if (!getCanEdit()) return;
-    const entry = findEntry(id);
-    if (!entry) return;
-    entry.durabilityInstances = [];
-    renderAll();
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  async function weaponToggleEdit(id) {
-    if (!getCanEdit()) return;
-    const entry = findEntry(id);
-    if (!entry) return;
-    if (!entry.weaponUI || typeof entry.weaponUI !== 'object') entry.weaponUI = {};
-    entry.weaponUI.editOpen = !entry.weaponUI.editOpen;
-    renderAll();
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  // Write a simple field on the weapon snapshot. Handles numeric
-  // coercion for dice/pen/range/dmgmod and preserves ammo/rof as
-  // numbers OR formula strings (same convention as catalogue editors).
-  async function weaponSnapUpdate(id, field, value) {
-    if (!getCanEdit()) return;
-    const entry = findEntry(id);
-    if (!entry || !entry.snapshot || !entry.snapshot.weapon) return;
-    const w = entry.snapshot.weapon;
-    const numericNonNeg = new Set(['dice', 'pen', 'range']);
-    const numericSigned = new Set(['dmgmod']);
-    const numOrFormula = new Set(['ammo', 'rof']);
-    const decimalMinOne = new Set(['scopeMagnification']);
-
-    if (numericNonNeg.has(field)) {
-      const n = parseFloat(value);
-      w[field] = Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
-    } else if (numericSigned.has(field)) {
-      const n = parseFloat(value);
-      w[field] = Number.isFinite(n) ? Math.floor(n) : 0;
-    } else if (decimalMinOne.has(field)) {
-      // Scope magnification — decimal, minimum 1 (1× = no scope).
-      const n = parseFloat(value);
-      w[field] = Number.isFinite(n) && n >= 1 ? n : 1;
-    } else if (numOrFormula.has(field)) {
-      const raw = (value == null) ? '' : String(value).trim();
-      if (!raw) { w[field] = 0; }
-      else {
-        const n = Number(raw);
-        w[field] = Number.isFinite(n) && raw === String(n) ? n : raw;
-      }
-    } else {
-      return;   // unknown field — ignore
-    }
-    renderAll();
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  // Kind swap — melee ↔ ranged. Wipes incompatible fields so stale
-  // ranges or ammo don't leak into the wrong kind. Also clears any
-  // formula overrides since the default formula shape differs between
-  // kinds (DEX+Melee+DEXMOD vs DEX+Ranged+DEXMOD) and per-slot
-  // overrides keyed to one kind's variable names make no sense on
-  // the other.
-  async function weaponSnapSetKind(id, newKind) {
-    if (!getCanEdit()) return;
-    const entry = findEntry(id);
-    if (!entry || !entry.snapshot || !entry.snapshot.weapon) return;
-    const target = (newKind === 'ranged') ? 'ranged' : 'melee';
-    const w = entry.snapshot.weapon;
-    if (w.kind === target) return;
-    // Preserve shared fields (dice, pen, tags); rebuild kind-specific ones.
-    const shared = {
-      kind: target,
-      dice: Number.isFinite(w.dice) ? w.dice : 0,
-      pen:  Number.isFinite(w.pen)  ? w.pen  : 0,
-      tags: Array.isArray(w.tags) ? w.tags.slice() : []
-    };
-    entry.snapshot.weapon = (target === 'melee')
-      ? Object.assign(shared, { ranges: [] })
-      : Object.assign(shared, { range: 30, dmgmod: 0, ammo: 1, rof: 0 });
-    // Kind swap invalidates formula overrides (variable names changed).
-    entry.weaponOverrides = null;
-    renderAll();
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  // Melee range band helpers. Bands stored as {s, e} objects
-  // (Firestore-safe — no nested arrays). New bands continue from the
-  // previous band's end so chained 0-1, 1-2, 2-3 is one click each.
-  async function weaponSnapAddRange(id) {
-    if (!getCanEdit()) return;
-    const entry = findEntry(id);
-    if (!entry || !entry.snapshot || !entry.snapshot.weapon) return;
-    const w = entry.snapshot.weapon;
-    if (w.kind !== 'melee') return;
-    if (!Array.isArray(w.ranges)) w.ranges = [];
-    const prev = w.ranges[w.ranges.length - 1];
-    const prevEnd = prev
-      ? (prev && typeof prev === 'object' && !Array.isArray(prev)
-          ? (Number(prev.e) || 0)
-          : (Array.isArray(prev) ? (Number(prev[1]) || 0) : 0))
-      : 0;
-    w.ranges.push({ s: prevEnd, e: prevEnd + 1 });
-    renderAll();
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  async function weaponSnapRemoveRange(id, bandIdx) {
-    if (!getCanEdit()) return;
-    const entry = findEntry(id);
-    if (!entry || !entry.snapshot || !entry.snapshot.weapon) return;
-    const w = entry.snapshot.weapon;
-    if (!Array.isArray(w.ranges)) return;
-    w.ranges.splice(bandIdx, 1);
-    renderAll();
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  async function weaponSnapUpdateRange(id, bandIdx, which, value) {
-    if (!getCanEdit()) return;
-    const entry = findEntry(id);
-    if (!entry || !entry.snapshot || !entry.snapshot.weapon) return;
-    const w = entry.snapshot.weapon;
-    if (!Array.isArray(w.ranges)) return;
-    let band = w.ranges[bandIdx];
-    if (!band) return;
-    // Legacy [s, e] entries get converted to {s, e} on first touch.
-    if (Array.isArray(band)) {
-      band = { s: Number(band[0]) || 0, e: Number(band[1]) || 0 };
-      w.ranges[bandIdx] = band;
-    }
-    const n = parseFloat(value);
-    const safe = Number.isFinite(n) && n >= 0 ? n : 0;
-    if (which === 'start') band.s = safe;
-    else if (which === 'end') band.e = safe;
-    // No re-render — user might still be typing the other side. Save
-    // on-change (browsers fire change on blur) captures the final value.
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  async function weaponSnapToggleTag(id, tagId, on) {
-    if (!getCanEdit()) return;
-    const entry = findEntry(id);
-    if (!entry || !entry.snapshot || !entry.snapshot.weapon) return;
-    const w = entry.snapshot.weapon;
-    if (!Array.isArray(w.tags)) w.tags = [];
-    const idx = w.tags.indexOf(tagId);
-    if (on && idx < 0) w.tags.push(tagId);
-    else if (!on && idx >= 0) w.tags.splice(idx, 1);
-    renderAll();
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  // Rapidfire is split into two AMMO pools: damage-extra and
-  // sweep-extra. Both share the weapon's magazine (total = 1 + dmg + swp)
-  // so setting one clamps the other to what's left. The resolver
-  // reads `{damage, sweep}` from weaponUI — these setters just update
-  // the state, migrate legacy `rapidfireExtra`, and re-render.
-  //
-  // `which` is 'damage' or 'sweep'. `value` is a string or number.
-  async function weaponSetRapidfireInternal(id, which, value) {
-    const entry = findEntry(id);
-    if (!entry) return;
-    if (!entry.weaponUI || typeof entry.weaponUI !== 'object') entry.weaponUI = {};
-    const ui = entry.weaponUI;
-
-    // One-time migration: if the legacy single field is present and
-    // the new damage field isn't, move it over. Delete the legacy
-    // field after so future reads don't double-apply.
-    if (ui.rapidfireExtra != null && ui.rapidfireDamageExtra == null) {
-      ui.rapidfireDamageExtra = Math.max(0, Math.floor(Number(ui.rapidfireExtra) || 0));
-    }
-    if (ui.rapidfireExtra != null) delete ui.rapidfireExtra;
-
-    // Parse the incoming value. Empty / invalid → 0.
-    const raw = (value == null) ? '' : String(value).trim();
-    let n = 0;
-    if (raw) {
-      const parsed = Number(raw);
-      if (Number.isFinite(parsed) && parsed > 0) n = Math.floor(parsed);
-    }
-
-    // Clamp. Total (damage + sweep) can't exceed maxAmmo − 1 (need 1
-    // for the base shot). If the new value would push the pair over
-    // the cap, clamp `n` to whatever room remains — the OTHER pool
-    // stays where the player put it. (Deliberately asymmetric: the
-    // last-edited field wins, the other shrinks only via its own input.)
-    const max = resolvedAmmoMax(entry);
-    const cap = (max == null) ? n : Math.max(0, max - 1);
-    const otherKey = (which === 'damage') ? 'rapidfireSweepExtra' : 'rapidfireDamageExtra';
-    const other = Number.isFinite(ui[otherKey]) && ui[otherKey] > 0 ? Math.floor(ui[otherKey]) : 0;
-    const room = Math.max(0, cap - other);
-    n = Math.min(n, room);
-
-    const key = (which === 'damage') ? 'rapidfireDamageExtra' : 'rapidfireSweepExtra';
-    ui[key] = n;
-
-    renderAll();
-    if (getCanEdit()) {
-      try { await save(); } catch (e) { console.error('inventory save failed', e); }
-    }
-  }
-  async function weaponSetRapidfireDamage(id, value) { return weaponSetRapidfireInternal(id, 'damage', value); }
-  async function weaponSetRapidfireSweep(id, value)  { return weaponSetRapidfireInternal(id, 'sweep',  value); }
-
-  // Legacy setter — writes to damage-extra for backward compat with
-  // any stored bindings. Kept exported so old window bindings don't
-  // 404 during hot-reload.
-  async function weaponSetRapidfire(id, value) { return weaponSetRapidfireInternal(id, 'damage', value); }
-
-  // Apply (or clear) a per-instance slot override on a weapon. The
-  // override rewrites a single variable in the Attack or Damage
-  // formula at resolve time — e.g. swap DEX for INT, or Melee for
-  // KnifeFighting. If `toVar` equals `fromVar` (i.e. "back to
-  // default"), the override entry is DELETED from the map so the
-  // formula returns to the ruleset default.
-  //
-  // Arguments:
-  //   id      — inventory entry id
-  //   roll    — 'attack' | 'damage'
-  //   fromVar — original variable name (the one in the ruleset formula)
-  //   toVar   — new variable name (stat code or skill name). Empty
-  //             string or fromVar clears the override.
-  async function weaponSetSlotOverride(id, roll, fromVar, toVar) {
-    const entry = findEntry(id);
-    if (!entry) return;
-    if (roll !== 'attack' && roll !== 'damage') return;
-    if (!fromVar) return;
-    if (!entry.weaponOverrides || typeof entry.weaponOverrides !== 'object') {
-      entry.weaponOverrides = {};
-    }
-    if (!entry.weaponOverrides[roll] || typeof entry.weaponOverrides[roll] !== 'object') {
-      entry.weaponOverrides[roll] = {};
-    }
-    const safeTo = (toVar == null) ? '' : String(toVar).trim();
-    if (!safeTo || safeTo === fromVar) {
-      delete entry.weaponOverrides[roll][fromVar];
-    } else {
-      entry.weaponOverrides[roll][fromVar] = safeTo;
-    }
-    // Clean up empty sub-objects so the "hasOverride" check stays
-    // accurate even after toggling an override off.
-    if (Object.keys(entry.weaponOverrides[roll]).length === 0) {
-      delete entry.weaponOverrides[roll];
-    }
-    if (Object.keys(entry.weaponOverrides).length === 0) {
-      entry.weaponOverrides = null;
-    }
-    renderAll();
-    if (getCanEdit()) {
-      try { await save(); } catch (e) { console.error('inventory save failed', e); }
-    }
-  }
-
-  // Wipe all per-instance overrides and the current range back to the
-  // weapon's default. Leaves ammo counter alone (that's not an
-  // "override" per se — it's a gameplay state).
-  async function weaponResetOverrides(id) {
-    const entry = findEntry(id);
-    if (!entry) return;
-    let touched = false;
-    if (entry.weaponOverrides) { entry.weaponOverrides = null; touched = true; }
-    if (entry.currentRange != null) { entry.currentRange = null; touched = true; }
-    if (entry.weaponUI && entry.weaponUI.atkResult != null) {
-      entry.weaponUI.atkResult = null;
-      touched = true;
-    }
-    if (entry.weaponUI) {
-      if (entry.weaponUI.rapidfireDamageExtra > 0) {
-        entry.weaponUI.rapidfireDamageExtra = 0;
-        touched = true;
-      }
-      if (entry.weaponUI.rapidfireSweepExtra > 0) {
-        entry.weaponUI.rapidfireSweepExtra = 0;
-        touched = true;
-      }
-      if (entry.weaponUI.rapidfireExtra != null) {
-        delete entry.weaponUI.rapidfireExtra;
-        touched = true;
-      }
-    }
-    if (!touched) return;
-    renderAll();
-    if (getCanEdit()) {
-      try { await save(); } catch (e) { console.error('inventory save failed', e); }
-    }
-  }
-
-  // Set the current engagement range for a weapon (in feet). Used to
-  // compute the Range chip in the Attack's Difficulty row. Melee
-  // weapons map the distance onto their range bands (+N difficulty
-  // per band past 0). Ranged weapons use the base range + distance
-  // via rangedBandFor().
-  //
-  // Empty string clears the range (Difficulty goes back to base 6).
-  async function weaponSetRange(id, value) {
-    const entry = findEntry(id);
-    if (!entry) return;
-    const raw = (value == null) ? '' : String(value).trim();
-    if (!raw) {
-      entry.currentRange = null;
-    } else {
-      const n = Number(raw);
-      entry.currentRange = Number.isFinite(n) && n >= 0 ? n : null;
-    }
-    renderAll();
-    if (getCanEdit()) {
-      try { await save(); } catch (e) { console.error('inventory save failed', e); }
-    }
-  }
-
-  // Build the list of options for a slot picker. Category dictates
-  // the option set:
-  //   stat  → all ruleset.stats (flat list)
-  //   skill → character's primary + secondary + specialty skills,
-  //           grouped by tier. Secondary/specialty live as arrays on
-  //           the character; primary is keyed by name on the ruleset.
-  //
-  // Returns an object:
-  //   {
-  //     flat:      [{value, label, tier}]    — for stats (tier null)
-  //     groups:    [{label, items: [{value, label, tier}]}]  — for skills
-  //   }
-  //
-  // One of the two fields will be populated, never both.
-  function buildSlotPickerOptions(category) {
-    if (category === 'stat') {
-      const ruleset = getRuleset();
-      const stats = Array.isArray(ruleset && ruleset.stats) ? ruleset.stats : [];
-      return {
-        flat: stats.map(s => ({
-          value: (s.code || '').toUpperCase(),
-          label: (s.code || '').toUpperCase(),
-          tier:  null
-        })),
-        groups: null
-      };
-    }
-    if (category === 'skill') {
-      const ruleset = getRuleset();
-      const character = getCharData();
-      const primary = Array.isArray(ruleset && ruleset.primarySkills) ? ruleset.primarySkills : [];
-      const skills = (character && character.skills) || {};
-      const secondary = Array.isArray(skills.secondary) ? skills.secondary : [];
-      const specialty = Array.isArray(skills.specialty) ? skills.specialty : [];
-      const groups = [];
-      if (primary.length > 0) {
-        groups.push({
-          label: 'Primary',
-          items: primary.map(s => ({
-            value: s.name || s.code || '',
-            label: s.name || s.code || '',
-            tier:  'primary'
-          })).filter(o => o.value)
-        });
-      }
-      if (secondary.length > 0) {
-        groups.push({
-          label: 'Secondary (−1 Difficulty)',
-          items: secondary.map(s => ({
-            value: s.name || '',
-            label: s.name || '',
-            tier:  'secondary'
-          })).filter(o => o.value)
-        });
-      }
-      if (specialty.length > 0) {
-        groups.push({
-          label: 'Specialty (−2 Difficulty)',
-          items: specialty.map(s => ({
-            value: s.name || '',
-            label: s.name || '',
-            tier:  'specialty'
-          })).filter(o => o.value)
-        });
-      }
-      return { flat: null, groups };
-    }
-    return { flat: null, groups: null };
-  }
-
-  // Send a weapon's attack or damage roll to the Roll Calculator. The
-  // actual Roll Calc state lives in char-rollcalc.js — we route the
-  // call through ctx.sendWeaponToRollCalc which character.html wires
-  // up at module-create time. This keeps char-inventory unaware of
-  // char-rollcalc's internals (the two modules are otherwise
-  // independent).
-  //
-  // which = 'attack' | 'damage'
-  function weaponToRollCalc(id, which) {
-    const entry = findEntry(id);
-    if (!entry) return;
-    const snap = entry && entry.snapshot;
-    const weapon = snap && snap.weapon;
-    if (!weapon) return;
-
-    // Resolve with the SAME inputs the on-sheet readout uses: live
-    // overrides, atkResult, rapidfire, and current penalty. That way
-    // Roll Calc mirrors what the player sees on the weapon card.
-    const character = getCharData();
-    const ruleset   = getRuleset();
-    const ui = entry.weaponUI || {};
-    const overrides = entry.weaponOverrides || null;
-    const atkResult = Number.isFinite(ui.atkResult) ? ui.atkResult : null;
-    const rapidfireSplit = readRapidfireSplit(ui, weapon.kind);
-    const currentRange = Number.isFinite(entry.currentRange) ? entry.currentRange : null;
-    let penaltyPct = 0;
-    try {
-      const derived = computeDerivedStats(character, ruleset);
-      penaltyPct = (derived && derived.penalty && derived.penalty.percent) || 0;
-    } catch (_) { penaltyPct = 0; }
-
-    const resolved = resolveWeapon(weapon, character, ruleset, overrides, atkResult, penaltyPct, rapidfireSplit, currentRange);
-    if (!resolved) return;
-    const roll = which === 'damage' ? resolved.damage : resolved.attack;
-    if (!roll || roll.error) {
-      alert('Weapon roll has an error: ' + (roll && roll.error ? roll.error : 'unknown'));
-      return;
-    }
-
-    // Match the card readout: penalty reduces the pool only (stat +
-    // skill), STATMOD stays raw. For attack rolls, also apply the
-    // Difficulty-STATMOD coupling so the flat bonus delivered to
-    // Roll Calc reflects what the player sees on the card.
-    const dicePool = Number.isFinite(roll.dicePoolReduced) ? roll.dicePoolReduced : roll.dicePool;
-    let flatBonus = roll.flatBonus;
-    // Difficulty fields — only populated for attack rolls; damage has
-    // no Difficulty. Baseline is 6 + range additions + rapidfire
-    // recoil. Mitigation (passed separately so Roll Calc shows the
-    // full breakdown) covers ROF absorption + skill-tier mitigation.
-    let rcDifficulty = null;
-    let rcMitigation = null;
-    if (which === 'attack') {
-      // Re-compute finalDiff from the resolved weapon's attack slots
-      // the same way the card does: +N per range band, +recoil from
-      // rapidfire, −1 per secondary skill, −2 per specialty skill,
-      // mitigation capped at additions (never dips below base 6).
-      let additions = 0;
-      let mitigation = 0;
-      if (currentRange != null) {
-        let chip = null;
-        try {
-          chip = weapon.kind === 'melee'
-            ? meleeBandFor(resolved.ranges, currentRange)
-            : rangedBandFor(resolved.range, currentRange);
-        } catch (_) { chip = null; }
-        if (chip && Number.isFinite(chip.band) && chip.band > 0) additions = chip.band;
-      }
-      if (resolved.rapidfire) {
-        additions += resolved.rapidfire.recoilDifficulty;
-        mitigation += resolved.rapidfire.rofMitigation;
-        mitigation += resolved.rapidfire.stabilizationMitigation;
-      }
-      roll.diceSlots.forEach(s => {
-        if (s.category === 'skill') {
-          if (s.skillTier === 'secondary') mitigation += 1;
-          else if (s.skillTier === 'specialty') mitigation += 2;
-        }
-      });
-      const effectiveMit = Math.min(mitigation, additions);
-      const finalDiff = 6 + additions - effectiveMit;
-      const hasStatmod = roll.flatSlots.some(s => s.category === 'statmod');
-      if (hasStatmod) flatBonus += (6 - finalDiff);
-
-      // Build Roll Calc difficulty fields. Send the raw base +
-      // additions as Difficulty, the full mitigation total as
-      // Mitigation (Roll Calc applies min(mit, diff−base) internally
-      // so over-mitigation doesn't dip below 6). Reduction is 0 —
-      // that's a separate GM-set field Roll Calc surfaces for
-      // per-encounter adjustments.
-      rcDifficulty = 6 + additions;
-      rcMitigation = mitigation;
-    }
-
-    const weaponName = (snap && snap.name) || 'Weapon';
-    // Annotate the label with anything non-default so it's obvious
-    // on the Roll Calc side what's baked into the numbers.
-    const atkHint = (which === 'damage' && atkResult != null) ? ` (+ATK ${atkResult})` : '';
-    const rfBits = [];
-    if (rapidfireSplit.damage > 0) rfBits.push(`+${rapidfireSplit.damage} rapidfire`);
-    if (rapidfireSplit.sweep  > 0) rfBits.push(`+${rapidfireSplit.sweep} sweep`);
-    const rfHint = rfBits.length > 0 ? ` (${rfBits.join(', ')})` : '';
-    const label = `${weaponName} · ${which === 'damage' ? 'Damage' : 'Attack'}${atkHint}${rfHint}`;
-
-    if (typeof ctx.sendWeaponToRollCalc === 'function') {
-      const payload = { dicePool, flatBonus, label };
-      // Only include difficulty fields for attack rolls (and only
-      // when computed — they'll be null for damage). Roll Calc
-      // leaves its current values alone when fields are missing.
-      if (rcDifficulty != null) payload.difficulty = rcDifficulty;
-      if (rcMitigation != null) payload.mitigation = rcMitigation;
-      ctx.sendWeaponToRollCalc(payload);
-    } else {
-      console.warn('[weaponToRollCalc] ctx.sendWeaponToRollCalc missing; cannot deliver', label);
-      alert('Roll Calc bridge is not wired up. (Reload the page; if this persists the feature is half-deployed.)');
-    }
-  }
-
-  async function removeEntryHandler(id) {
-    if (!getCanEdit()) return;
-    const entry = findEntry(id);
-    if (!entry) return;
-    const isBig = entryIsContainer(entry) && Array.isArray(entry.contents) && entry.contents.length > 0;
-    if (isBig) {
-      const name = entryName(entry);
-      if (!confirm(`Remove "${name}" and everything inside? This cannot be undone.`)) return;
-    }
-    removeEntry(id);
-    expandedEntries.delete(id);
-    expandedInfo.delete(id);
-    renderAll();
-    try { await save(); } catch (e) { console.error('inventory save failed', e); }
-  }
-
-  return {
-    renderAll,
-    toggleSlot,
-    toggleEntry,
-    toggleItemInfo,
-    toggleGroupCollapse,
-    addGroup,
-    addSubgroup,
-    renameGroup,
-    deleteGroup,
-    updateGroupDraft,
-    saveGroup,
-    openAddContainer,
-    openAddItem,
-    closeModal,
-    pickContainerDef,
-    pickItemDef,
-    openCustomForm,
-    cancelCustomForm,
-    updateCustomDraft,
-    saveCustomDef,
-    deleteCustomDef,
-    // One-off custom form — weapon range/tag helpers
-    customDraftWeaponAddRange,
-    customDraftWeaponRemoveRange,
-    customDraftWeaponUpdateRange,
-    customDraftWeaponToggleTag,
-    tickQty,
-    // Weapon readout — AMMO tracker and Roll Calc send
-    weaponAdjustAmmo,
-    weaponReloadAmmo,
-    weaponToggleRaw,
-    weaponSetAtk,
-    weaponSetRapidfire,
-    weaponSetRapidfireDamage,
-    weaponSetRapidfireSweep,
-    weaponSetSlotOverride,
-    weaponResetOverrides,
-    weaponSetRange,
-    // Per-instance weapon stat editor (edit snapshot.weapon directly)
-    weaponToggleEdit,
-    weaponToggleTagCatCollapse,
-    // Per-instance durability tracking (opt-in per entry)
-    durabilityToggleTracked,
-    durabilityAddInstance,
-    durabilityRemoveInstance,
-    durabilityClear,
-    weaponSnapUpdate,
-    weaponSnapSetKind,
-    weaponSnapAddRange,
-    weaponSnapRemoveRange,
-    weaponSnapUpdateRange,
-    weaponSnapToggleTag,
-    weaponToRollCalc,
-    removeEntry: removeEntryHandler,
-    // Catalog view
-    setViewMode,
-    toggleCatalogCat,
-    toggleCatalogItem,
-    catalogToggleAddMenu,
-    catalogQuickAdd,
-    catalogAddTo,
-    catalogAddToNewGroup,
-    // Inline entry edit
-    openEntryEdit,
-    updateEditDraft,
-    saveEntryEdit,
-    cancelEntryEdit,
-    promoteEntryToCatalogue,
-    // Manage personal catalogue
-    openManageCatalog,
-    catMgrClose,
-    catMgrCloseIfBackdrop,
-    catMgrToggleRow,
-    catMgrCollapseRow,
-    catMgrDraft,
-    catMgrSaveEdit,
-    catMgrDelete,
-    catMgrStartNew,
-    catMgrCancelNew,
-    catMgrNewDraft,
-    catMgrSaveNew,
-    // Personal catalogue — weapon range-bands and tag toggles
-    catMgrWeaponAddRange,
-    catMgrWeaponRemoveRange,
-    catMgrWeaponUpdateRange,
-    catMgrWeaponToggleTag,
-    catMgrNewWeaponAddRange,
-    catMgrNewWeaponRemoveRange,
-    catMgrNewWeaponUpdateRange,
-    catMgrNewWeaponToggleTag,
-    // Dimension presets (shared ruleset catalogue)
-    applyPresetToEditDraft,
-    applyPresetToCustomDraft,
-    applyPresetToCatMgrDraft,
-    // Carry cards (CAP / ENC / LIFT) + group-level encumbrance toggle
-    toggleCarryCard,
-    addCapMod, updateCapMod, deleteCapMod,
-    addLiftMod, updateLiftMod, deleteLiftMod,
-    addEncMod, updateEncMod, deleteEncMod,
-    toggleGroupEncumbrance
+      <div class="mental-col">
+        <div class="mental-col-header">
+          <div class="mental-col-title" style="position:relative;cursor:default" onmouseenter="document.getElementById('mc-tip').style.display='block'" onmouseleave="document.getElementById('mc-tip').style.display='none'">Mental Conditions
+            <div id="mc-tip" style="display:none;position:absolute;left:0;top:100%;margin-top:6px;background:#1a1a1a;border:1px solid #333;border-radius:4px;padding:10px 12px;font-size:11px;color:#aaa;width:340px;z-index:1000;line-height:1.6;font-weight:400;letter-spacing:0;text-transform:none">
+              <p style="margin-bottom:8px">Mental Conditions are conditions, disorders, and traumas pertinent to one's mental state; these can be anything from phobias, to compulsions, to full-blown personality disorders, and so-on so-forth.</p>
+              <p style="margin-bottom:8px">Mental Conditions are defined by "what I have", "which means", "and if triggered I might"; a Mental Condition's trigger is intuitive to what the Mental Condition is, and what it means for you.</p>
+              <p style="margin-bottom:8px">When you fail a Mental Health Check you may choose to allocate Break Points to developing a Mental Condition; Minor is 1, Moderate is 2, so-on so-forth.</p>
+              <p style="margin-bottom:8px">When a trigger has been met for a Mental Condition, you roll a Mental Health Check with +Difficulty based on the scale of the trigger; −1 for Minor triggers, +0 for Moderate, etc. The Difficulty is also affected by the scale of your Mental Condition; −1 for Minor, +0 for Moderate, etc.</p>
+              <p>Based on your roll, you must allocate 6 − Result points to your selection of SAN loss, and/or a breakdown based on your "if triggered" with severity based on allocated points; 1 point is a minor breakdown, 2 points is moderate, 3 is major, etc.</p>
+            </div>
+          </div>
+          <span class="edit-btn" id="disorders-edit-btn" style="display:none" onclick="event.stopPropagation();editDisorders()">Edit</span>
+        </div>
+        <div id="disorders-view"></div>
+        <div id="disorders-edit-mode" style="display:none">
+          <div id="disorders-list"></div>
+          <button class="add-entry-btn" id="add-disorder-btn" onclick="addDisorder()">+ Add</button>
+          <div style="margin-top:10px"><button class="save-btn" onclick="doneDisorders()" style="font-size:11px;padding:4px 14px">Done</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stats-card">
+      <div class="stats-col">
+        <div class="stats-col-header">
+          <div class="stats-col-title">Stats</div>
+          <span class="edit-btn" id="stats-edit-btn" style="display:none" onclick="event.stopPropagation();toggleStatsEdit()">Edit</span>
+        </div>
+        <div id="stats-list"></div>
+      </div>
+      <div class="skills-col">
+        <div class="skills-section">
+          <div class="skills-section-header">
+            <div class="skills-section-title">Primary Skills</div>
+            <span class="edit-btn" id="skills-edit-btn" style="display:none" onclick="event.stopPropagation();toggleSkillsEdit()">Edit</span>
+          </div>
+          <div class="skills-grid" id="primary-skills-grid"></div>
+        </div>
+        <div class="skills-section">
+          <div class="skills-section-header"><div class="skills-section-title">Secondary Skills</div></div>
+          <div class="skills-grid" id="secondary-skills-list"></div>
+          <div class="skill-add-row" id="sec-skill-add-row" style="display:none">
+            <input type="text" class="skill-add-input" id="sec-skill-name" placeholder="Skill name">
+            <select class="skill-add-select" id="sec-skill-under"></select>
+            <button class="skill-add-btn" onclick="addSecondarySkill()">Add</button>
+          </div>
+        </div>
+        <div class="skills-section">
+          <div class="skills-section-header"><div class="skills-section-title">Specialty Skills</div></div>
+          <div class="skills-grid" id="specialty-skills-list"></div>
+          <div class="skill-add-row" id="spec-skill-add-row" style="display:none">
+            <input type="text" class="skill-add-input" id="spec-skill-name" placeholder="Skill name">
+            <select class="skill-add-select" id="spec-skill-under"></select>
+            <button class="skill-add-btn" onclick="addSpecialtySkill()">Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ THE STATE OF THINGS ═══ -->
+    <!-- Simplified read-only dashboard sitting between the stats/skills area
+         and Advantages. Renders bars + status labels for Body, Sanity,
+         Strain, Power Pool, and Movement, pulling live data from the
+         same computeDerivedStats path the Combat tab uses. Purely a
+         display — no controls here. All editing still happens in the
+         Combat tab. -->
+    <div class="state-of-things" id="state-of-things">
+      <div class="state-title">The State of Things</div>
+      <div class="state-body" id="state-body"><div class="state-empty">Loading…</div></div>
+    </div>
+
+    <!-- ═══ ADVANTAGES & DISADVANTAGES ═══ -->
+    <div class="ad-row">
+      <div class="ad-block">
+        <div class="ad-block-header">
+          <div class="ad-block-title">Advantages</div>
+          <button class="ad-add-btn" id="adv-add-btn" style="display:none" onclick="openAdForm('adv')">+ Add Advantage</button>
+        </div>
+        <div id="adv-list"></div>
+        <div class="ad-add-form-container" id="adv-add-form"></div>
+      </div>
+
+      <div class="ad-block">
+        <div class="ad-block-header">
+          <div class="ad-block-title">Disadvantages</div>
+          <button class="ad-add-btn" id="dis-add-btn" style="display:none" onclick="openAdForm('dis')">+ Add Disadvantage</button>
+        </div>
+        <div id="dis-list"></div>
+        <div class="ad-add-form-container" id="dis-add-form"></div>
+      </div>
+    </div>
+
+    <!-- ═══ SITUATIONS ═══ -->
+    <div class="sit-block">
+      <div class="sit-block-header">
+        <div class="sit-block-title">Situations</div>
+        <button class="sit-add-btn" id="situations-add-btn" style="display:none" onclick="openNewSituation()">+ Add Situation</button>
+      </div>
+      <div class="sit-list" id="situations-list"></div>
+      <div id="situations-add-form"></div>
+    </div>
+
+        </div><!-- /panel-overview -->
+
+        <!-- ═══════════════ COMBAT PANEL ═══════════════ -->
+        <div class="sheet-panel" id="panel-combat">
+          <div id="combat-content"></div>
+        </div><!-- /panel-combat -->
+
+        <!-- ═══════════════ INVENTORY PANEL ═══════════════ -->
+        <div class="sheet-panel" id="panel-inventory">
+          <div id="inventory-content"></div>
+        </div><!-- /panel-inventory -->
+
+      </div><!-- /sheet-body -->
+    </div><!-- /sheet-wrap -->
+
+    <div id="danger-zone" style="display:none;margin-top:32px;padding:16px 20px;border:1px solid #3a1a1a;border-radius:6px;background:#140808">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#a33;margin-bottom:4px">Danger Zone</div>
+          <div style="font-size:12px;color:#777">Permanently delete this character. This cannot be undone.</div>
+        </div>
+        <button onclick="deleteCharacter()" style="background:#2a0d0d;border:1px solid #6a2020;color:#d88;font-family:'Open Sans',sans-serif;font-size:12px;font-weight:600;padding:8px 18px;border-radius:4px;cursor:pointer">Delete Character</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script type="module">
+  // Step marker at the very top — if the user sees this in their diagnostic
+  // list, we know the module script parsed and started executing. If they
+  // DON'T see it, an import failed and the browser never ran the module.
+  if (window.__logStep) window.__logStep('module script started');
+
+  // All Firebase I/O lives in char-firestore.js. We pull in just what's
+  // still needed here — the main load flow uses onAuthStateChanged and
+  // a few query helpers; bio/mental/etc. modules import their own.
+  import {
+    auth, db, onAuthStateChanged, signOut,
+    loadCharacter, saveCharacter, deleteCharacter as deleteCharacterDoc,
+    loadUser, loadUserPlaygroups,
+    loadBasicSet, loadPlaygroupRulesets,
+    resolveActiveRuleset, loadMembershipRole
+  } from './char-firestore.js';
+
+  // Only the pieces character.html itself still uses. Most game data
+  // now comes from the active ruleset via ctx.getRuleset(); the modules
+  // import char-constants directly for anything else they need.
+  import {
+    SKILL_LABELS, FALLBACK_SKILLS
+  } from './char-constants.js';
+
+  // Section render modules. These are factories — we pass a context with
+  // getters for the live state, and they return a bundle of bound handlers.
+  import { createMentalSection } from './char-mental.js';
+  import { createXpBar } from './char-xp.js';
+  import { createSkillsSection } from './char-skills.js';
+  import { createStatsSection } from './char-stats.js';
+  import { createBioSection } from './char-bio.js';
+  import { createAdvantagesSection } from './char-advantages.js';
+  import { createSituationsSection } from './char-situations.js';
+  import { createCombatSection } from './char-combat.js';
+  import { createInventorySection } from './char-inventory.js';
+  import { createConditionsSection } from './char-conditions.js';
+  import { attachCollapsible, toggleCollapsed, ensureExpanded } from './char-util.js';
+
+  // All imports resolved — module body executes from here.
+  if (window.__logStep) window.__logStep('all modules imported');
+
+  // Inline event handlers in dynamically-generated markup call these by
+  // name. They're ruleset-aware wrappers that read tables from the
+  // currently-loaded ruleset — redefining these on window keeps the
+  // inline oninput handlers short and self-contained. These go away
+  // once we migrate to event delegation.
+  window.skillLabelAt = function(v) {
+    const i = Math.min(SKILL_LABELS.length - 1, Math.max(0, v));
+    return SKILL_LABELS[i] || '';
   };
-}
+  window.skillLevelText = function(v) {
+    return window.skillLabelAt(parseInt(v) || 0);
+  };
+  window.skillXpLabel = function(val, type) {
+    const rs = activeRuleset || {};
+    const v = Math.max(0, parseInt(val) || 0);
+    const table = type === 'p' ? (rs.primarySkillXp   || [])
+                : type === 's' ? (rs.secondarySkillXp || [])
+                               : (rs.specialtySkillXp || []);
+    return (table[v] || 0) + 'xp';
+  };
 
-// Default helpers — used if ctx didn't supply them.
-function defaultEscapeHtml(s) {
-  if (s == null) return '';
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-function defaultFmt(n) {
-  if (n == null || !Number.isFinite(n)) return '0';
-  return (Math.round(n * 100) / 100).toString();
-}
+  // Legacy global — older oninput handlers reference this directly.
+  window.SKILL_LABELS_GLOBAL = SKILL_LABELS;
+
+  // ─── OVERVIEW TAB COLLAPSE ──────────────────────────────────────
+  // Wires every major section on the Overview tab for click-to-collapse.
+  // Called once after the initial full render, and again after dynamic
+  // re-renders (skills edit mode, mental-section edit mode) so the
+  // carets survive DOM replacements.
+  //
+  // Header convention:
+  //   - Sections with an existing obvious title element (State of Things,
+  //     Situations, the mental-card columns) reuse that element as the
+  //     clickable header.
+  //   - Sections WITHOUT a natural header (Bio card, Mental card outer,
+  //     Stats-card outer) get a synthetic header injected once, using
+  //     the `cc-synthetic-head` class for consistent styling.
+  //
+  // Storage keys all live under the `prime.collapse.overview.*` namespace
+  // so they're easy to find and clear in browser devtools.
+  function ensureSyntheticHeader(hostSelector, titleText, headerId) {
+    const host = document.querySelector(hostSelector);
+    if (!host) return null;
+    let header = document.getElementById(headerId);
+    if (header) return header;
+    header = document.createElement('div');
+    header.id = headerId;
+    header.className = 'cc-synthetic-head';
+    header.textContent = titleText;
+    host.parentNode.insertBefore(header, host);
+    return header;
+  }
+
+  // Track every collapsible's refresh() callback so re-renders can
+  // re-apply state without re-binding handlers. Keyed by a stable
+  // descriptor so duplicate calls replace rather than accumulate.
+  const collapseRefreshers = new Map();
+
+  function wire(descriptor, header, bodies, storageKey, opts) {
+    if (!header) return;
+    const refresh = attachCollapsible(header, bodies, storageKey, opts);
+    collapseRefreshers.set(descriptor, refresh);
+  }
+
+  function initOverviewCollapse() {
+    // ── BIO CARD ──
+    // Inject a synthetic "Profile & Notes" header above .char-card and
+    // collapse the entire card (including the edit buttons inside it —
+    // per spec, when collapsed the Edit Bio button disappears with
+    // everything else).
+    const bioCard = document.querySelector('#panel-overview .char-card');
+    if (bioCard) {
+      const bioHead = ensureSyntheticHeader('#panel-overview .char-card', 'Profile', 'overview-bio-head');
+      wire('bio', bioHead, [bioCard], 'prime.collapse.overview.bio');
+    }
+
+    // ── MENTAL CARD ──
+    // Inject outer header. Also wire each of the three inner columns
+    // using their existing .mental-col-header elements.
+    const mentalCard = document.querySelector('#panel-overview .mental-card');
+    if (mentalCard) {
+      const mentalHead = ensureSyntheticHeader('#panel-overview .mental-card', 'Mental Health', 'overview-mental-head');
+      wire('mental', mentalHead, [mentalCard], 'prime.collapse.overview.mental');
+
+      // Per-column collapse. Body = everything after the header within
+      // the column. We select them fresh each time in case the column
+      // re-renders.
+      const cols = mentalCard.querySelectorAll(':scope > .mental-col');
+      const colKeys = ['obligations', 'morals', 'conditions'];
+      cols.forEach((col, i) => {
+        const head = col.querySelector(':scope > .mental-col-header');
+        const bodyEls = Array.from(col.children).filter(el => el !== head);
+        const key = colKeys[i] || `col${i}`;
+        wire(`mental-col-${key}`, head, bodyEls, `prime.collapse.overview.mental-${key}`);
+      });
+    }
+
+    // ── STATS & SKILLS CARD ──
+    // Inject outer header. Wire the Stats column and each of the three
+    // Skills subsections individually.
+    const statsCard = document.querySelector('#panel-overview .stats-card');
+    if (statsCard) {
+      const statsHead = ensureSyntheticHeader('#panel-overview .stats-card', 'Stats & Skills', 'overview-stats-head');
+      wire('stats-skills', statsHead, [statsCard], 'prime.collapse.overview.statsSkills');
+
+      // Stats column — .stats-col-header is the title row.
+      const statsCol = statsCard.querySelector(':scope > .stats-col');
+      if (statsCol) {
+        const head = statsCol.querySelector(':scope > .stats-col-header');
+        const bodyEls = Array.from(statsCol.children).filter(el => el !== head);
+        wire('stats-col', head, bodyEls, 'prime.collapse.overview.stats');
+      }
+
+      // Skills subsections — each .skills-section has a .skills-section-header
+      // and its body (grid + add-row).
+      const skillSections = statsCard.querySelectorAll(':scope > .skills-col > .skills-section');
+      skillSections.forEach((sec, i) => {
+        const head = sec.querySelector(':scope > .skills-section-header');
+        const bodyEls = Array.from(sec.children).filter(el => el !== head);
+        // Identify by the title label so storage keys survive reorder.
+        const titleEl = sec.querySelector('.skills-section-title');
+        const title = (titleEl && titleEl.textContent.trim().toLowerCase().replace(/\s+/g, '-')) || `sec${i}`;
+        wire(`skill-sec-${title}`, head, bodyEls, `prime.collapse.overview.skills-${title}`);
+      });
+    }
+
+    // ── STATE OF THINGS ──
+    // The #state-of-things container has a .state-title text div. Master
+    // collapse hides the tile grid. Per-tile collapses (already wired
+    // via wrapCollapsibleTile in char-overview.js) continue to work
+    // inside the expanded dashboard.
+    const sot = document.getElementById('state-of-things');
+    if (sot) {
+      const sotHead = sot.querySelector(':scope > .state-title');
+      const sotBody = document.getElementById('state-body');
+      wire('state-of-things', sotHead, [sotBody], 'prime.collapse.overview.stateOfThings');
+    }
+
+    // ── SITUATIONS ──
+    // .sit-block-header exists with a title. Body = the list + the add
+    // form container. Add-button stays inside the header so it hides
+    // along with the rest of the section.
+    const sitBlock = document.querySelector('#panel-overview .sit-block');
+    if (sitBlock) {
+      const head = sitBlock.querySelector(':scope > .sit-block-header');
+      const bodyEls = [
+        sitBlock.querySelector(':scope > .sit-list'),
+        sitBlock.querySelector(':scope > #situations-add-form')
+      ];
+      wire('situations', head, bodyEls, 'prime.collapse.overview.situations');
+    }
+  }
+
+  // Re-apply all wired collapsibles after a section has re-rendered.
+  // Called by dynamic render paths (skills edit toggle, mental-section
+  // save, etc) so carets persist across DOM replacements. Any section
+  // whose host element still exists gets refreshed; sections that
+  // dropped out of the DOM are silently skipped.
+  function refreshOverviewCollapse() {
+    // A full re-init is cheaper and more correct than trying to track
+    // which sub-sections got replaced — attachCollapsible is idempotent,
+    // so re-binding on the same element just refreshes the visual state.
+    initOverviewCollapse();
+  }
+  window.refreshOverviewCollapse = refreshOverviewCollapse;
+  // Expose init too in case any code path needs to force it.
+  window.initOverviewCollapse = initOverviewCollapse;
+
+  const params = new URLSearchParams(window.location.search);
+  const charId = params.get('id');
+  if (!charId) window.location.href = 'home.html';
+
+  let charData = {}, canEdit = false, userPlaygroups = [], loaded = false;
+  let availableRulesets = [], primarySkillDefs = [];
+  let statsEditMode = false, skillsEditMode = false;
+
+  // Situations-specific state. isGM is true if the logged-in user is
+  // Leader or Administrator of the character's current playgroup. Gives
+  // them access to Situation editing, flipping, and hidden-card visibility.
+  let isGM = false;
+  let myUid = null;
+  let myUsername = '';
+
+  // The ruleset that governs this character — resolved once during load.
+  // Always a fully-normalized ruleset object (no nulls anywhere). Section
+  // modules read from this via ctx.getRuleset().
+  let activeRuleset = null;
+
+  // Build a context for section modules. The getters always fetch the
+  // current state — safe even though charData gets reassigned once during
+  // initial load.
+  const sectionCtx = {
+    getCharData: () => charData,
+    getCanEdit: () => canEdit,
+    getCharId: () => charId,
+    getAvailableRulesets: () => availableRulesets,
+    getPrimarySkillDefs: () => primarySkillDefs,
+    getUserPlaygroups: () => userPlaygroups,
+    getSkillsEditMode: () => skillsEditMode,
+    setSkillsEditMode: (v) => { skillsEditMode = v; },
+    getStatsEditMode: () => statsEditMode,
+    setStatsEditMode: (v) => { statsEditMode = v; },
+    // saveXpSpent is defined later in this file but modules only call it
+    // at runtime (never module-load time), so the forward reference is safe.
+    saveXpSpent: () => saveXpSpent(),
+    // Bio section needs access to xpBar to refresh the power bar alongside
+    // its own renders. Returned via getter so the reference is always fresh.
+    getXpBar: () => xpBar,
+    // Active ruleset — every module reads stat caps, skill caps, XP tables,
+    // power levels, etc. through this getter so a ruleset swap flows through
+    // without needing to re-instantiate modules.
+    getRuleset: () => activeRuleset,
+
+    // Situations-specific: exposes GM status + current user identity so
+    // new Situations can be stamped with who created them.
+    getIsGM: () => isGM,
+    getMyUid: () => myUid,
+    getMyUsername: () => myUsername,
+  };
+
+  const mental = createMentalSection(sectionCtx);
+  const xpBar = createXpBar(sectionCtx);
+  const skills = createSkillsSection(sectionCtx);
+  const stats = createStatsSection(sectionCtx);
+  const bio = createBioSection(sectionCtx);
+  const advantages = createAdvantagesSection(sectionCtx);
+  const situations = createSituationsSection(sectionCtx);
+  const combat = createCombatSection(sectionCtx);
+  const inventory = createInventorySection(sectionCtx);
+
+  // Bridge inventory → combat's Roll Calc. Can't wire this in the
+  // initial sectionCtx because `combat` doesn't exist yet when
+  // sectionCtx is built. Since char-inventory.js reads
+  // ctx.sendWeaponToRollCalc at call-time (not construction-time) via
+  // typeof-check, mutating sectionCtx post-hoc is safe — the inventory
+  // module captured ctx by reference and picks up new keys the next
+  // time weaponToRollCalc fires.
+  sectionCtx.sendWeaponToRollCalc = (payload) => {
+    if (combat && typeof combat.rollCalcLoadWeapon === 'function') {
+      combat.rollCalcLoadWeapon(payload);
+    }
+  };
+
+  // Expose section handlers on window so inline onclick handlers in the
+  // HTML (and in dynamically-generated markup) can reach them. These go
+  // away once we migrate to event delegation.
+  Object.assign(window, {
+    // Morals
+    updateMoralSeverity: mental.updateMoralSeverity,
+    addCustomMoral: mental.addCustomMoral,
+    removeMoralByIndex: mental.removeMoralByIndex,
+    toggleMoral: mental.toggleMoral,
+    editMorals: () => {
+      // Order matters: if section was collapsed, ensureExpanded flips
+      // the flag + refreshOverviewCollapse() applies it, which clears
+      // the stashed display values on the body panels. ONLY THEN do
+      // we run mental.editMorals(), whose display changes would
+      // otherwise get clobbered by the stash-restore logic. Then a
+      // final refresh to sync the caret/title — state doesn't change,
+      // but keeps handlers idempotent.
+      const wasCollapsed = ensureExpanded('prime.collapse.overview.mental-morals');
+      if (wasCollapsed && window.refreshOverviewCollapse) window.refreshOverviewCollapse();
+      mental.editMorals();
+      if (window.refreshOverviewCollapse) window.refreshOverviewCollapse();
+    },
+    doneMorals: async (...a) => { await mental.doneMorals(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
+    // Obligations
+    addObligation: mental.addObligation,
+    saveObligation: mental.saveObligation,
+    deleteObligation: mental.deleteObligation,
+    editObligations: () => {
+      const wasCollapsed = ensureExpanded('prime.collapse.overview.mental-obligations');
+      if (wasCollapsed && window.refreshOverviewCollapse) window.refreshOverviewCollapse();
+      mental.editObligations();
+      if (window.refreshOverviewCollapse) window.refreshOverviewCollapse();
+    },
+    doneObligations: async (...a) => { await mental.doneObligations(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
+    // Conditions
+    addDisorder: mental.addDisorder,
+    saveDisorder: mental.saveDisorder,
+    deleteDisorder: mental.deleteDisorder,
+    editDisorders: () => {
+      const wasCollapsed = ensureExpanded('prime.collapse.overview.mental-conditions');
+      if (wasCollapsed && window.refreshOverviewCollapse) window.refreshOverviewCollapse();
+      mental.editDisorders();
+      if (window.refreshOverviewCollapse) window.refreshOverviewCollapse();
+    },
+    doneDisorders: async (...a) => { await mental.doneDisorders(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
+    rerenderDisorderHeader: mental.rerenderDisorderHeader,
+    // XP bar
+    savePowerField: xpBar.savePowerField,
+    // Skills
+    toggleSkillsEdit: (...a) => {
+      // Skills Edit spans all three skill subsections. Auto-expand the
+      // outer Stats & Skills card if collapsed, and the Primary
+      // Skills subsection where the Edit button actually lives.
+      const outer = ensureExpanded('prime.collapse.overview.statsSkills');
+      const inner = ensureExpanded('prime.collapse.overview.skills-primary-skills');
+      if ((outer || inner) && window.refreshOverviewCollapse) window.refreshOverviewCollapse();
+      skills.toggleSkillsEdit(...a);
+      if (window.refreshOverviewCollapse) window.refreshOverviewCollapse();
+    },
+    saveSkill: skills.saveSkill,
+    addSecondarySkill: async (...a) => { await skills.addSecondarySkill(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
+    saveSecSkill: skills.saveSecSkill,
+    renameSecSkill: skills.renameSecSkill,
+    deleteSecSkill: async (...a) => { await skills.deleteSecSkill(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
+    addSpecialtySkill: async (...a) => { await skills.addSpecialtySkill(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
+    saveSpecSkill: skills.saveSpecSkill,
+    renameSpecSkill: skills.renameSpecSkill,
+    deleteSpecSkill: async (...a) => { await skills.deleteSpecSkill(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
+    // Stats
+    toggleStatsEdit: (...a) => {
+      const outer = ensureExpanded('prime.collapse.overview.statsSkills');
+      const inner = ensureExpanded('prime.collapse.overview.stats');
+      if ((outer || inner) && window.refreshOverviewCollapse) window.refreshOverviewCollapse();
+      stats.toggleStatsEdit(...a);
+      if (window.refreshOverviewCollapse) window.refreshOverviewCollapse();
+    },
+    toggleModPanel: stats.toggleModPanel,
+    onStatInput: stats.onStatInput,
+    adjustStat: stats.adjustStat,
+    saveStatBase: stats.saveStatBase,
+    addModifier: stats.addModifier,
+    deleteModifier: stats.deleteModifier,
+    // Bio
+    editBio: () => {
+      const wasCollapsed = ensureExpanded('prime.collapse.overview.bio');
+      if (wasCollapsed && window.refreshOverviewCollapse) window.refreshOverviewCollapse();
+      bio.editBio();
+      if (window.refreshOverviewCollapse) window.refreshOverviewCollapse();
+    },
+    cancelBio: bio.cancelBio,
+    updatePreview: bio.updatePreview,
+    saveBio: bio.saveBio,
+    editQuip: bio.editQuip,
+    editEtc: bio.editEtc,
+    cancelEtc: bio.cancelEtc,
+    saveEtc: bio.saveEtc,
+    triggerPicUpload: bio.triggerPicUpload,
+    handlePicChange: bio.handlePicChange,
+    // Advantages / Disadvantages
+    openAdForm:           (side) => advantages.openAddForm(side),
+    closeAdForm:          (side) => advantages.closeAddForm(side),
+    setAdFormMode:        (side, mode) => advantages.setFormMode(side, mode),
+    updateAdFormSearch:   (side, val) => advantages.updateSearch(side, val),
+    updateAdFormCatalog:  (side, name) => advantages.updateCatalog(side, name),
+    updateAdFormCustom:   (side, field, value) => advantages.updateCustom(side, field, value),
+    commitAdFormCatalog:  (side) => advantages.commitCatalog(side),
+    commitAdFormCustom:   (side) => advantages.commitCustom(side),
+    removeAdEntry:        (side, i) => advantages.removeEntry(side, i),
+    adToggleSide:         (side)     => advantages.toggleSide(side),
+    adToggleCategory:     (side, cat) => advantages.toggleCategory(side, cat),
+    // Situations
+    openNewSituation:     () => situations.openAddForm(),
+    closeNewSituation:    () => situations.closeAddForm(),
+    commitNewSituation:   () => situations.commitNew(),
+    flipSituation:        (id) => situations.flip(id),
+    tickSituation:        (id, delta) => situations.tick(id, delta),
+    setSituationClock:    (id, val) => situations.setClock(id, val),
+    togglePauseSituation: (id) => situations.togglePause(id),
+    toggleHideSituation:  (id) => situations.toggleHide(id),
+    deleteSituation:      (id) => situations.remove(id),
+    startEditSituation:   (id) => situations.startEdit(id),
+    cancelEditSituation:  (id) => situations.cancelEdit(id),
+    saveEditSituation:    (id) => situations.saveEdit(id),
+    // Combat tab
+    tickHitLocationDmg:   (trackKey, delta) => combat.tickHitLocationDmg(trackKey, delta),
+    setHitLocationDmg:    (trackKey, val)   => combat.setHitLocationDmg(trackKey, val),
+    tickPowerPool:        (delta) => combat.tickPowerPool(delta),
+    setPowerPool:         (val)   => combat.setPowerPool(val),
+    tickPower:            (delta) => combat.tickPower(delta),
+    setPower:             (val)   => combat.setPower(val),
+    setPowerColor:        (color) => combat.setPowerColor(color),
+    setPowerName:         (name)  => combat.setPowerName(name),
+    toggleHlModifierEdit: () => combat.toggleEditMode(),
+    // SAN handlers
+    tickSanDmg:           (delta) => combat.tickSanDmg(delta),
+    setSanCurrent:        (val) => combat.setSanCurrent(val),
+    toggleSanModifierEdit: () => combat.toggleSanModifierEdit(),
+    addSanMod:            () => combat.addSanMod(),
+    updateSanMod:         (idx, field, val) => combat.updateSanMod(idx, field, val),
+    deleteSanMod:         (idx) => combat.deleteSanMod(idx),
+    // SAN Damages handlers
+    toggleSanDamagesSection: () => combat.toggleSanDamagesSection(),
+    toggleSanDamageExpand:   (id) => combat.toggleSanDamageExpand(id),
+    quickAddSanDamage:       () => combat.quickAddSanDamage(),
+    removeSanDamage:         (id) => combat.removeSanDamage(id),
+    updateSanDamageField:    (id, field, val) => combat.updateSanDamageField(id, field, val),
+    tickSanDamageQuickmod:   (id, delta) => combat.tickSanDamageQuickmod(id, delta),
+    addSanDamageMod:         (id) => combat.addSanDamageMod(id),
+    updateSanDamageMod:      (id, idx, field, val) => combat.updateSanDamageMod(id, idx, field, val),
+    deleteSanDamageMod:      (id, idx) => combat.deleteSanDamageMod(id, idx),
+    // Card dice modifiers
+    toggleDiceModPanel:   (code) => combat.toggleDiceModPanel(code),
+    addDiceMod:           (code) => combat.addDiceMod(code),
+    updateDiceMod:        (code, idx, field, val) => combat.updateDiceMod(code, idx, field, val),
+    deleteDiceMod:        (code, idx) => combat.deleteDiceMod(code, idx),
+    // Strain value-display toggle
+    togglePenaltyValueDisplay: (code) => combat.togglePenaltyValueDisplay(code),
+    toggleSpeedConversions:    (code) => combat.toggleSpeedConversions(code),
+    setSpeedConversionChoice:  (code, choice) => combat.setSpeedConversionChoice(code, choice),
+    // Roll Calculator
+    rollCalcSetSlotKind:     (idx, kind) => combat.rollCalcSetSlotKind(idx, kind),
+    rollCalcSetSlotStat:     (idx, key)  => combat.rollCalcSetSlotStat(idx, key),
+    rollCalcSetSlotSkill:    (idx, key)  => combat.rollCalcSetSlotSkill(idx, key),
+    rollCalcSetSlotDerived:  (idx, key)  => combat.rollCalcSetSlotDerived(idx, key),
+    rollCalcSetSlotValue:    (idx, v)    => combat.rollCalcSetSlotValue(idx, v),
+    rollCalcSetStatmod:      (v)   => combat.rollCalcSetStatmod(v),
+    rollCalcSetDifficulty:   (v)   => combat.rollCalcSetDifficulty(v),
+    rollCalcSetMitigation:   (v)   => combat.rollCalcSetMitigation(v),
+    rollCalcSetReduction:    (v)   => combat.rollCalcSetReduction(v),
+    rollCalcToggle:          ()    => combat.rollCalcToggle(),
+    rollCalcSetPassive:      (f)   => combat.rollCalcSetPassive(f),
+    overviewToggleTile:      (slug) => combat.overviewToggleTile(slug),
+    // Tile-level collapse for tiles rendered on the Combat tab (like
+    // the inline Penalty tile). Writes to the SAME storage namespace
+    // as wrapCollapsibleTile in char-overview.js reads from (which is
+    // `prime.collapse.overview-tile.<slug>` — yes, even for Combat
+    // tiles; that key namespace is owned by the tile wrapper, not the
+    // tab). The difference from overviewToggleTile is this re-renders
+    // the Combat tab, not the Overview tab — so clicks on a Combat-
+    // tab tile repaint the tab that actually contains the caret.
+    combatToggleTile:        (slug) => {
+      toggleCollapsed('prime.collapse.overview-tile.' + slug);
+      combat.renderAll();
+    },
+    // Render-aware collapse for the Combat and Inventory tabs. The
+    // wrapCollapsibleSection helper (char-util.js) emits onclick calls
+    // to these names. Each toggles the persisted flag then re-renders
+    // the parent tab so the caret flips and the body shows/hides.
+    combatToggleCollapse:    (key) => { toggleCollapsed(key); combat.renderAll(); },
+    inventoryToggleCollapse: (key) => { toggleCollapsed(key); inventory.renderAll(); },
+    rollCalcTogglePenalty:       (key) => combat.rollCalcTogglePenalty(key),
+    rollCalcTogglePenaltyPanel:  ()    => combat.rollCalcTogglePenaltyPanel(),
+    rollCalcResetPenalty:        ()    => combat.rollCalcResetPenalty(),
+    // Pain / Stress (percentile modifiers feeding Pain% and Stress%
+    // components of the aggregate Penalty)
+    togglePainPanel:      () => combat.togglePainPanel(),
+    addPainMod:           () => combat.addPainMod(),
+    updatePainMod:        (idx, field, val) => combat.updatePainMod(idx, field, val),
+    deletePainMod:        (idx) => combat.deletePainMod(idx),
+    toggleStressPanel:    () => combat.toggleStressPanel(),
+    addStressMod:         () => combat.addStressMod(),
+    updateStressMod:      (idx, field, val) => combat.updateStressMod(idx, field, val),
+    deleteStressMod:      (idx) => combat.deleteStressMod(idx),
+    // Other modifiers — free-form ±% entries (Exposure, Encumbrance, etc)
+    // that feed Penalty directly. Edited inline on the Penalty card.
+    addOtherModifier:     () => combat.addOtherMod(),
+    updateOtherModifier:  (idx, field, val) => combat.updateOtherMod(idx, field, val),
+    deleteOtherModifier:  (idx) => combat.deleteOtherMod(idx),
+    addHlMod:             (target)           => combat.addModifier(target),
+    updateHlMod:          (target, i, field, val) => combat.updateModifier(target, i, field, val),
+    deleteHlMod:          (target, i)        => combat.deleteModifier(target, i),
+    // Injuries / Traumas
+    toggleInjurySection:  () => combat.toggleInjurySection(),
+    toggleInjuryExpand:   (id) => combat.toggleInjuryExpand(id),
+    toggleInjuryLocation: (trackKey) => combat.toggleInjuryLocation(trackKey),
+    quickAddInjury:       () => combat.quickAddInjury(),
+    toggleQuickAddLocation: (trackKey) => combat.toggleQuickAddLocation(trackKey),
+    toggleQuickAddAllLocations: () => combat.toggleQuickAddAllLocations(),
+    removeInjury:         (id) => combat.removeInjury(id),
+    updateInjuryField:    (id, field, val) => combat.updateInjuryField(id, field, val),
+    tickInjuryQuickmod:   (id, delta) => combat.tickInjuryQuickmod(id, delta),
+    addInjuryMod:         (injId, kind) => combat.addInjuryMod(injId, kind),
+    updateInjuryMod:      (injId, kind, i, field, val) => combat.updateInjuryMod(injId, kind, i, field, val),
+    deleteInjuryMod:      (injId, kind, i) => combat.deleteInjuryMod(injId, kind, i),
+    addTrauma:            (injId) => combat.addTrauma(injId),
+    removeTrauma:         (injId, i) => combat.removeTrauma(injId, i),
+    updateTraumaField:    (injId, i, field, val) => combat.updateTraumaField(injId, i, field, val),
+    // Afflictions tile (Conditions / Circumstances tracker on Overview tab)
+    condOpenAdd:          (cat)             => combat.condOpenAdd(cat),
+    condStartCustom:      ()                => combat.condStartCustom(),
+    condPickPreset:       (defId)           => combat.condPickPreset(defId),
+    condSaveCustom:       ()                => combat.condSaveCustom(),
+    condOpenEdit:         (id)              => combat.condOpenEdit(id),
+    condSaveEdit:         ()                => combat.condSaveEdit(),
+    condPromote:          ()                => combat.condPromote(),
+    condDraft:            (field, value)    => combat.condDraft(field, value),
+    condCloseModal:       (ev)              => combat.condCloseModal(ev),
+    condSwapCategory:     (id)              => combat.condSwapCategory(id),
+    condRemove:           (id)              => combat.condRemove(id),
+    condToggleEntry:      (id)              => combat.condToggleEntry(id),
+    // Inventory tab
+    invToggleSlot:           (code)               => inventory.toggleSlot(code),
+    invToggleEntry:          (id)                 => inventory.toggleEntry(id),
+    invToggleItemInfo:       (id)                 => inventory.toggleItemInfo(id),
+    invToggleGroupCollapse:  (id)                 => inventory.toggleGroupCollapse(id),
+    invAddGroup:             ()                   => inventory.addGroup(),
+    invAddSubgroup:          (parentId)            => inventory.addSubgroup(parentId),
+    invRenameGroup:          (id)                 => inventory.renameGroup(id),
+    invDeleteGroup:          (id)                 => inventory.deleteGroup(id),
+    invUpdateGroupDraft:     (field, value)       => inventory.updateGroupDraft(field, value),
+    invSaveGroup:            ()                   => inventory.saveGroup(),
+    invOpenAddContainer:     (target, kind)       => inventory.openAddContainer(target, kind),
+    invOpenAddItem:          (target, kind)       => inventory.openAddItem(target, kind),
+    invCloseModal:           (ev)                 => { if (!ev || ev.target === ev.currentTarget) inventory.closeModal(); },
+    invPickContainerDef:     (kind, defId)        => inventory.pickContainerDef(kind, defId),
+    invPickItemDef:          (kind, defId)        => inventory.pickItemDef(kind, defId),
+    invOpenCustomForm:       (customKind)         => inventory.openCustomForm(customKind),
+    invCancelCustomForm:     ()                   => inventory.cancelCustomForm(),
+    invUpdateCustomDraft:    (field, value)       => inventory.updateCustomDraft(field, value),
+    invSaveCustomDef:        ()                   => inventory.saveCustomDef(),
+    invDeleteCustomDef:      (kind, defId)        => inventory.deleteCustomDef(kind, defId),
+    invCustomDraftWeaponAddRange:    ()                  => inventory.customDraftWeaponAddRange(),
+    invCustomDraftWeaponRemoveRange: (bi)               => inventory.customDraftWeaponRemoveRange(bi),
+    invCustomDraftWeaponUpdateRange: (bi, which, value) => inventory.customDraftWeaponUpdateRange(bi, which, value),
+    invCustomDraftWeaponToggleTag:   (tagId, on)        => inventory.customDraftWeaponToggleTag(tagId, on),
+    invSetViewMode:          (mode)               => inventory.setViewMode(mode),
+    invToggleCatalogCat:     (id)                 => inventory.toggleCatalogCat(id),
+    invToggleCatalogItem:    (id)                 => inventory.toggleCatalogItem(id),
+    invCatalogToggleAddMenu: (id)                 => inventory.catalogToggleAddMenu(id),
+    invCatalogQuickAdd:      (id)                 => inventory.catalogQuickAdd(id),
+    invCatalogAddTo:         (itemId, kind, tid)  => inventory.catalogAddTo(itemId, kind, tid),
+    invCatalogAddToNewGroup: (id)                 => inventory.catalogAddToNewGroup(id),
+    invOpenEntryEdit:        (id)                 => inventory.openEntryEdit(id),
+    invUpdateEditDraft:      (field, value)       => inventory.updateEditDraft(field, value),
+    invSaveEntryEdit:        ()                   => inventory.saveEntryEdit(),
+    invCancelEntryEdit:      ()                   => inventory.cancelEntryEdit(),
+    invPromoteEntryToCatalogue: ()                => inventory.promoteEntryToCatalogue(),
+    invOpenManageCatalog:    ()                   => inventory.openManageCatalog(),
+    invCatMgrClose:          ()                   => inventory.catMgrClose(),
+    invCatMgrCloseIfBackdrop:(ev)                 => inventory.catMgrCloseIfBackdrop(ev),
+    invCatMgrToggleRow:      (id)                 => inventory.catMgrToggleRow(id),
+    invCatMgrCollapseRow:    (id)                 => inventory.catMgrCollapseRow(id),
+    invCatMgrDraft:          (id, field, value)   => inventory.catMgrDraft(id, field, value),
+    invCatMgrSaveEdit:       (kind, id)           => inventory.catMgrSaveEdit(kind, id),
+    invCatMgrDelete:         (kind, id)           => inventory.catMgrDelete(kind, id),
+    invCatMgrStartNew:       (kind)               => inventory.catMgrStartNew(kind),
+    invCatMgrCancelNew:      ()                   => inventory.catMgrCancelNew(),
+    invCatMgrNewDraft:       (field, value)       => inventory.catMgrNewDraft(field, value),
+    invCatMgrSaveNew:        ()                   => inventory.catMgrSaveNew(),
+    // Personal catalogue — weapon range-bands + tag toggles. Edit-form
+    // variants take a def id; new-form variants operate on the
+    // singleton newDraft. Wired here so the catalogue manager modal's
+    // dynamically-rendered forms can reach these handlers without
+    // each form needing a custom closure.
+    invCatMgrWeaponAddRange:       (id)                     => inventory.catMgrWeaponAddRange(id),
+    invCatMgrWeaponRemoveRange:    (id, bi)                 => inventory.catMgrWeaponRemoveRange(id, bi),
+    invCatMgrWeaponUpdateRange:    (id, bi, which, v)       => inventory.catMgrWeaponUpdateRange(id, bi, which, v),
+    invCatMgrWeaponToggleTag:      (id, tagId, on)          => inventory.catMgrWeaponToggleTag(id, tagId, on),
+    invCatMgrNewWeaponAddRange:    ()                       => inventory.catMgrNewWeaponAddRange(),
+    invCatMgrNewWeaponRemoveRange: (bi)                     => inventory.catMgrNewWeaponRemoveRange(bi),
+    invCatMgrNewWeaponUpdateRange: (bi, which, v)           => inventory.catMgrNewWeaponUpdateRange(bi, which, v),
+    invCatMgrNewWeaponToggleTag:   (tagId, on)              => inventory.catMgrNewWeaponToggleTag(tagId, on),
+    // Dimension preset quick-pick dropdowns (edit draft / custom form / catalog mgr)
+    invApplyPresetToEditDraft:     (presetId)               => inventory.applyPresetToEditDraft(presetId),
+    invApplyPresetToCustomDraft:   (presetId)               => inventory.applyPresetToCustomDraft(presetId),
+    invApplyPresetToCatMgrDraft:   (target, presetId)       => inventory.applyPresetToCatMgrDraft(target, presetId),
+    invTickQty:              (id, delta)          => inventory.tickQty(id, delta),
+    invRemoveEntry:          (id)                 => inventory.removeEntry(id),
+    // Weapon readout — AMMO tracker buttons and "Send to Roll Calc"
+    invWeaponAdjustAmmo:     (id, delta)          => inventory.weaponAdjustAmmo(id, delta),
+    invWeaponReloadAmmo:     (id)                 => inventory.weaponReloadAmmo(id),
+    invWeaponToggleRaw:      (id, rawKey)         => inventory.weaponToggleRaw(id, rawKey),
+    invWeaponSetAtk:         (id, value)          => inventory.weaponSetAtk(id, value),
+    invWeaponSetRapidfire:        (id, value)     => inventory.weaponSetRapidfire(id, value),
+    invWeaponSetRapidfireDamage:  (id, value)     => inventory.weaponSetRapidfireDamage(id, value),
+    invWeaponSetRapidfireSweep:   (id, value)     => inventory.weaponSetRapidfireSweep(id, value),
+    invWeaponSetSlotOverride:(id, roll, fr, to)   => inventory.weaponSetSlotOverride(id, roll, fr, to),
+    invWeaponResetOverrides: (id)                 => inventory.weaponResetOverrides(id),
+    invWeaponSetRange:       (id, value)          => inventory.weaponSetRange(id, value),
+    invWeaponToggleEdit:     (id)                 => inventory.weaponToggleEdit(id),
+    invWeaponToggleTagCatCollapse: (scope, catId)  => inventory.weaponToggleTagCatCollapse(scope, catId),
+    // Durability tracking (opt-in per entry)
+    invDurabilityToggleTracked:    (id)                     => inventory.durabilityToggleTracked(id),
+    invDurabilityAddInstance:      (id, amountStr)          => inventory.durabilityAddInstance(id, amountStr),
+    invDurabilityRemoveInstance:   (id, idx)                => inventory.durabilityRemoveInstance(id, idx),
+    invDurabilityClear:            (id)                     => inventory.durabilityClear(id),
+    invWeaponSnapUpdate:     (id, field, value)   => inventory.weaponSnapUpdate(id, field, value),
+    invWeaponSnapSetKind:    (id, kind)           => inventory.weaponSnapSetKind(id, kind),
+    invWeaponSnapAddRange:   (id)                 => inventory.weaponSnapAddRange(id),
+    invWeaponSnapRemoveRange:(id, bi)             => inventory.weaponSnapRemoveRange(id, bi),
+    invWeaponSnapUpdateRange:(id, bi, w, v)       => inventory.weaponSnapUpdateRange(id, bi, w, v),
+    invWeaponSnapToggleTag:  (id, tagId, on)      => inventory.weaponSnapToggleTag(id, tagId, on),
+    invWeaponToRollCalc:     (id, which)          => inventory.weaponToRollCalc(id, which),
+    // Carry cards (CAP / ENC / LIFT) + group-level encumbrance toggle
+    invToggleCarryCard:      (key)                => inventory.toggleCarryCard(key),
+    invAddCapMod:            ()                   => inventory.addCapMod(),
+    invUpdateCapMod:         (i, field, value)    => inventory.updateCapMod(i, field, value),
+    invDeleteCapMod:         (i)                  => inventory.deleteCapMod(i),
+    invAddLiftMod:           ()                   => inventory.addLiftMod(),
+    invUpdateLiftMod:        (i, field, value)    => inventory.updateLiftMod(i, field, value),
+    invDeleteLiftMod:        (i)                  => inventory.deleteLiftMod(i),
+    invAddEncMod:            ()                   => inventory.addEncMod(),
+    invUpdateEncMod:         (i, field, value)    => inventory.updateEncMod(i, field, value),
+    invDeleteEncMod:         (i)                  => inventory.deleteEncMod(i),
+    invToggleGroupEncumbrance:(id)                => inventory.toggleGroupEncumbrance(id),
+    // Sheet tab switcher (Overview / Combat / Inventory folder tabs)
+    switchSheetTab:       (which) => {
+      document.querySelectorAll('.sheet-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.sheet-panel').forEach(p => p.classList.remove('active'));
+      const tab = document.getElementById('sheet-tab-' + which);
+      const panel = document.getElementById('panel-' + which);
+      if (tab) tab.classList.add('active');
+      if (panel) panel.classList.add('active');
+      // Re-render on open so state changes elsewhere flow through.
+      if (which === 'combat') combat.renderAll();
+      if (which === 'inventory') inventory.renderAll();
+    },
+  });
+
+  // ─── DEBUG HOOKS ───
+  // Expose live references so issues can be diagnosed from the browser console.
+  // Safe to keep — these are read-only windows into the current state, they
+  // don't grant any capabilities the user doesn't already have via the UI.
+  // Usage examples:
+  //   window.__prime.charData                // full character data
+  //   window.__prime.ruleset                 // active ruleset
+  //   window.__prime.dumpPower()             // diagnose POWER computation
+  window.__prime = {
+    get charData() { return charData; },
+    get ruleset()  { return activeRuleset; },
+    get canEdit()  { return canEdit; },
+    dumpPower() {
+      if (!activeRuleset) { console.log('No ruleset loaded'); return; }
+      const statMods = activeRuleset.statMods || [];
+      const pow = (charData.stats && typeof charData.stats.pow === 'number') ? charData.stats.pow : null;
+      const powmod = pow !== null ? statMods[pow] : null;
+      const pp = charData.powerPool || 0;
+      const mult = activeRuleset.powerPool && activeRuleset.powerPool.powMultiplier;
+      const entry = Array.isArray(mult)
+        ? mult.find(e => powmod !== null && e.powmod === powmod)
+        : null;
+      const multiplier = entry ? entry.value : 1;
+      const expected = pp * multiplier;
+      console.log('─── POWER diagnostic ───');
+      console.log('  charData.stats.pow    :', pow);
+      console.log('  statMods[pow] (POWMOD):', powmod);
+      console.log('  charData.powerPool    :', pp);
+      console.log('  multiplier table rows :', mult);
+      console.log('  matched entry         :', entry);
+      console.log('  POW_MULTIPLIER        :', multiplier);
+      console.log('  Expected POWER (max)  :', expected);
+      console.log('  Stored powerCurrent   :', charData.powerCurrent);
+      const powerDef = (activeRuleset.derivedStats || []).find(s => s.code === 'POWER');
+      console.log('  POWER formula         :', powerDef ? powerDef.formula : '(no POWER stat defined)');
+    }
+  };
+
+  // calcTotalXp sums XP spent across stats and skills. Reads all cost
+  // tables from the active ruleset. Called by saveXpSpent after any
+  // stat or skill edit.
+  //
+  // SIZE doesn't contribute to XP — size-changing is a narrative cost
+  // paid elsewhere.
+  function calcTotalXp() {
+    if (!activeRuleset) return 0;
+    let xp = 0;
+    const statXpTable = activeRuleset.statXp || [];
+    const primXp      = activeRuleset.primarySkillXp   || [];
+    const secXp       = activeRuleset.secondarySkillXp || [];
+    const specXp      = activeRuleset.specialtySkillXp || [];
+
+    // Stat bases. Iterate the ruleset's stat list (no SIZE).
+    const rulesetStats = activeRuleset.stats || [];
+    rulesetStats.forEach(statDef => {
+      const key = (statDef.code || '').toLowerCase();
+      const v = (charData.stats && charData.stats[key] !== undefined)
+        ? charData.stats[key] : 2;
+      xp += (statXpTable[v] || 0);
+    });
+
+    // Primary skills.
+    const pr = (charData.skills && charData.skills.primary) || {};
+    primarySkillDefs.forEach(s => { xp += (primXp[pr[s.name] || 0] || 0); });
+
+    // Secondary & specialty skills.
+    ((charData.skills && charData.skills.secondary) || []).forEach(s => {
+      xp += (secXp[s.value || 0] || 0);
+    });
+    ((charData.skills && charData.skills.specialty) || []).forEach(s => {
+      xp += (specXp[s.value || 0] || 0);
+    });
+
+    // Advantages add to spent XP; Disadvantages subtract (grant XP).
+    xp += advantages.totalXpDelta();
+
+    // Power Pool is purchased with XP.
+    xp += combat.powerPoolXpDelta();
+
+    return xp;
+  }
+  async function saveXpSpent() {
+    const v = calcTotalXp();
+    charData.xpSpent = v;
+    await saveCharacter(charId, { xpSpent: v });
+    xpBar.renderPowerBar();
+    // Derived stats depend on base stats; re-render so hit points, speed,
+    // reflex, etc. update when the user edits their STR/DEX/etc.
+    combat.renderAll();
+  }
+
+  // Silent auto-clamp: enforce the active ruleset's caps on the character's
+  // stat and skill values. Runs once during load, before anything renders.
+  // Persists any changes so the saved data stays in sync with what's shown.
+  //
+  // Stat caps use statMax (absolute ceiling — modifiers can push *total*
+  // higher via statModifiers, but the base value is bounded here).
+  // Size uses the highest tier level defined by the ruleset.
+  // Skills use skillMax uniformly across primary/secondary/specialty.
+  async function clampCharacterToRuleset() {
+    if (!activeRuleset) return;
+    const updates = {};
+
+    const statMax = activeRuleset.statMax || 20;
+    const sizeTiers = (activeRuleset.size && activeRuleset.size.tiers) || [];
+    const sizeMax = sizeTiers.length
+      ? Math.max(...sizeTiers.map(t => t.level || 0))
+      : 30;
+    const skillMax = activeRuleset.skillMax || 10;
+
+    // ── STATS ──
+    if (charData.stats) {
+      for (const key of Object.keys(charData.stats)) {
+        const cap = key === 'size' ? sizeMax : statMax;
+        const cur = charData.stats[key];
+        if (typeof cur === 'number' && cur > cap) {
+          charData.stats[key] = cap;
+          updates[`stats.${key}`] = cap;
+        }
+      }
+    }
+
+    // ── PRIMARY SKILLS ──
+    if (charData.skills && charData.skills.primary) {
+      let primaryChanged = false;
+      for (const name of Object.keys(charData.skills.primary)) {
+        if (charData.skills.primary[name] > skillMax) {
+          charData.skills.primary[name] = skillMax;
+          primaryChanged = true;
+        }
+      }
+      if (primaryChanged) updates['skills.primary'] = charData.skills.primary;
+    }
+
+    // ── SECONDARY SKILLS ──
+    if (charData.skills && Array.isArray(charData.skills.secondary)) {
+      let secondaryChanged = false;
+      charData.skills.secondary.forEach(s => {
+        if ((s.value || 0) > skillMax) { s.value = skillMax; secondaryChanged = true; }
+      });
+      if (secondaryChanged) updates['skills.secondary'] = charData.skills.secondary;
+    }
+
+    // ── SPECIALTY SKILLS ──
+    if (charData.skills && Array.isArray(charData.skills.specialty)) {
+      let specialtyChanged = false;
+      charData.skills.specialty.forEach(s => {
+        if ((s.value || 0) > skillMax) { s.value = skillMax; specialtyChanged = true; }
+      });
+      if (specialtyChanged) updates['skills.specialty'] = charData.skills.specialty;
+    }
+
+    // ── ADVANTAGES / DISADVANTAGES ──
+    // Clamp any tier index outside the 0..6 range. This guards against old
+    // data that used a different tier count. (The normalizer already does this
+    // for ruleset catalog entries; here we just apply it to character picks.)
+    ['advantages', 'disadvantages'].forEach(key => {
+      if (!Array.isArray(charData[key])) return;
+      let changed = false;
+      charData[key].forEach(e => {
+        if (!Number.isInteger(e.tier) || e.tier < 0 || e.tier > 6) {
+          e.tier = Math.max(0, Math.min(6, e.tier || 0));
+          changed = true;
+        }
+      });
+      if (changed) updates[key] = charData[key];
+    });
+
+    // Only hit the database if something actually changed.
+    if (Object.keys(updates).length > 0) {
+      await saveCharacter(charId, updates);
+    }
+  }
+
+  async function loadMentalSection() {
+    availableRulesets = [];
+    const basic = await loadBasicSet();
+    if (basic) availableRulesets.push({ name: 'Basic Set', morals: basic.morals || [] });
+    if (charData.playgroupId) {
+      const pgRulesets = await loadPlaygroupRulesets(charData.playgroupId);
+      pgRulesets.forEach(r => availableRulesets.push({ name: r.name, morals: r.morals || [] }));
+    }
+    mental.renderMoralsView();
+    mental.renderObligationsView();
+    mental.renderDisordersView();
+    if (canEdit) {
+      document.getElementById('morals-edit-btn').style.display = 'inline';
+      document.getElementById('obligations-edit-btn').style.display = 'inline';
+      document.getElementById('disorders-edit-btn').style.display = 'inline';
+    }
+  }
+
+  // ── MAIN LOAD FLOW ──
+  // Called once Firebase auth resolves. Pulls the character, figures out
+  // permissions, loads related playgroups and the Basic Set, then kicks
+  // off all the section renderers.
+  if (window.__logStep) window.__logStep('registering onAuthStateChanged listener');
+  onAuthStateChanged(auth, async function(user) {
+    if (window.__logStep) window.__logStep('auth callback fired: user=' + (user ? user.uid.slice(0,8) : 'null') + ' verified=' + (user ? user.emailVerified : 'n/a'));
+    if (!user || !user.emailVerified) {
+      if (window.__logStep) window.__logStep('EARLY EXIT: no user or email not verified');
+      return;
+    }
+    if (loaded) {
+      if (window.__logStep) window.__logStep('EARLY EXIT: already loaded');
+      return;
+    }
+    loaded = true;
+
+    // Wrap the whole load flow so silent promise rejections don't leave the
+    // loading spinner stuck forever. Any throw → visible error on the page
+    // + full stack in the console, which is far better than infinite hang.
+    try {
+
+    // Stash logged-in user's identity for Situations "assigned by" tracking
+    // and any future feature that needs to know who's viewing.
+    myUid = user.uid;
+
+    // Populate the nav's username + alerts dropdown.
+    if (window.__logStep) window.__logStep('loading user doc');
+    const userData = await loadUser(user.uid);
+    if (userData) {
+      setNavUsername(userData.username);
+      myUsername = userData.username || '';
+    }
+    initAlerts(db, user.uid);
+
+    // Load the character. Bounce back to home if it's missing.
+    if (window.__logStep) window.__logStep('loading character doc: ' + charId);
+    const char = await loadCharacter(charId);
+    if (!char) { window.location.href = 'home.html'; return; }
+    charData = char;
+    // Initial canEdit is ownership; GM/Leader rights are folded in
+    // below once we know the playgroup role. Keeps the log readable —
+    // first line shows raw ownership, second shows the final value.
+    const isOwner = charData.uid === user.uid;
+    canEdit = isOwner;
+    if (window.__logStep) window.__logStep('character loaded, isOwner=' + isOwner);
+
+    // GM check: Leader or Administrator of this character's playgroup.
+    // GMs get FULL edit rights on characters in their playgroup — stats,
+    // skills, inventory, everything. This matches TTRPG norms where the
+    // GM can correct typos, adjudicate impossible rolls, or apply
+    // Break Points on a player's behalf without bouncing to "please let
+    // me in as you".
+    //
+    // Solo characters (no playgroup) default isGM to ownership so the
+    // Situations UI, which uses isGM for show/hide logic, still works
+    // for the solo-play case.
+    if (charData.playgroupId) {
+      if (window.__logStep) window.__logStep('checking GM role for playgroup: ' + charData.playgroupId);
+      const role = await loadMembershipRole(user.uid, charData.playgroupId);
+      isGM = role === 'Leader' || role === 'Administrator';
+    } else {
+      isGM = isOwner;
+    }
+
+    // Final canEdit: owner OR GM (Leader/Administrator). Computed after
+    // the role check so downstream UI renders with the correct value on
+    // first pass — no "owner-only for a frame, then GM kicks in" flash.
+    canEdit = isOwner || isGM;
+    if (window.__logStep) window.__logStep('permissions resolved: canEdit=' + canEdit + ' isGM=' + isGM);
+
+    // Resolve the ruleset that governs this character — playgroup's
+    // attached ruleset, else Basic Set, else defaults. Always returns a
+    // fully-normalized ruleset object.
+    if (window.__logStep) window.__logStep('resolving active ruleset');
+    activeRuleset = await resolveActiveRuleset(charData);
+    if (window.__logStep) window.__logStep('ruleset resolved: ' + (activeRuleset.name || '(unnamed)') + ' derivedStats=' + (activeRuleset.derivedStats ? activeRuleset.derivedStats.length : 'MISSING'));
+
+    // Silently clamp any stat/skill values that exceed the ruleset's caps.
+    // This can happen if the ruleset was swapped or had its caps lowered
+    // after the character was built. Persists the clamped values so future
+    // loads don't need to re-clamp.
+    if (window.__logStep) window.__logStep('clamping character to ruleset');
+    await clampCharacterToRuleset();
+
+    // Load all playgroups this user is in — used by the bio's
+    // "attach to playgroup" dropdown in edit mode.
+    if (window.__logStep) window.__logStep('loading user playgroups');
+    userPlaygroups = await loadUserPlaygroups(user.uid);
+
+    // Primary skills come from the active ruleset. If the ruleset has
+    // none defined (unusual), fall back to the bundled FALLBACK_SKILLS.
+    primarySkillDefs = (activeRuleset.primarySkills && activeRuleset.primarySkills.length > 0)
+      ? activeRuleset.primarySkills
+      : FALLBACK_SKILLS;
+
+    // Everything's loaded — swap loading screen for the sheet.
+    if (window.__logStep) window.__logStep('hiding loading, showing content');
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('char-content').style.display = 'block';
+
+    // Render every section. Each wrapped individually so a single broken
+    // section doesn't prevent the rest from showing.
+    const safeRender = async (label, fn) => {
+      if (window.__logStep) window.__logStep('rendering ' + label);
+      try { await fn(); }
+      catch (e) {
+        console.error('[' + label + '] render failed:', e);
+        if (window.__logStep) window.__logStep(label + ' FAILED: ' + e.message);
+        const marker = document.createElement('div');
+        marker.style.cssText = 'padding:12px;margin:8px 0;background:#2a0d0d;border:1px solid #6a2a2a;color:#e08080;font-size:12px;border-radius:4px';
+        marker.textContent = label + ' section failed to render: ' + (e.message || e) + ' (see console for full stack)';
+        document.getElementById('char-content').appendChild(marker);
+      }
+    };
+    await safeRender('Bio',        () => bio.renderBio());
+    await safeRender('Mental',     () => loadMentalSection());
+    await safeRender('Stats',      () => stats.buildStatsSection());
+    await safeRender('Skills',     () => skills.buildSkillsSection());
+    await safeRender('Advantages', () => advantages.renderAll());
+    await safeRender('Situations', () => situations.renderAll());
+    await safeRender('Combat',     () => combat.renderAll());
+    await safeRender('Inventory',  () => inventory.renderAll());
+
+    // Wire collapsible affordances onto the Overview tab sections. Runs
+    // AFTER all renders so dynamic content (skills grids, mental-col
+    // lists) exists in the DOM by the time we bind headers. See
+    // initOverviewCollapse() below for which sections get what.
+    initOverviewCollapse();
+
+    // Owner-only UI elements.
+    if (canEdit) {
+      document.getElementById('bio-edit-btn').style.display = 'inline';
+      document.getElementById('stats-edit-btn').style.display = 'inline';
+      document.getElementById('danger-zone').style.display = 'block';
+    } else {
+      // Read-only viewer. Slap a body class so the CSS below can hide
+      // every inline edit affordance (modifier +/−, Add modifier rows,
+      // × delete chips, edit-mode form buttons). The button handlers
+      // themselves bail on !canEdit already — this is purely visual so
+      // non-editors don't see buttons that would no-op. Scoped to
+      // viewer state: GMs get edit rights (canEdit true) and won't see
+      // this class, so they get the full editing UI as expected.
+      document.body.classList.add('prime-readonly');
+    }
+
+    if (window.__logStep) window.__logStep('load complete');
+
+    } catch (err) {
+      // Final catch: anything in the pre-render flow blew up. Surface to the
+      // user + console so they can tell us what broke instead of staring at
+      // a loading spinner that never resolves.
+      console.error('[character load] Fatal error:', err);
+      if (window.__logStep) window.__logStep('FATAL: ' + (err && err.message ? err.message : String(err)));
+      const loadingEl = document.getElementById('loading');
+      if (loadingEl) {
+        loadingEl.style.color = '#e08080';
+        const textEl = document.getElementById('loading-text');
+        if (textEl) textEl.innerHTML = '<strong>Failed to load character.</strong>';
+        const diagEl = document.getElementById('loading-diag');
+        if (diagEl) {
+          diagEl.style.display = 'block';
+          const errBlock = document.createElement('div');
+          errBlock.style.cssText = 'margin-top:10px;padding:10px;background:#2a0d0d;border:1px solid #6a2a2a;color:#e08080;border-radius:3px;white-space:pre-wrap';
+          errBlock.textContent = err && err.stack ? err.stack : String(err);
+          diagEl.appendChild(errBlock);
+          const retry = document.createElement('button');
+          retry.textContent = 'Retry';
+          retry.style.cssText = 'margin-top:10px;padding:6px 14px;background:#1a1a1a;border:1px solid #333;color:#ccc;border-radius:3px;cursor:pointer';
+          retry.onclick = () => location.reload();
+          diagEl.appendChild(retry);
+        }
+      }
+    }
+  });
+
+  window.deleteCharacter = async function() {
+    if (!canEdit) return;
+    const name = charData.name || 'this character';
+    const confirm1 = prompt(`Type the character's name ("${name}") to confirm permanent deletion:`);
+    if (confirm1 === null) return;
+    if (confirm1.trim().toLowerCase() !== name.trim().toLowerCase()) {
+      alert('Name did not match. Deletion cancelled.');
+      return;
+    }
+    try {
+      await deleteCharacterDoc(charId);
+      window.location.href = 'my-characters.html';
+    } catch (e) {
+      alert('Failed to delete: ' + e.message);
+    }
+  }
+  window.logout=async function(){await signOut(auth);window.location.href='index.html';}
+</script>
+</body>
+</html>
