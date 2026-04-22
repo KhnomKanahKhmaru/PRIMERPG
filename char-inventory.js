@@ -258,12 +258,25 @@ export function createInventorySection(ctx) {
     // Round current for display — the effective-damage formula can
     // produce fractions (e.g. 3 + 2/1.5 = 4.33). Keep one decimal.
     const curDisplay = Number.isInteger(current) ? String(current) : current.toFixed(1);
+    // Armor + SIZE surface on the Dur row — but ONLY for items that
+    // are NOT worn armor. Worn armor shows its Armor value on the
+    // entry's name bar instead (it's useful at a glance for players).
+    // Non-worn items keep their Armor here where it's relevant to
+    // durability math, avoiding header noise on e.g. a plain rifle.
+    const snap = entry.snapshot || {};
+    const armorVal = Number.isFinite(snap.armor) ? snap.armor : 0;
+    const sizeVal  = Number.isFinite(snap.size)  ? snap.size  : 3;
+    const isWorn   = !!snap.armorWorn;
+    const durBreakdown = `SIZE ${sizeVal} + Armor ${armorVal} = ${max} max · Construction ${construction}`;
     let html = `<div class="inv-entry-dur-row">
       <span class="inv-entry-dur-label">Dur</span>
-      <span class="inv-entry-dur-value">${curDisplay} / ${max}</span>
-      <span class="inv-entry-dur-state inv-entry-dur-state-${stateCls}">${state}</span>`;
+      <span class="inv-entry-dur-value" title="${escapeHtml(durBreakdown)}">${curDisplay} / ${max}</span>`;
+    if (!isWorn) {
+      html += `<span class="inv-entry-dur-armor" title="Material armor ${armorVal}. Subtract this from incoming damage in your head BEFORE logging a damage instance below.">Armor ${armorVal}</span>`;
+    }
+    html += `<span class="inv-entry-dur-state inv-entry-dur-state-${stateCls}">${state}</span>`;
     if (instances.length > 0) {
-      html += `<span class="inv-entry-dur-instances" title="Construction ${construction} · Each chip = one damage instance. Click to remove.">`;
+      html += `<span class="inv-entry-dur-instances" title="Construction ${construction} · Each chip = one post-armor damage instance. Click to remove.">`;
       instances.forEach((v, i) => {
         const n = Number.isFinite(v) ? v : 0;
         html += canEdit
@@ -273,14 +286,12 @@ export function createInventorySection(ctx) {
       html += `</span>`;
     }
     if (canEdit) {
-      // Unique input id so the + button can grab the typed value.
-      // Scoped per-entry since multiple durability rows can render at
-      // once (e.g. contents of a container each tracking damage).
       const inputId = `dur-input-${entry.id}`;
+      const damageTip = `Enter the POST-armor damage and press Enter (or click +). Apply Armor ${armorVal} yourself first — e.g. if you took 10 damage with Armor ${armorVal}, enter ${Math.max(0, 10 - armorVal)}.`;
       html += `<input type="number" id="${escapeHtml(inputId)}" class="inv-entry-dur-input" step="1" min="0" placeholder="+dmg"
                  onkeydown="if(event.key==='Enter'){invDurabilityAddInstance('${escapeHtml(entry.id)}',this.value);this.value='';}"
-                 title="Type a damage amount and press Enter or click + to log an instance.">
-               <button class="inv-entry-dur-add" onclick="(function(){const el=document.getElementById('${escapeHtml(inputId)}');if(el&&el.value){invDurabilityAddInstance('${escapeHtml(entry.id)}',el.value);el.value='';}})()" title="Log this damage amount as a new instance.">+</button>`;
+                 title="${escapeHtml(damageTip)}">
+               <button class="inv-entry-dur-add" onclick="(function(){const el=document.getElementById('${escapeHtml(inputId)}');if(el&&el.value){invDurabilityAddInstance('${escapeHtml(entry.id)}',el.value);el.value='';}})()" title="${escapeHtml(damageTip)}">+</button>`;
       if (instances.length > 0) {
         html += `<button class="inv-entry-dur-clear" onclick="invDurabilityClear('${escapeHtml(entry.id)}')" title="Clear all instances — restores item to full Durability">Clear</button>`;
       }
@@ -1998,23 +2009,20 @@ export function createInventorySection(ctx) {
 
     const isEditing = editingEntryId === entry.id;
 
-    // Armor pill — containers can also be armor (e.g. a tactical
-    // vest that holds magazines). Reads the new top-level snap.armor
-    // integer.
+    // Armor pill — only when this container is ALSO worn armor (e.g.
+    // tactical vest with magazine pockets). Non-worn containers hide
+    // the Armor info from the header; it moves to the Dur row.
     const armorVal = snap && Number.isFinite(snap.armor) ? snap.armor : 0;
     const armorWorn = snap && snap.armorWorn;
-    const armorTip = armorVal > 0
-      ? `Armor ${armorVal}${armorWorn && armorWorn.coverage && armorWorn.coverage.length ? ' — covers ' + armorWorn.coverage.join(', ') : ''}`
-      : '';
-    const armorPill = armorVal > 0
-      ? `<span class="inv-entry-armor-pill" title="${armorTip}">Armor ${armorVal}</span>`
+    const wornArmorPill = (armorVal > 0 && armorWorn)
+      ? `<span class="inv-entry-armor-pill" title="Worn armor ${armorVal}${armorWorn.coverage && armorWorn.coverage.length ? ' — covers ' + armorWorn.coverage.join(', ') : ''}">Armor ${armorVal}</span>`
       : '';
 
     let html = `<div class="inv-entry inv-entry-container${open ? ' open' : ''}${isEditing ? ' editing' : ''}" style="margin-left:${depth * 16}px">
       <div class="inv-entry-head" onclick="invToggleEntry('${escapeHtml(entry.id)}')">
         <span class="inv-entry-caret">${open ? '▾' : '▸'}</span>
         <span class="inv-entry-icon" title="Container">▣</span>
-        <span class="inv-entry-name">${escapeHtml(name)}${armorPill}</span>
+        <span class="inv-entry-name">${escapeHtml(name)}${wornArmorPill}</span>
         <span class="inv-entry-dims">${fmt(outerDims.l)}×${fmt(outerDims.w)}×${fmt(outerDims.h)} in</span>
         <span class="inv-entry-capacity" title="${escapeHtml(capTip)}">${fmt(stats.usedVolume)}/${fmt(stats.availableVolume)} in³ (${pct}%)</span>
         <span class="inv-entry-weight">${fmt(stats.totalWeight)} lb</span>
@@ -2099,23 +2107,22 @@ export function createInventorySection(ctx) {
 
     const isEditing = editingEntryId === entry.id;
 
-    // Armor pill — shown inline on the entry row when the item has a
-    // non-zero Armor rating. Reads the new top-level snap.armor integer
-    // (not the legacy object shape). Tooltip adds coverage when the
-    // item is also wearable armor (armorWorn facet populated).
-    const armorVal = snap && Number.isFinite(snap.armor) ? snap.armor : 0;
-    const armorWorn = snap && snap.armorWorn;
-    const armorTip = armorVal > 0
-      ? `Armor ${armorVal}${armorWorn && armorWorn.coverage && armorWorn.coverage.length ? ' — covers ' + armorWorn.coverage.join(', ') : ''}`
-      : '';
-    const armorPill = armorVal > 0
-      ? `<span class="inv-entry-armor-pill" title="${armorTip}">Armor ${armorVal}</span>`
+    // Armor pill — only shown on the name bar when the item is WORN
+    // armor (armorWorn facet populated). For non-worn items, Armor is
+    // just a durability input, so it shows up inline on the Dur row
+    // instead (see renderDurabilityRow). This keeps the header free of
+    // numbers that only matter when tracking is active.
+    const snap = entry.snapshot || {};
+    const armorVal = Number.isFinite(snap.armor) ? snap.armor : 0;
+    const armorWorn = snap.armorWorn;
+    const wornArmorPill = (armorVal > 0 && armorWorn)
+      ? `<span class="inv-entry-armor-pill" title="Worn armor ${armorVal}${armorWorn.coverage && armorWorn.coverage.length ? ' — covers ' + armorWorn.coverage.join(', ') : ''}">Armor ${armorVal}</span>`
       : '';
 
     let html = `<div class="inv-entry inv-entry-item${infoOpen ? ' info-open' : ''}${isEditing ? ' editing' : ''}" style="margin-left:${depth * 16}px">
       <div class="inv-entry-head inv-entry-head-item">
         <span class="inv-entry-icon" title="Item">◆</span>
-        <span${nameAttrs}>${escapeHtml(name)}${escapeHtml(catLabel)}${armorPill}${hasExpandable ? `<span class="inv-entry-info-caret">${infoOpen ? '▾' : '▸'}</span>` : ''}</span>
+        <span${nameAttrs}>${escapeHtml(name)}${escapeHtml(catLabel)}${wornArmorPill}${hasExpandable ? `<span class="inv-entry-info-caret">${infoOpen ? '▾' : '▸'}</span>` : ''}</span>
         <span class="inv-entry-qty">${canEdit
           ? `<button class="inv-qty-btn" onclick="invTickQty('${escapeHtml(entry.id)}',-1)" title="Decrease quantity" ${qty <= 1 ? 'disabled' : ''}>−</button>`
           : ''}
