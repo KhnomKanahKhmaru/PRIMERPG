@@ -3125,6 +3125,52 @@
       background: #251010; color: #c88; border-color: #3a1a1a;
     }
 
+    /* Damage + button — visible companion to the Enter-submit input.
+       Red-orange so it reads as "log damage" not "save/confirm". */
+    .inv-entry-dur-add {
+      font-size: 13px; font-weight: 700;
+      padding: 2px 10px;
+      background: #1a0a0a; color: #c88;
+      border: 1px solid #3a1a1a; border-radius: 2px;
+      cursor: pointer; font-family: 'Open Sans', sans-serif;
+      transition: background 0.1s, color 0.1s, border-color 0.1s;
+      line-height: 1;
+    }
+    .inv-entry-dur-add:hover {
+      background: #2a0f0f; color: #e0a0a0; border-color: #5a2020;
+    }
+
+    /* SIZE input + preset dropdown paired row, used inside the edit
+       panel's Durability Tracking subsection. */
+    .inv-dur-sizerow {
+      display: flex; gap: 8px; align-items: center;
+    }
+    .inv-dur-sizerow input[type="number"] {
+      flex: 0 0 80px;
+    }
+    .inv-dur-size-preset {
+      flex: 1; max-width: 180px;
+      background: #0f0f0f; border: 1px solid #222; color: #c8c8c8;
+      font-family: 'Open Sans', sans-serif; font-size: 11px;
+      padding: 4px 8px; border-radius: 3px; outline: none;
+    }
+    .inv-dur-size-preset:focus { border-color: #5a4820; }
+    .inv-dur-size-preset option { background: #111; color: #e0e0e0; }
+
+    /* Generic field hint — small gray text below an input explaining
+       what it does. Reusable beyond the durability section. */
+    .inv-field-hint {
+      font-size: 10px; color: #666; line-height: 1.4;
+      margin-top: 3px;
+    }
+
+    /* Durability toggle line — stacks the toggle button and its hint
+       vertically with a margin so they don't run together like the
+       flex-row variant in other places. */
+    .inv-dur-toggle-line {
+      margin-top: 4px;
+    }
+
     /* Edit panel subsection — groups related fields under a small label */
     .inv-edit-panel-subsection {
       margin-top: 10px; padding-top: 10px;
