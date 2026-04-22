@@ -2908,6 +2908,28 @@
     .inv-edit-panel .inv-field textarea { resize: vertical; min-height: 44px; line-height: 1.5; }
     .inv-edit-panel .inv-dims-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
     .inv-edit-panel .inv-dims-row input { text-align: center; font-family: 'Consolas', 'Courier New', monospace; }
+
+    /* Dimension preset quick-pick dropdown — used across entry edit,
+       catalog manager, and custom item form. The select is styled
+       darker than the adjacent number inputs so it reads as a helper
+       control rather than a primary field. */
+    .inv-dims-preset-row {
+      display: flex; align-items: center; margin-bottom: 4px;
+    }
+    .inv-dims-hint {
+      font-weight: 400; color: #555; font-size: 9px;
+      text-transform: none; letter-spacing: 0;
+    }
+    .item-preset-select {
+      background: #0a0a0a; border: 1px solid #222; color: #c8c8c8;
+      font-family: 'Open Sans', sans-serif; font-size: 11px;
+      padding: 4px 8px; border-radius: 3px; outline: none;
+      max-width: 300px; cursor: pointer;
+      transition: border-color 0.1s, color 0.1s;
+    }
+    .item-preset-select:hover { border-color: #3a2a1a; color: #d4a574; }
+    .item-preset-select:focus { border-color: #5a4820; }
+    .item-preset-select option { background: #111; color: #e0e0e0; }
     .inv-edit-panel .inv-pair-row { display: grid; grid-template-columns: 140px 1fr; gap: 14px; }
     .inv-edit-panel .inv-container-block { border: 1px dashed #2a2010; border-radius: 4px; padding: 10px 12px; margin-top: 6px; background: #0a0802; }
     .inv-edit-panel .inv-container-block-title { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #caa060; margin-bottom: 8px; }
@@ -4899,6 +4921,10 @@
     invCatMgrNewWeaponRemoveRange: (bi)                     => inventory.catMgrNewWeaponRemoveRange(bi),
     invCatMgrNewWeaponUpdateRange: (bi, which, v)           => inventory.catMgrNewWeaponUpdateRange(bi, which, v),
     invCatMgrNewWeaponToggleTag:   (tagId, on)              => inventory.catMgrNewWeaponToggleTag(tagId, on),
+    // Dimension preset quick-pick dropdowns (edit draft / custom form / catalog mgr)
+    invApplyPresetToEditDraft:     (presetId)               => inventory.applyPresetToEditDraft(presetId),
+    invApplyPresetToCustomDraft:   (presetId)               => inventory.applyPresetToCustomDraft(presetId),
+    invApplyPresetToCatMgrDraft:   (target, presetId)       => inventory.applyPresetToCatMgrDraft(target, presetId),
     invTickQty:              (id, delta)          => inventory.tickQty(id, delta),
     invRemoveEntry:          (id)                 => inventory.removeEntry(id),
     // Weapon readout — AMMO tracker buttons and "Send to Roll Calc"
