@@ -273,9 +273,14 @@ export function createInventorySection(ctx) {
       html += `</span>`;
     }
     if (canEdit) {
-      html += `<input type="number" class="inv-entry-dur-input" step="1" min="0" placeholder="+dmg"
+      // Unique input id so the + button can grab the typed value.
+      // Scoped per-entry since multiple durability rows can render at
+      // once (e.g. contents of a container each tracking damage).
+      const inputId = `dur-input-${entry.id}`;
+      html += `<input type="number" id="${escapeHtml(inputId)}" class="inv-entry-dur-input" step="1" min="0" placeholder="+dmg"
                  onkeydown="if(event.key==='Enter'){invDurabilityAddInstance('${escapeHtml(entry.id)}',this.value);this.value='';}"
-                 title="Type a damage amount and press Enter to add an instance.">`;
+                 title="Type a damage amount and press Enter or click + to log an instance.">
+               <button class="inv-entry-dur-add" onclick="(function(){const el=document.getElementById('${escapeHtml(inputId)}');if(el&&el.value){invDurabilityAddInstance('${escapeHtml(entry.id)}',el.value);el.value='';}})()" title="Log this damage amount as a new instance.">+</button>`;
       if (instances.length > 0) {
         html += `<button class="inv-entry-dur-clear" onclick="invDurabilityClear('${escapeHtml(entry.id)}')" title="Clear all instances — restores item to full Durability">Clear</button>`;
       }
@@ -3218,12 +3223,40 @@ export function createInventorySection(ctx) {
 
     html += `<div class="inv-edit-panel-subsection">
       <div class="inv-edit-panel-sub-label">Durability Tracking</div>
-      <div class="inv-toggle-row">
+
+      <div class="inv-pair-row" style="margin-bottom:8px">
+        <div class="inv-field">
+          <label>SIZE</label>
+          <div class="inv-dur-sizerow">
+            <input type="number" step="1" min="0" value="${escapeHtml(String(d.size != null ? d.size : 3))}" oninput="invUpdateEditDraft('size',this.value)">
+            <select class="inv-dur-size-preset"
+                    onchange="invUpdateEditDraft('size',this.value); this.value='';"
+                    title="Pick a standard SIZE category to autofill.">
+              <option value="">— preset —</option>
+              <option value="1">Tiny (1)</option>
+              <option value="3">Small (3)</option>
+              <option value="5">Medium (5)</option>
+              <option value="7">Large (7)</option>
+              <option value="9">Huge (9)</option>
+              <option value="12">Gargantuan (12)</option>
+              <option value="15">Colossal (15)</option>
+            </select>
+          </div>
+          <div class="inv-field-hint">1 = Tiny, 3 = Small, 5 = Medium, 7 = Large, 9 = Huge.</div>
+        </div>
+        <div class="inv-field">
+          <label>Armor</label>
+          <input type="number" step="1" min="0" max="20" value="${escapeHtml(String(d.armor != null ? d.armor : 0))}" oninput="invUpdateEditDraft('armor',this.value)">
+          <div class="inv-field-hint">Material armor 0–20. Worn armor typically 0–10; vehicles 10–20. Feeds both Durability and damage reduction.</div>
+        </div>
+      </div>
+
+      <div class="inv-dur-toggle-line">
         <span class="inv-toggle${entry.durabilityTracked ? ' on' : ''}"
               onclick="invDurabilityToggleTracked('${escapeHtml(entry.id)}')">
           ${entry.durabilityTracked ? '✓ Track durability' : 'Track durability'}
         </span>
-        <span class="inv-toggle-hint">Turn on to track this item's wear — shows a Dur row on the entry where you can log damage instances. Off by default; most items don't need it unless they're actively under threat.</span>
+        <div class="inv-field-hint" style="margin-top:6px">Turn on to track this item's wear — shows a Dur row on the entry where you can log damage instances. Off by default; most items don't need it unless they're actively under threat.</div>
       </div>
     </div>`;
 
@@ -3261,7 +3294,11 @@ export function createInventorySection(ctx) {
       innerH:       innerDims.h || 0,
       innerPacking: (snap.containerOf && Number.isFinite(snap.containerOf.packingEfficiency))
         ? snap.containerOf.packingEfficiency
-        : 0.75
+        : 0.75,
+      // Durability-feeding fields. Defaults match what normalizeItem
+      // picks when a def doesn't carry the value (SIZE 3 = Small, 0 armor).
+      size:  Number.isFinite(snap.size)  ? snap.size  : 3,
+      armor: Number.isFinite(snap.armor) ? snap.armor : 0
     };
     editingEntryId = entryId;
     renderAll();
@@ -3273,8 +3310,17 @@ export function createInventorySection(ctx) {
   function updateEditDraft(field, value) {
     if (!editDraft) return;
     const numericFields = new Set(['weight','l','w','h','innerL','innerW','innerH','innerPacking']);
+    const intFields = new Set(['size','armor']);
     if (numericFields.has(field)) {
       const n = parseFloat(value);
+      editDraft[field] = Number.isFinite(n) && n >= 0 ? n : 0;
+    } else if (intFields.has(field)) {
+      // SIZE/Armor are integers — also trigger a re-render so the
+      // durability row (which reads from the entry's snapshot post-save,
+      // but authors expect to see preview math live as they type) stays
+      // in sync. Re-render on these two fields specifically; other
+      // numeric fields stay self-managing to avoid focus theft.
+      const n = parseInt(value, 10);
       editDraft[field] = Number.isFinite(n) && n >= 0 ? n : 0;
     } else {
       editDraft[field] = typeof value === 'string' ? value : '';
@@ -3370,11 +3416,12 @@ export function createInventorySection(ctx) {
       } : null,
       legacyCategory: prevSnap.legacyCategory || '',
       weapon:         prevSnap.weapon || null,
-      // Preserve size/armor/armorWorn verbatim — the inline edit panel
-      // doesn't expose these fields. Wiping them here would strip the
-      // Armor/Durability pills from any piece being "just renamed".
-      size:           Number.isFinite(prevSnap.size) ? prevSnap.size : 3,
-      armor:          Number.isFinite(prevSnap.armor) ? prevSnap.armor : 0,
+      // SIZE + Armor come from the draft now (editable on the sheet)
+      // so authors can tune Durability for this specific instance.
+      // Falls back to prevSnap values if the draft somehow lacks them
+      // (defensive — shouldn't happen with the new seeder).
+      size:           Number.isFinite(d.size)  ? d.size  : (Number.isFinite(prevSnap.size)  ? prevSnap.size  : 3),
+      armor:          Number.isFinite(d.armor) ? d.armor : (Number.isFinite(prevSnap.armor) ? prevSnap.armor : 0),
       armorWorn:      prevSnap.armorWorn || null
     };
     entry.snapshot = newSnapshot;
