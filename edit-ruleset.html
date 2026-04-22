@@ -517,6 +517,41 @@
       margin-left: 8px; vertical-align: middle;
     }
 
+    /* "worn" sub-pill — indicates the item has the Also-armor facet
+       active. Smaller/quieter than the main Armor pill. */
+    .item-armor-worn-pill {
+      font-size: 8px; font-weight: 600; letter-spacing: .08em;
+      text-transform: uppercase; color: #8a7048;
+      background: #0a0602; border: 1px solid #2a2014;
+      padding: 1px 5px; border-radius: 2px;
+      margin-left: 4px; vertical-align: middle;
+    }
+
+    /* Durability pill — shows max Durability (derived from SIZE + Armor).
+       Quieter color than the Armor pill since it's derived info, not a
+       primary attribute. */
+    .item-dur-pill {
+      font-size: 9px; font-weight: 600; letter-spacing: .06em;
+      text-transform: uppercase; color: #8ab48a;
+      background: #081a0d; border: 1px solid #1e3a24;
+      padding: 1px 6px; border-radius: 2px;
+      margin-left: 4px; vertical-align: middle;
+      cursor: help;
+    }
+
+    /* SIZE row — integer input paired with a category preset dropdown */
+    .inv-size-row {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .item-size-preset-select {
+      background: #0a0a0a; border: 1px solid #222; color: #c8c8c8;
+      font-family: 'Open Sans', sans-serif; font-size: 11px;
+      padding: 4px 8px; border-radius: 3px; outline: none;
+      max-width: 180px;
+    }
+    .item-size-preset-select:focus { border-color: #444; }
+    .item-size-preset-select option { background: #111; color: #e0e0e0; }
+
     /* Armor coverage checkbox grid — pulls hit locations from state */
     .inv-armor-coverage-row {
       display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px;
@@ -3389,16 +3424,29 @@
     const cof = it.containerOf || { dimensions: { l: 0, w: 0, h: 0 }, packingEfficiency: 0.75 };
     const cofDims = cof.dimensions || { l: 0, w: 0, h: 0 };
     const containerPill = isContainer ? '<span class="item-container-pill" title="This item is also a container">container</span>' : '';
-    // Armor pill — shown in the card header when the item carries an
-    // armor block. "Armor N" so a glance tells the author the rating.
-    const hasArmor = !!it.armor;
-    const armorVal = hasArmor ? (it.armor.value || 0) : 0;
-    const armorPill = hasArmor ? `<span class="item-armor-pill" title="This item is also armor">Armor ${armorVal}</span>` : '';
+    // Armor pill — visible whenever the item has a non-zero Armor rating,
+    // regardless of whether it's wearable. A solid-steel sword carries
+    // armor 4 purely for its own Durability; that still deserves the
+    // pill so authors can scan the catalogue. The second pill, when the
+    // "Also armor" facet is on, tags coverage so a kevlar vest reads
+    // "Armor 3 · worn".
+    const armorVal = Number.isFinite(it.armor) ? it.armor : 0;
+    const hasArmor = armorVal > 0;
+    const wornPill = it.armorWorn ? '<span class="item-armor-worn-pill" title="Wearable armor — protects its covered hit locations">worn</span>' : '';
+    const armorPill = hasArmor ? `<span class="item-armor-pill" title="Armor rating ${armorVal}">Armor ${armorVal}</span>` : '';
+    // Durability readout in the header — informational. Computed as
+    // SIZE + Armor (hardcoded for now; ruleset-configurable formula
+    // engine will come in a later turn). Only shown when the item has
+    // a meaningful SIZE AND/OR Armor so default-zero items stay tidy.
+    const itemSize = Number.isFinite(it.size) ? it.size : 3;
+    const durability = itemSize + armorVal;
+    const showDur = itemSize > 0 || armorVal > 0;
+    const durPill = showDur ? `<span class="item-dur-pill" title="Max Durability = SIZE (${itemSize}) + Armor (${armorVal}) = ${durability}">Dur ${durability}</span>` : '';
     const indentPx = (depth + 1) * 18;   // one level deeper than the category header
 
     let html = `<div class="inv-card${open ? ' open' : ''}" style="margin-left:${indentPx}px">
       <div class="inv-card-head" onclick="toggleItemOpen('${q(it.id)}', event)">
-        <div class="inv-card-name${nameCls}"><span class="inv-card-caret">${open ? '▾' : '▸'}</span>${nameText}${containerPill}${armorPill}</div>
+        <div class="inv-card-name${nameCls}"><span class="inv-card-caret">${open ? '▾' : '▸'}</span>${nameText}${containerPill}${armorPill}${wornPill}${durPill}</div>
         <div class="inv-card-dims">${qText(dimsStr)} in</div>
         <div class="inv-card-weight">${qText(weightStr)}</div>
         <span class="delete-x" onclick="event.stopPropagation();deleteItem('${q(it.id)}')" title="Remove item">×</span>
@@ -3444,6 +3492,33 @@
           </div>
         </div>
 
+        <div class="inv-pair-row">
+          <div class="inv-field">
+            <label>SIZE <span class="inv-dims-hint">— pick a category or type an integer</span></label>
+            <div class="inv-size-row">
+              <input type="number" step="1" min="0" value="${q(itemSize)}" oninput="updateItemField('${q(it.id)}','size',this.value)" style="max-width:80px">
+              <select class="item-size-preset-select"
+                      onchange="applySizePresetToItem('${q(it.id)}', this.value); this.value='';"
+                      title="Pick a standard SIZE category to autofill the number.">
+                <option value="">— preset —</option>
+                <option value="1">Tiny (1)</option>
+                <option value="3">Small (3)</option>
+                <option value="5">Medium (5)</option>
+                <option value="7">Large (7)</option>
+                <option value="9">Huge (9)</option>
+                <option value="12">Gargantuan (12)</option>
+                <option value="15">Colossal (15)</option>
+              </select>
+            </div>
+            <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">Used for durability math and volume scaling. PRIME convention: 1=Tiny, 3=Small, 5=Medium, 7=Large, 9=Huge.</div>
+          </div>
+          <div class="inv-field">
+            <label>Armor <span class="inv-dims-hint">— material rating 0–20</span></label>
+            <input type="number" step="1" min="0" max="20" value="${q(armorVal)}" oninput="updateItemField('${q(it.id)}','armor',this.value)" style="max-width:80px">
+            <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">How hard this item is to destroy. Also the damage-reduction value when "Also armor" is on. Worn armor typically 0–10; vehicles/giants 10–20.</div>
+          </div>
+        </div>
+
         <div class="inv-toggle-row">
           <span class="inv-toggle${isContainer ? ' on' : ''}" onclick="toggleItemContainer('${q(it.id)}')">${isContainer ? '✓ Also a container' : 'Also a container'}</span>
           <span class="inv-toggle-hint">Turn on to let this item hold other items (backpacks, pouches, holsters, weapon cases).</span>
@@ -3467,11 +3542,11 @@
         </div>` : ''}
 
         <div class="inv-toggle-row">
-          <span class="inv-toggle${hasArmor ? ' on' : ''}" onclick="toggleItemArmor('${q(it.id)}')">${hasArmor ? '✓ Also armor' : 'Also armor'}</span>
-          <span class="inv-toggle-hint">Turn on to let this item function as armor — reduces incoming damage on its covered hit locations.</span>
+          <span class="inv-toggle${it.armorWorn ? ' on' : ''}" onclick="toggleItemArmorWorn('${q(it.id)}')">${it.armorWorn ? '✓ Also armor' : 'Also armor'}</span>
+          <span class="inv-toggle-hint">Turn on to let this item protect a wearer's hit locations. Uses the top-level Armor value (set above) as its damage reduction.</span>
         </div>
 
-        ${hasArmor ? renderItemArmorBlock(it) : ''}
+        ${it.armorWorn ? renderItemArmorWornBlock(it) : ''}
 
         ${renderItemWeaponBlock(it)}
 
@@ -3484,40 +3559,27 @@
     return html;
   }
 
-  // Armor block — rendered inside the item card body when `item.armor`
-  // is set. Authors pick a value, which hit locations the armor covers
-  // (checkbox grid pulled from state.hitLocations), a max durability
-  // (0 = no tracking), and a condition label. Per-instance durability
-  // tracking happens on character inventory entries, not here.
-  function renderItemArmorBlock(it) {
-    const a = it.armor || { value: 0, coverage: [], maxDurability: 0, condition: 'pristine' };
-    const coverage = Array.isArray(a.coverage) ? a.coverage : [];
+  // Armor-worn facet block — rendered when the item protects a wearer
+  // on covered hit locations. No value field here (that's the top-level
+  // `item.armor` integer, set on the main card body). Just coverage +
+  // condition. The block is visual-only; toggling the facet off clears
+  // it entirely.
+  function renderItemArmorWornBlock(it) {
+    const w = it.armorWorn || { coverage: [], condition: 'pristine' };
+    const coverage = Array.isArray(w.coverage) ? w.coverage : [];
     const hls = Array.isArray(state.hitLocations) ? state.hitLocations : [];
     const conds = ['pristine','worn','damaged','broken'];
     let body = `<div class="inv-container-block" style="border-color:#2a1f14;background:#0a0602">
-      <div class="inv-container-block-title" style="color:#caa060">Armor Properties</div>
-
-      <div class="inv-pair-row">
-        <div class="inv-field">
-          <label>Armor Value</label>
-          <input type="number" step="1" min="0" value="${q(a.value || 0)}" oninput="updateItemArmorField('${q(it.id)}','value',this.value)" style="max-width:100px">
-          <div style="font-size:10px;color:#666;margin-top:2px">Reduces incoming damage by this amount on covered locations. 0 = cosmetic only.</div>
-        </div>
-        <div class="inv-field">
-          <label>Max Durability</label>
-          <input type="number" step="1" min="0" value="${q(a.maxDurability || 0)}" oninput="updateItemArmorField('${q(it.id)}','maxDurability',this.value)" style="max-width:100px">
-          <div style="font-size:10px;color:#666;margin-top:2px">Total condition points before the armor breaks. 0 = no durability tracking.</div>
-        </div>
-      </div>
+      <div class="inv-container-block-title" style="color:#caa060">Worn Armor Properties</div>
 
       <div class="inv-field">
         <label>Condition</label>
-        <select onchange="updateItemArmorField('${q(it.id)}','condition',this.value)" style="max-width:200px">`;
+        <select onchange="updateItemArmorWornField('${q(it.id)}','condition',this.value)" style="max-width:200px">`;
     conds.forEach(c => {
-      body += `<option value="${c}"${c === a.condition ? ' selected' : ''}>${c.charAt(0).toUpperCase() + c.slice(1)}</option>`;
+      body += `<option value="${c}"${c === w.condition ? ' selected' : ''}>${c.charAt(0).toUpperCase() + c.slice(1)}</option>`;
     });
     body += `</select>
-        <div style="font-size:10px;color:#666;margin-top:2px">Baseline condition label. Pristine = factory-fresh, Broken = non-functional.</div>
+        <div style="font-size:10px;color:#666;margin-top:2px">Baseline fluff state. Pristine = factory-fresh, Broken = non-functional. Not mechanically binding.</div>
       </div>
 
       <div class="inv-field">
@@ -3530,7 +3592,7 @@
         const checked = coverage.includes(hl.code) ? ' checked' : '';
         const label = hl.name || hl.code;
         body += `<label class="inv-armor-cov-cb" title="Covers ${q(label)}">
-          <input type="checkbox"${checked} onchange="toggleItemArmorCoverage('${q(it.id)}','${q(hl.code)}',this.checked)">
+          <input type="checkbox"${checked} onchange="toggleItemArmorWornCoverage('${q(it.id)}','${q(hl.code)}',this.checked)">
           ${qText(label)}
         </label>`;
       });
@@ -3777,6 +3839,12 @@
     if (field === 'weight') {
       const n = parseFloat(value);
       it.weight = Number.isFinite(n) && n >= 0 ? n : 0;
+    } else if (field === 'size' || field === 'armor') {
+      // Integer fields — coerce and clamp. Re-render the header so
+      // the Armor/Durability pills stay fresh, but don't full-render
+      // the list (would steal focus from the input the user's typing).
+      const n = parseInt(value, 10);
+      it[field] = Number.isFinite(n) && n >= 0 ? n : 0;
     } else if (field === 'categoryId') {
       it.categoryId = (typeof value === 'string' && value) ? value : null;
       // Apply the new category's defaults to any fields the user
@@ -3815,22 +3883,39 @@
     if (nameEl) {
       const hasName = it.name && it.name.trim();
       nameEl.classList.toggle('empty', !hasName);
-      // Preserve caret + pills, rebuild the name text between them.
-      // Container pill is kept as-is (its presence/absence is toggled
-      // on container-facet toggle, not by this handler). Armor pill
-      // gets rebuilt so its value label stays fresh.
+      // Rebuild pills from state (safer than preserving DOM nodes —
+      // values drift with every keystroke in the Armor/Size inputs).
+      // Preserve only the caret and container pill. Armor / worn /
+      // durability pills are recreated from current item state.
       const caret = nameEl.querySelector('.inv-card-caret');
       const containerPill = nameEl.querySelector('.item-container-pill');
       nameEl.innerHTML = '';
       if (caret) nameEl.appendChild(caret);
       nameEl.appendChild(document.createTextNode(hasName ? it.name : '(unnamed)'));
       if (containerPill) nameEl.appendChild(containerPill);
-      if (it.armor) {
+      const armorVal = Number.isFinite(it.armor) ? it.armor : 0;
+      if (armorVal > 0) {
         const armorPill = document.createElement('span');
         armorPill.className = 'item-armor-pill';
-        armorPill.title = 'This item is also armor';
-        armorPill.textContent = 'Armor ' + (it.armor.value || 0);
+        armorPill.title = 'Armor rating ' + armorVal;
+        armorPill.textContent = 'Armor ' + armorVal;
         nameEl.appendChild(armorPill);
+      }
+      if (it.armorWorn) {
+        const wornPill = document.createElement('span');
+        wornPill.className = 'item-armor-worn-pill';
+        wornPill.title = 'Wearable armor — protects its covered hit locations';
+        wornPill.textContent = 'worn';
+        nameEl.appendChild(wornPill);
+      }
+      const itemSize = Number.isFinite(it.size) ? it.size : 3;
+      if (itemSize > 0 || armorVal > 0) {
+        const dur = itemSize + armorVal;
+        const durPill = document.createElement('span');
+        durPill.className = 'item-dur-pill';
+        durPill.title = `Max Durability = SIZE (${itemSize}) + Armor (${armorVal}) = ${dur}`;
+        durPill.textContent = 'Dur ' + dur;
+        nameEl.appendChild(durPill);
       }
     }
     const dimsEl = head.querySelector('.inv-card-dims');
@@ -3878,57 +3963,56 @@
     it.containerOf.dimensions[axis] = Number.isFinite(n) && n >= 0 ? n : 0;
   };
 
-  // ── Armor facet handlers ──
+  // ── Armor-worn facet handlers ──
   //
-  // Mirror the container-toggle pattern: armor is an orthogonal facet
-  // that can coexist with containerOf and weapon. Toggling off clears
-  // the armor block entirely (authors who want to preserve coverage
-  // can just leave the toggle on and set Value to 0).
-  window.toggleItemArmor = function(id) {
+  // Toggling the facet on/off only affects whether the armor PROTECTS
+  // a wearer. The top-level `item.armor` integer is untouched — a
+  // sword's material armor of 4 stays 4 whether or not "Also armor"
+  // is on.
+  window.toggleItemArmorWorn = function(id) {
     const it = state.items.find(x => x.id === id);
     if (!it) return;
-    if (it.armor) {
-      it.armor = null;
+    if (it.armorWorn) {
+      it.armorWorn = null;
     } else {
-      // Seed with sensible defaults — 1 point of armor, no coverage
-      // set yet (author picks which hit locations). Pristine condition,
-      // no durability tracking.
-      it.armor = {
-        value: 1,
+      // Seed with sensible defaults — no coverage yet (author picks),
+      // Pristine condition.
+      it.armorWorn = {
         coverage: [],
-        maxDurability: 0,
         condition: 'pristine'
       };
     }
     renderItemList();
   };
 
-  window.updateItemArmorField = function(id, field, value) {
+  window.updateItemArmorWornField = function(id, field, value) {
     const it = state.items.find(x => x.id === id);
-    if (!it || !it.armor) return;
-    if (field === 'value' || field === 'maxDurability') {
-      const n = parseInt(value, 10);
-      it.armor[field] = Number.isFinite(n) && n >= 0 ? n : 0;
-      // Update the header pill without re-rendering the whole list —
-      // that would steal focus from the number input the user's typing
-      // in. The pill lives on the card head which is a different node.
-      if (field === 'value') updateItemCardHeader(it);
-    } else if (field === 'condition') {
+    if (!it || !it.armorWorn) return;
+    if (field === 'condition') {
       const valid = new Set(['pristine','worn','damaged','broken']);
-      it.armor.condition = valid.has(value) ? value : 'pristine';
+      it.armorWorn.condition = valid.has(value) ? value : 'pristine';
     }
   };
 
-  window.toggleItemArmorCoverage = function(id, locationCode, checked) {
+  window.toggleItemArmorWornCoverage = function(id, locationCode, checked) {
     const it = state.items.find(x => x.id === id);
-    if (!it || !it.armor) return;
-    if (!Array.isArray(it.armor.coverage)) it.armor.coverage = [];
-    const idx = it.armor.coverage.indexOf(locationCode);
-    if (checked && idx === -1) it.armor.coverage.push(locationCode);
-    else if (!checked && idx !== -1) it.armor.coverage.splice(idx, 1);
-    // No re-render needed — the checkbox is already reflecting the
-    // new state visually, and no other UI depends on the coverage
-    // set (the card header shows only the value).
+    if (!it || !it.armorWorn) return;
+    if (!Array.isArray(it.armorWorn.coverage)) it.armorWorn.coverage = [];
+    const idx = it.armorWorn.coverage.indexOf(locationCode);
+    if (checked && idx === -1) it.armorWorn.coverage.push(locationCode);
+    else if (!checked && idx !== -1) it.armorWorn.coverage.splice(idx, 1);
+  };
+
+  // SIZE preset applier — sets the item's SIZE integer from the
+  // preset dropdown. Re-renders so the header durability pill updates.
+  window.applySizePresetToItem = function(id, sizeVal) {
+    const it = state.items.find(x => x.id === id);
+    if (!it || !sizeVal) return;
+    const n = parseInt(sizeVal, 10);
+    if (Number.isFinite(n) && n >= 0) {
+      it.size = n;
+      renderItemList();
+    }
   };
 
   // ── WEAPON block on catalogue items ──
