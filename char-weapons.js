@@ -678,23 +678,31 @@ export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, 
     if (hasTag('Rapidfire Sweep')) {
       const rofRaw = out.rof && out.rof.resolved;
       const rofValue = Number.isFinite(Number(rofRaw)) ? Math.max(0, Number(rofRaw)) : 0;
+      // Shotgun synergy — "Shotguns have their effective Sweep AOE
+      // doubled". Interpreted as doubling the side length of the
+      // cube (each sweep AMMO counts double for sizing), so volume
+      // scales 8× vs non-shotgun sweepers. Matches the flavor of
+      // shotguns saturating wide areas efficiently.
+      const shotgunMultiplier = hasShotgunTag ? 2 : 1;
       const computeArea = function(ammo) {
         const a = Math.max(0, Math.floor(ammo || 0));
         if (a < 2 || rofValue < 2) return { sideLen: 0, area: 0, volume: 0, ammo: a };
-        const side = 2.5 * rofValue * (a - 1);
+        const side = 2.5 * rofValue * (a - 1) * shotgunMultiplier;
         const area = side * side;
         const volume = side * side * side;
         return { sideLen: side, area, volume, ammo: a };
       };
       const activeArea = computeArea(rfSweep);
       out.rapidfireSweep = {
-        available: rofValue >= 2,
+        available:  rofValue >= 2,
         rofValue,
-        activeAmmo: rfSweep,             // how many AMMO the player selected
-        sideLen:    activeArea.sideLen,   // current cube side (0 when < 2 ammo)
+        shotgun:    hasShotgunTag,
+        multiplier: shotgunMultiplier,
+        activeAmmo: rfSweep,
+        sideLen:    activeArea.sideLen,
         area:       activeArea.area,
         volume:     activeArea.volume,
-        computeArea                       // for arbitrary "what if?" previews
+        computeArea
       };
     }
 
