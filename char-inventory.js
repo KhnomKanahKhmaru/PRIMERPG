@@ -4717,6 +4717,54 @@ export function createInventorySection(ctx) {
   // target. Pattern matches the ruleset editor's card layout so it feels
   // familiar, just collapsed into a form.
 
+  // Worn-armor coverage picker for the custom-item modal. Matches the
+  // ruleset editor's armor facet block — hit-location checkboxes
+  // (convenience) plus a free-text input for custom labels. Coverage
+  // items are stored in draft.armorCoverage as a single array; this
+  // function splits them for display based on whether each label
+  // matches a ruleset hit-location code.
+  function renderCustomArmorBlock(draft) {
+    const ruleset = getRuleset() || {};
+    const hls = Array.isArray(ruleset.hitLocations) ? ruleset.hitLocations : [];
+    const coverage = Array.isArray(draft.armorCoverage) ? draft.armorCoverage : [];
+    const hlCodes = new Set(hls.map(h => h.code));
+    const customCoverage = coverage.filter(c => !hlCodes.has(c));
+
+    let body = `<div class="inv-container-block" style="border-color:#2a1f14;background:#0a0602">
+      <div class="inv-container-block-title" style="color:#caa060">Worn Armor Coverage</div>
+      <div class="inv-field">
+        <label>Which hit locations does this armor protect?</label>`;
+    if (hls.length === 0) {
+      body += `<div style="font-size:11px;color:#888;padding:4px 0">No hit locations defined in this ruleset. Use the custom labels below.</div>`;
+    } else {
+      body += `<div class="inv-armor-coverage-row">`;
+      hls.forEach(hl => {
+        const checked = coverage.includes(hl.code) ? ' checked' : '';
+        const label = hl.name || hl.code;
+        body += `<label class="inv-armor-cov-cb" title="Covers ${escapeHtml(label)}">
+          <input type="checkbox"${checked} onchange="invCustomDraftToggleArmorCoverage('${escapeHtml(hl.code)}',this.checked)">
+          ${escapeHtml(label)}
+        </label>`;
+      });
+      body += `</div>`;
+    }
+    body += `</div>
+      <div class="inv-field">
+        <label>Custom coverage <span class="inv-dims-hint">— non-standard labels (press Enter to add)</span></label>
+        <div class="inv-armor-custom-row">`;
+    if (customCoverage.length > 0) {
+      body += customCoverage.map(c =>
+        `<span class="inv-armor-custom-chip" onclick="invCustomDraftRemoveCustomCoverage('${escapeHtml(c)}')" title="Click to remove">${escapeHtml(c)} ×</span>`
+      ).join('');
+    }
+    body += `<input type="text" class="inv-armor-custom-input" placeholder="e.g. Throat, Upper Arm"
+                   onkeydown="if(event.key==='Enter'){invCustomDraftAddCustomCoverage(this.value);this.value='';}">
+        </div>
+      </div>
+    </div>`;
+    return body;
+  }
+
   function renderCustomForm() {
     const draft = activeModal.customDraft || {};
     const isContainer = activeModal.customKind === 'container';
@@ -4767,6 +4815,23 @@ export function createInventorySection(ctx) {
             <label>Weight (lbs)</label>
             <input type="number" step="0.1" min="0" value="${escapeHtml(String(draft.weight || 0))}" oninput="invUpdateCustomDraft('weight',this.value)" style="max-width:140px">
           </div>
+
+          ${!isContainer ? `
+          <div class="inv-field">
+            <label>SIZE &amp; Armor <span class="inv-dims-hint">— used for Durability math when tracking is turned on</span></label>
+            <div class="inv-dims-row">
+              <input type="number" step="1" min="0" value="${escapeHtml(String(Number.isFinite(draft.size) ? draft.size : 3))}" placeholder="SIZE" oninput="invUpdateCustomDraft('size',this.value)" title="SIZE — 1 Tiny, 3 Small, 5 Medium, 7 Large, 9 Huge.">
+              <input type="number" step="1" min="0" max="20" value="${escapeHtml(String(Number.isFinite(draft.armor) ? draft.armor : 0))}" placeholder="Armor" oninput="invUpdateCustomDraft('armor',this.value)" title="Armor 0–20 — material rating. Worn armor typically 0–10; vehicles 10–20.">
+              <div style="font-size:10px;color:#666;line-height:1.4;align-self:center">SIZE + Armor = Max Durability</div>
+            </div>
+          </div>
+
+          <div class="inv-toggle-row">
+            <span class="inv-toggle${draft.isWornArmor ? ' on' : ''}" onclick="invUpdateCustomDraft('isWornArmor',${!draft.isWornArmor})">${draft.isWornArmor ? '✓ Also armor' : 'Also armor'}</span>
+            <span class="inv-toggle-hint">Toggle for worn armor — vests, helmets, plates. Makes the item protect a wearer on the hit locations you pick below.</span>
+          </div>
+          ${draft.isWornArmor ? renderCustomArmorBlock(draft) : ''}
+          ` : ''}
 
           ${isContainer ? `<div class="inv-field" style="max-width:260px">
             <label title="Fraction of the container's raw L×W×H volume that can actually hold items. 1.0 = perfectly-fitted hard case, 0.75 = typical soft bag, 0.5 = loose sack or odd shape.">Packing Efficiency (0.1 – 1.0)</label>
@@ -5276,6 +5341,18 @@ export function createInventorySection(ctx) {
       alsoContainer: false,
       innerL: 0, innerW: 0, innerH: 0,
       innerPacking: 0.75,
+      // SIZE + Armor defaults match normalizeItem — Small item, no
+      // material armor. Author can bump these to declare a heavier
+      // or more protected piece.
+      size:           3,
+      armor:          0,
+      // Worn-armor facet — off by default. Turning it on reveals the
+      // coverage picker. armorCoverage holds all coverage labels (both
+      // ruleset hit-location codes and custom free-text). saveCustomDef
+      // only attaches the armorWorn facet if the toggle is on AND at
+      // least one coverage label is set.
+      isWornArmor:    false,
+      armorCoverage:  [],
       // Weapon fields — match the schema used by the personal-catalogue
       // draft so renderCatalogManagerWeaponBlock + buildWeaponFromDraft
       // can be shared. `isWeapon` false means the weapon block is
@@ -5340,6 +5417,8 @@ export function createInventorySection(ctx) {
     const d = activeModal.customDraft;
     // Numeric fields — coerce, clamp non-negative. Text fields pass through.
     const numericFields = new Set(['l','w','h','weight','packingEfficiency','innerL','innerW','innerH','innerPacking']);
+    // Integer fields — SIZE + Armor feed durability math; always whole numbers.
+    const intFields = new Set(['size','armor']);
     // Weapon numeric fields. PEN/dice/range can't go negative; dmgmod
     // is signed (for penalty weapons).
     const weaponNumericNonNeg = new Set(['weaponDice','weaponPen','weaponRange']);
@@ -5352,6 +5431,9 @@ export function createInventorySection(ctx) {
     if (numericFields.has(field)) {
       const n = parseFloat(value);
       d[field] = Number.isFinite(n) && n >= 0 ? n : 0;
+    } else if (intFields.has(field)) {
+      const n = parseInt(value, 10);
+      d[field] = Number.isFinite(n) && n >= 0 ? n : 0;
     } else if (weaponNumericNonNeg.has(field)) {
       const n = parseFloat(value);
       d[field] = Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
@@ -5362,6 +5444,15 @@ export function createInventorySection(ctx) {
       d[field] = (value == null) ? '' : String(value);
     } else if (field === 'alsoContainer') {
       d[field] = !!value;
+      renderActiveModal();
+      return;
+    } else if (field === 'isWornArmor') {
+      // Facet toggle — flip on/off and re-render so the coverage
+      // block appears/disappears. When turning off, leave any
+      // previously-entered coverage in the draft so re-enabling
+      // restores them (no data loss on accidental double-click).
+      d[field] = (value === true || value === 'true');
+      if (d.isWornArmor && !Array.isArray(d.armorCoverage)) d.armorCoverage = [];
       renderActiveModal();
       return;
     } else if (field === 'isWeapon') {
@@ -5396,6 +5487,41 @@ export function createInventorySection(ctx) {
     // Most text/number tweaks don't need a re-render — the inputs are
     // self-updating. Only structural changes (toggles, kind-swap)
     // re-render above.
+  }
+
+  // Custom-form armor coverage handlers. Mirror the ruleset-editor
+  // handlers but target activeModal.customDraft.armorCoverage — a
+  // single array of coverage labels, split at render time into "known
+  // hit-location code" vs "custom free-text". These three handle the
+  // toggle/add/remove operations from the custom form's UI.
+  function customDraftToggleArmorCoverage(locationCode, checked) {
+    if (!activeModal || !activeModal.customDraft) return;
+    const d = activeModal.customDraft;
+    if (!Array.isArray(d.armorCoverage)) d.armorCoverage = [];
+    const idx = d.armorCoverage.indexOf(locationCode);
+    if (checked && idx === -1) d.armorCoverage.push(locationCode);
+    else if (!checked && idx !== -1) d.armorCoverage.splice(idx, 1);
+    // No re-render — checkbox UI is self-updating.
+  }
+  function customDraftAddCustomCoverage(value) {
+    if (!activeModal || !activeModal.customDraft) return;
+    const d = activeModal.customDraft;
+    const t = (typeof value === 'string') ? value.trim() : '';
+    if (!t) return;
+    if (!Array.isArray(d.armorCoverage)) d.armorCoverage = [];
+    if (d.armorCoverage.includes(t)) return;
+    d.armorCoverage.push(t);
+    renderActiveModal();
+  }
+  function customDraftRemoveCustomCoverage(label) {
+    if (!activeModal || !activeModal.customDraft) return;
+    const d = activeModal.customDraft;
+    if (!Array.isArray(d.armorCoverage)) return;
+    const idx = d.armorCoverage.indexOf(label);
+    if (idx !== -1) {
+      d.armorCoverage.splice(idx, 1);
+      renderActiveModal();
+    }
   }
 
   // Custom-form weapon range-band handlers. Mirror the catalog-manager
@@ -5501,15 +5627,18 @@ export function createInventorySection(ctx) {
     } else {
       snapshot.weapon = null;
     }
-    // Custom item form doesn't expose size/armor/armorWorn authoring
-    // yet — future enhancement. For now, custom items created on the
-    // character sheet get default SIZE 3 (Small), zero material Armor,
-    // and no wearable-armor facet. Authors who want those fields
-    // should create the item in the personal catalogue or the
-    // ruleset editor instead.
-    snapshot.size      = 3;
-    snapshot.armor     = 0;
-    snapshot.armorWorn = null;
+    // SIZE + Armor now come from the draft (custom form exposes them
+    // for durability math and worn-armor declaration). Defaults match
+    // normalizeItem: SIZE 3 (Small), zero material Armor. The worn
+    // armor facet is populated only when the author toggled it on AND
+    // at least one coverage label is set — an empty coverage array
+    // means "I thought about it but decided no" and should be null.
+    snapshot.size  = Number.isFinite(d.size)  ? d.size  : 3;
+    snapshot.armor = Number.isFinite(d.armor) ? d.armor : 0;
+    const cov = Array.isArray(d.armorCoverage)
+      ? d.armorCoverage.filter(c => typeof c === 'string' && c.trim().length > 0)
+      : [];
+    snapshot.armorWorn = (d.isWornArmor && cov.length > 0) ? { coverage: cov } : null;
 
     const isContainerRole = !!snapshot.containerOf;
     const defKind = isContainerRole ? 'container' : 'equipment';
@@ -6385,6 +6514,10 @@ export function createInventorySection(ctx) {
     customDraftWeaponRemoveRange,
     customDraftWeaponUpdateRange,
     customDraftWeaponToggleTag,
+    // One-off custom form — armor facet helpers
+    customDraftToggleArmorCoverage,
+    customDraftAddCustomCoverage,
+    customDraftRemoveCustomCoverage,
     tickQty,
     // Weapon readout — AMMO tracker and Roll Calc send
     weaponAdjustAmmo,
