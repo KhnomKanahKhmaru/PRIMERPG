@@ -2207,7 +2207,9 @@ export function createInventorySection(ctx) {
         const rs = resolved.rapidfireSweep;
         const side = Number.isFinite(rs.sideLen) ? fmt(rs.sideLen) : '0';
         const vol  = Number.isFinite(rs.volume)  ? fmt(rs.volume)  : '0';
-        chipsHtml += `<span class="inv-weapon-rf-chip rf-sweep" title="Rapidfire Sweep cube: ${side}×${side}×${side}ft (${vol} cu ft). Reshape freely (line, cone, zig-zag). AMMO spent on sweep does NOT boost damage.">sweep ${side}×${side}×${side}ft</span>`;
+        const shotgunSuffix = rs.shotgun ? ' ×2 shotgun' : '';
+        const shotgunTitle = rs.shotgun ? ' Shotgun tag doubles the sweep AOE (each sweep AMMO counts double for sizing).' : '';
+        chipsHtml += `<span class="inv-weapon-rf-chip rf-sweep" title="Rapidfire Sweep cube: ${side}×${side}×${side}ft (${vol} cu ft). Reshape freely (line, cone, zig-zag). AMMO spent on sweep does NOT boost damage.${shotgunTitle}">sweep ${side}×${side}×${side}ft${shotgunSuffix}</span>`;
       }
       chipsHtml += `<span class="inv-weapon-rf-chip rf-cost" title="Total AMMO this action: 1 base shot + ${rf.damageExtra} damage + ${rf.sweepExtra} sweep.">${rf.totalAmmoCost} AMMO / shot</span>`;
     } else if (dmgExtra === 0 && swpExtra === 0 && maxExtra > 0) {
@@ -2294,14 +2296,18 @@ export function createInventorySection(ctx) {
     const side = result.sideLen;
     const sideRounded = Math.round(side * 10) / 10;
     const volRounded = Math.round(result.volume);
-    const sweepBase = 2.5 * sweep.rofValue;   // side delta per extra AMMO
+    const multiplier = sweep.multiplier || 1;
+    const sideDelta = 2.5 * sweep.rofValue * multiplier;
+    const shotgunBadge = sweep.shotgun
+      ? ` <span class="inv-weapon-sweep-shotgun" title="Shotgun tag doubles effective sweep AOE (each sweep AMMO counts double for sizing).">×2 shotgun</span>`
+      : '';
     const stateHtml = isPreview
       ? `<span class="inv-weapon-sweep-example">preview: ${previewAmmo} sweep AMMO → ${sideRounded}×${sideRounded}×${sideRounded}ft <span class="inv-weapon-sweep-area">(${volRounded} cu ft)</span></span>
          <span class="inv-weapon-sweep-hint">set Rapidfire → sweep field to commit</span>`
       : `<span class="inv-weapon-sweep-example">${previewAmmo} sweep AMMO → ${sideRounded}×${sideRounded}×${sideRounded}ft <span class="inv-weapon-sweep-area">(${volRounded} cu ft)</span></span>`;
-    return `<div class="inv-weapon-sweep-panel" title="Cube side = 2.5 × ROF × (AMMO − 1). Reshape freely — line, cone, zig-zag, dome. AMMO spent on sweep does NOT grant Rapidfire damage bonus.">
-      <span class="inv-weapon-sweep-label">Rapidfire Sweep</span>
-      <span class="inv-weapon-sweep-formula">side +${sweepBase}ft / extra AMMO</span>
+    return `<div class="inv-weapon-sweep-panel" title="Cube side = 2.5 × ROF × (AMMO − 1)${sweep.shotgun ? ' × 2 (shotgun)' : ''}. Reshape freely — line, cone, zig-zag, dome. AMMO spent on sweep does NOT grant Rapidfire damage bonus.">
+      <span class="inv-weapon-sweep-label">Rapidfire Sweep${shotgunBadge}</span>
+      <span class="inv-weapon-sweep-formula">side +${sideDelta}ft / extra AMMO</span>
       ${stateHtml}
     </div>`;
   }
