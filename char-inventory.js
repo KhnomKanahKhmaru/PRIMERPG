@@ -1985,6 +1985,11 @@ export function createInventorySection(ctx) {
     const resetBtn = hasAnyInstanceState
       ? `<button class="inv-weapon-reset-btn" onclick="invWeaponResetOverrides('${escapeHtml(entry.id)}')" title="Clear all slot overrides, range, and ATK result for this weapon">Reset to def</button>`
       : '';
+    const canEdit = ctx.getCanEdit();
+    const editOpen = !!(ui.editOpen);
+    const editBtn = canEdit
+      ? `<button class="inv-weapon-edit-btn${editOpen ? ' on' : ''}" onclick="invWeaponToggleEdit('${escapeHtml(entry.id)}')" title="${editOpen ? 'Close the weapon stat editor' : 'Edit damage dice, PEN, range, tags for this specific weapon'}">${editOpen ? '✓ Edit stats' : 'Edit stats'}</button>`
+      : '';
 
     let html = `<div class="inv-weapon">
       <div class="inv-weapon-title">
@@ -1992,8 +1997,10 @@ export function createInventorySection(ctx) {
         <span class="inv-weapon-kind-pill">${kindLabel}</span>
         ${customBadge}
         <span style="flex:1"></span>
+        ${editBtn}
         ${resetBtn}
       </div>
+      ${editOpen ? renderWeaponSnapshotEditor(entry) : ''}
       <div class="inv-weapon-grid">
         ${renderWeaponRollBlock(entry, 'Attack', resolved.attack, {
           showRaw:       !!ui.showRawAttack,
@@ -2092,6 +2099,130 @@ export function createInventorySection(ctx) {
       });
       html += `</div>`;
     }
+    return html;
+  }
+
+  // ─── WEAPON SNAPSHOT EDITOR ────────────────────────────────────────
+  //
+  // Inline compact editor for the weapon's intrinsic stats (dice,
+  // PEN, range bands, DMGMOD, AMMO, ROF, tags, kind). Edits write
+  // directly to entry.snapshot.weapon so they're per-instance — the
+  // catalogue def isn't touched. Rendered when entry.weaponUI.editOpen
+  // is true; collapsed otherwise (so weapon cards stay compact).
+  //
+  // Only owners/GMs can edit — the caller gates on getCanEdit().
+  // Tags list pulls from ruleset.weaponTags; kind-specific fields
+  // only render for the matching kind.
+  function renderWeaponSnapshotEditor(entry) {
+    const weapon = entry && entry.snapshot && entry.snapshot.weapon;
+    if (!weapon) return '';
+    const id = escapeHtml(entry.id);
+    const kind = weapon.kind === 'ranged' ? 'ranged' : 'melee';
+    const dice = Number.isFinite(weapon.dice) ? weapon.dice : 0;
+    const pen  = Number.isFinite(weapon.pen)  ? weapon.pen  : 0;
+
+    let html = `<div class="inv-weapon-editor">
+      <div class="inv-weapon-editor-title">Weapon stats — edits apply to THIS weapon only, not the catalogue def</div>
+      <div class="inv-weapon-editor-row">
+        <div class="inv-weapon-editor-field">
+          <label>Kind</label>
+          <select onchange="invWeaponSnapSetKind('${id}',this.value)">
+            <option value="melee"${kind === 'melee' ? ' selected' : ''}>Melee</option>
+            <option value="ranged"${kind === 'ranged' ? ' selected' : ''}>Ranged</option>
+          </select>
+        </div>
+        <div class="inv-weapon-editor-field">
+          <label>Damage Dice</label>
+          <input type="number" step="1" min="0" value="${escapeHtml(String(dice))}"
+                 oninput="invWeaponSnapUpdate('${id}','dice',this.value)">
+        </div>
+        <div class="inv-weapon-editor-field">
+          <label>PEN</label>
+          <input type="number" step="1" min="0" value="${escapeHtml(String(pen))}"
+                 oninput="invWeaponSnapUpdate('${id}','pen',this.value)">
+        </div>
+      </div>`;
+
+    if (kind === 'melee') {
+      const ranges = Array.isArray(weapon.ranges) ? weapon.ranges : [];
+      html += `<div class="inv-weapon-editor-subhead">Range Bands <span class="inv-weapon-editor-hint">(each band adds +1 Difficulty; empty = trivial range)</span></div>`;
+      if (ranges.length === 0) {
+        html += `<div class="inv-weapon-editor-empty">No range bands defined.</div>`;
+      } else {
+        ranges.forEach((band, bi) => {
+          const s = (band && typeof band === 'object' && !Array.isArray(band))
+            ? (Number.isFinite(band.s) ? band.s : 0)
+            : (Array.isArray(band) && Number.isFinite(band[0]) ? band[0] : 0);
+          const e = (band && typeof band === 'object' && !Array.isArray(band))
+            ? (Number.isFinite(band.e) ? band.e : 0)
+            : (Array.isArray(band) && Number.isFinite(band[1]) ? band[1] : 0);
+          html += `<div class="inv-weapon-editor-band">
+            <span class="inv-weapon-editor-band-label">Band ${bi} (+${bi})</span>
+            <input type="number" step="0.5" min="0" value="${escapeHtml(String(s))}" placeholder="Start"
+                   onchange="invWeaponSnapUpdateRange('${id}',${bi},'start',this.value)">
+            <span class="inv-weapon-editor-sep">–</span>
+            <input type="number" step="0.5" min="0" value="${escapeHtml(String(e))}" placeholder="End"
+                   onchange="invWeaponSnapUpdateRange('${id}',${bi},'end',this.value)">
+            <span class="inv-weapon-editor-unit">ft</span>
+            <button class="inv-weapon-editor-del" onclick="invWeaponSnapRemoveRange('${id}',${bi})" title="Remove band">×</button>
+          </div>`;
+        });
+      }
+      html += `<button class="inv-weapon-editor-add" onclick="invWeaponSnapAddRange('${id}')">+ Add Band</button>`;
+    } else {
+      const range  = Number.isFinite(weapon.range)  ? weapon.range  : 0;
+      const dmgmod = Number.isFinite(weapon.dmgmod) ? weapon.dmgmod : 0;
+      const ammo   = weapon.ammo != null ? weapon.ammo : '';
+      const rof    = weapon.rof  != null ? weapon.rof  : '';
+      html += `<div class="inv-weapon-editor-row">
+        <div class="inv-weapon-editor-field">
+          <label>Range (ft)</label>
+          <input type="number" step="1" min="0" value="${escapeHtml(String(range))}"
+                 oninput="invWeaponSnapUpdate('${id}','range',this.value)">
+        </div>
+        <div class="inv-weapon-editor-field">
+          <label>DMGMOD</label>
+          <input type="number" step="1" value="${escapeHtml(String(dmgmod))}"
+                 oninput="invWeaponSnapUpdate('${id}','dmgmod',this.value)">
+        </div>
+        <div class="inv-weapon-editor-field">
+          <label>AMMO <span class="inv-weapon-editor-hint">(number or formula)</span></label>
+          <input type="text" value="${escapeHtml(String(ammo))}"
+                 onchange="invWeaponSnapUpdate('${id}','ammo',this.value)">
+        </div>
+        <div class="inv-weapon-editor-field">
+          <label>ROF <span class="inv-weapon-editor-hint">(number or formula)</span></label>
+          <input type="text" value="${escapeHtml(String(rof))}"
+                 onchange="invWeaponSnapUpdate('${id}','rof',this.value)">
+        </div>
+      </div>`;
+    }
+
+    // Tags — pull from the ruleset's weaponTags catalogue. Each tag
+    // is a checkbox; toggling calls weaponSnapToggleTag. Unknown tag
+    // ids (ruleset changed since this weapon was created) are still
+    // shown at the bottom for completeness.
+    const ruleset = getRuleset();
+    const rsTags = Array.isArray(ruleset && ruleset.weaponTags) ? ruleset.weaponTags : [];
+    const weaponTagIds = Array.isArray(weapon.tags) ? weapon.tags : [];
+    html += `<div class="inv-weapon-editor-subhead">Tags</div>`;
+    if (rsTags.length === 0) {
+      html += `<div class="inv-weapon-editor-empty">No weapon tags defined in this ruleset.</div>`;
+    } else {
+      html += `<div class="inv-weapon-editor-tags">`;
+      rsTags.forEach(t => {
+        const checked = weaponTagIds.includes(t.id) ? ' checked' : '';
+        const descAttr = t.description
+          ? ` title="${escapeHtml(t.description)}"`
+          : '';
+        html += `<label class="inv-weapon-editor-tag"${descAttr}>
+          <input type="checkbox"${checked} onchange="invWeaponSnapToggleTag('${id}','${escapeHtml(t.id)}',this.checked)">
+          ${escapeHtml(t.name || t.id)}
+        </label>`;
+      });
+      html += `</div>`;
+    }
+    html += `</div>`;
     return html;
   }
 
@@ -4860,6 +4991,155 @@ export function createInventorySection(ctx) {
     }
   }
 
+  // ─── WEAPON SNAPSHOT EDITING ─────────────────────────────────────
+  //
+  // Players can edit the intrinsic weapon stats per-instance by
+  // flipping weaponUI.editOpen and writing to entry.snapshot.weapon
+  // directly. Because snapshots are per-inventory-entry (deep-cloned
+  // from the catalogue def at add-time), these edits only affect
+  // this one character's copy of the weapon — the catalogue def is
+  // untouched. Common use case: player picks up an improvised
+  // weapon or a homebrew variant and wants to tweak dice/PEN/range
+  // without creating a new catalogue entry.
+
+  async function weaponToggleEdit(id) {
+    if (!getCanEdit()) return;
+    const entry = findEntry(id);
+    if (!entry) return;
+    if (!entry.weaponUI || typeof entry.weaponUI !== 'object') entry.weaponUI = {};
+    entry.weaponUI.editOpen = !entry.weaponUI.editOpen;
+    renderAll();
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
+  // Write a simple field on the weapon snapshot. Handles numeric
+  // coercion for dice/pen/range/dmgmod and preserves ammo/rof as
+  // numbers OR formula strings (same convention as catalogue editors).
+  async function weaponSnapUpdate(id, field, value) {
+    if (!getCanEdit()) return;
+    const entry = findEntry(id);
+    if (!entry || !entry.snapshot || !entry.snapshot.weapon) return;
+    const w = entry.snapshot.weapon;
+    const numericNonNeg = new Set(['dice', 'pen', 'range']);
+    const numericSigned = new Set(['dmgmod']);
+    const numOrFormula = new Set(['ammo', 'rof']);
+
+    if (numericNonNeg.has(field)) {
+      const n = parseFloat(value);
+      w[field] = Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+    } else if (numericSigned.has(field)) {
+      const n = parseFloat(value);
+      w[field] = Number.isFinite(n) ? Math.floor(n) : 0;
+    } else if (numOrFormula.has(field)) {
+      const raw = (value == null) ? '' : String(value).trim();
+      if (!raw) { w[field] = 0; }
+      else {
+        const n = Number(raw);
+        w[field] = Number.isFinite(n) && raw === String(n) ? n : raw;
+      }
+    } else {
+      return;   // unknown field — ignore
+    }
+    renderAll();
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
+  // Kind swap — melee ↔ ranged. Wipes incompatible fields so stale
+  // ranges or ammo don't leak into the wrong kind. Also clears any
+  // formula overrides since the default formula shape differs between
+  // kinds (DEX+Melee+DEXMOD vs DEX+Ranged+DEXMOD) and per-slot
+  // overrides keyed to one kind's variable names make no sense on
+  // the other.
+  async function weaponSnapSetKind(id, newKind) {
+    if (!getCanEdit()) return;
+    const entry = findEntry(id);
+    if (!entry || !entry.snapshot || !entry.snapshot.weapon) return;
+    const target = (newKind === 'ranged') ? 'ranged' : 'melee';
+    const w = entry.snapshot.weapon;
+    if (w.kind === target) return;
+    // Preserve shared fields (dice, pen, tags); rebuild kind-specific ones.
+    const shared = {
+      kind: target,
+      dice: Number.isFinite(w.dice) ? w.dice : 0,
+      pen:  Number.isFinite(w.pen)  ? w.pen  : 0,
+      tags: Array.isArray(w.tags) ? w.tags.slice() : []
+    };
+    entry.snapshot.weapon = (target === 'melee')
+      ? Object.assign(shared, { ranges: [] })
+      : Object.assign(shared, { range: 30, dmgmod: 0, ammo: 1, rof: 0 });
+    // Kind swap invalidates formula overrides (variable names changed).
+    entry.weaponOverrides = null;
+    renderAll();
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
+  // Melee range band helpers. Bands stored as {s, e} objects
+  // (Firestore-safe — no nested arrays). New bands continue from the
+  // previous band's end so chained 0-1, 1-2, 2-3 is one click each.
+  async function weaponSnapAddRange(id) {
+    if (!getCanEdit()) return;
+    const entry = findEntry(id);
+    if (!entry || !entry.snapshot || !entry.snapshot.weapon) return;
+    const w = entry.snapshot.weapon;
+    if (w.kind !== 'melee') return;
+    if (!Array.isArray(w.ranges)) w.ranges = [];
+    const prev = w.ranges[w.ranges.length - 1];
+    const prevEnd = prev
+      ? (prev && typeof prev === 'object' && !Array.isArray(prev)
+          ? (Number(prev.e) || 0)
+          : (Array.isArray(prev) ? (Number(prev[1]) || 0) : 0))
+      : 0;
+    w.ranges.push({ s: prevEnd, e: prevEnd + 1 });
+    renderAll();
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
+  async function weaponSnapRemoveRange(id, bandIdx) {
+    if (!getCanEdit()) return;
+    const entry = findEntry(id);
+    if (!entry || !entry.snapshot || !entry.snapshot.weapon) return;
+    const w = entry.snapshot.weapon;
+    if (!Array.isArray(w.ranges)) return;
+    w.ranges.splice(bandIdx, 1);
+    renderAll();
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
+  async function weaponSnapUpdateRange(id, bandIdx, which, value) {
+    if (!getCanEdit()) return;
+    const entry = findEntry(id);
+    if (!entry || !entry.snapshot || !entry.snapshot.weapon) return;
+    const w = entry.snapshot.weapon;
+    if (!Array.isArray(w.ranges)) return;
+    let band = w.ranges[bandIdx];
+    if (!band) return;
+    // Legacy [s, e] entries get converted to {s, e} on first touch.
+    if (Array.isArray(band)) {
+      band = { s: Number(band[0]) || 0, e: Number(band[1]) || 0 };
+      w.ranges[bandIdx] = band;
+    }
+    const n = parseFloat(value);
+    const safe = Number.isFinite(n) && n >= 0 ? n : 0;
+    if (which === 'start') band.s = safe;
+    else if (which === 'end') band.e = safe;
+    // No re-render — user might still be typing the other side. Save
+    // on-change (browsers fire change on blur) captures the final value.
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
+  async function weaponSnapToggleTag(id, tagId, on) {
+    if (!getCanEdit()) return;
+    const entry = findEntry(id);
+    if (!entry || !entry.snapshot || !entry.snapshot.weapon) return;
+    const w = entry.snapshot.weapon;
+    if (!Array.isArray(w.tags)) w.tags = [];
+    const idx = w.tags.indexOf(tagId);
+    if (on && idx < 0) w.tags.push(tagId);
+    else if (!on && idx >= 0) w.tags.splice(idx, 1);
+    renderAll();
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
   // Apply (or clear) a per-instance slot override on a weapon. The
   // override rewrites a single variable in the Attack or Damage
   // formula at resolve time — e.g. swap DEX for INT, or Melee for
@@ -5159,6 +5439,14 @@ export function createInventorySection(ctx) {
     weaponSetSlotOverride,
     weaponResetOverrides,
     weaponSetRange,
+    // Per-instance weapon stat editor (edit snapshot.weapon directly)
+    weaponToggleEdit,
+    weaponSnapUpdate,
+    weaponSnapSetKind,
+    weaponSnapAddRange,
+    weaponSnapRemoveRange,
+    weaponSnapUpdateRange,
+    weaponSnapToggleTag,
     weaponToRollCalc,
     removeEntry: removeEntryHandler,
     // Catalog view
