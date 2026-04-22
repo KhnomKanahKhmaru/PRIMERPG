@@ -2111,10 +2111,10 @@ export function createInventorySection(ctx) {
     // armor (armorWorn facet populated). For non-worn items, Armor is
     // just a durability input, so it shows up inline on the Dur row
     // instead (see renderDurabilityRow). This keeps the header free of
-    // numbers that only matter when tracking is active.
-    const snap = entry.snapshot || {};
-    const armorVal = Number.isFinite(snap.armor) ? snap.armor : 0;
-    const armorWorn = snap.armorWorn;
+    // numbers that only matter when tracking is active. `snap` is
+    // already declared earlier in this function (line ~2069) — reuse it.
+    const armorVal = snap && Number.isFinite(snap.armor) ? snap.armor : 0;
+    const armorWorn = snap && snap.armorWorn;
     const wornArmorPill = (armorVal > 0 && armorWorn)
       ? `<span class="inv-entry-armor-pill" title="Worn armor ${armorVal}${armorWorn.coverage && armorWorn.coverage.length ? ' — covers ' + armorWorn.coverage.join(', ') : ''}">Armor ${armorVal}</span>`
       : '';
