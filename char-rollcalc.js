@@ -939,6 +939,14 @@ export function createRollCalc(ctx) {
   // the current Combat tab state survive — e.g. if the player already
   // set Difficulty to 8 for a long-range shot, sending another weapon
   // to Roll Calc keeps that 8.
+  // Populate the Roll Calc slots + optional Difficulty fields from a
+  // weapon-roll payload. Slot 0 gets the dice pool as a single 'custom'
+  // lump; slots 1 and 2 are cleared so stale picks don't pollute. The
+  // statmodOverride holds the flat bonus. When the payload includes
+  // difficulty fields, those get written too — lets the weapon card's
+  // computed attack Difficulty (with range + rapidfire additions and
+  // skill/ROF mitigation) flow into Roll Calc exactly as the card
+  // showed it. Missing fields leave Roll Calc's current values alone.
   function loadWeaponRoll(payload) {
     if (!payload || typeof payload !== 'object') return;
     const dicePool  = Number.isFinite(payload.dicePool)  ? payload.dicePool  : 0;
@@ -964,6 +972,20 @@ export function createRollCalc(ctx) {
       override: null
     });
     state.statmodOverride = flatBonus;
+
+    // Difficulty fields — only overwrite when the payload actually
+    // provides them. Weapons send these for attacks (with range +
+    // rapidfire additions and skill/ROF mitigation), not damage.
+    if (Number.isFinite(payload.difficulty)) {
+      state.difficulty = payload.difficulty;
+    }
+    if (Number.isFinite(payload.mitigation)) {
+      state.mitigation = payload.mitigation;
+    }
+    if (Number.isFinite(payload.reduction)) {
+      state.reduction = payload.reduction;
+    }
+
     // Optional label surfacing — future turn might wire this into the
     // tile title; for now just emit a console breadcrumb so devs can
     // see what fired.
