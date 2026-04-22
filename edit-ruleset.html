@@ -225,6 +225,28 @@
     }
     .cond-rs-row-head input:focus { border-color: #444; }
     .cond-rs-row-fields { display: flex; gap: 8px; }
+    .tag-cat-select {
+      background: #0a0a0a; border: 1px solid #222; color: #c8c8c8;
+      font-family: inherit; font-size: 11px;
+      padding: 5px 6px; border-radius: 3px; outline: none;
+      max-width: 170px; flex-shrink: 0;
+    }
+    .tag-cat-select:focus { border-color: #444; }
+    .subsection {
+      margin: 10px 0 14px;
+      padding: 8px 10px;
+      background: #0a0a0a;
+      border: 1px solid #1a1a1a;
+      border-radius: 3px;
+    }
+    .subsection-title {
+      font-size: 10px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #888; margin-bottom: 4px;
+    }
+    .subsection-desc {
+      font-size: 10px; color: #666; line-height: 1.5;
+      margin-bottom: 8px;
+    }
     .cond-rs-row-field { display: flex; flex-direction: column; gap: 3px; flex: 1; }
     .cond-rs-row-field label {
       font-size: 9px;
@@ -894,9 +916,25 @@
         <div class="section-desc">
           Short descriptive labels players can assign to individual weapons (e.g. <b>Silenced</b>, <b>Two-Handed</b>, <b>Bleeding</b>). Tags don't auto-apply mechanics — they're informational for now and act as lookup keys for later QoL features. Describe each tag here so players know what it does when they see it on a weapon card.
         </div>
+
+        <!-- Tag Categories — nested tree (mirrors the Item Categories editor). -->
+        <div class="subsection">
+          <div class="subsection-title">Tag Categories</div>
+          <div class="subsection-desc">
+            Optional nested groups for organizing tags. Uncategorized tags go under the built-in "Uncategorized" group by default. Click a header in the tag list below to collapse the whole group.
+          </div>
+          <div class="cat-tree" id="tag-category-tree"></div>
+          <div class="add-row">
+            <input type="text" id="new-tag-cat-name" placeholder="Category name" style="max-width:220px">
+            <select id="new-tag-cat-parent" style="max-width:200px"></select>
+            <button class="btn small" onclick="addTagCategory()">+ Add Category</button>
+          </div>
+        </div>
+
         <div class="cond-rs-list" id="weapon-tag-list"></div>
         <div class="add-row">
           <input type="text" id="new-weapon-tag-name" placeholder="Tag name (e.g. Silenced)" style="max-width:220px">
+          <select id="new-weapon-tag-category" style="max-width:180px"></select>
           <button class="btn small" onclick="addWeaponTag()">+ Add</button>
         </div>
       </div>
@@ -984,6 +1022,11 @@
   // hold transient collapse/expand state — never persisted.
   const openInvCards = new Set();
   const collapsedCategories = new Set();
+  // Tag editor — parallel state to the item editor's sets. Separate
+  // so collapsing "Uncategorized" in tags doesn't also collapse an
+  // item category with the same name.
+  const openTagCards = new Set();
+  const collapsedTagCategories = new Set();
 
   // Fixed category codes — display labels can change but the stored code never does.
   const AD_CATEGORIES = [
@@ -1620,6 +1663,10 @@
 
   function renderWeaponTags() {
     if (!Array.isArray(state.weaponTags)) state.weaponTags = [];
+    if (!Array.isArray(state.tagCategories)) state.tagCategories = [];
+    renderTagCategoryTree();
+    refreshTagCategorySelects();
+
     const list = document.getElementById('weapon-tag-list');
     if (!list) return;
     const entries = state.weaponTags;
@@ -1627,15 +1674,43 @@
       list.innerHTML = '<div class="empty">No weapon tags defined yet. Add one below to start building the tag catalogue.</div>';
       return;
     }
+
     const esc = s => String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;')
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    list.innerHTML = entries.map((t, i) => `
-      <div class="cond-rs-row">
+
+    // Build parent→children map for categories + tag-by-category bucketing.
+    const byParent = new Map();
+    state.tagCategories.forEach(c => {
+      const pid = c.parentId || '__root__';
+      if (!byParent.has(pid)) byParent.set(pid, []);
+      byParent.get(pid).push(c);
+    });
+    const tagsByCat = new Map();
+    entries.forEach((t, i) => {
+      const cid = t.categoryId || 'tcat_uncategorized';
+      if (!tagsByCat.has(cid)) tagsByCat.set(cid, []);
+      tagsByCat.get(cid).push({ tag: t, index: i });
+    });
+
+    // Deep count for the collapsed-state indicator.
+    const deepCount = (cat) => {
+      let n = (tagsByCat.get(cat.id) || []).length;
+      (byParent.get(cat.id) || []).forEach(ch => { n += deepCount(ch); });
+      return n;
+    };
+
+    const renderTagCard = ({ tag: t, index: i }) => `
+      <div class="cond-rs-row tag-rs-row">
         <div class="cond-rs-row-head">
           <input type="text" placeholder="Tag name"
                  value="${esc(t.name || '')}"
                  oninput="updateWeaponTag(${i}, 'name', this.value)">
+          <select class="tag-cat-select"
+                  onchange="updateWeaponTag(${i}, 'categoryId', this.value)"
+                  title="Category this tag belongs to">
+            ${buildTagCategoryOptions(t.categoryId || 'tcat_uncategorized')}
+          </select>
           <button class="cond-rs-del" onclick="removeWeaponTag(${i})" title="Remove">×</button>
         </div>
         <div class="cond-rs-row-fields">
@@ -1645,7 +1720,122 @@
                       oninput="updateWeaponTag(${i}, 'description', this.value)">${esc(t.description || '')}</textarea>
           </div>
         </div>
-      </div>`).join('');
+      </div>`;
+
+    let html = '';
+    const renderCatSection = (c, depth) => {
+      const collapsed = collapsedTagCategories.has(c.id);
+      const directTags = tagsByCat.get(c.id) || [];
+      const children = byParent.get(c.id) || [];
+      const total = deepCount(c);
+      const countLabel = total === directTags.length
+        ? `${directTags.length}`
+        : `${directTags.length} / ${total} total`;
+      // Category header — click anywhere to toggle collapse.
+      html += `<div class="item-cat-header${collapsed ? ' collapsed' : ''}" style="padding-left:${depth * 18}px"
+                    onclick="toggleTagCatCollapse('${q(c.id)}')" title="${collapsed ? 'Expand' : 'Collapse'} ${esc(c.name)}">
+        <span class="item-cat-caret">${collapsed ? '▸' : '▾'}</span>
+        <span class="item-cat-name">${esc(c.name)}${c.builtIn ? ' <span class="item-cat-badge">built-in</span>' : ''}</span>
+        <span class="item-cat-count">${countLabel}</span>
+      </div>`;
+      if (!collapsed) {
+        directTags.forEach(entry => { html += renderTagCard(entry); });
+        children.forEach(ch => renderCatSection(ch, depth + 1));
+      }
+    };
+    (byParent.get('__root__') || []).forEach(c => renderCatSection(c, 0));
+
+    list.innerHTML = html;
+  }
+
+  // Build an <option>...</option> string for the tag-category dropdown
+  // with nested indentation so players can see the tree at a glance.
+  // `selectedId` is the current category id — marked `selected`.
+  function buildTagCategoryOptions(selectedId) {
+    const cats = Array.isArray(state.tagCategories) ? state.tagCategories : [];
+    const byParent = new Map();
+    cats.forEach(c => {
+      const pid = c.parentId || '__root__';
+      if (!byParent.has(pid)) byParent.set(pid, []);
+      byParent.get(pid).push(c);
+    });
+    const options = [];
+    const walk = (c, depth) => {
+      const label = '— '.repeat(depth) + c.name + (c.builtIn ? ' (built-in)' : '');
+      options.push(`<option value="${q(c.id)}"${c.id === selectedId ? ' selected' : ''}>${qText(label)}</option>`);
+      (byParent.get(c.id) || []).forEach(child => walk(child, depth + 1));
+    };
+    (byParent.get('__root__') || []).forEach(c => walk(c, 0));
+    return options.join('');
+  }
+
+  // Render the Tag Categories tree editor (structurally identical to
+  // renderCategoryTree but keyed off state.tagCategories).
+  function renderTagCategoryTree() {
+    const host = document.getElementById('tag-category-tree');
+    if (!host) return;
+    if (!Array.isArray(state.tagCategories) || state.tagCategories.length === 0) {
+      host.innerHTML = '<div class="empty" style="font-size:12px;color:#555;padding:10px">No categories yet. Add one below.</div>';
+      return;
+    }
+    const byParent = new Map();
+    state.tagCategories.forEach(c => {
+      const pid = c.parentId || '__root__';
+      if (!byParent.has(pid)) byParent.set(pid, []);
+      byParent.get(pid).push(c);
+    });
+    let html = '';
+    const renderNode = (c, depth) => {
+      const children = byParent.get(c.id) || [];
+      const collapsed = collapsedTagCategories.has(c.id);
+      const hasChildren = children.length > 0;
+      const tagCount = state.weaponTags.filter(t => (t.categoryId || 'tcat_uncategorized') === c.id).length;
+      const caret = hasChildren ? (collapsed ? '▸' : '▾') : '•';
+      html += `<div class="cat-row" style="padding-left:${depth * 18}px">
+        <span class="cat-caret" onclick="toggleTagCatCollapse('${q(c.id)}')" ${hasChildren ? 'style="cursor:pointer"' : 'style="cursor:default;color:#333"'}>${caret}</span>
+        <input type="text" class="cat-name" value="${q(c.name || '')}" placeholder="Category name"
+               oninput="updateTagCategoryField('${q(c.id)}','name',this.value)"
+               ${c.builtIn ? 'title="Built-in category (Uncategorized). Name can be edited but the category cannot be deleted."' : ''}>
+        <span class="cat-count" title="${tagCount} direct tag${tagCount === 1 ? '' : 's'} in this category (excludes subcategories)">${tagCount}</span>
+        ${c.builtIn ? '<span class="cat-badge">built-in</span>' : `<span class="cat-delete" onclick="deleteTagCategory('${q(c.id)}')" title="Delete this category (tags inside reassign to Uncategorized)">×</span>`}
+      </div>`;
+      if (!collapsed) children.forEach(child => renderNode(child, depth + 1));
+    };
+    (byParent.get('__root__') || []).forEach(c => renderNode(c, 0));
+    host.innerHTML = html;
+  }
+
+  // Populate both tag-category parent selects (the Add-Category row
+  // and the per-tag category select in the add-tag row).
+  function refreshTagCategorySelects() {
+    const cats = Array.isArray(state.tagCategories) ? state.tagCategories : [];
+    const byParent = new Map();
+    cats.forEach(c => {
+      const pid = c.parentId || '__root__';
+      if (!byParent.has(pid)) byParent.set(pid, []);
+      byParent.get(pid).push(c);
+    });
+
+    // "new tag category parent" — offers null (top-level) + all existing.
+    const parentSel = document.getElementById('new-tag-cat-parent');
+    if (parentSel) {
+      const current = parentSel.value;
+      let html = '<option value="">— top level —</option>';
+      const walk = (c, depth) => {
+        html += `<option value="${q(c.id)}">${qText('— '.repeat(depth) + c.name)}</option>`;
+        (byParent.get(c.id) || []).forEach(child => walk(child, depth + 1));
+      };
+      (byParent.get('__root__') || []).forEach(c => walk(c, 0));
+      parentSel.innerHTML = html;
+      if (current && cats.some(c => c.id === current)) parentSel.value = current;
+    }
+
+    // "new tag category" on the add-tag row — default to Uncategorized.
+    const catSel = document.getElementById('new-weapon-tag-category');
+    if (catSel) {
+      const current = catSel.value;
+      catSel.innerHTML = buildTagCategoryOptions(current || 'tcat_uncategorized');
+    }
   }
 
   window.addWeaponTag = function() {
@@ -1654,10 +1844,13 @@
     const name = (input.value || '').trim();
     if (!name) return;
     if (!Array.isArray(state.weaponTags)) state.weaponTags = [];
+    const catSel = document.getElementById('new-weapon-tag-category');
+    const categoryId = (catSel && catSel.value) || 'tcat_uncategorized';
     state.weaponTags.push({
       id: genWeaponTagId(),
       name,
-      description: ''
+      description: '',
+      categoryId
     });
     input.value = '';
     renderWeaponTags();
@@ -1667,7 +1860,14 @@
     if (!Array.isArray(state.weaponTags)) return;
     const t = state.weaponTags[i];
     if (!t) return;
-    if (field === 'name' || field === 'description') t[field] = value;
+    if (field === 'name' || field === 'description') {
+      t[field] = value;
+    } else if (field === 'categoryId') {
+      t.categoryId = (typeof value === 'string' && value) ? value : 'tcat_uncategorized';
+      // Moving a tag between groups needs a full re-render since its
+      // header changes.
+      renderWeaponTags();
+    }
   };
 
   window.removeWeaponTag = function(i) {
@@ -1675,6 +1875,87 @@
     state.weaponTags.splice(i, 1);
     renderWeaponTags();
   };
+
+  // ── Tag Category handlers ──
+  window.toggleTagCatCollapse = function(id) {
+    if (collapsedTagCategories.has(id)) collapsedTagCategories.delete(id);
+    else collapsedTagCategories.add(id);
+    renderWeaponTags();
+  };
+
+  window.addTagCategory = function() {
+    if (!Array.isArray(state.tagCategories)) state.tagCategories = [];
+    const nameInput = document.getElementById('new-tag-cat-name');
+    const parentSel = document.getElementById('new-tag-cat-parent');
+    if (!nameInput) return;
+    const name = (nameInput.value || '').trim();
+    if (!name) return;
+    const parentId = (parentSel && parentSel.value) || null;
+    state.tagCategories.push({
+      id: genTagCategoryId(),
+      name,
+      parentId: parentId || null,
+      builtIn: false
+    });
+    nameInput.value = '';
+    renderWeaponTags();
+  };
+
+  window.updateTagCategoryField = function(id, field, value) {
+    if (!Array.isArray(state.tagCategories)) return;
+    const c = state.tagCategories.find(x => x.id === id);
+    if (!c) return;
+    if (field === 'name') c.name = value;
+    // Could add 'description' / 'parentId' later; for now name is enough.
+    // Don't re-render on name edit — the input is already live. Save
+    // happens on blur via the section-level save button (parent flow).
+  };
+
+  window.deleteTagCategory = function(id) {
+    if (!Array.isArray(state.tagCategories)) return;
+    const cat = state.tagCategories.find(c => c.id === id);
+    if (!cat) return;
+    if (cat.builtIn) {
+      alert('Cannot delete the built-in Uncategorized category.');
+      return;
+    }
+    const descendants = new Set([id]);
+    // Collect nested descendants so reassignment cascades.
+    let grew = true;
+    while (grew) {
+      grew = false;
+      state.tagCategories.forEach(c => {
+        if (c.parentId && descendants.has(c.parentId) && !descendants.has(c.id)) {
+          descendants.add(c.id);
+          grew = true;
+        }
+      });
+    }
+    // Reassign affected tags to Uncategorized.
+    (state.weaponTags || []).forEach(t => {
+      if (t.categoryId && descendants.has(t.categoryId)) {
+        t.categoryId = 'tcat_uncategorized';
+      }
+    });
+    // Reassign affected subcategories' parents to Uncategorized's parent (null = root).
+    state.tagCategories.forEach(c => {
+      if (c.parentId && descendants.has(c.parentId) && c.id !== id) {
+        c.parentId = null;
+      }
+    });
+    // Finally, drop the category itself.
+    state.tagCategories = state.tagCategories.filter(c => c.id !== id);
+    collapsedTagCategories.delete(id);
+    renderWeaponTags();
+  };
+
+  // Fresh ID helper — matches genWeaponTagId's pattern.
+  function genTagCategoryId() {
+    let i = 1;
+    const existing = new Set((state.tagCategories || []).map(c => c.id));
+    while (existing.has('tcat_' + i)) i++;
+    return 'tcat_' + i;
+  }
 
   // ── A/D: TIER TABLE ──
   // side = 'adv' or 'dis'. The state key is advantageTiers / disadvantageTiers.
