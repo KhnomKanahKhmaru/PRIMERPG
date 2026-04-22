@@ -3293,7 +3293,7 @@ export function createInventorySection(ctx) {
           <div class="inv-dur-sizerow">
             <input type="number" step="1" min="0" value="${escapeHtml(String(d.size != null ? d.size : 3))}" oninput="invUpdateEditDraft('size',this.value)">
             <select class="inv-dur-size-preset"
-                    onchange="invUpdateEditDraft('size',this.value); this.value='';"
+                    onchange="invApplySizePresetToEditDraft(this.value); this.value='';"
                     title="Pick a standard SIZE tier to autofill.">
               ${buildSizePresetOptions()}
             </select>
@@ -3371,16 +3371,29 @@ export function createInventorySection(ctx) {
       const n = parseFloat(value);
       editDraft[field] = Number.isFinite(n) && n >= 0 ? n : 0;
     } else if (intFields.has(field)) {
-      // SIZE/Armor are integers — also trigger a re-render so the
-      // durability row (which reads from the entry's snapshot post-save,
-      // but authors expect to see preview math live as they type) stays
-      // in sync. Re-render on these two fields specifically; other
-      // numeric fields stay self-managing to avoid focus theft.
+      // SIZE/Armor — integers. Don't re-render here because the integer
+      // input is self-managing (re-rendering would steal focus on every
+      // keystroke and make typing multi-digit values impossible). The
+      // SIZE preset DROPDOWN path uses applySizePresetToEditDraft
+      // instead, which does trigger a re-render.
       const n = parseInt(value, 10);
       editDraft[field] = Number.isFinite(n) && n >= 0 ? n : 0;
     } else {
       editDraft[field] = typeof value === 'string' ? value : '';
     }
+  }
+
+  // Preset dropdown path for SIZE on the inline edit panel. Unlike the
+  // raw integer input (self-managing, no re-render), the preset picker
+  // MUST re-render so the integer field next to it reflects the new
+  // value. Empty string = sentinel "— preset —"; no-op in that case.
+  function applySizePresetToEditDraft(value) {
+    if (!editDraft) return;
+    if (value === '' || value == null) return;
+    const n = parseInt(value, 10);
+    if (!Number.isFinite(n) || n < 0) return;
+    editDraft.size = n;
+    renderAll();
   }
 
   // Apply a ruleset dimension preset to the active edit draft. Fills
@@ -4872,7 +4885,7 @@ export function createInventorySection(ctx) {
               <div class="inv-dur-sizerow">
                 <input type="number" step="1" min="0" value="${escapeHtml(String(Number.isFinite(draft.size) ? draft.size : 3))}" oninput="invUpdateCustomDraft('size',this.value)" title="Raw SIZE integer — pick a preset on the right or type a custom value.">
                 <select class="inv-dur-size-preset"
-                        onchange="invUpdateCustomDraft('size',this.value); this.value='';"
+                        onchange="invApplySizePresetToCustomDraft(this.value); this.value='';"
                         title="Pick a standard SIZE tier to autofill.">
                   ${buildSizePresetOptions()}
                 </select>
@@ -5494,6 +5507,9 @@ export function createInventorySection(ctx) {
     } else if (intFields.has(field)) {
       const n = parseInt(value, 10);
       d[field] = Number.isFinite(n) && n >= 0 ? n : 0;
+      // No re-render — integer input is self-managing. The SIZE preset
+      // DROPDOWN path uses applySizePresetToCustomDraft instead, which
+      // does trigger a re-render so the number input shows the new value.
     } else if (weaponNumericNonNeg.has(field)) {
       const n = parseFloat(value);
       d[field] = Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
@@ -5554,6 +5570,19 @@ export function createInventorySection(ctx) {
   // single array of coverage labels, split at render time into "known
   // hit-location code" vs "custom free-text". These three handle the
   // toggle/add/remove operations from the custom form's UI.
+  // Preset dropdown path for SIZE on the custom-item modal. Same
+  // reasoning as applySizePresetToEditDraft — the integer input is
+  // self-managing, but the preset picker must re-render so the number
+  // reflects the chosen tier.
+  function applySizePresetToCustomDraft(value) {
+    if (!activeModal || !activeModal.customDraft) return;
+    if (value === '' || value == null) return;
+    const n = parseInt(value, 10);
+    if (!Number.isFinite(n) || n < 0) return;
+    activeModal.customDraft.size = n;
+    renderActiveModal();
+  }
+
   function customDraftToggleArmorCoverage(locationCode, checked) {
     if (!activeModal || !activeModal.customDraft) return;
     const d = activeModal.customDraft;
@@ -6578,6 +6607,10 @@ export function createInventorySection(ctx) {
     customDraftToggleArmorCoverage,
     customDraftAddCustomCoverage,
     customDraftRemoveCustomCoverage,
+    // SIZE preset dropdowns — separate from update*Draft because they
+    // need a re-render to refresh the integer input next to them.
+    applySizePresetToEditDraft,
+    applySizePresetToCustomDraft,
     tickQty,
     // Weapon readout — AMMO tracker and Roll Calc send
     weaponAdjustAmmo,
