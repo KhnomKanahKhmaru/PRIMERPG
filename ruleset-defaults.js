@@ -508,7 +508,42 @@ window.RULESET_DEFAULTS = {
     // "Miscellaneous" is a built-in category that always exists. It's
     // the bucket for items whose categoryId is null or points to a
     // deleted category. Can be renamed/described but not deleted.
-    { id: 'cat_misc', name: 'Miscellaneous', description: '', parentId: null, builtIn: true }
+    {
+      id: 'cat_misc', name: 'Miscellaneous', description: '',
+      parentId: null, builtIn: true,
+      defaultDimensions: { l: 0, w: 0, h: 0 }, defaultWeight: 0
+    }
+  ],
+
+  // Dimension Presets — named L×W×H shapes (optionally with a matching
+  // weight) that authors can pick when creating items. Picking a preset
+  // autofills the item's dimensions (and weight, when non-zero) without
+  // having to type them in. The Standard Set ships ~12 common shapes
+  // covering pistols, rifles, shells, bandages, packs, and other
+  // everyday sizes. Custom rulesets can add their own or edit these
+  // built-ins (built-in presets CAN be renamed/sized but not deleted
+  // so the shape dropdown always has a baseline to click).
+  //
+  // Shape: { id, name, dimensions: {l, w, h}, weight, builtIn? }
+  dimensionPresets: [
+    { id: 'dp_pistol',    name: 'Pistol',           dimensions: { l: 8,   w: 1.5, h: 5.5 }, weight: 1.5,   builtIn: true },
+    { id: 'dp_rifle',     name: 'Rifle',            dimensions: { l: 40,  w: 3,   h: 8   }, weight: 8,     builtIn: true },
+    { id: 'dp_shotgun',   name: 'Shotgun',          dimensions: { l: 42,  w: 3,   h: 8   }, weight: 7.5,   builtIn: true },
+    { id: 'dp_smg',       name: 'SMG / Carbine',    dimensions: { l: 22,  w: 2.5, h: 7   }, weight: 5,     builtIn: true },
+    { id: 'dp_dagger',    name: 'Dagger / Knife',   dimensions: { l: 10,  w: 1,   h: 1   }, weight: 0.5,   builtIn: true },
+    { id: 'dp_sword',     name: 'Sword',            dimensions: { l: 38,  w: 1.5, h: 4   }, weight: 3,     builtIn: true },
+    { id: 'dp_grenade',   name: 'Grenade',          dimensions: { l: 4,   w: 2.5, h: 2.5 }, weight: 1,     builtIn: true },
+    { id: 'dp_shell',     name: 'Shotgun Shell',    dimensions: { l: 3,   w: 0.7, h: 0.7 }, weight: 0.08,  builtIn: true },
+    { id: 'dp_bullet',    name: 'Pistol Cartridge', dimensions: { l: 1.2, w: 0.4, h: 0.4 }, weight: 0.02,  builtIn: true },
+    { id: 'dp_magazine',  name: 'Magazine',         dimensions: { l: 5,   w: 1,   h: 3.5 }, weight: 0.75,  builtIn: true },
+    { id: 'dp_bandage',   name: 'Bandage / Small Medical', dimensions: { l: 3, w: 2, h: 1 }, weight: 0.15, builtIn: true },
+    { id: 'dp_pill',      name: 'Pill Bottle / Vial', dimensions: { l: 2, w: 1, h: 3 },     weight: 0.1,   builtIn: true },
+    { id: 'dp_book',      name: 'Book',             dimensions: { l: 9,   w: 2,   h: 6   }, weight: 2,     builtIn: true },
+    { id: 'dp_coin',      name: 'Coin / Token',     dimensions: { l: 1,   w: 0.1, h: 1   }, weight: 0.02,  builtIn: true },
+    { id: 'dp_daypack',   name: 'Daypack',          dimensions: { l: 18,  w: 10,  h: 22  }, weight: 2,     builtIn: true },
+    { id: 'dp_duffel',    name: 'Duffel Bag',       dimensions: { l: 28,  w: 14,  h: 14  }, weight: 2.5,   builtIn: true },
+    { id: 'dp_pouch',     name: 'Belt Pouch',       dimensions: { l: 6,   w: 3,   h: 5   }, weight: 0.3,   builtIn: true },
+    { id: 'dp_holster',   name: 'Holster',          dimensions: { l: 9,   w: 2,   h: 7   }, weight: 0.5,   builtIn: true }
   ],
 
   // ═══ WEAPONS ═══
@@ -1345,17 +1380,27 @@ window.normalizeRuleset = function(rs) {
   if (!Array.isArray(out.categories)) out.categories = [];
 
   // Normalize entries: name required, description optional, parentId
-  // nullable, builtIn preserved if set.
+  // nullable, builtIn preserved if set. defaultDimensions/defaultWeight
+  // carry category-level dimension + weight defaults that new items in
+  // this category will inherit. Missing fields become {0,0,0} and 0 —
+  // treated as "no default" by the UI (won't overwrite anything).
   out.categories = out.categories.map(c => {
     if (!c || typeof c !== 'object') return null;
     const name = (typeof c.name === 'string' && c.name.trim()) ? c.name.trim() : '';
     if (!name) return null;
+    const dd = c.defaultDimensions || {};
+    const clampDim = v => {
+      const n = Number(v);
+      return Number.isFinite(n) && n >= 0 ? n : 0;
+    };
     return {
       id:          (typeof c.id === 'string' && c.id) ? c.id : nextSynthId('cat'),
       name,
       description: (typeof c.description === 'string') ? c.description : '',
       parentId:    (typeof c.parentId === 'string' && c.parentId) ? c.parentId : null,
-      builtIn:     c.builtIn === true
+      builtIn:     c.builtIn === true,
+      defaultDimensions: { l: clampDim(dd.l), w: clampDim(dd.w), h: clampDim(dd.h) },
+      defaultWeight:     clampDim(c.defaultWeight)
     };
   }).filter(Boolean);
 
@@ -1369,10 +1414,11 @@ window.normalizeRuleset = function(rs) {
       name: 'Miscellaneous',
       description: 'Uncategorized items end up here.',
       parentId: null,
-      builtIn: true
+      builtIn: true,
+      defaultDimensions: { l: 0, w: 0, h: 0 },
+      defaultWeight: 0
     });
   } else {
-    // Force builtIn flag on the Misc category so UI code can rely on it.
     miscExists.builtIn = true;
   }
 
@@ -1528,6 +1574,50 @@ window.normalizeRuleset = function(rs) {
         injected.params = stdTag.params.map(p => Object.assign({}, p));
       }
       out.weaponTags.push(injected);
+    }
+  });
+
+  // Dimension presets — named L×W×H (+ weight) shapes that the UI
+  // exposes as a quick-pick dropdown on item dimension inputs. Each
+  // preset is {id, name, dimensions:{l,w,h}, weight, builtIn?}.
+  // Built-ins from RULESET_DEFAULTS are auto-merged into any ruleset
+  // missing them, same pattern as Standard Set tags. Author-edited
+  // built-ins keep the author's values (name match is case-insensitive).
+  if (!Array.isArray(out.dimensionPresets)) out.dimensionPresets = [];
+  const dpSeen = new Set();
+  out.dimensionPresets = out.dimensionPresets.map(p => {
+    if (!p || typeof p !== 'object') return null;
+    const name = (typeof p.name === 'string') ? p.name.trim() : '';
+    if (!name) return null;
+    let id = (typeof p.id === 'string' && p.id) ? p.id : nextSynthId('dp');
+    while (dpSeen.has(id)) id = nextSynthId('dp');
+    dpSeen.add(id);
+    const dims = p.dimensions || {};
+    const dim = v => {
+      const n = Number(v);
+      return Number.isFinite(n) && n >= 0 ? n : 0;
+    };
+    return {
+      id,
+      name,
+      dimensions: { l: dim(dims.l), w: dim(dims.w), h: dim(dims.h) },
+      weight:     dim(p.weight),
+      builtIn:    p.builtIn === true
+    };
+  }).filter(Boolean);
+  // Auto-merge built-ins from defaults if the ruleset is missing them.
+  // Match on case-insensitive name. Author's values (if they already
+  // defined "Pistol" with different dimensions) win — we don't overwrite.
+  const havePresetNames = new Set(out.dimensionPresets.map(p => (p.name || '').toLowerCase()));
+  (d.dimensionPresets || []).forEach(std => {
+    if (!havePresetNames.has((std.name || '').toLowerCase())) {
+      out.dimensionPresets.push({
+        id:         std.id,
+        name:       std.name,
+        dimensions: Object.assign({}, std.dimensions),
+        weight:     std.weight || 0,
+        builtIn:    true
+      });
     }
   });
 
