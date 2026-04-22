@@ -414,15 +414,31 @@ function applyOverrides(formula, mapping) {
 // penaltyPct — optional penalty percentage (0-100) to apply to stat and
 //              statmod terms. Skills, weapon constants, and literals
 //              are not reduced. Missing or 0 means no penalty.
+// rapidfireExtra — optional non-negative integer. Number of EXTRA
+//              AMMO spent beyond the base 1 shot, for ranged weapons.
+//              Each extra +1 DMGMOD; Difficulty increases only where
+//              the resulting effective DMGMOD exceeds the character's
+//              STR (recoil check). ROF value mitigates the increased
+//              Difficulty, absorbing it point-for-point up to the ROF
+//              value. Ignored for melee weapons. The UI is responsible
+//              for reading `out.rapidfire.finalDifficulty` and folding
+//              it into the Difficulty row.
 //
 // Returns the readout object described at the top of this file. If the
 // weapon argument is null/undefined or has no kind, returns null.
-export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, penaltyPct) {
+export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, penaltyPct, rapidfireExtra) {
   if (!weapon || (weapon.kind !== 'melee' && weapon.kind !== 'ranged')) return null;
 
   const symbols = buildSymbolTable(character || {}, ruleset || {});
   const rsWeapons = (ruleset && ruleset.weapons) || {};
   const rsTags    = Array.isArray(ruleset && ruleset.weaponTags) ? ruleset.weaponTags : [];
+
+  // Normalize rapidfire input — only meaningful for ranged weapons.
+  const rfExtra = (weapon.kind === 'ranged'
+                   && Number.isFinite(rapidfireExtra)
+                   && rapidfireExtra > 0)
+    ? Math.floor(rapidfireExtra)
+    : 0;
 
   // Weapon-local symbols overlaid on character symbols. DMGMOD falls
   // back to whatever the character symbol table already had (DEXMOD
@@ -434,9 +450,13 @@ export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, 
     PEN: Number.isFinite(weapon.pen)    ? weapon.pen    : 0,
     ATK: Number.isFinite(atkResult) ? Math.floor(atkResult) : 0
   };
+  const baseDmgmod = (weapon.kind === 'ranged' && Number.isFinite(weapon.dmgmod))
+    ? weapon.dmgmod
+    : 0;
   if (weapon.kind === 'ranged') {
-    weaponSymbols.WEAPONDMGMOD = Number.isFinite(weapon.dmgmod) ? weapon.dmgmod : 0;
-    weaponSymbols.DMGMOD = weaponSymbols.WEAPONDMGMOD;
+    // Rapidfire adds directly to DMGMOD (each extra ammo = +1).
+    weaponSymbols.WEAPONDMGMOD = baseDmgmod + rfExtra;
+    weaponSymbols.DMGMOD       = weaponSymbols.WEAPONDMGMOD;
   } else {
     weaponSymbols.WEAPONDMGMOD = 0;
   }
@@ -497,6 +517,45 @@ export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, 
     out.dmgmod = weaponSymbols.WEAPONDMGMOD;
     out.ammo   = resolveAmmoRof(weapon.ammo, symbols);
     out.rof    = resolveAmmoRof(weapon.rof,  symbols);
+
+    // Rapidfire: compute DMGMOD bonus, recoil-based Difficulty penalty,
+    // and ROF mitigation. Only populated when rapidfireExtra > 0.
+    // The UI feeds `finalDifficulty` into the existing Difficulty row
+    // so skill-tier mitigation (secondary/specialty) can further offset.
+    if (rfExtra > 0) {
+      // Character STR — look up from the symbol table (STR is aliased
+      // there by buildSymbolTable). Falls back to 0 if missing so the
+      // recoil check treats an unknown STR as the worst case.
+      const strVal = Number.isFinite(Number(symbols.STR)) ? Number(symbols.STR) : 0;
+      const effectiveDmgmod = baseDmgmod + rfExtra;
+      // Recoil check — each point of effective DMGMOD above STR adds
+      // Difficulty, capped at the extra ammo count (rapidfire can't
+      // punish you for baseline recoil that wasn't caused by it).
+      const overCapacity = Math.max(0, effectiveDmgmod - strVal);
+      const recoilDifficulty = Math.min(rfExtra, overCapacity);
+      // ROF mitigation — the weapon's ROF value cancels that many
+      // points of rapidfire-induced difficulty. Uses the resolved
+      // numeric ROF (could come from a formula). Treats unresolved
+      // or negative ROF as 0.
+      const rofRaw = out.rof && out.rof.resolved;
+      const rofValue = Number.isFinite(Number(rofRaw)) ? Math.max(0, Number(rofRaw)) : 0;
+      const rofMitigation = Math.min(recoilDifficulty, rofValue);
+      const finalDifficulty = recoilDifficulty - rofMitigation;
+
+      out.rapidfire = {
+        extra:             rfExtra,
+        dmgmodBonus:       rfExtra,
+        baseDmgmod,
+        effectiveDmgmod,
+        strVal,
+        overCapacity,       // raw STR shortfall (uncapped)
+        recoilDifficulty,   // capped at rfExtra
+        rofValue,
+        rofMitigation,
+        finalDifficulty,
+        totalAmmoCost:     1 + rfExtra
+      };
+    }
   }
 
   return out;
