@@ -2831,6 +2831,15 @@ export function createInventorySection(ctx) {
     // only when the entry was already a container (we don't promote/
     // demote container-ness from the inline edit panel — that's too
     // surprising a change to make here; user should remove and re-add).
+    //
+    // Preserve the weapon block verbatim — the inline edit panel only
+    // covers name/description/dimensions/weight, never weapon stats.
+    // Wiping weapon here would silently strip the Weapon readout for
+    // any item being "just renamed". Weapon edits have their own
+    // dedicated editor (renderWeaponSnapshotEditor / the Edit stats
+    // button on the weapon card). legacyCategory is preserved for the
+    // same reason.
+    const prevSnap = entry.snapshot || {};
     const newSnapshot = {
       name:           (d.name || '').trim() || '(unnamed)',
       description:    (d.description || '').trim(),
@@ -2840,7 +2849,8 @@ export function createInventorySection(ctx) {
         dimensions:        { l: d.innerL || 0, w: d.innerW || 0, h: d.innerH || 0 },
         packingEfficiency: clampEff(d.innerPacking, 0.75)
       } : null,
-      legacyCategory: (entry.snapshot && entry.snapshot.legacyCategory) || ''
+      legacyCategory: prevSnap.legacyCategory || '',
+      weapon:         prevSnap.weapon || null
     };
     entry.snapshot = newSnapshot;
 
