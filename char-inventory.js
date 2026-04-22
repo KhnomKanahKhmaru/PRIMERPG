@@ -156,6 +156,62 @@ export function createInventorySection(ctx) {
     return html;
   }
 
+  // Returns the ruleset's SIZE tier list — the canonical source for
+  // SIZE labels. The ruleset ships a 13-tier scale (Nano=0 through
+  // Cataclysmic=30). Falls back to a minimal hardcoded list if the
+  // ruleset is malformed, so the UI never breaks. Each tier is
+  // `{ level, label, xpCost }`; only level + label matter here.
+  function getSizeTiers() {
+    const ruleset = getRuleset() || {};
+    const raw = ruleset && ruleset.size && Array.isArray(ruleset.size.tiers) ? ruleset.size.tiers : null;
+    if (raw && raw.length > 0) return raw;
+    // Defensive fallback — matches RULESET_DEFAULTS.size.tiers.
+    return [
+      { level: 0,  label: 'Nano' },
+      { level: 1,  label: 'Micro' },
+      { level: 2,  label: 'Tiny' },
+      { level: 3,  label: 'Small' },
+      { level: 4,  label: 'Medium' },
+      { level: 6,  label: 'Large' },
+      { level: 8,  label: 'Huge' },
+      { level: 10, label: 'Massive' },
+      { level: 12, label: 'Giant' },
+      { level: 16, label: 'Colossal' },
+      { level: 20, label: 'Titanic' },
+      { level: 24, label: 'Behemoth' },
+      { level: 30, label: 'Cataclysmic' }
+    ];
+  }
+
+  // Produce an <option> list for a SIZE preset dropdown. Uses
+  // ruleset-defined tiers so the dropdown stays in sync with whatever
+  // the setting defines — a homebrew ruleset that adds "Planetary" at
+  // level 40 will see it here automatically.
+  function buildSizePresetOptions() {
+    const tiers = getSizeTiers();
+    let html = '<option value="">— preset —</option>';
+    tiers.forEach(t => {
+      const lvl = Number.isFinite(t.level) ? t.level : 0;
+      const lbl = (typeof t.label === 'string' && t.label) ? t.label : 'Tier';
+      html += `<option value="${lvl}">${escapeHtml(lbl)} (${lvl})</option>`;
+    });
+    return html;
+  }
+
+  // One-line hint listing a few common tiers to orient the author.
+  // Pulled from the same ruleset.size.tiers source so it stays
+  // truthful when authors edit the tier list.
+  function buildSizeHint() {
+    const tiers = getSizeTiers();
+    const picks = ['Tiny', 'Small', 'Medium', 'Large', 'Huge'];
+    const parts = [];
+    picks.forEach(label => {
+      const found = tiers.find(t => t.label === label);
+      if (found) parts.push(`${found.level} = ${found.label}`);
+    });
+    return parts.length > 0 ? parts.join(', ') + '. Feeds Max Durability.' : 'Feeds Max Durability.';
+  }
+
   // ── ITEM DURABILITY HELPERS ──
   //
   // Items have a derived Durability pool analogous to hit-location HP.
@@ -3238,18 +3294,11 @@ export function createInventorySection(ctx) {
             <input type="number" step="1" min="0" value="${escapeHtml(String(d.size != null ? d.size : 3))}" oninput="invUpdateEditDraft('size',this.value)">
             <select class="inv-dur-size-preset"
                     onchange="invUpdateEditDraft('size',this.value); this.value='';"
-                    title="Pick a standard SIZE category to autofill.">
-              <option value="">— preset —</option>
-              <option value="1">Tiny (1)</option>
-              <option value="3">Small (3)</option>
-              <option value="5">Medium (5)</option>
-              <option value="7">Large (7)</option>
-              <option value="9">Huge (9)</option>
-              <option value="12">Gargantuan (12)</option>
-              <option value="15">Colossal (15)</option>
+                    title="Pick a standard SIZE tier to autofill.">
+              ${buildSizePresetOptions()}
             </select>
           </div>
-          <div class="inv-field-hint">1 = Tiny, 3 = Small, 5 = Medium, 7 = Large, 9 = Huge.</div>
+          <div class="inv-field-hint">${escapeHtml(buildSizeHint())}</div>
         </div>
         <div class="inv-field">
           <label>Armor</label>
@@ -4817,12 +4866,23 @@ export function createInventorySection(ctx) {
           </div>
 
           ${!isContainer ? `
-          <div class="inv-field">
-            <label>SIZE &amp; Armor <span class="inv-dims-hint">— used for Durability math when tracking is turned on</span></label>
-            <div class="inv-dims-row">
-              <input type="number" step="1" min="0" value="${escapeHtml(String(Number.isFinite(draft.size) ? draft.size : 3))}" placeholder="SIZE" oninput="invUpdateCustomDraft('size',this.value)" title="SIZE — 1 Tiny, 3 Small, 5 Medium, 7 Large, 9 Huge.">
-              <input type="number" step="1" min="0" max="20" value="${escapeHtml(String(Number.isFinite(draft.armor) ? draft.armor : 0))}" placeholder="Armor" oninput="invUpdateCustomDraft('armor',this.value)" title="Armor 0–20 — material rating. Worn armor typically 0–10; vehicles 10–20.">
-              <div style="font-size:10px;color:#666;line-height:1.4;align-self:center">SIZE + Armor = Max Durability</div>
+          <div class="inv-pair-row" style="margin-top:4px">
+            <div class="inv-field">
+              <label>SIZE</label>
+              <div class="inv-dur-sizerow">
+                <input type="number" step="1" min="0" value="${escapeHtml(String(Number.isFinite(draft.size) ? draft.size : 3))}" oninput="invUpdateCustomDraft('size',this.value)" title="Raw SIZE integer — pick a preset on the right or type a custom value.">
+                <select class="inv-dur-size-preset"
+                        onchange="invUpdateCustomDraft('size',this.value); this.value='';"
+                        title="Pick a standard SIZE tier to autofill.">
+                  ${buildSizePresetOptions()}
+                </select>
+              </div>
+              <div class="inv-field-hint">${escapeHtml(buildSizeHint())}</div>
+            </div>
+            <div class="inv-field">
+              <label>Armor</label>
+              <input type="number" step="1" min="0" max="20" value="${escapeHtml(String(Number.isFinite(draft.armor) ? draft.armor : 0))}" oninput="invUpdateCustomDraft('armor',this.value)" title="Material armor 0–20.">
+              <div class="inv-field-hint">Material armor 0–20. Worn armor typically 0–10; vehicles 10–20. Feeds both Durability and damage reduction.</div>
             </div>
           </div>
 
