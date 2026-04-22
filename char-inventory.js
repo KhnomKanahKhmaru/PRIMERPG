@@ -2014,6 +2014,7 @@ export function createInventorySection(ctx) {
         <span class="inv-entry-capacity" title="${escapeHtml(capTip)}">${fmt(stats.usedVolume)}/${fmt(stats.availableVolume)} in³ (${pct}%)</span>
         <span class="inv-entry-weight">${fmt(stats.totalWeight)} lb</span>
         ${badge}
+        ${canEdit ? `<button class="inv-row-btn inv-row-btn-dur${entry.durabilityTracked ? ' on' : ''}" onclick="event.stopPropagation();invDurabilityToggleTracked('${escapeHtml(entry.id)}')" title="${entry.durabilityTracked ? 'Stop tracking this item\\'s durability' : 'Track this item\\'s durability — reveals a Dur row with hit-instance tracking.'}">⛊</button>` : ''}
         ${canEdit ? `<button class="inv-row-btn inv-row-btn-edit" onclick="event.stopPropagation();invOpenEntryEdit('${escapeHtml(entry.id)}')" title="Edit this instance (changes only this one, not the template).">✎</button>` : ''}
         ${canEdit ? `<button class="inv-row-btn inv-row-btn-danger" onclick="event.stopPropagation();invRemoveEntry('${escapeHtml(entry.id)}')" title="Remove this container (and everything inside)">×</button>` : ''}
       </div>
@@ -2120,6 +2121,7 @@ export function createInventorySection(ctx) {
         </span>
         <span class="inv-entry-dims">${fmt(dims.l)}×${fmt(dims.w)}×${fmt(dims.h)} in</span>
         <span class="inv-entry-weight">${fmt(totalWeight)} lb</span>
+        ${canEdit ? `<button class="inv-row-btn inv-row-btn-dur${entry.durabilityTracked ? ' on' : ''}" onclick="invDurabilityToggleTracked('${escapeHtml(entry.id)}')" title="${entry.durabilityTracked ? 'Stop tracking this item\\'s durability' : 'Track this item\\'s durability — reveals a Dur row with hit-instance tracking.'}">⛊</button>` : ''}
         ${canEdit ? `<button class="inv-row-btn inv-row-btn-edit" onclick="invOpenEntryEdit('${escapeHtml(entry.id)}')" title="Edit this instance (changes only this one, not the template).">✎</button>` : ''}
         ${canEdit ? `<button class="inv-row-btn inv-row-btn-danger" onclick="invRemoveEntry('${escapeHtml(entry.id)}')" title="Remove this item">×</button>` : ''}
       </div>
