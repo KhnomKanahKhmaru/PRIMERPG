@@ -1836,17 +1836,24 @@ export function createInventorySection(ctx) {
     const legacyCat = (snap && snap.legacyCategory) || (def && def.category) || '';
     const catLabel = legacyCat ? ` · ${legacyCat}` : '';
     const description = entryDescription(entry);
-    const hasInfo = !!((description && description.trim()) || (entry.notes && entry.notes.trim()));
+    // Weapons are expandable too — the weapon readout collapses with
+    // the namecard. A plain item with no description but a weapon
+    // snapshot still gets a clickable name that toggles the weapon
+    // card underneath. `hasInfo` stays narrow ("has text content")
+    // so the info panel only renders when there's text; `hasExpandable`
+    // is the broader trigger for making the whole entry collapsible.
+    const hasText = !!((description && description.trim()) || (entry.notes && entry.notes.trim()));
+    const hasWeapon = !!(snap && snap.weapon);
+    const hasExpandable = hasText || hasWeapon;
     const infoOpen = expandedInfo.has(entry.id);
 
     // Hover tooltip: first ~80 chars of description as a title attribute
     // on the name. Full description shows when the row is clicked.
-    const tooltip = hasInfo
+    const tooltip = hasText
       ? escapeHtml(truncate((description || entry.notes || '').replace(/\s+/g, ' ').trim(), 80))
-      : '';
-    // If there's info to show, the name is clickable to toggle the
-    // expanded panel. If not, the row is purely informational.
-    const nameAttrs = hasInfo
+      : (hasWeapon ? 'Click to show/hide weapon stats' : '');
+    // If there's expandable content, the name is clickable.
+    const nameAttrs = hasExpandable
       ? ` class="inv-entry-name inv-entry-name-clickable" title="${tooltip}" onclick="invToggleItemInfo('${escapeHtml(entry.id)}')"`
       : ` class="inv-entry-name"`;
 
@@ -1855,7 +1862,7 @@ export function createInventorySection(ctx) {
     let html = `<div class="inv-entry inv-entry-item${infoOpen ? ' info-open' : ''}${isEditing ? ' editing' : ''}" style="margin-left:${depth * 16}px">
       <div class="inv-entry-head inv-entry-head-item">
         <span class="inv-entry-icon" title="Item">◆</span>
-        <span${nameAttrs}>${escapeHtml(name)}${escapeHtml(catLabel)}${hasInfo ? `<span class="inv-entry-info-caret">${infoOpen ? '▾' : '▸'}</span>` : ''}</span>
+        <span${nameAttrs}>${escapeHtml(name)}${escapeHtml(catLabel)}${hasExpandable ? `<span class="inv-entry-info-caret">${infoOpen ? '▾' : '▸'}</span>` : ''}</span>
         <span class="inv-entry-qty">${canEdit
           ? `<button class="inv-qty-btn" onclick="invTickQty('${escapeHtml(entry.id)}',-1)" title="Decrease quantity" ${qty <= 1 ? 'disabled' : ''}>−</button>`
           : ''}
@@ -1876,7 +1883,7 @@ export function createInventorySection(ctx) {
       html += renderEntryEditPanel(entry, /*asContainer=*/false, depth);
     }
 
-    if (infoOpen && hasInfo) {
+    if (infoOpen && hasText) {
       const desc = (description || '').trim();
       const notes = (entry.notes || '').trim();
       html += `<div class="inv-entry-info">`;
@@ -1889,11 +1896,12 @@ export function createInventorySection(ctx) {
       html += `</div>`;
     }
 
-    // Weapon readout — only rendered when the entry's snapshot carries
-    // a weapon object (set by getDefForEntry → snapshot builders when
-    // the source def has def.weapon). Non-weapon items skip this
-    // block entirely, so the regular item-entry UI is unaffected.
-    html += renderWeaponReadout(entry);
+    // Weapon readout — only shows when the entry is expanded (the
+    // namecard caret controls it) AND the snapshot carries a weapon.
+    // Non-weapon items skip this block entirely.
+    if (infoOpen && hasWeapon) {
+      html += renderWeaponReadout(entry);
+    }
 
     html += `</div>`;
     return html;
