@@ -3054,6 +3054,108 @@
     .inv-weapon-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
     .inv-weapon-tag { background: #1a1515; border: 1px solid #3a2a1a; color: #d4a574; font-size: 10px; padding: 2px 8px; border-radius: 3px; cursor: help; }
 
+    /* Grouped tag rows — on-sheet weapon card */
+    .inv-weapon-tags-grouped { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+    .inv-weapon-tag-group { border: 1px solid #1a1a1a; border-radius: 3px; background: #0a0a0a; }
+    .inv-weapon-tag-grouphead {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 8px;
+      font-size: 9px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #888;
+      cursor: pointer; user-select: none;
+      transition: background 0.1s, color 0.1s;
+    }
+    .inv-weapon-tag-grouphead:hover { background: #121212; color: #aaa; }
+    .inv-weapon-tag-group.collapsed .inv-weapon-tag-grouphead { color: #666; }
+    .inv-weapon-tag-caret { width: 10px; text-align: center; color: #666; }
+    .inv-weapon-tag-grouphead:hover .inv-weapon-tag-caret { color: #999; }
+    .inv-weapon-tag-groupname { flex: 1; }
+    .inv-weapon-tag-groupcount {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-variant-numeric: tabular-nums; color: #666; font-size: 9px;
+    }
+    .inv-weapon-tag-grouptags {
+      display: flex; flex-wrap: wrap; gap: 4px;
+      padding: 0 8px 6px;
+    }
+
+    /* Grouped tag checkboxes — weapon snapshot editor */
+    .inv-weapon-editor-tag-group {
+      margin-bottom: 4px;
+      border: 1px solid #1a1a1a; border-radius: 3px; background: #0a0a0a;
+    }
+    .inv-weapon-editor-tag-grouphead {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 8px;
+      font-size: 9px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #888;
+      cursor: pointer; user-select: none;
+      transition: background 0.1s, color 0.1s;
+    }
+    .inv-weapon-editor-tag-grouphead:hover { background: #121212; color: #aaa; }
+    .inv-weapon-editor-tag-group.collapsed .inv-weapon-editor-tag-grouphead { color: #666; }
+    .inv-weapon-editor-tag-caret { width: 10px; text-align: center; color: #666; }
+    .inv-weapon-editor-tag-grouphead:hover .inv-weapon-editor-tag-caret { color: #999; }
+    .inv-weapon-editor-tag-groupname { flex: 1; }
+    .inv-weapon-editor-tag-groupcount {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-variant-numeric: tabular-nums; color: #666; font-size: 9px;
+    }
+    .inv-weapon-editor-tag-group-selected {
+      font-family: inherit; font-size: 9px;
+      padding: 1px 5px; border-radius: 2px;
+      background: #2a1f14; color: #d4a574; border: 1px solid #3a2a1a;
+      font-weight: 600; letter-spacing: .04em; text-transform: none;
+    }
+    .inv-weapon-editor-tag-group .inv-weapon-editor-tags {
+      padding: 4px 8px 6px;
+    }
+
+    /* Grouped tag checkboxes — Add Item custom form and catalog manager */
+    .inv-weapon-draft-tags {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      margin-top: 4px;
+    }
+    .inv-weapon-draft-tag {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 8px;
+      background: #1a1a1a; border: 1px solid #2a2a2a;
+      border-radius: 4px; font-size: 11px; cursor: pointer;
+    }
+    .inv-weapon-draft-tag input[type="checkbox"] { margin: 0; cursor: pointer; }
+    .inv-weapon-draft-tags-grouped {
+      display: flex; flex-direction: column; gap: 4px; margin-top: 4px;
+    }
+    .inv-weapon-draft-tag-group {
+      border: 1px solid #1a1a1a; border-radius: 3px; background: #0a0a0a;
+    }
+    .inv-weapon-draft-tag-grouphead {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 8px;
+      font-size: 9px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #888;
+      cursor: pointer; user-select: none;
+      transition: background 0.1s, color 0.1s;
+    }
+    .inv-weapon-draft-tag-grouphead:hover { background: #121212; color: #aaa; }
+    .inv-weapon-draft-tag-group.collapsed .inv-weapon-draft-tag-grouphead { color: #666; }
+    .inv-weapon-draft-tag-caret { width: 10px; text-align: center; color: #666; }
+    .inv-weapon-draft-tag-grouphead:hover .inv-weapon-draft-tag-caret { color: #999; }
+    .inv-weapon-draft-tag-groupname { flex: 1; }
+    .inv-weapon-draft-tag-groupcount {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-variant-numeric: tabular-nums; color: #666; font-size: 9px;
+    }
+    .inv-weapon-draft-tag-selected {
+      font-family: inherit; font-size: 9px;
+      padding: 1px 5px; border-radius: 2px;
+      background: #2a1f14; color: #d4a574; border: 1px solid #3a2a1a;
+      font-weight: 600; letter-spacing: .04em;
+    }
+    .inv-weapon-draft-tag-group .inv-weapon-draft-tags {
+      padding: 4px 8px 6px;
+    }
+
     /* ── Weapon readout redesign (Turn 1) ── */
     /* Penalty pill next to the dice pool — click the pool to toggle */
     .inv-weapon-penalty-pill {
@@ -4811,6 +4913,7 @@
     invWeaponResetOverrides: (id)                 => inventory.weaponResetOverrides(id),
     invWeaponSetRange:       (id, value)          => inventory.weaponSetRange(id, value),
     invWeaponToggleEdit:     (id)                 => inventory.weaponToggleEdit(id),
+    invWeaponToggleTagCatCollapse: (scope, catId)  => inventory.weaponToggleTagCatCollapse(scope, catId),
     invWeaponSnapUpdate:     (id, field, value)   => inventory.weaponSnapUpdate(id, field, value),
     invWeaponSnapSetKind:    (id, kind)           => inventory.weaponSnapSetKind(id, kind),
     invWeaponSnapAddRange:   (id)                 => inventory.weaponSnapAddRange(id),
