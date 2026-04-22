@@ -137,6 +137,25 @@ export function createInventorySection(ctx) {
     return groups;
   }
 
+  // Build the <option>s for a dimension-preset <select>. Leading
+  // empty option is the "no preset picked" sentinel — picking it
+  // does nothing. Each preset shows its L×W×H (and weight when
+  // non-zero) in the label so players don't have to memorize.
+  // Pulled from ruleset.dimensionPresets — empty if the ruleset
+  // defines none (the select still renders with just the sentinel).
+  function buildDimensionPresetOptions() {
+    const ruleset = getRuleset() || {};
+    const presets = Array.isArray(ruleset.dimensionPresets) ? ruleset.dimensionPresets : [];
+    let html = '<option value="">— pick a preset —</option>';
+    presets.forEach(p => {
+      const dims = p.dimensions || { l: 0, w: 0, h: 0 };
+      const weight = Number.isFinite(p.weight) && p.weight > 0 ? ', ' + p.weight + 'lb' : '';
+      const label = `${p.name} (${dims.l}×${dims.w}×${dims.h}${weight})`;
+      html += `<option value="${escapeHtml(p.id)}">${escapeHtml(label)}</option>`;
+    });
+    return html;
+  }
+
   // Which groups are collapsed — stored by group id. We do persist the
   // group's own `collapsed` flag to Firestore (part of the group record),
   // but we mirror it here for fast read access during render.
@@ -2993,7 +3012,14 @@ export function createInventorySection(ctx) {
           <input type="number" step="0.1" min="0" value="${escapeHtml(String(d.weight || 0))}" oninput="invUpdateEditDraft('weight',this.value)">
         </div>
         <div class="inv-field">
-          <label>Dimensions (L × W × H, inches)</label>
+          <label>Dimensions (L × W × H, inches) <span class="inv-dims-hint">— pick a preset to autofill</span></label>
+          <div class="inv-dims-preset-row">
+            <select class="item-preset-select"
+                    onchange="invApplyPresetToEditDraft(this.value); this.value='';"
+                    title="Pick a shape to autofill dimensions (and weight when the preset has one).">
+              ${buildDimensionPresetOptions()}
+            </select>
+          </div>
           <div class="inv-dims-row">
             <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.l || 0))}" placeholder="L" oninput="invUpdateEditDraft('l',this.value)">
             <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.w || 0))}" placeholder="W" oninput="invUpdateEditDraft('w',this.value)">
@@ -3075,6 +3101,64 @@ export function createInventorySection(ctx) {
     } else {
       editDraft[field] = typeof value === 'string' ? value : '';
     }
+  }
+
+  // Apply a ruleset dimension preset to the active edit draft. Fills
+  // L/W/H from the preset's dimensions, and weight if the preset
+  // carries a non-zero weight. Empty preset id ("— pick a preset —"
+  // sentinel) is a no-op. Caller is expected to clear the dropdown
+  // (`this.value=''`) after — keeps the select reusable.
+  function applyPresetToEditDraft(presetId) {
+    if (!editDraft || !presetId) return;
+    const ruleset = getRuleset() || {};
+    const presets = Array.isArray(ruleset.dimensionPresets) ? ruleset.dimensionPresets : [];
+    const p = presets.find(x => x.id === presetId);
+    if (!p) return;
+    const dims = p.dimensions || { l: 0, w: 0, h: 0 };
+    editDraft.l = Number.isFinite(dims.l) ? dims.l : 0;
+    editDraft.w = Number.isFinite(dims.w) ? dims.w : 0;
+    editDraft.h = Number.isFinite(dims.h) ? dims.h : 0;
+    if (Number.isFinite(p.weight) && p.weight > 0) editDraft.weight = p.weight;
+    renderAll();
+  }
+
+  // Apply a ruleset dimension preset to the modal's custom-form draft
+  // (accessed via activeModal.customDraft). Same semantics as the
+  // edit-draft version above. Used by the Add Item → Custom form.
+  function applyPresetToCustomDraft(presetId) {
+    if (!activeModal || !activeModal.customDraft || !presetId) return;
+    const ruleset = getRuleset() || {};
+    const presets = Array.isArray(ruleset.dimensionPresets) ? ruleset.dimensionPresets : [];
+    const p = presets.find(x => x.id === presetId);
+    if (!p) return;
+    const dims = p.dimensions || { l: 0, w: 0, h: 0 };
+    const d = activeModal.customDraft;
+    d.l = Number.isFinite(dims.l) ? dims.l : 0;
+    d.w = Number.isFinite(dims.w) ? dims.w : 0;
+    d.h = Number.isFinite(dims.h) ? dims.h : 0;
+    if (Number.isFinite(p.weight) && p.weight > 0) d.weight = p.weight;
+    renderAll();
+  }
+
+  // Apply a ruleset dimension preset to a catalog-manager draft
+  // (either an existing def being edited, or the "new def" draft).
+  // `target` is the draft key: a def id, or '__new__'.
+  function applyPresetToCatMgrDraft(target, presetId) {
+    if (!presetId) return;
+    const ruleset = getRuleset() || {};
+    const presets = Array.isArray(ruleset.dimensionPresets) ? ruleset.dimensionPresets : [];
+    const p = presets.find(x => x.id === presetId);
+    if (!p) return;
+    const draft = (target === '__new__')
+      ? catalogManager.newDraft
+      : catalogManager.drafts.get(target);
+    if (!draft) return;
+    const dims = p.dimensions || { l: 0, w: 0, h: 0 };
+    draft.l = Number.isFinite(dims.l) ? dims.l : 0;
+    draft.w = Number.isFinite(dims.w) ? dims.w : 0;
+    draft.h = Number.isFinite(dims.h) ? dims.h : 0;
+    if (Number.isFinite(p.weight) && p.weight > 0) draft.weight = p.weight;
+    renderAll();
   }
 
   // Commit the draft back to the entry's snapshot and save.
@@ -3358,7 +3442,14 @@ export function createInventorySection(ctx) {
           <input type="number" step="0.1" min="0" value="${escapeHtml(String(d.weight || 0))}" oninput="invCatMgrDraft('${escapeHtml(def.id)}','weight',this.value)">
         </div>
         <div class="inv-field">
-          <label>Dimensions (L × W × H, inches)</label>
+          <label>Dimensions (L × W × H, inches) <span class="inv-dims-hint">— pick a preset to autofill</span></label>
+          <div class="inv-dims-preset-row">
+            <select class="item-preset-select"
+                    onchange="invApplyPresetToCatMgrDraft('${escapeHtml(def.id)}', this.value); this.value='';"
+                    title="Pick a shape to autofill dimensions (and weight when the preset has one).">
+              ${buildDimensionPresetOptions()}
+            </select>
+          </div>
           <div class="inv-dims-row">
             <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.l || 0))}" placeholder="L" oninput="invCatMgrDraft('${escapeHtml(def.id)}','l',this.value)">
             <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.w || 0))}" placeholder="W" oninput="invCatMgrDraft('${escapeHtml(def.id)}','w',this.value)">
@@ -3441,7 +3532,14 @@ export function createInventorySection(ctx) {
           <input type="number" step="0.1" min="0" value="${escapeHtml(String(d.weight || 0))}" oninput="invCatMgrNewDraft('weight',this.value)">
         </div>
         <div class="inv-field">
-          <label>Dimensions (L × W × H, inches)</label>
+          <label>Dimensions (L × W × H, inches) <span class="inv-dims-hint">— pick a preset to autofill</span></label>
+          <div class="inv-dims-preset-row">
+            <select class="item-preset-select"
+                    onchange="invApplyPresetToCatMgrDraft('__new__', this.value); this.value='';"
+                    title="Pick a shape to autofill dimensions (and weight when the preset has one).">
+              ${buildDimensionPresetOptions()}
+            </select>
+          </div>
           <div class="inv-dims-row">
             <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.l || 0))}" placeholder="L" oninput="invCatMgrNewDraft('l',this.value)">
             <input type="number" step="0.25" min="0" value="${escapeHtml(String(d.w || 0))}" placeholder="W" oninput="invCatMgrNewDraft('w',this.value)">
@@ -4412,7 +4510,14 @@ export function createInventorySection(ctx) {
           </div>` : ''}
 
           <div class="inv-field">
-            <label>Dimensions (L × W × H, inches)</label>
+            <label>Dimensions (L × W × H, inches) <span class="inv-dims-hint">— pick a preset to autofill</span></label>
+            <div class="inv-dims-preset-row">
+              <select class="item-preset-select"
+                      onchange="invApplyPresetToCustomDraft(this.value); this.value='';"
+                      title="Pick a shape to autofill dimensions (and weight when the preset has one).">
+                ${buildDimensionPresetOptions()}
+              </select>
+            </div>
             <div class="inv-dims-row">
               <input type="number" step="0.25" min="0" value="${escapeHtml(String(draft.l || 0))}" placeholder="L" oninput="invUpdateCustomDraft('l',this.value)">
               <input type="number" step="0.25" min="0" value="${escapeHtml(String(draft.w || 0))}" placeholder="W" oninput="invUpdateCustomDraft('w',this.value)">
@@ -6034,6 +6139,10 @@ export function createInventorySection(ctx) {
     catMgrNewWeaponRemoveRange,
     catMgrNewWeaponUpdateRange,
     catMgrNewWeaponToggleTag,
+    // Dimension presets (shared ruleset catalogue)
+    applyPresetToEditDraft,
+    applyPresetToCustomDraft,
+    applyPresetToCatMgrDraft,
     // Carry cards (CAP / ENC / LIFT) + group-level encumbrance toggle
     toggleCarryCard,
     addCapMod, updateCapMod, deleteCapMod,
