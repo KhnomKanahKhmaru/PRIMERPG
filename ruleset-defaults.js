@@ -221,6 +221,9 @@ window.RULESET_DEFAULTS = {
       // FORT is pre-computed in the symbol table from STRMOD via the
       // fortitudeTable lookup; the formula here just reads that value.
       formula: 'FORT',
+      // Pure static value used as a damage-stacking divisor. Never rolled
+      // as a dice pool — the card shouldn't show dice-roll affordances.
+      rollable: false,
       trackDamage: false,
       keepDecimals: true,
       unit: ''
@@ -254,6 +257,8 @@ window.RULESET_DEFAULTS = {
       description: 'How fast you can move in feet per second.',
       group: 'movement',
       formula: 'DEX * 2.5',
+      // Static derived value — you don't roll Speed, you just move at it.
+      rollable: false,
       trackDamage: false,
       keepDecimals: true,     // 2.5 * DEX naturally fractional
       unit: 'ft/sec',
@@ -270,6 +275,7 @@ window.RULESET_DEFAULTS = {
       description: 'You may add increments equal to this amount to your Speed; every time you do so, you gain +1 Dice Penalty towards all physical actions for the rest of the Round.',
       group: 'movement',
       formula: 'STR * 1',
+      rollable: false,
       trackDamage: false,
       keepDecimals: false,
       unit: 'ft',
@@ -282,6 +288,7 @@ window.RULESET_DEFAULTS = {
       description: 'You may make a number of "free" (without normal penalties for spamming) Fast Actions, Fast Reactions, and Reactions per Round, equal to this. This applies independently to each.',
       group: 'movement',
       formula: '(DEX + PER) / 2 - 1',
+      rollable: false,
       trackDamage: false,
       keepDecimals: false,
       unit: ''
@@ -296,6 +303,7 @@ window.RULESET_DEFAULTS = {
       // 0.10s (gifted); at 4/4 it's 0.05s (exceptional). Negative stats
       // push it above 0.20s (slow reactions).
       formula: '0.2 / (2 ^ ((DEXMOD + PERMOD) / 4))',
+      rollable: false,
       trackDamage: false,
       keepDecimals: true,
       unit: 's'
