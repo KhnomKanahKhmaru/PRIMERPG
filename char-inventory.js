@@ -73,6 +73,70 @@ export function createInventorySection(ctx) {
   // header to toggle. Session-only, not persisted.
   const expandedCarryCards = new Set();
 
+  // Tag-category collapse state — keyed per "scope" since the same
+  // category can be collapsed in one editor panel but open in another.
+  // Scope keys we use:
+  //   'display:<entryId>'  → on-sheet weapon card tag row
+  //   'editor:<entryId>'   → weapon stats editor (Edit stats button)
+  //   'custom:__custom__'  → custom weapon form in Add Item modal
+  //   'catmgr:<defId>'     → personal catalogue manager rows
+  //
+  // Each scope maps to a Set of category ids that are currently
+  // collapsed for that scope. Missing scope = all categories expanded.
+  const collapsedTagCats = new Map();
+  function getCollapsedTagCats(scope) {
+    if (!collapsedTagCats.has(scope)) collapsedTagCats.set(scope, new Set());
+    return collapsedTagCats.get(scope);
+  }
+
+  // Bucket a set of tag objects by their categoryId. Returns ordered
+  // groups walking the ruleset's tagCategories tree so the display
+  // order matches the Ruleset Editor. Tags belonging to unknown (or
+  // missing) categories land under Uncategorized. Empty categories
+  // are omitted entirely so the UI doesn't show empty headers.
+  //
+  // Input: `tags` is an array of {id, name, description, categoryId?}.
+  // Returns: [{cat: {id, name, builtIn?}, depth, tags: [...], deepCount}]
+  function groupTagsByCategory(tags, ruleset) {
+    const tagCats = Array.isArray(ruleset && ruleset.tagCategories) ? ruleset.tagCategories : [];
+    if (tagCats.length === 0 || tags.length === 0) {
+      return [{ cat: { id: 'tcat_uncategorized', name: 'Tags' }, depth: 0, tags, deepCount: tags.length }];
+    }
+    const tagsByCat = new Map();
+    tags.forEach(t => {
+      const cid = (t && t.categoryId) || 'tcat_uncategorized';
+      if (!tagsByCat.has(cid)) tagsByCat.set(cid, []);
+      tagsByCat.get(cid).push(t);
+    });
+    const byParent = new Map();
+    tagCats.forEach(c => {
+      const pid = c.parentId || '__root__';
+      if (!byParent.has(pid)) byParent.set(pid, []);
+      byParent.get(pid).push(c);
+    });
+    const deepCount = (cat) => {
+      let n = (tagsByCat.get(cat.id) || []).length;
+      (byParent.get(cat.id) || []).forEach(ch => { n += deepCount(ch); });
+      return n;
+    };
+    const groups = [];
+    const walk = (cat, depth) => {
+      const direct = tagsByCat.get(cat.id) || [];
+      const total = deepCount(cat);
+      if (total > 0) {
+        groups.push({
+          cat:       { id: cat.id, name: cat.name, builtIn: !!cat.builtIn },
+          depth,
+          tags:      direct,
+          deepCount: total
+        });
+      }
+      (byParent.get(cat.id) || []).forEach(ch => walk(ch, depth + 1));
+    };
+    (byParent.get('__root__') || []).forEach(c => walk(c, 0));
+    return groups;
+  }
+
   // Which groups are collapsed — stored by group id. We do persist the
   // group's own `collapsed` flag to Firestore (part of the group record),
   // but we mirror it here for fast read access during render.
@@ -1934,8 +1998,7 @@ export function createInventorySection(ctx) {
   //                     result, used to compute final damage dice
   //   (overrides and current range live in entry.weaponOverrides and
   //   entry.currentRange — those drive actual resolver state)
-  function renderWeaponReadout(entry) {
-    const snap = entry && entry.snapshot;
+  function renderWeaponReadout(entry) {    const snap = entry && entry.snapshot;
     const weapon = snap && snap.weapon;
     if (!weapon || (weapon.kind !== 'melee' && weapon.kind !== 'ranged')) return '';
 
@@ -2087,14 +2150,49 @@ export function createInventorySection(ctx) {
       html += renderRapidfireSweepInfo(entry, resolved);
     }
 
-    // Tags.
+    // Tags — grouped by category when the ruleset defines any tag
+    // categories beyond the default Uncategorized. Each group header
+    // is clickable to collapse just that group's pills. When only
+    // Uncategorized is populated (typical for rulesets that haven't
+    // adopted tag categories yet), renders the old flat pill row so
+    // nothing breaks.
     if (Array.isArray(resolved.tags) && resolved.tags.length > 0) {
-      html += `<div class="inv-weapon-tags">`;
-      resolved.tags.forEach(t => {
-        const desc = t.description ? escapeHtml(t.description) : escapeHtml(t.name || '');
-        html += `<span class="inv-weapon-tag" title="${desc}">${escapeHtml(t.name || '')}</span>`;
-      });
-      html += `</div>`;
+      const rulesetNow = getRuleset();
+      const groups = groupTagsByCategory(resolved.tags, rulesetNow);
+      const singleUncat = groups.length === 1 && groups[0].cat.id === 'tcat_uncategorized';
+      if (singleUncat) {
+        html += `<div class="inv-weapon-tags">`;
+        groups[0].tags.forEach(t => {
+          const desc = t.description ? escapeHtml(t.description) : escapeHtml(t.name || '');
+          html += `<span class="inv-weapon-tag" title="${desc}">${escapeHtml(t.name || '')}</span>`;
+        });
+        html += `</div>`;
+      } else {
+        const scope = 'display:' + entry.id;
+        const collapsedSet = getCollapsedTagCats(scope);
+        html += `<div class="inv-weapon-tags-grouped">`;
+        groups.forEach(g => {
+          const collapsed = collapsedSet.has(g.cat.id);
+          const caret = collapsed ? '▸' : '▾';
+          const label = `${escapeHtml(g.cat.name)}`;
+          html += `<div class="inv-weapon-tag-group${collapsed ? ' collapsed' : ''}">
+            <div class="inv-weapon-tag-grouphead" onclick="invWeaponToggleTagCatCollapse('${escapeHtml(scope)}','${escapeHtml(g.cat.id)}')" title="${collapsed ? 'Expand' : 'Collapse'} ${label}">
+              <span class="inv-weapon-tag-caret">${caret}</span>
+              <span class="inv-weapon-tag-groupname">${label}</span>
+              <span class="inv-weapon-tag-groupcount">${g.tags.length}</span>
+            </div>`;
+          if (!collapsed) {
+            html += `<div class="inv-weapon-tag-grouptags">`;
+            g.tags.forEach(t => {
+              const desc = t.description ? escapeHtml(t.description) : escapeHtml(t.name || '');
+              html += `<span class="inv-weapon-tag" title="${desc}">${escapeHtml(t.name || '')}</span>`;
+            });
+            html += `</div>`;
+          }
+          html += `</div>`;
+        });
+        html += `</div>`;
+      }
     }
 
     html += `</div>`;
@@ -2408,10 +2506,9 @@ export function createInventorySection(ctx) {
       </div>`;
     }
 
-    // Tags — pull from the ruleset's weaponTags catalogue. Each tag
-    // is a checkbox; toggling calls weaponSnapToggleTag. Unknown tag
-    // ids (ruleset changed since this weapon was created) are still
-    // shown at the bottom for completeness.
+    // Tags — pull from the ruleset's weaponTags catalogue, grouped by
+    // the tag-category tree. Each tag is a checkbox; toggling calls
+    // weaponSnapToggleTag. Group headers are clickable to collapse.
     const ruleset = getRuleset();
     const rsTags = Array.isArray(ruleset && ruleset.weaponTags) ? ruleset.weaponTags : [];
     const weaponTagIds = Array.isArray(weapon.tags) ? weapon.tags : [];
@@ -2419,18 +2516,42 @@ export function createInventorySection(ctx) {
     if (rsTags.length === 0) {
       html += `<div class="inv-weapon-editor-empty">No weapon tags defined in this ruleset.</div>`;
     } else {
-      html += `<div class="inv-weapon-editor-tags">`;
-      rsTags.forEach(t => {
+      const groups = groupTagsByCategory(rsTags, ruleset);
+      const scope = 'editor:' + entry.id;
+      const collapsedSet = getCollapsedTagCats(scope);
+      const singleUncat = groups.length === 1 && groups[0].cat.id === 'tcat_uncategorized';
+      const renderCheckbox = (t) => {
         const checked = weaponTagIds.includes(t.id) ? ' checked' : '';
-        const descAttr = t.description
-          ? ` title="${escapeHtml(t.description)}"`
-          : '';
-        html += `<label class="inv-weapon-editor-tag"${descAttr}>
+        const descAttr = t.description ? ` title="${escapeHtml(t.description)}"` : '';
+        return `<label class="inv-weapon-editor-tag"${descAttr}>
           <input type="checkbox"${checked} onchange="invWeaponSnapToggleTag('${id}','${escapeHtml(t.id)}',this.checked)">
           ${escapeHtml(t.name || t.id)}
         </label>`;
-      });
-      html += `</div>`;
+      };
+      if (singleUncat) {
+        html += `<div class="inv-weapon-editor-tags">`;
+        groups[0].tags.forEach(t => { html += renderCheckbox(t); });
+        html += `</div>`;
+      } else {
+        groups.forEach(g => {
+          const collapsed = collapsedSet.has(g.cat.id);
+          const caret = collapsed ? '▸' : '▾';
+          const selectedCount = g.tags.filter(t => weaponTagIds.includes(t.id)).length;
+          const badge = selectedCount > 0 ? ` <span class="inv-weapon-editor-tag-group-selected">${selectedCount} selected</span>` : '';
+          html += `<div class="inv-weapon-editor-tag-group${collapsed ? ' collapsed' : ''}">
+            <div class="inv-weapon-editor-tag-grouphead" onclick="invWeaponToggleTagCatCollapse('${escapeHtml(scope)}','${escapeHtml(g.cat.id)}')" title="${collapsed ? 'Expand' : 'Collapse'} ${escapeHtml(g.cat.name)}">
+              <span class="inv-weapon-editor-tag-caret">${caret}</span>
+              <span class="inv-weapon-editor-tag-groupname">${escapeHtml(g.cat.name)}</span>
+              <span class="inv-weapon-editor-tag-groupcount">${g.tags.length}</span>${badge}
+            </div>`;
+          if (!collapsed) {
+            html += `<div class="inv-weapon-editor-tags">`;
+            g.tags.forEach(t => { html += renderCheckbox(t); });
+            html += `</div>`;
+          }
+          html += `</div>`;
+        });
+      }
     }
     html += `</div>`;
     return html;
@@ -3546,8 +3667,11 @@ export function createInventorySection(ctx) {
       </div>`;
     }
 
-    // Tag checkboxes — pulled from the active ruleset's catalogue.
-    // Empty ruleset shows a hint. Tooltip carries the description.
+    // Tag checkboxes — pulled from the active ruleset's catalogue,
+    // grouped by tag-category. Empty ruleset shows a hint. Tooltip
+    // carries the description. Scope key makes the collapse state
+    // per-row so different edits (catMgr row N vs the new-item row
+    // vs the custom item modal) keep independent collapse state.
     const ruleset = getRuleset() || {};
     const rsTags = Array.isArray(ruleset.weaponTags) ? ruleset.weaponTags : [];
     const tagIds = Array.isArray(draft.weaponTags) ? draft.weaponTags : [];
@@ -3556,17 +3680,47 @@ export function createInventorySection(ctx) {
     if (rsTags.length === 0) {
       html += `<div style="font-size:11px;color:#888;padding:4px 0">This ruleset has no weapon tags defined. The ruleset author can add them under Derived Stats &amp; Combat → Weapon Tags.</div>`;
     } else {
-      html += `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">`;
-      rsTags.forEach(t => {
+      const scopeKey = isCustom ? 'custom:__custom__'
+                      : isNew   ? 'catmgr:__new__'
+                                : 'catmgr:' + target;
+      const groups = groupTagsByCategory(rsTags, ruleset);
+      const singleUncat = groups.length === 1 && groups[0].cat.id === 'tcat_uncategorized';
+      const collapsedSet = getCollapsedTagCats(scopeKey);
+      const renderCheckbox = (t) => {
         const checked = tagIds.includes(t.id) ? ' checked' : '';
         const name = escapeHtml(t.name || t.id);
         const desc = escapeHtml(t.description || '');
-        html += `<label style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:4px;font-size:11px;cursor:pointer" title="${desc}">
+        return `<label class="inv-weapon-draft-tag" title="${desc}">
           <input type="checkbox"${checked} onchange="${tagToggle(t.id)}">
           ${name}
         </label>`;
-      });
-      html += `</div>`;
+      };
+      if (singleUncat) {
+        html += `<div class="inv-weapon-draft-tags">`;
+        groups[0].tags.forEach(t => { html += renderCheckbox(t); });
+        html += `</div>`;
+      } else {
+        html += `<div class="inv-weapon-draft-tags-grouped">`;
+        groups.forEach(g => {
+          const collapsed = collapsedSet.has(g.cat.id);
+          const caret = collapsed ? '▸' : '▾';
+          const selectedCount = g.tags.filter(t => tagIds.includes(t.id)).length;
+          const badge = selectedCount > 0 ? ` <span class="inv-weapon-draft-tag-selected">${selectedCount}</span>` : '';
+          html += `<div class="inv-weapon-draft-tag-group${collapsed ? ' collapsed' : ''}">
+            <div class="inv-weapon-draft-tag-grouphead" onclick="invWeaponToggleTagCatCollapse('${escapeHtml(scopeKey)}','${escapeHtml(g.cat.id)}')" title="${collapsed ? 'Expand' : 'Collapse'} ${escapeHtml(g.cat.name)}">
+              <span class="inv-weapon-draft-tag-caret">${caret}</span>
+              <span class="inv-weapon-draft-tag-groupname">${escapeHtml(g.cat.name)}</span>
+              <span class="inv-weapon-draft-tag-groupcount">${g.tags.length}</span>${badge}
+            </div>`;
+          if (!collapsed) {
+            html += `<div class="inv-weapon-draft-tags">`;
+            g.tags.forEach(t => { html += renderCheckbox(t); });
+            html += `</div>`;
+          }
+          html += `</div>`;
+        });
+        html += `</div>`;
+      }
     }
     html += `</div></div>`;   // /inv-container-block
 
@@ -5278,6 +5432,18 @@ export function createInventorySection(ctx) {
   // weapon or a homebrew variant and wants to tweak dice/PEN/range
   // without creating a new catalogue entry.
 
+  // Flip a tag-category's collapsed state for a given scope. Scope is
+  // a short key like 'display:<entryId>' or 'editor:<entryId>' that
+  // lets the same category be collapsed independently in different UI
+  // panels. Non-persisted (session-only); a page reload resets it to
+  // all-expanded. No save call — nothing to write.
+  function weaponToggleTagCatCollapse(scope, categoryId) {
+    const set = getCollapsedTagCats(scope);
+    if (set.has(categoryId)) set.delete(categoryId);
+    else set.add(categoryId);
+    renderAll();
+  }
+
   async function weaponToggleEdit(id) {
     if (!getCanEdit()) return;
     const entry = findEntry(id);
@@ -5823,6 +5989,7 @@ export function createInventorySection(ctx) {
     weaponSetRange,
     // Per-instance weapon stat editor (edit snapshot.weapon directly)
     weaponToggleEdit,
+    weaponToggleTagCatCollapse,
     weaponSnapUpdate,
     weaponSnapSetKind,
     weaponSnapAddRange,
