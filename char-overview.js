@@ -380,7 +380,12 @@ export function createOverviewSection(ctx) {
         </div>`;
     }).join('');
 
-    const headInner = `<span class="state-tile-label">Movement</span>`;
+    // Pull the group label from the ruleset so renaming "Movement" →
+    // "Combat" on the ruleset side automatically updates the Overview
+    // tile too. Falls back to "Movement" if the group is missing.
+    const movementGroup = (ruleset.derivedStatGroups || []).find(g => g.code === 'movement');
+    const tileLabel = (movementGroup && movementGroup.label) ? movementGroup.label : 'Movement';
+    const headInner = `<span class="state-tile-label">${escapeHtml(tileLabel)}</span>`;
     const bodyHtml = `<div class="state-movement-row">${items}</div>`;
     return wrapCollapsibleTile('movement', 'state-tile-wide', headInner, bodyHtml);
   }
