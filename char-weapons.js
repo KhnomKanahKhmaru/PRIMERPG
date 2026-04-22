@@ -705,17 +705,34 @@ export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, 
     // description for hover.
 
     // ─── RAPIDFIRE ─────────────────────────────────────────────────
-    // DMGMOD bonus + recoil difficulty + ROF + stabilization absorption.
-    // Separate AMMO pools: rfDamage adds DMGMOD and provokes recoil;
-    // rfSweep widens the sweep cube and does NOT affect recoil or
-    // DMGMOD (handled in the Rapidfire Sweep tag block above). Both
-    // get reported here so the UI and Roll Calc can show the full
-    // breakdown.
+    // Recoil is driven by the TOTAL AMMO expended past the first shot,
+    // regardless of whether it went to the damage or sweep pool —
+    // both cause the weapon to climb. Only the damage pool actually
+    // boosts DMGMOD on the damage roll; the sweep pool feels like
+    // DMGMOD to the recoil check but doesn't add to damage output.
+    //
+    //   effectiveDmgmod = baseDmgmod + damageExtra              (goes into the damage formula)
+    //   recoilRef       = baseDmgmod + damageExtra + sweepExtra (used ONLY for the recoil check)
+    //   recoilDifficulty = min(damageExtra + sweepExtra, max(0, recoilRef − STR))
+    //
+    // ROF mitigates first, stabilization absorbs whatever's left.
+    // Both are Difficulty Mitigation in the standard sense — they
+    // cancel point-for-point and flow into the Attack block's
+    // Difficulty row alongside range/skill mitigation.
     if (rfDamage > 0 || rfSweep > 0) {
       const strVal = Number.isFinite(Number(symbols.STR)) ? Number(symbols.STR) : 0;
+      const totalExtra = rfDamage + rfSweep;
+      // Actual DMGMOD on the damage roll — only damage-pool AMMO
+      // contributes. Sweep AMMO is for area, not damage.
       const effectiveDmgmod = baseDmgmod + rfDamage;
-      const overCapacity = Math.max(0, effectiveDmgmod - strVal);
-      const recoilDifficulty = Math.min(rfDamage, overCapacity);
+      // Recoil reference — both pools count toward how hard the
+      // weapon kicks. A sweep-heavy spray still needs STR to hold
+      // on target, even though it's not pushing DMGMOD up.
+      const recoilRef = baseDmgmod + totalExtra;
+      const overCapacity = Math.max(0, recoilRef - strVal);
+      // Capped at totalExtra — you can't be punished for more recoil
+      // than the extra AMMO you chose to spend this action.
+      const recoilDifficulty = Math.min(totalExtra, overCapacity);
       // ROF absorption FIRST.
       const rofRaw = out.rof && out.rof.resolved;
       const rofValue = Number.isFinite(Number(rofRaw)) ? Math.max(0, Number(rofRaw)) : 0;
@@ -729,15 +746,17 @@ export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, 
         // Split AMMO — UI reads both.
         damageExtra:       rfDamage,
         sweepExtra:        rfSweep,
+        totalExtra,
         // Legacy alias for any code still reading `extra` as
         // "rapidfire damage extra". Always == damageExtra.
         extra:             rfDamage,
         dmgmodBonus:       rfDamage,
         baseDmgmod,
-        effectiveDmgmod,
+        effectiveDmgmod,   // damage-roll DMGMOD (excludes sweep)
+        recoilRef,         // recoil-check DMGMOD (includes sweep)
         strVal,
         overCapacity,       // raw STR shortfall (uncapped)
-        recoilDifficulty,   // capped at rfDamage
+        recoilDifficulty,   // capped at totalExtra
         rofValue,
         rofMitigation,
         stabilizationBonus,
