@@ -156,9 +156,135 @@ export function createInventorySection(ctx) {
     return html;
   }
 
-  // Which groups are collapsed — stored by group id. We do persist the
-  // group's own `collapsed` flag to Firestore (part of the group record),
-  // but we mirror it here for fast read access during render.
+  // ── ITEM DURABILITY HELPERS ──
+  //
+  // Items have a derived Durability pool analogous to hit-location HP.
+  // Max Durability = SIZE + Armor (default formula — ruleset-configurable
+  // later via ruleset.itemDurability.maxFormula).
+  //
+  // Damage is tracked as INSTANCES — an array of numbers on the entry.
+  // Each attack that hits the item adds an instance. Effective damage
+  // uses the same formula hit locations use for multi-wound stacking:
+  //
+  //   effective damage = highest instance + (sum of other instances) / Construction
+  //
+  // Where Construction is derived by treating the item's Armor as STR,
+  // looking up STRMOD via ruleset.statMods, then FORT via ruleset.fortitudeTable.
+  // Armor 0–3 → Construction 1 (linear stacking), Armor 6–7 → Construction 2
+  // (secondaries halved), etc. — exactly the existing FORT curve.
+
+  // Compute max Durability for an entry. Reads SIZE + Armor from the
+  // entry's snapshot. Returns 0 when neither is set, which suppresses
+  // the durability UI entirely.
+  function computeMaxDurability(entry) {
+    if (!entry || !entry.snapshot) return 0;
+    const size  = Number.isFinite(entry.snapshot.size)  ? entry.snapshot.size  : 0;
+    const armor = Number.isFinite(entry.snapshot.armor) ? entry.snapshot.armor : 0;
+    return Math.max(0, size + armor);
+  }
+
+  // Compute Construction for an entry — treats the item's Armor as
+  // if it were a character's STR, looks up STRMOD, then FORT. Result
+  // is the divisor for secondary-instance damage. Returns 1 (linear
+  // stacking) for rulesets missing a fortitudeTable.
+  function computeItemConstruction(entry) {
+    if (!entry || !entry.snapshot) return 1;
+    const ruleset = getRuleset() || {};
+    const armor = Number.isFinite(entry.snapshot.armor) ? entry.snapshot.armor : 0;
+    const statMods = Array.isArray(ruleset.statMods) ? ruleset.statMods : [];
+    // Clamp armor to the statMods array range — same pattern used for
+    // character STRMOD lookup (which also clamps overflow to endpoints).
+    const idx = Math.max(0, Math.min(statMods.length - 1, armor));
+    const armorAsStrmod = (typeof statMods[idx] === 'number') ? statMods[idx] : 0;
+    const fortTable = Array.isArray(ruleset.fortitudeTable) ? ruleset.fortitudeTable : [];
+    if (fortTable.length === 0) return 1;
+    const exact = fortTable.find(e => e.strmod === armorAsStrmod);
+    if (exact) return exact.value;
+    const sorted = fortTable.slice().sort((a, b) => a.strmod - b.strmod);
+    if (armorAsStrmod < sorted[0].strmod) return sorted[0].value;
+    if (armorAsStrmod > sorted[sorted.length - 1].strmod) return sorted[sorted.length - 1].value;
+    return 1;
+  }
+
+  // Compute current Durability for an entry — Max minus effective damage
+  // from all tracked instances. Returns Max when no instances are
+  // present. Returns a number that can go negative (Disabled at 0,
+  // Destroyed at -Max, Definitively Destroyed at -2×Max, mirroring
+  // hit-location thresholds).
+  function computeCurrentDurability(entry) {
+    const max = computeMaxDurability(entry);
+    if (max <= 0) return 0;
+    const instances = Array.isArray(entry.durabilityInstances) ? entry.durabilityInstances : [];
+    if (instances.length === 0) return max;
+    const construction = computeItemConstruction(entry) || 1;
+    let highest = 0;
+    let sumAll = 0;
+    instances.forEach(v => {
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < 0) return;
+      sumAll += n;
+      if (n > highest) highest = n;
+    });
+    const effective = highest + ((sumAll - highest) / construction);
+    return max - effective;
+  }
+
+  // Compute a short state label for a durability value. Mirrors the
+  // hit-location damage thresholds: 0 = Disabled, -max = Destroyed,
+  // -2×max = Definitively Destroyed. Anything above 0 = Functional.
+  function computeDurabilityState(current, max) {
+    if (max <= 0) return 'Functional';
+    if (current <= -2 * max) return 'Def. Destroyed';
+    if (current <= -max)     return 'Destroyed';
+    if (current <= 0)        return 'Disabled';
+    return 'Functional';
+  }
+
+  // Render a compact durability readout for an entry that has tracking
+  // turned on. Shows Current / Max, state label, accumulated instances
+  // (each clickable to remove), a "take damage" input, and a clear
+  // button. Emits nothing when tracking is off or max is 0.
+  function renderDurabilityRow(entry, canEdit) {
+    if (!entry || !entry.durabilityTracked) return '';
+    const max = computeMaxDurability(entry);
+    if (max <= 0) return '';
+    const instances = Array.isArray(entry.durabilityInstances) ? entry.durabilityInstances : [];
+    const current = computeCurrentDurability(entry);
+    const construction = computeItemConstruction(entry);
+    const state = computeDurabilityState(current, max);
+    const stateCls = state === 'Functional' ? 'ok'
+                  : state === 'Disabled'    ? 'warn'
+                                            : 'bad';
+    // Round current for display — the effective-damage formula can
+    // produce fractions (e.g. 3 + 2/1.5 = 4.33). Keep one decimal.
+    const curDisplay = Number.isInteger(current) ? String(current) : current.toFixed(1);
+    let html = `<div class="inv-entry-dur-row">
+      <span class="inv-entry-dur-label">Dur</span>
+      <span class="inv-entry-dur-value">${curDisplay} / ${max}</span>
+      <span class="inv-entry-dur-state inv-entry-dur-state-${stateCls}">${state}</span>`;
+    if (instances.length > 0) {
+      html += `<span class="inv-entry-dur-instances" title="Construction ${construction} · Each chip = one damage instance. Click to remove.">`;
+      instances.forEach((v, i) => {
+        const n = Number.isFinite(v) ? v : 0;
+        html += canEdit
+          ? `<span class="inv-entry-dur-chip" onclick="invDurabilityRemoveInstance('${escapeHtml(entry.id)}',${i})" title="Remove this instance">${n}</span>`
+          : `<span class="inv-entry-dur-chip readonly">${n}</span>`;
+      });
+      html += `</span>`;
+    }
+    if (canEdit) {
+      html += `<input type="number" class="inv-entry-dur-input" step="1" min="0" placeholder="+dmg"
+                 onkeydown="if(event.key==='Enter'){invDurabilityAddInstance('${escapeHtml(entry.id)}',this.value);this.value='';}"
+                 title="Type a damage amount and press Enter to add an instance.">`;
+      if (instances.length > 0) {
+        html += `<button class="inv-entry-dur-clear" onclick="invDurabilityClear('${escapeHtml(entry.id)}')" title="Clear all instances — restores item to full Durability">Clear</button>`;
+      }
+    }
+    html += `</div>`;
+    return html;
+  }
+
+
   //
   // Modal state for the "Add Item" and "Add Container" flows. Null when
   // no modal is open. Expanded shape: {
@@ -1890,7 +2016,8 @@ export function createInventorySection(ctx) {
         ${badge}
         ${canEdit ? `<button class="inv-row-btn inv-row-btn-edit" onclick="event.stopPropagation();invOpenEntryEdit('${escapeHtml(entry.id)}')" title="Edit this instance (changes only this one, not the template).">✎</button>` : ''}
         ${canEdit ? `<button class="inv-row-btn inv-row-btn-danger" onclick="event.stopPropagation();invRemoveEntry('${escapeHtml(entry.id)}')" title="Remove this container (and everything inside)">×</button>` : ''}
-      </div>`;
+      </div>
+      ${renderDurabilityRow(entry, canEdit)}`;
 
     // Inline edit panel for this container. Renders between the head
     // and the contents body so the user can see their container stay
@@ -1995,7 +2122,8 @@ export function createInventorySection(ctx) {
         <span class="inv-entry-weight">${fmt(totalWeight)} lb</span>
         ${canEdit ? `<button class="inv-row-btn inv-row-btn-edit" onclick="invOpenEntryEdit('${escapeHtml(entry.id)}')" title="Edit this instance (changes only this one, not the template).">✎</button>` : ''}
         ${canEdit ? `<button class="inv-row-btn inv-row-btn-danger" onclick="invRemoveEntry('${escapeHtml(entry.id)}')" title="Remove this item">×</button>` : ''}
-      </div>`;
+      </div>
+      ${renderDurabilityRow(entry, canEdit)}`;
 
     // Inline edit panel for plain items — simpler than the container
     // version (no inner dims / packing fields).
@@ -3085,6 +3213,17 @@ export function createInventorySection(ctx) {
         </div>
       </div>`;
     }
+
+    html += `<div class="inv-edit-panel-subsection">
+      <div class="inv-edit-panel-sub-label">Durability Tracking</div>
+      <div class="inv-toggle-row">
+        <span class="inv-toggle${entry.durabilityTracked ? ' on' : ''}"
+              onclick="invDurabilityToggleTracked('${escapeHtml(entry.id)}')">
+          ${entry.durabilityTracked ? '✓ Track durability' : 'Track durability'}
+        </span>
+        <span class="inv-toggle-hint">Turn on to track this item's wear — shows a Dur row on the entry where you can log damage instances. Off by default; most items don't need it unless they're actively under threat.</span>
+      </div>
+    </div>`;
 
     html += `<div class="inv-edit-panel-actions">
       <button class="inv-add-btn" onclick="invSaveEntryEdit()">Save</button>
@@ -5601,6 +5740,64 @@ export function createInventorySection(ctx) {
     renderAll();
   }
 
+  // ── DURABILITY TRACKING HANDLERS ──
+  //
+  // All per-entry state. Toggle `durabilityTracked` controls visibility
+  // of the durability UI; default off. When on, `durabilityInstances`
+  // holds an array of numbers. Each hit adds an instance; the effective
+  // damage and current durability derive from instances + Construction.
+  //
+  // Ruleset defs DO NOT carry this state — it's always per-instance
+  // since the same item in different characters' hands accumulates
+  // different wear. The snapshot also doesn't carry it; it lives
+  // directly on the entry as `entry.durabilityTracked` and
+  // `entry.durabilityInstances`.
+
+  async function durabilityToggleTracked(id) {
+    if (!getCanEdit()) return;
+    const entry = findEntry(id);
+    if (!entry) return;
+    entry.durabilityTracked = !entry.durabilityTracked;
+    // Starting tracking with no prior instances — leave instances empty
+    // so the entry reads at max durability. Stopping tracking preserves
+    // any accumulated instances so the GM can re-enable without losing
+    // the record; the UI just hides them.
+    if (!Array.isArray(entry.durabilityInstances)) entry.durabilityInstances = [];
+    renderAll();
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
+  async function durabilityAddInstance(id, amountStr) {
+    if (!getCanEdit()) return;
+    const entry = findEntry(id);
+    if (!entry) return;
+    const n = parseFloat(amountStr);
+    if (!Number.isFinite(n) || n <= 0) return;
+    if (!Array.isArray(entry.durabilityInstances)) entry.durabilityInstances = [];
+    entry.durabilityInstances.push(n);
+    renderAll();
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
+  async function durabilityRemoveInstance(id, idx) {
+    if (!getCanEdit()) return;
+    const entry = findEntry(id);
+    if (!entry || !Array.isArray(entry.durabilityInstances)) return;
+    if (idx < 0 || idx >= entry.durabilityInstances.length) return;
+    entry.durabilityInstances.splice(idx, 1);
+    renderAll();
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
+  async function durabilityClear(id) {
+    if (!getCanEdit()) return;
+    const entry = findEntry(id);
+    if (!entry) return;
+    entry.durabilityInstances = [];
+    renderAll();
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
   async function weaponToggleEdit(id) {
     if (!getCanEdit()) return;
     const entry = findEntry(id);
@@ -6147,6 +6344,11 @@ export function createInventorySection(ctx) {
     // Per-instance weapon stat editor (edit snapshot.weapon directly)
     weaponToggleEdit,
     weaponToggleTagCatCollapse,
+    // Per-instance durability tracking (opt-in per entry)
+    durabilityToggleTracked,
+    durabilityAddInstance,
+    durabilityRemoveInstance,
+    durabilityClear,
     weaponSnapUpdate,
     weaponSnapSetKind,
     weaponSnapAddRange,
