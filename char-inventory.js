@@ -5482,6 +5482,12 @@ export function createInventorySection(ctx) {
     // Roll Calc reflects what the player sees on the card.
     const dicePool = Number.isFinite(roll.dicePoolReduced) ? roll.dicePoolReduced : roll.dicePool;
     let flatBonus = roll.flatBonus;
+    // Difficulty fields — only populated for attack rolls; damage has
+    // no Difficulty. Baseline is 6 + range additions + rapidfire
+    // recoil. Mitigation (passed separately so Roll Calc shows the
+    // full breakdown) covers ROF absorption + skill-tier mitigation.
+    let rcDifficulty = null;
+    let rcMitigation = null;
     if (which === 'attack') {
       // Re-compute finalDiff from the resolved weapon's attack slots
       // the same way the card does: +N per range band, +recoil from
@@ -5513,6 +5519,15 @@ export function createInventorySection(ctx) {
       const finalDiff = 6 + additions - effectiveMit;
       const hasStatmod = roll.flatSlots.some(s => s.category === 'statmod');
       if (hasStatmod) flatBonus += (6 - finalDiff);
+
+      // Build Roll Calc difficulty fields. Send the raw base +
+      // additions as Difficulty, the full mitigation total as
+      // Mitigation (Roll Calc applies min(mit, diff−base) internally
+      // so over-mitigation doesn't dip below 6). Reduction is 0 —
+      // that's a separate GM-set field Roll Calc surfaces for
+      // per-encounter adjustments.
+      rcDifficulty = 6 + additions;
+      rcMitigation = mitigation;
     }
 
     const weaponName = (snap && snap.name) || 'Weapon';
@@ -5523,11 +5538,13 @@ export function createInventorySection(ctx) {
     const label = `${weaponName} · ${which === 'damage' ? 'Damage' : 'Attack'}${atkHint}${rfHint}`;
 
     if (typeof ctx.sendWeaponToRollCalc === 'function') {
-      ctx.sendWeaponToRollCalc({
-        dicePool,
-        flatBonus,
-        label
-      });
+      const payload = { dicePool, flatBonus, label };
+      // Only include difficulty fields for attack rolls (and only
+      // when computed — they'll be null for damage). Roll Calc
+      // leaves its current values alone when fields are missing.
+      if (rcDifficulty != null) payload.difficulty = rcDifficulty;
+      if (rcMitigation != null) payload.mitigation = rcMitigation;
+      ctx.sendWeaponToRollCalc(payload);
     } else {
       console.warn('[weaponToRollCalc] ctx.sendWeaponToRollCalc missing; cannot deliver', label);
       alert('Roll Calc bridge is not wired up. (Reload the page; if this persists the feature is half-deployed.)');
