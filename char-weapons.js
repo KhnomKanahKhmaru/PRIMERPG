@@ -638,26 +638,29 @@ export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, 
       };
     }
 
-    // Rapidfire Sweep — ROF ≥ 2 gates this tag's effect. Emit a
-    // helper that, given an AMMO spend, returns the max covered
-    // area side length and total square footage. UI shows it as
-    // informational text with a small calculator.
+    // Rapidfire Sweep — ROF ≥ 2 gates this tag's effect. Each AMMO
+    // spent beyond the first (minimum 2 total) adds 2.5×ROF feet to
+    // the side of a square AOE. So side = 2.5 × ROF × (AMMO − 1).
+    // Area = side² (the shape can be any layout of that total length
+    // / area, per the rule — line, cone, zig-zag, etc.). Spending
+    // fewer than 2 AMMO or wielding a ROF < 2 weapon returns 0.
+    //
+    //   ROF 2, 2 AMMO  → side 5,  area 25    (5×5)
+    //   ROF 2, 3 AMMO  → side 10, area 100   (10×10)
+    //   ROF 2, 6 AMMO  → side 25, area 625   (25×25)
+    //   ROF 3, 4 AMMO  → side 22.5, area ~506 (22.5×22.5)
     if (hasTag('Rapidfire Sweep')) {
       const rofRaw = out.rof && out.rof.resolved;
       const rofValue = Number.isFinite(Number(rofRaw)) ? Math.max(0, Number(rofRaw)) : 0;
       out.rapidfireSweep = {
         available: rofValue >= 2,
         rofValue,
-        // Area for a given AMMO spend (minimum 2) = ((2.5*ROF)^2) * AMMO.
-        // Returns { sideLen, area } for quick display — sideLen is the
-        // side of a square with the same area, useful shorthand for
-        // "X by X feet".
         computeArea: function(ammo) {
           const a = Math.max(0, Math.floor(ammo || 0));
           if (a < 2 || rofValue < 2) return { sideLen: 0, area: 0, ammo: a };
-          const side = 2.5 * rofValue;
-          const area = (side * side) * a;
-          return { sideLen: Math.sqrt(area), area, ammo: a };
+          const side = 2.5 * rofValue * (a - 1);
+          const area = side * side;
+          return { sideLen: side, area, ammo: a };
         }
       };
     }
