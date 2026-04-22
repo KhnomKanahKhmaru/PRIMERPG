@@ -77,7 +77,7 @@
 
     /* Derived stat row grid */
     .ds-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
-    .ds-row { display: grid; grid-template-columns: 100px 140px 110px 1fr 70px 60px 60px 24px; gap: 6px; align-items: center; background: #111; border: 1px solid #1a1a1a; border-radius: 4px; padding: 8px 10px; }
+    .ds-row { display: grid; grid-template-columns: 100px 140px 110px 1fr 70px 60px 60px 60px 24px; gap: 6px; align-items: center; background: #111; border: 1px solid #1a1a1a; border-radius: 4px; padding: 8px 10px; }
     .ds-row input, .ds-row select, .ds-row textarea { background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 12px; padding: 5px 8px; border-radius: 3px; outline: none; width: 100%; }
     .ds-row input:focus, .ds-row select:focus, .ds-row textarea:focus { border-color: #444; }
     .ds-row .ds-formula { font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; }
@@ -86,7 +86,7 @@
     .ds-row .delete-x:hover { color: #c84b4b; }
     .ds-row .ds-code { font-family: 'Consolas', 'Courier New', monospace; font-weight: 600; text-transform: uppercase; }
 
-    .ds-list-header { display: grid; grid-template-columns: 100px 140px 110px 1fr 70px 60px 60px 24px; gap: 6px; padding: 0 10px 4px; font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #666; border-bottom: 1px solid #1a1a1a; margin-bottom: 8px; }
+    .ds-list-header { display: grid; grid-template-columns: 100px 140px 110px 1fr 70px 60px 60px 60px 24px; gap: 6px; padding: 0 10px 4px; font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #666; border-bottom: 1px solid #1a1a1a; margin-bottom: 8px; }
 
     .ds-error-msg { font-size: 10px; color: #c87777; padding-left: 10px; margin-top: -2px; margin-bottom: 4px; min-height: 12px; }
 
@@ -933,6 +933,7 @@
           <div style="text-align:center" title="Keep decimal places (don't floor the value).">Keep Dec.</div>
           <div style="text-align:center">Unit</div>
           <div style="text-align:center" title="Penalty directly reduces the stat's value (like SPD).">Penalty</div>
+          <div style="text-align:center" title="Stat is rolled as a dice pool. Off = static derived value (SPD, AGL, etc.) with no dice affordances on the card.">Rollable</div>
           <div></div>
         </div>
         <div class="ds-list" id="ds-list"></div>
@@ -2436,6 +2437,7 @@
                  oninput="updateDsField(${i},'unit',this.value)"
                  placeholder="Unit">
           <div class="ds-toggle ${ds.penaltyReducesValue ? 'on' : ''}" onclick="toggleDsFlag(${i},'penaltyReducesValue')" title="Penalty directly reduces the stat's value — e.g. SPD at 25% Penalty becomes 75% of its base. Off = Penalty only affects dice rolls on this stat, not its displayed value.">${ds.penaltyReducesValue ? '−%' : '—'}</div>
+          <div class="ds-toggle ${ds.rollable !== false ? 'on' : ''}" onclick="toggleDsRollable(${i})" title="Stat is rolled as a dice pool. ON = shows dice-roll affordances (dice pill, mod badge). OFF = static derived value (SPD, AGL, RFX, FORT) — card shows just the value, no roll UI.">${ds.rollable !== false ? '🎲' : '—'}</div>
           <span class="delete-x" onclick="removeDerivedStat(${i})" title="Remove">×</span>
         </div>
         ${errMsg ? `<div class="ds-error-msg">${escapeHtmlAttr(ds.code||'?')}: ${escapeHtmlAttr(errMsg)}</div>` : ''}
@@ -2483,6 +2485,19 @@
   window.toggleDsFlag = function(i, flag) {
     if (!state.derivedStats[i]) return;
     state.derivedStats[i][flag] = !state.derivedStats[i][flag];
+    renderDerivedStats();
+  };
+
+  // Rollable toggle — separate from toggleDsFlag because the default
+  // state is "rollable" (undefined === true in the display logic). A
+  // simple boolean flip would require TWO clicks on a freshly-added
+  // stat to hide the dice pill, which reads as broken. This handler
+  // collapses undefined → false on first click.
+  window.toggleDsRollable = function(i) {
+    const ds = state.derivedStats[i];
+    if (!ds) return;
+    if (ds.rollable === false) ds.rollable = true;
+    else ds.rollable = false;
     renderDerivedStats();
   };
 
