@@ -2888,6 +2888,16 @@
     .inv-row-btn-edit { font-size: 13px; color: #666; }
     .inv-row-btn-edit:hover { color: #e0b060; }
 
+    /* Durability quick-toggle button — flips entry.durabilityTracked
+       without opening the edit modal. Muted when off, red-ish when on
+       (the Dur row is visible below the entry in that state, so the
+       button hints at the same "this item is being damage-tracked"
+       state). */
+    .inv-row-btn-dur { font-size: 13px; color: #555; }
+    .inv-row-btn-dur:hover { color: #caa060; }
+    .inv-row-btn-dur.on { color: #e07070; }
+    .inv-row-btn-dur.on:hover { color: #ff8888; }
+
     /* ═══ INLINE ENTRY EDIT PANEL ═══
      * Expands inline below a container/item row when the ✎ is clicked.
      * Reuses the same field + dims-row layout as the custom-def form in
