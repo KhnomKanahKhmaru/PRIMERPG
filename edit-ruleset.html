@@ -15,6 +15,19 @@
     .page-sub { font-size: 12px; color: #666; margin-bottom: 24px; }
     .section { border: 1px solid #1a1a1a; border-radius: 6px; padding: 18px 20px; margin-bottom: 14px; background: #0e0e0e; }
     .section-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid #1a1a1a; }
+    .section-header-collapsible { cursor: pointer; user-select: none; transition: color 0.1s; }
+    .section-header-collapsible:hover .section-title { color: #d4a574; }
+    .section-header-collapsible:hover .section-caret { color: #d4a574; }
+    .section-caret {
+      display: inline-block; width: 12px;
+      font-size: 10px; color: #666; text-align: center;
+      transition: color 0.1s;
+    }
+    .section-count {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 10px; color: #666;
+      font-variant-numeric: tabular-nums;
+    }
     .section-title { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #aaa; flex: 1; }
     .section-desc { font-size: 12px; color: #666; line-height: 1.6; margin-bottom: 12px; }
     .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
@@ -568,6 +581,31 @@
     .inv-armor-cov-cb:has(input:checked) {
       background: #2a1f0c; border-color: #4a3a1a; color: #d4a574;
     }
+
+    /* Custom coverage chips — pill-style labels authors add for
+       non-standard coverage strings (e.g. "Throat"). Click to remove. */
+    .inv-armor-custom-row {
+      display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px;
+      align-items: center;
+    }
+    .inv-armor-custom-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 8px;
+      background: #1a1408; color: #d4a574;
+      border: 1px solid #3a2a14; border-radius: 4px;
+      font-size: 11px; cursor: pointer;
+      transition: background 0.1s, border-color 0.1s;
+    }
+    .inv-armor-custom-chip:hover {
+      background: #2a1f0c; border-color: #5a4820;
+    }
+    .inv-armor-custom-input {
+      flex: 1; min-width: 140px;
+      background: #0a0a0a; border: 1px solid #222;
+      color: #c8c8c8; font-family: inherit; font-size: 11px;
+      padding: 4px 8px; border-radius: 3px; outline: none;
+    }
+    .inv-armor-custom-input:focus { border-color: #444; }
   </style>
 </head>
 <body>
@@ -1091,16 +1129,20 @@
       </div>
 
       <div class="section">
-        <div class="section-header">
+        <div class="section-header section-header-collapsible" onclick="togglePresetsCollapsed()">
+          <span class="section-caret" id="preset-caret">▾</span>
           <div class="section-title">Dimension Presets</div>
+          <span class="section-count" id="preset-count"></span>
         </div>
-        <div class="section-desc">Named size templates players can pick when creating items instead of typing L×W×H every time. A preset can also carry a default weight. Edit the shipped built-ins if your setting uses different conventions; add custom presets for shapes unique to your ruleset. Picking a preset on an item copies its values — the item stays independent of the preset afterwards.</div>
+        <div id="preset-section-body">
+          <div class="section-desc">Named size templates players can pick when creating items instead of typing L×W×H every time. A preset can also carry a default weight. Edit or delete the shipped built-ins if your setting uses different conventions; add custom presets for shapes unique to your ruleset. Picking a preset on an item copies its values — the item stays independent of the preset afterwards.</div>
 
-        <div id="dimension-preset-list"></div>
+          <div id="dimension-preset-list"></div>
 
-        <div class="slot-add-row" style="grid-template-columns:1fr auto;margin-top:10px">
-          <input type="text" id="new-preset-name" placeholder="New preset name (e.g. Carbine, Small Tool)" onkeydown="if(event.key==='Enter')addDimensionPreset()">
-          <button class="inv-add-btn" onclick="addDimensionPreset()">+ Add Preset</button>
+          <div class="slot-add-row" style="grid-template-columns:1fr auto;margin-top:10px">
+            <input type="text" id="new-preset-name" placeholder="New preset name (e.g. Carbine, Small Tool)" onkeydown="if(event.key==='Enter')addDimensionPreset()">
+            <button class="inv-add-btn" onclick="addDimensionPreset()">+ Add Preset</button>
+          </div>
         </div>
       </div>
 
@@ -3118,6 +3160,9 @@
     const host = document.getElementById('dimension-preset-list');
     if (!host) return;
     if (!Array.isArray(state.dimensionPresets)) state.dimensionPresets = [];
+    // Update the collapsible count label.
+    const countEl = document.getElementById('preset-count');
+    if (countEl) countEl.textContent = state.dimensionPresets.length;
     if (state.dimensionPresets.length === 0) {
       host.innerHTML = '<div class="empty" style="font-size:12px;color:#555;padding:10px">No dimension presets defined. Add one below to start your quick-pick catalogue.</div>';
       return;
@@ -3126,11 +3171,12 @@
     state.dimensionPresets.forEach((p, i) => {
       const dims = p.dimensions || { l: 0, w: 0, h: 0 };
       const weight = Number.isFinite(p.weight) ? p.weight : 0;
-      const delBtn = p.builtIn
-        ? '<span class="cat-badge">built-in</span>'
-        : `<span class="cat-delete" onclick="removeDimensionPreset(${i})" title="Delete this preset">×</span>`;
+      // Built-ins get a badge so authors can see what shipped vs what
+      // they added, but they're now deletable — some settings don't
+      // want Pistol-sized presets at all.
+      const badge = p.builtIn ? '<span class="cat-badge" title="Shipped with the Standard Set. You can rename, resize, or delete it.">built-in</span>' : '';
       html += `<div class="preset-row">
-        <input type="text" class="preset-name" value="${q(p.name || '')}" placeholder="Preset name" oninput="updateDimensionPreset(${i},'name',this.value)" ${p.builtIn ? 'title="Built-in preset. Rename freely — cannot be deleted."' : ''}>
+        <input type="text" class="preset-name" value="${q(p.name || '')}" placeholder="Preset name" oninput="updateDimensionPreset(${i},'name',this.value)">
         <span class="preset-group">
           <input type="number" class="preset-num" step="0.25" min="0" value="${q(dims.l)}" placeholder="L" oninput="updateDimensionPreset(${i},'l',this.value)" title="Length (inches)">
           <span class="preset-x">×</span>
@@ -3142,7 +3188,8 @@
         <span class="preset-sep">·</span>
         <input type="number" class="preset-num" step="0.1" min="0" value="${q(weight)}" placeholder="Wt" oninput="updateDimensionPreset(${i},'weight',this.value)" title="Weight (lbs). Leave 0 for no default weight.">
         <span class="preset-unit">lb</span>
-        ${delBtn}
+        ${badge}
+        <span class="cat-delete" onclick="removeDimensionPreset(${i})" title="Delete this preset">×</span>
       </div>`;
     });
     host.innerHTML = html;
@@ -3189,10 +3236,10 @@
     if (!Array.isArray(state.dimensionPresets)) return;
     const p = state.dimensionPresets[index];
     if (!p) return;
-    if (p.builtIn) {
-      alert('Built-in presets cannot be deleted. You can rename or resize them, though.');
-      return;
-    }
+    // Built-ins can be deleted too. Authors may not want Pistol-sized
+    // presets in a setting without firearms, etc. The normalizer won't
+    // re-inject a deleted built-in on save since it matches by name —
+    // deletion sticks.
     state.dimensionPresets.splice(index, 1);
     renderDimensionPresets();
     refreshDimensionPresetSelects();
@@ -3226,6 +3273,20 @@
     });
     return html;
   }
+
+  // Collapse/expand the Dimension Presets section. Persists only in
+  // memory — reloading re-expands it so new users see the contents at
+  // least once. Deliberately not tied to collapsedCategories since
+  // that state is per-ruleset and this is a UI affordance for a
+  // fixed-position editor section.
+  let presetsCollapsed = false;
+  window.togglePresetsCollapsed = function() {
+    presetsCollapsed = !presetsCollapsed;
+    const body = document.getElementById('preset-section-body');
+    const caret = document.getElementById('preset-caret');
+    if (body) body.style.display = presetsCollapsed ? 'none' : '';
+    if (caret) caret.textContent = presetsCollapsed ? '▸' : '▾';
+  };
 
   // Generate a unique dimension-preset id. Matches the synth-id pattern
   // used elsewhere (`dp_` prefix + integer suffix).
@@ -3561,31 +3622,25 @@
 
   // Armor-worn facet block — rendered when the item protects a wearer
   // on covered hit locations. No value field here (that's the top-level
-  // `item.armor` integer, set on the main card body). Just coverage +
-  // condition. The block is visual-only; toggling the facet off clears
-  // it entirely.
+  // `item.armor` integer). Coverage uses ruleset hit locations as
+  // checkboxes for convenience PLUS a free-text input for custom
+  // labels that don't align with a standard hit location (e.g.
+  // "Throat" or "Upper Arm" when the ruleset only has "Head" and "Arm").
   function renderItemArmorWornBlock(it) {
-    const w = it.armorWorn || { coverage: [], condition: 'pristine' };
+    const w = it.armorWorn || { coverage: [] };
     const coverage = Array.isArray(w.coverage) ? w.coverage : [];
     const hls = Array.isArray(state.hitLocations) ? state.hitLocations : [];
-    const conds = ['pristine','worn','damaged','broken'];
+    // Split coverage into "matches a hit location" vs "custom label".
+    const hlCodes = new Set(hls.map(h => h.code));
+    const customCoverage = coverage.filter(c => !hlCodes.has(c));
+
     let body = `<div class="inv-container-block" style="border-color:#2a1f14;background:#0a0602">
       <div class="inv-container-block-title" style="color:#caa060">Worn Armor Properties</div>
 
       <div class="inv-field">
-        <label>Condition</label>
-        <select onchange="updateItemArmorWornField('${q(it.id)}','condition',this.value)" style="max-width:200px">`;
-    conds.forEach(c => {
-      body += `<option value="${c}"${c === w.condition ? ' selected' : ''}>${c.charAt(0).toUpperCase() + c.slice(1)}</option>`;
-    });
-    body += `</select>
-        <div style="font-size:10px;color:#666;margin-top:2px">Baseline fluff state. Pristine = factory-fresh, Broken = non-functional. Not mechanically binding.</div>
-      </div>
-
-      <div class="inv-field">
         <label>Coverage — which hit locations does this armor protect?</label>`;
     if (hls.length === 0) {
-      body += `<div style="font-size:11px;color:#888;padding:4px 0">No hit locations defined in this ruleset. Add them under <b>Derived Stats &amp; Combat → Hit Locations</b> to pick coverage.</div>`;
+      body += `<div style="font-size:11px;color:#888;padding:4px 0">No hit locations defined in this ruleset. Add them under <b>Derived Stats &amp; Combat → Hit Locations</b>, or use custom labels below.</div>`;
     } else {
       body += `<div class="inv-armor-coverage-row">`;
       hls.forEach(hl => {
@@ -3599,6 +3654,20 @@
       body += `</div>`;
     }
     body += `</div>
+
+      <div class="inv-field">
+        <label>Custom coverage <span class="inv-dims-hint">— non-standard labels (press Enter to add)</span></label>
+        <div class="inv-armor-custom-row">`;
+    if (customCoverage.length > 0) {
+      body += customCoverage.map(c =>
+        `<span class="inv-armor-custom-chip" onclick="removeItemArmorWornCustomCoverage('${q(it.id)}','${q(c)}')" title="Click to remove">${qText(c)} ×</span>`
+      ).join('');
+    }
+    body += `<input type="text" class="inv-armor-custom-input" placeholder="e.g. Throat, Upper Arm"
+                   onkeydown="if(event.key==='Enter'){addItemArmorWornCustomCoverage('${q(it.id)}',this.value);this.value='';}">
+        </div>
+        <div style="font-size:10px;color:#666;margin-top:2px">Use for partial-coverage pieces that don't align with the standard hit locations above. Purely descriptive — your GM resolves what they mean.</div>
+      </div>
     </div>`;
     return body;
   }
@@ -3975,23 +4044,12 @@
     if (it.armorWorn) {
       it.armorWorn = null;
     } else {
-      // Seed with sensible defaults — no coverage yet (author picks),
-      // Pristine condition.
-      it.armorWorn = {
-        coverage: [],
-        condition: 'pristine'
-      };
+      // Seed with empty coverage — author picks hit locations and/or
+      // adds custom labels. Facet is "on but undefined" until at least
+      // one coverage label is set.
+      it.armorWorn = { coverage: [] };
     }
     renderItemList();
-  };
-
-  window.updateItemArmorWornField = function(id, field, value) {
-    const it = state.items.find(x => x.id === id);
-    if (!it || !it.armorWorn) return;
-    if (field === 'condition') {
-      const valid = new Set(['pristine','worn','damaged','broken']);
-      it.armorWorn.condition = valid.has(value) ? value : 'pristine';
-    }
   };
 
   window.toggleItemArmorWornCoverage = function(id, locationCode, checked) {
@@ -4001,6 +4059,30 @@
     const idx = it.armorWorn.coverage.indexOf(locationCode);
     if (checked && idx === -1) it.armorWorn.coverage.push(locationCode);
     else if (!checked && idx !== -1) it.armorWorn.coverage.splice(idx, 1);
+  };
+
+  // Add a free-text coverage label (e.g. "Throat"). Trims whitespace,
+  // dedupes against existing coverage. Re-renders so the new chip
+  // shows up next to the input.
+  window.addItemArmorWornCustomCoverage = function(id, value) {
+    const it = state.items.find(x => x.id === id);
+    if (!it || !it.armorWorn) return;
+    const t = (typeof value === 'string') ? value.trim() : '';
+    if (!t) return;
+    if (!Array.isArray(it.armorWorn.coverage)) it.armorWorn.coverage = [];
+    if (it.armorWorn.coverage.includes(t)) return;   // dedupe
+    it.armorWorn.coverage.push(t);
+    renderItemList();
+  };
+
+  window.removeItemArmorWornCustomCoverage = function(id, label) {
+    const it = state.items.find(x => x.id === id);
+    if (!it || !it.armorWorn || !Array.isArray(it.armorWorn.coverage)) return;
+    const idx = it.armorWorn.coverage.indexOf(label);
+    if (idx !== -1) {
+      it.armorWorn.coverage.splice(idx, 1);
+      renderItemList();
+    }
   };
 
   // SIZE preset applier — sets the item's SIZE integer from the
