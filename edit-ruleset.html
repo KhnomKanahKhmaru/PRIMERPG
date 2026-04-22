@@ -374,9 +374,44 @@
      * previously. Category headers sit between blocks of items, indented
      * to match the tree. Empty categories still show a header so authors
      * know where new items will go. */
-    .item-cat-header { display: flex; align-items: center; gap: 10px; margin: 12px 0 6px; padding: 5px 10px; background: #0d0d0d; border-left: 2px solid #2a2a2a; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #888; }
+    .item-cat-header {
+      display: flex; align-items: center; gap: 10px;
+      margin: 12px 0 6px; padding: 5px 10px;
+      background: #0d0d0d; border-left: 2px solid #2a2a2a;
+      font-size: 10px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #888;
+      cursor: pointer; user-select: none;
+      transition: background 0.1s, border-color 0.1s, color 0.1s;
+    }
+    .item-cat-header:hover { background: #151515; border-left-color: #444; color: #aaa; }
+    .item-cat-header.collapsed { background: #0a0a0a; color: #666; }
+    .item-cat-header.collapsed:hover { background: #121212; color: #888; }
+    .item-cat-caret {
+      display: inline-block; width: 10px; color: #666;
+      font-size: 10px; text-align: center;
+    }
+    .item-cat-header:hover .item-cat-caret { color: #999; }
     .item-cat-name { flex: 1; }
-    .item-cat-count { font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; color: #666; font-variant-numeric: tabular-nums; }
+    .item-cat-count {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 10px; color: #666;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .inv-card-footer {
+      display: flex; justify-content: flex-end;
+      padding: 8px 10px 4px; margin-top: 6px;
+      border-top: 1px solid #1a1a1a;
+    }
+    .inv-card-done {
+      background: #1a1a1a; color: #aaa;
+      border: 1px solid #2a2a2a; border-radius: 3px;
+      font-family: inherit; font-size: 11px; font-weight: 600;
+      letter-spacing: .06em; text-transform: uppercase;
+      padding: 5px 14px; cursor: pointer;
+      transition: background 0.1s, border-color 0.1s, color 0.1s;
+    }
+    .inv-card-done:hover { background: #252525; color: #d4a574; border-color: #3a3a2a; }
     .item-cat-badge { font-size: 8px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #666; background: #0a0a0a; border: 1px solid #1a1a1a; padding: 1px 4px; border-radius: 2px; margin-left: 6px; }
 
     /* Container pill in item card header */
@@ -2699,12 +2734,22 @@
       const collapsed = collapsedCategories.has(c.id);
       const items = itemsByCat.get(c.id) || [];
       const children = byParent.get(c.id) || [];
-      const hasAnything = items.length > 0 || children.some(ch => anyItemsAt(ch, itemsByCat, byParent));
+      // Deep item count — all items in this category + all descendants.
+      // Shows the player how much gets rolled up when collapsed.
+      const deepCount = deepItemCountAt(c, itemsByCat, byParent);
+      const countLabel = deepCount === items.length
+        ? `${items.length}`
+        : `${items.length} / ${deepCount} total`;
 
-      // Category header row — mirrors the category tree visual.
-      html += `<div class="item-cat-header" style="padding-left:${depth * 18}px">
+      // Category header — clickable. Collapsing one hides its items
+      // AND every nested subcategory underneath. Click the name to
+      // toggle; the count stays visible so players can see "Weapons
+      // (holds 47 items)" at a glance even when collapsed.
+      html += `<div class="item-cat-header${collapsed ? ' collapsed' : ''}" style="padding-left:${depth * 18}px"
+                    onclick="toggleItemCatCollapse('${q(c.id)}')" title="${collapsed ? 'Expand' : 'Collapse'} ${qText(c.name)}">
+        <span class="item-cat-caret">${collapsed ? '▸' : '▾'}</span>
         <span class="item-cat-name">${qText(c.name)}${c.builtIn ? ' <span class="item-cat-badge">built-in</span>' : ''}</span>
-        <span class="item-cat-count">${items.length}</span>
+        <span class="item-cat-count">${countLabel}</span>
       </div>`;
 
       if (!collapsed) {
@@ -2727,6 +2772,17 @@
   function anyItemsAt(cat, itemsByCat, byParent) {
     if ((itemsByCat.get(cat.id) || []).length > 0) return true;
     return (byParent.get(cat.id) || []).some(ch => anyItemsAt(ch, itemsByCat, byParent));
+  }
+
+  // Helper: total item count in this category PLUS every descendant.
+  // Shown in the category header so players can see at a glance how
+  // much a collapsed branch contains.
+  function deepItemCountAt(cat, itemsByCat, byParent) {
+    let n = (itemsByCat.get(cat.id) || []).length;
+    (byParent.get(cat.id) || []).forEach(ch => {
+      n += deepItemCountAt(ch, itemsByCat, byParent);
+    });
+    return n;
   }
 
   function renderItemCard(it, depth) {
@@ -2806,6 +2862,10 @@
         </div>` : ''}
 
         ${renderItemWeaponBlock(it)}
+
+        <div class="inv-card-footer">
+          <button class="inv-card-done" onclick="toggleItemOpen('${q(it.id)}', event)" title="Collapse this card — keeps your edits.">Done</button>
+        </div>
       </div>`;
     }
     html += '</div>';
@@ -3019,6 +3079,20 @@
     if (ev && ev.target && ev.target.classList && ev.target.classList.contains('delete-x')) return;
     if (openInvCards.has(id)) openInvCards.delete(id);
     else openInvCards.add(id);
+    renderItemList();
+  };
+
+  // Collapse/expand an item-category header in the Items section.
+  // Shares state (`collapsedCategories`) with the Category tree editor,
+  // so collapsing a category here also collapses it there and vice
+  // versa — matches the user's mental model of "one category, one
+  // collapse state". Collapsing a parent hides ALL descendants and
+  // their items in one click (e.g. collapse "Weapons" → everything
+  // under Ranged/Firearms/Pistols/Rifles rolls up).
+  window.toggleItemCatCollapse = function(id) {
+    if (collapsedCategories.has(id)) collapsedCategories.delete(id);
+    else collapsedCategories.add(id);
+    renderCategoryTree();  // mirror state in the category tree panel
     renderItemList();
   };
 
