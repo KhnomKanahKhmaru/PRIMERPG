@@ -563,6 +563,27 @@ window.RULESET_DEFAULTS = {
   // Individual weapons live on catalogue ITEMS (item.weapon = {...}),
   // not in the ruleset itself. This keeps the ruleset lean and lets
   // players define custom weapons in their personal catalogue.
+  // ═══ ITEM DURABILITY ═══
+  //
+  // Items have a derived Durability pool analogous to hit-location HP.
+  // Each item's MAX durability is computed from its SIZE and Armor via
+  // the formula below. Damage thresholds reuse `damageThresholds`
+  // above (same 0 / -maxHP / -2×maxHP pattern), with `maxHP` bound to
+  // the item's max durability at eval time.
+  //
+  // The Standard Set formula — `SIZE + Armor` — matches the example:
+  // a Small (SIZE 3) AR-15 with 6 Armor has 9 Durability. Authors
+  // can override this formula per-ruleset for grittier or more forgiving
+  // flavors (e.g. `(SIZE * 2) + Armor` for beefier items).
+  //
+  // Construction (used in the multi-instance damage reduction formula)
+  // is NOT stored here — it's derived at eval time by treating Armor
+  // as STR and looking up the existing FORT table, matching how PRIME
+  // uses FORT for hit-location HP damage reduction.
+  itemDurability: {
+    maxFormula: 'SIZE + Armor'
+  },
+
   weapons: {
     meleeAttackFormula:  'DEX + Melee + DEXMOD',
     meleeDamageFormula:  'STR + DMG + ATK + STRMOD',
@@ -1278,42 +1299,37 @@ window.normalizeRuleset = function(rs) {
     return { kind: 'ranged', dice, pen, tags, range, dmgmod, ammo, rof, tagParams };
   };
 
-  // ── ARMOR block ──
+  // ── ARMOR-WORN facet ──
   //
-  // An item becomes an armor piece when `item.armor` is a populated
+  // An item becomes wearable armor when `item.armorWorn` is a populated
   // object. Parallel to `containerOf` and `weapon` — orthogonal facets;
-  // a single item can carry any combination. A helmet is armor + not a
-  // container. A tactical vest can be armor + container. A spiked
-  // shield could be armor + weapon.
+  // a single item can carry any combination. A tactical vest is armor
+  // + container. A spiked shield could be armor + weapon.
+  //
+  // The item's Armor RATING (integer, used for both damage mitigation
+  // and durability computation) lives at `item.armor` (top-level,
+  // every item has one). This facet only carries what's specific to
+  // WORN armor: which hit locations it protects, and a fluff label.
   //
   // Shape:
-  //   value:           integer — armor rating, used as the attacker's
-  //                    effective armor reduction in damage math
-  //                    (Armor 0–6 by convention, but not clamped here
-  //                    so exotic rulesets can exceed).
   //   coverage:        [string] — array of hit-location codes this
   //                    armor protects. References `hitLocations[].code`
-  //                    (e.g. 'head', 'torso'). Unknown codes are kept
-  //                    but will be silently ignored by resolve time.
-  //   maxDurability:   integer — total condition points before the
-  //                    armor breaks. 0 = no durability tracking.
-  //   condition:       string — free-text label for fluff state:
-  //                    'pristine' | 'worn' | 'damaged' | 'broken'.
-  //                    Not mechanically binding — the GM interprets.
-  //                    Per-instance current durability is NOT stored
-  //                    here; it lives on character inventory entries
-  //                    (snapshot copy + entry.armorDurability runtime).
-  const coerceArmorBlock = (raw) => {
-    if (!raw || typeof raw !== 'object') return null;
-    const value = (() => {
-      const n = Number(raw.value);
-      return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
-    })();
+  //                    (e.g. 'head', 'torso').
+  //   condition:       string — fluff label: 'pristine' | 'worn' |
+  //                    'damaged' | 'broken'. Not mechanically binding.
+  const coerceArmorWornBlock = (raw, legacyArmor) => {
+    // `legacyArmor` is passed when migrating from the old shape where
+    // armor was a single block `{value, coverage, maxDurability, condition}`.
+    // We extract coverage + condition from it here; the value part
+    // migrates to the top-level `armor` integer separately (see
+    // normalizeItem below).
+    const src = raw || legacyArmor;
+    if (!src || typeof src !== 'object') return null;
     // Coverage — normalize to array of non-empty strings, deduped.
     let coverage = [];
-    if (Array.isArray(raw.coverage)) {
+    if (Array.isArray(src.coverage)) {
       const seen = new Set();
-      raw.coverage.forEach(c => {
+      src.coverage.forEach(c => {
         if (typeof c !== 'string') return;
         const t = c.trim();
         if (!t || seen.has(t)) return;
@@ -1321,22 +1337,25 @@ window.normalizeRuleset = function(rs) {
         coverage.push(t);
       });
     }
-    const maxDurability = (() => {
-      const n = Number(raw.maxDurability);
-      return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
-    })();
-    const condRaw = (typeof raw.condition === 'string') ? raw.condition.trim().toLowerCase() : '';
+    const condRaw = (typeof src.condition === 'string') ? src.condition.trim().toLowerCase() : '';
     const validConds = new Set(['pristine','worn','damaged','broken']);
     const condition = validConds.has(condRaw) ? condRaw : 'pristine';
-    // Only return a real armor block when at least one field is
-    // non-default — fully empty armor objects become null so they
-    // don't leak empty facets onto every item. Value > 0 is the
-    // primary signal; coverage alone also qualifies (a blocker piece
-    // with 0 armor value is weird but valid authorship).
-    if (value === 0 && coverage.length === 0 && maxDurability === 0 && condition === 'pristine') {
+    // Only return a real facet when at least one meaningful field is
+    // populated. Empty armorWorn objects collapse to null so the
+    // display layer can check presence with a simple truthy test.
+    if (coverage.length === 0 && condition === 'pristine') {
       return null;
     }
-    return { value, coverage, maxDurability, condition };
+    return { coverage, condition };
+  };
+
+  // Helper: extract the legacy armor `value` field from an old-shape
+  // armor block so normalizeItem can promote it to the new top-level
+  // `item.armor` integer. Returns 0 if absent/invalid.
+  const extractLegacyArmorValue = (raw) => {
+    if (!raw || typeof raw !== 'object') return 0;
+    const n = Number(raw.value);
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
   };
 
   // Normalize a single item record. Shared by the migration path
@@ -1393,10 +1412,37 @@ window.normalizeRuleset = function(rs) {
       // 'ranged'). Added to the catalogue item's def; snapshot-copied
       // onto inventory entries at add-time (see char-inventory.js).
       weapon:       coerceWeapon(raw.weapon),
-      // Armor block — present when the item is (or is also) armor.
-      // Null/omitted for non-armor items. Orthogonal to containerOf
-      // and weapon facets; all three can co-exist on one item.
-      armor:        coerceArmorBlock(raw.armor),
+      // SIZE — integer used for volume scaling + durability computation.
+      // Defaults to 3 (Small) for legacy items that never carried a
+      // size value. PRIME convention: 1=Tiny, 3=Small, 5=Medium,
+      // 7=Large, 9=Huge, 12=Gargantuan, 15=Colossal. Authors are
+      // free to use any integer, though — the categories are just
+      // hints in the editor UI.
+      size:         (() => {
+        const n = Number(raw.size);
+        return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 3;
+      })(),
+      // Armor — top-level integer on every item, 0–20 typical range.
+      // Feeds both damage mitigation (when the item is worn armor —
+      // see armorWorn below) and the item's own Durability pool.
+      // Legacy shape had Armor inside a facet block as `{value,...}`;
+      // we migrate it to the top level here so every item has a
+      // consistent Armor rating regardless of whether it's wearable.
+      armor:        (() => {
+        // Prefer the new top-level field if present.
+        if (raw.armor != null && typeof raw.armor !== 'object') {
+          const n = Number(raw.armor);
+          return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+        }
+        // Legacy: armor was an object with a value field.
+        return extractLegacyArmorValue(raw.armor);
+      })(),
+      // Armor-worn facet — present when the item protects the wearer's
+      // hit locations. Just coverage + condition now; the numeric
+      // rating lives at item.armor (above). Null when the item is
+      // not wearable armor (a sword has item.armor = 4 but armorWorn
+      // = null because you don't wear a sword).
+      armorWorn:    coerceArmorWornBlock(raw.armorWorn, raw.armor),
       // Default body slot — set on containers so adding one to a
       // character pre-selects the right slot.
       defaultSlot:  (typeof raw.defaultSlot === 'string' && raw.defaultSlot) ? raw.defaultSlot : null,
@@ -1517,6 +1563,15 @@ window.normalizeRuleset = function(rs) {
       out.weapons[f] = defFormulas[f];
     }
   });
+
+  // Item durability config — currently just the max-durability formula.
+  // Default is `SIZE + Armor` (matches the Standard Set). Authors can
+  // override per-ruleset. Blank/invalid → reset to default.
+  if (!out.itemDurability || typeof out.itemDurability !== 'object') out.itemDurability = {};
+  const defDur = d.itemDurability || { maxFormula: 'SIZE + Armor' };
+  if (typeof out.itemDurability.maxFormula !== 'string' || !out.itemDurability.maxFormula.trim()) {
+    out.itemDurability.maxFormula = defDur.maxFormula;
+  }
 
   // Tag categories — nested tree (same shape as item `categories`).
   // Each category is {id, name, parentId|null, builtIn?}. Seed with
