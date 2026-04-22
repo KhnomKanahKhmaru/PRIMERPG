@@ -183,7 +183,11 @@ window.RULESET_DEFAULTS = {
   // Every group has a code (stable ID) and a label (display name).
   derivedStatGroups: [
     { code: 'health',   label: 'Health'   },
-    { code: 'movement', label: 'Movement' },
+    // 'movement' group code stays for back-compat (many files filter on
+    // it). The DISPLAY label is "Combat" — the group now holds INIT
+    // alongside the movement stats since initiative belongs with the
+    // combat-tempo cards conceptually.
+    { code: 'movement', label: 'Combat' },
     { code: 'mental',   label: 'Mental'   },
     { code: 'power',    label: 'Power'    },
     { code: 'carry',    label: 'Carry'    }
@@ -221,7 +225,29 @@ window.RULESET_DEFAULTS = {
       keepDecimals: true,
       unit: ''
     },
-    // MOVEMENT
+    // MOVEMENT (displayed as "Combat" — see derivedStatGroups label)
+    {
+      code: 'INIT',
+      name: 'Initiative',
+      description: 'Used to determine turn order in combat. Higher INIT acts first. Ties are resolved by whoever has the higher DEX, then PER, then at the GM\'s discretion.',
+      group: 'movement',
+      // Dice pool = DEX + PER, rolled when a scene transitions to combat
+      // and turn order matters. Mod uses whichever of DEXMOD/PERMOD is
+      // greater — mirrors how SAN's resistance roll uses max(INTMOD, CHAMOD).
+      // A character who's quick reflexes OR sharp perception gets the
+      // better modifier; being strong in both doesn't stack.
+      formula: 'DEX + PER',
+      rollModifier: 'max(DEXMOD, PERMOD)',
+      // Penalty reduces the value directly — same treatment as SPD/SPDUP.
+      // Initiative represents mental-physical tempo in a moment of crisis,
+      // so pain/stress/encumbrance bleed into it the same way they slow
+      // movement. A character at 25% Penalty initiates at 75% of their
+      // base Initiative.
+      penaltyReducesValue: true,
+      trackDamage: false,
+      keepDecimals: false,
+      unit: ''
+    },
     {
       code: 'SPD',
       name: 'Speed',
