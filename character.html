@@ -3252,6 +3252,90 @@
     }
     .inv-weapon-range.clickable.active .inv-weapon-range-label { color: #b88558; }
 
+    /* ── Per-instance weapon stat editor ── */
+    .inv-weapon-edit-btn {
+      background: #131519; border: 1px solid #2a2f35;
+      color: #a8c4de; font-size: 9px; font-weight: 700;
+      letter-spacing: .08em; text-transform: uppercase;
+      padding: 3px 8px; border-radius: 3px; cursor: pointer;
+      font-family: inherit; margin-right: 4px;
+    }
+    .inv-weapon-edit-btn:hover { background: #1a2030; border-color: #3a5878; color: #cfe3f6; }
+    .inv-weapon-edit-btn.on { background: #1f2c3a; border-color: #3a5878; color: #cfe3f6; }
+
+    .inv-weapon-editor {
+      background: #0a0a0a; border: 1px dashed #2a2a2a; border-radius: 3px;
+      padding: 8px 10px; margin-bottom: 10px;
+      font-size: 11px;
+    }
+    .inv-weapon-editor-title {
+      font-size: 9px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #888; margin-bottom: 8px;
+    }
+    .inv-weapon-editor-row {
+      display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 6px;
+    }
+    .inv-weapon-editor-field { display: flex; flex-direction: column; gap: 3px; min-width: 80px; }
+    .inv-weapon-editor-field label {
+      font-size: 9px; font-weight: 600; letter-spacing: .05em;
+      text-transform: uppercase; color: #888;
+    }
+    .inv-weapon-editor-field input,
+    .inv-weapon-editor-field select {
+      background: #0a0a0a; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 11px;
+      padding: 4px 8px; border-radius: 3px; outline: none;
+      min-width: 70px;
+    }
+    .inv-weapon-editor-field input:focus,
+    .inv-weapon-editor-field select:focus { border-color: #444; }
+    .inv-weapon-editor-hint { font-weight: 400; color: #555; text-transform: none; font-size: 8px; }
+    .inv-weapon-editor-subhead {
+      font-size: 9px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #888;
+      margin-top: 10px; margin-bottom: 4px;
+    }
+    .inv-weapon-editor-empty { font-size: 10px; color: #666; padding: 2px 0; }
+    .inv-weapon-editor-band {
+      display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
+    }
+    .inv-weapon-editor-band-label {
+      font-size: 10px; color: #888; min-width: 64px;
+    }
+    .inv-weapon-editor-band input {
+      background: #0a0a0a; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 11px; padding: 3px 6px; border-radius: 3px;
+      width: 64px; text-align: center; outline: none;
+    }
+    .inv-weapon-editor-band input:focus { border-color: #444; }
+    .inv-weapon-editor-sep { color: #555; }
+    .inv-weapon-editor-unit { font-size: 10px; color: #666; }
+    .inv-weapon-editor-del {
+      background: none; border: none; color: #666; cursor: pointer;
+      font-size: 14px; line-height: 1; padding: 0 4px;
+      margin-left: auto;
+    }
+    .inv-weapon-editor-del:hover { color: #cc6666; }
+    .inv-weapon-editor-add {
+      background: #131519; border: 1px solid #2a2f35;
+      color: #a8c4de; font-size: 10px; padding: 4px 10px;
+      border-radius: 3px; cursor: pointer; font-family: inherit;
+      margin-top: 4px;
+    }
+    .inv-weapon-editor-add:hover { background: #1a2030; border-color: #3a5878; color: #cfe3f6; }
+    .inv-weapon-editor-tags {
+      display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px;
+    }
+    .inv-weapon-editor-tag {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 8px; background: #0a0a0a;
+      border: 1px solid #1a1a1a; border-radius: 3px;
+      font-size: 10px; color: #bbb; cursor: pointer;
+    }
+    .inv-weapon-editor-tag:hover { border-color: #2a2a2a; }
+    .inv-weapon-editor-tag input[type="checkbox"] { margin: 0; cursor: pointer; }
+
     /* Custom-def form inside the modal — same field shape as edit-ruleset */
     .inv-custom-form .inv-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
     .inv-custom-form .inv-field label { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; }
@@ -4636,6 +4720,13 @@
     invWeaponSetSlotOverride:(id, roll, fr, to)   => inventory.weaponSetSlotOverride(id, roll, fr, to),
     invWeaponResetOverrides: (id)                 => inventory.weaponResetOverrides(id),
     invWeaponSetRange:       (id, value)          => inventory.weaponSetRange(id, value),
+    invWeaponToggleEdit:     (id)                 => inventory.weaponToggleEdit(id),
+    invWeaponSnapUpdate:     (id, field, value)   => inventory.weaponSnapUpdate(id, field, value),
+    invWeaponSnapSetKind:    (id, kind)           => inventory.weaponSnapSetKind(id, kind),
+    invWeaponSnapAddRange:   (id)                 => inventory.weaponSnapAddRange(id),
+    invWeaponSnapRemoveRange:(id, bi)             => inventory.weaponSnapRemoveRange(id, bi),
+    invWeaponSnapUpdateRange:(id, bi, w, v)       => inventory.weaponSnapUpdateRange(id, bi, w, v),
+    invWeaponSnapToggleTag:  (id, tagId, on)      => inventory.weaponSnapToggleTag(id, tagId, on),
     invWeaponToRollCalc:     (id, which)          => inventory.weaponToRollCalc(id, which),
     // Carry cards (CAP / ENC / LIFT) + group-level encumbrance toggle
     invToggleCarryCard:      (key)                => inventory.toggleCarryCard(key),
