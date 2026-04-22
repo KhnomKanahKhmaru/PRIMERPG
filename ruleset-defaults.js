@@ -558,7 +558,7 @@ window.RULESET_DEFAULTS = {
     {
       id: 't_rapidfire_sweep',
       name: 'Rapidfire Sweep',
-      description: 'Ranged weapons with ROF ≥ 2 can perform a Rapidfire Sweep against an area and all targets within it, one Attack roll and one Damage roll. For each AMMO spent (minimum 2) the area covered is ((2.5×ROF)×(2.5×ROF))×AMMO square feet. Any shape (line, circle, zig-zag, cone). Example: RF 2 with 6 AMMO → up to 30×30 ft.'
+      description: 'Ranged weapons with ROF ≥ 2 can perform a Rapidfire Sweep against an area and all targets within it, one Attack roll and one Damage roll. For each AMMO spent past the first (minimum 2 AMMO) the covered volume grows by 2.5×ROF feet on every side of a cube — volume may be shaped any way you like (line, cone, zig-zag, dome, irregular). AMMO spent on a sweep does NOT also grant the Rapidfire damage bonus — choose to spread the AMMO across area OR concentrate it into damage, or split between the two. Example: ROF 2, 3 AMMO → 10×10×10 cube. ROF 2, 6 AMMO → 25×25×25 cube.'
     },
     {
       id: 't_scoped',
