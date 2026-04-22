@@ -1952,6 +1952,15 @@ export function createInventorySection(ctx) {
     const overrides = entry.weaponOverrides || null;
     const atkResult = Number.isFinite(ui.atkResult) ? ui.atkResult : null;
     const currentRange = Number.isFinite(entry.currentRange) ? entry.currentRange : null;
+    // Rapidfire: how many EXTRA AMMO the player wants to spend this
+    // round (0 = normal single shot, N>0 = burst). Only meaningful for
+    // ranged weapons; melee ignores this. Stored per-entry so each
+    // weapon remembers its own rapidfire setting.
+    const rapidfireExtra = (weapon.kind === 'ranged'
+                            && Number.isFinite(ui.rapidfireExtra)
+                            && ui.rapidfireExtra > 0)
+      ? Math.floor(ui.rapidfireExtra)
+      : 0;
 
     // Resolve TWICE:
     //   resolved        — with overrides applied (what the user currently sees)
@@ -1959,10 +1968,10 @@ export function createInventorySection(ctx) {
     //                     variable name for the override map key). Slots are
     //                     paired by index between the two results.
     // Performance is fine — two cheap compiles + evaluations per weapon.
-    const resolved = resolveWeapon(weapon, character, ruleset, overrides, atkResult, penaltyPct);
+    const resolved = resolveWeapon(weapon, character, ruleset, overrides, atkResult, penaltyPct, rapidfireExtra);
     if (!resolved) return '';
     const defaultResolved = overrides
-      ? resolveWeapon(weapon, character, ruleset, null, atkResult, penaltyPct)
+      ? resolveWeapon(weapon, character, ruleset, null, atkResult, penaltyPct, rapidfireExtra)
       : resolved;
 
     // Compute range-based Difficulty chip for the Attack block. Works
@@ -1985,7 +1994,7 @@ export function createInventorySection(ctx) {
       (overrides.attack && Object.keys(overrides.attack).length > 0) ||
       (overrides.damage && Object.keys(overrides.damage).length > 0)
     ));
-    const hasAnyInstanceState = hasOverride || currentRange != null || atkResult != null;
+    const hasAnyInstanceState = hasOverride || currentRange != null || atkResult != null || rapidfireExtra > 0;
 
     const customBadge = hasOverride
       ? '<span class="inv-weapon-custom-badge" title="This weapon has per-instance slot overrides. Click Reset to clear.">custom</span>'
@@ -2009,13 +2018,15 @@ export function createInventorySection(ctx) {
         ${resetBtn}
       </div>
       ${editOpen ? renderWeaponSnapshotEditor(entry) : ''}
+      ${renderWeaponRapidfireSelector(entry, resolved)}
       <div class="inv-weapon-grid">
         ${renderWeaponRollBlock(entry, 'Attack', resolved.attack, {
           showRaw:       !!ui.showRawAttack,
           penaltyPct,
           isAttack:      true,
           defaultSlots:  defaultResolved.attack.diceSlots.concat(defaultResolved.attack.flatSlots),
-          rangeChip
+          rangeChip,
+          rapidfire:     resolved.rapidfire || null
         })}
         ${renderWeaponRollBlock(entry, 'Damage', resolved.damage, {
           showRaw:       !!ui.showRawDamage,
@@ -2108,6 +2119,72 @@ export function createInventorySection(ctx) {
       html += `</div>`;
     }
     return html;
+  }
+
+  // ─── RAPIDFIRE SELECTOR ────────────────────────────────────────────
+  //
+  // Ranged-weapon-only row that lets the player pick how many EXTRA
+  // AMMO to spend for this shot. Shows:
+  //   - Input (0..N) where N = maxAmmo - 1 (need 1 for the base shot)
+  //   - Live computed chips: +DMGMOD, recoil Difficulty, ROF absorption
+  //   - Total AMMO cost for the shot (1 + extra)
+  //
+  // The math is computed in resolveWeapon and surfaced here via
+  // resolved.rapidfire. If no rapidfire is selected, only a muted
+  // "Rapidfire: 0" row shows so the control is discoverable.
+  function renderWeaponRapidfireSelector(entry, resolved) {
+    if (!resolved || resolved.kind !== 'ranged') return '';
+    const id = escapeHtml(entry.id);
+    const ui = entry.weaponUI || {};
+    const extra = Number.isFinite(ui.rapidfireExtra) && ui.rapidfireExtra > 0
+      ? Math.floor(ui.rapidfireExtra)
+      : 0;
+
+    // Max extra = resolved ammo max - 1 (need at least 1 for the
+    // base shot). Defensive fallback when AMMO doesn't resolve.
+    const ammoMax = (resolved.ammo && Number.isFinite(resolved.ammo.resolved))
+      ? Math.max(0, Math.floor(resolved.ammo.resolved))
+      : 0;
+    const maxExtra = Math.max(0, ammoMax - 1);
+
+    // Chips — only populated when extra > 0 (resolved.rapidfire is
+    // null otherwise).
+    let chipsHtml = '';
+    if (resolved.rapidfire) {
+      const rf = resolved.rapidfire;
+      chipsHtml += `<span class="inv-weapon-rf-chip rf-dmgmod" title="Each extra AMMO adds +1 to DMGMOD. Flows into the Damage formula.">+${rf.dmgmodBonus} DMGMOD → ${rf.effectiveDmgmod}</span>`;
+      if (rf.recoilDifficulty > 0) {
+        const str = rf.strVal;
+        chipsHtml += `<span class="inv-weapon-rf-chip rf-recoil" title="Recoil: effective DMGMOD ${rf.effectiveDmgmod} exceeds STR ${str} by ${rf.overCapacity}. Capped at extra ammo count ${rf.extra}.">+${rf.recoilDifficulty} Difficulty (recoil)</span>`;
+      } else {
+        chipsHtml += `<span class="inv-weapon-rf-chip rf-controlled" title="STR ${rf.strVal} handles effective DMGMOD ${rf.effectiveDmgmod}. No recoil difficulty.">controlled · no recoil</span>`;
+      }
+      if (rf.rofMitigation > 0) {
+        chipsHtml += `<span class="inv-weapon-rf-chip rf-rof" title="ROF ${rf.rofValue} absorbs ${rf.rofMitigation} point(s) of recoil difficulty.">ROF absorbs −${rf.rofMitigation}</span>`;
+      }
+      chipsHtml += `<span class="inv-weapon-rf-chip rf-cost" title="Total AMMO consumed when firing.">${rf.totalAmmoCost} AMMO / shot</span>`;
+    } else if (extra === 0 && maxExtra > 0) {
+      chipsHtml = `<span class="inv-weapon-rf-hint">Spend extra AMMO for +DMGMOD; recoil kicks in once the effective DMGMOD exceeds your STR.</span>`;
+    } else if (maxExtra === 0) {
+      chipsHtml = `<span class="inv-weapon-rf-hint">Weapon's AMMO cap is 1 — no extra to spend.</span>`;
+    }
+
+    const input = `<input type="number" class="inv-weapon-rf-input" min="0" max="${maxExtra}" step="1" value="${escapeHtml(String(extra))}"
+                          ${maxExtra === 0 ? 'disabled' : ''}
+                          onchange="invWeaponSetRapidfire('${id}',this.value)"
+                          onkeydown="if(event.key==='Enter'){invWeaponSetRapidfire('${id}',this.value);this.blur();}">`;
+    const clearBtn = extra > 0
+      ? `<button class="inv-weapon-rf-clear" onclick="invWeaponSetRapidfire('${id}','0')" title="Back to single shot">×</button>`
+      : '';
+
+    return `<div class="inv-weapon-rf-row">
+      <span class="inv-weapon-rf-label">Rapidfire</span>
+      <span class="inv-weapon-rf-extra-label">extra AMMO</span>
+      ${input}
+      <span class="inv-weapon-rf-max">/ ${maxExtra}</span>
+      ${clearBtn}
+      <span class="inv-weapon-rf-chips">${chipsHtml}</span>
+    </div>`;
   }
 
   // ─── WEAPON SNAPSHOT EDITOR ────────────────────────────────────────
@@ -2283,6 +2360,27 @@ export function createInventorySection(ctx) {
           delta: opts.rangeChip.band,
           cls: 'penalty'
         });
+      }
+      // Rapidfire: pre-ROF recoil difficulty is the addition; ROF
+      // mitigation is a dedicated mitigation chip. Skill mitigation
+      // (secondary/specialty) can then further offset what ROF
+      // didn't absorb, following the standard mitigation rules.
+      const rf = opts.rapidfire;
+      if (rf && rf.recoilDifficulty > 0) {
+        diffAdditions += rf.recoilDifficulty;
+        additionChips.push({
+          label: `Rapidfire recoil (+${rf.extra} ammo, STR ${rf.strVal} vs DMGMOD ${rf.effectiveDmgmod})`,
+          delta: rf.recoilDifficulty,
+          cls: 'penalty'
+        });
+        if (rf.rofMitigation > 0) {
+          diffMitigation += rf.rofMitigation;
+          mitigationChips.push({
+            label: `ROF ${rf.rofValue} absorbs recoil`,
+            delta: -rf.rofMitigation,
+            cls: 'mitigation'
+          });
+        }
       }
       roll.diceSlots.forEach(s => {
         if (s.category === 'skill') {
@@ -5148,6 +5246,33 @@ export function createInventorySection(ctx) {
     try { await save(); } catch (e) { console.error('inventory save failed', e); }
   }
 
+  async function weaponSetRapidfire(id, value) {
+    const entry = findEntry(id);
+    if (!entry) return;
+    if (!entry.weaponUI || typeof entry.weaponUI !== 'object') entry.weaponUI = {};
+    const raw = (value == null) ? '' : String(value).trim();
+    if (!raw) {
+      entry.weaponUI.rapidfireExtra = 0;
+    } else {
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < 0) {
+        entry.weaponUI.rapidfireExtra = 0;
+      } else {
+        // Clamp to maxAmmo - 1 (need 1 for the base shot). Read from
+        // the resolved AMMO max — ignores currentAmmo so the player
+        // can plan a full burst even if their magazine isn't full,
+        // then manually decrement when they actually fire.
+        const max = resolvedAmmoMax(entry);
+        const cap = (max == null) ? Math.floor(n) : Math.max(0, max - 1);
+        entry.weaponUI.rapidfireExtra = Math.min(Math.floor(n), cap);
+      }
+    }
+    renderAll();
+    if (getCanEdit()) {
+      try { await save(); } catch (e) { console.error('inventory save failed', e); }
+    }
+  }
+
   // Apply (or clear) a per-instance slot override on a weapon. The
   // override rewrites a single variable in the Attack or Damage
   // formula at resolve time — e.g. swap DEX for INT, or Melee for
@@ -5203,6 +5328,10 @@ export function createInventorySection(ctx) {
     if (entry.currentRange != null) { entry.currentRange = null; touched = true; }
     if (entry.weaponUI && entry.weaponUI.atkResult != null) {
       entry.weaponUI.atkResult = null;
+      touched = true;
+    }
+    if (entry.weaponUI && entry.weaponUI.rapidfireExtra > 0) {
+      entry.weaponUI.rapidfireExtra = 0;
       touched = true;
     }
     if (!touched) return;
@@ -5321,20 +5450,25 @@ export function createInventorySection(ctx) {
     if (!weapon) return;
 
     // Resolve with the SAME inputs the on-sheet readout uses: live
-    // overrides, atkResult from the card, and current penalty. That
-    // way Roll Calc mirrors what the player sees on the weapon card.
+    // overrides, atkResult, rapidfire, and current penalty. That way
+    // Roll Calc mirrors what the player sees on the weapon card.
     const character = getCharData();
     const ruleset   = getRuleset();
     const ui = entry.weaponUI || {};
     const overrides = entry.weaponOverrides || null;
     const atkResult = Number.isFinite(ui.atkResult) ? ui.atkResult : null;
+    const rapidfireExtra = (weapon.kind === 'ranged'
+                            && Number.isFinite(ui.rapidfireExtra)
+                            && ui.rapidfireExtra > 0)
+      ? Math.floor(ui.rapidfireExtra)
+      : 0;
     let penaltyPct = 0;
     try {
       const derived = computeDerivedStats(character, ruleset);
       penaltyPct = (derived && derived.penalty && derived.penalty.percent) || 0;
     } catch (_) { penaltyPct = 0; }
 
-    const resolved = resolveWeapon(weapon, character, ruleset, overrides, atkResult, penaltyPct);
+    const resolved = resolveWeapon(weapon, character, ruleset, overrides, atkResult, penaltyPct, rapidfireExtra);
     if (!resolved) return;
     const roll = which === 'damage' ? resolved.damage : resolved.attack;
     if (!roll || roll.error) {
@@ -5350,11 +5484,12 @@ export function createInventorySection(ctx) {
     let flatBonus = roll.flatBonus;
     if (which === 'attack') {
       // Re-compute finalDiff from the resolved weapon's attack slots
-      // the same way the card does: +N per range band, −1 per
-      // secondary skill, −2 per specialty skill, mitigation capped
-      // at additions (never dips below base 6).
+      // the same way the card does: +N per range band, +recoil from
+      // rapidfire, −1 per secondary skill, −2 per specialty skill,
+      // mitigation capped at additions (never dips below base 6).
       const currentRange = Number.isFinite(entry.currentRange) ? entry.currentRange : null;
       let additions = 0;
+      let mitigation = 0;
       if (currentRange != null) {
         let chip = null;
         try {
@@ -5364,7 +5499,10 @@ export function createInventorySection(ctx) {
         } catch (_) { chip = null; }
         if (chip && Number.isFinite(chip.band) && chip.band > 0) additions = chip.band;
       }
-      let mitigation = 0;
+      if (resolved.rapidfire) {
+        additions += resolved.rapidfire.recoilDifficulty;
+        mitigation += resolved.rapidfire.rofMitigation;
+      }
       roll.diceSlots.forEach(s => {
         if (s.category === 'skill') {
           if (s.skillTier === 'secondary') mitigation += 1;
@@ -5378,10 +5516,11 @@ export function createInventorySection(ctx) {
     }
 
     const weaponName = (snap && snap.name) || 'Weapon';
-    // Annotate the label when ATK is baked in so it's clear where
-    // the extra dice came from on the Roll Calc side.
+    // Annotate the label with anything non-default so it's obvious
+    // on the Roll Calc side what's baked into the numbers.
     const atkHint = (which === 'damage' && atkResult != null) ? ` (+ATK ${atkResult})` : '';
-    const label = `${weaponName} · ${which === 'damage' ? 'Damage' : 'Attack'}${atkHint}`;
+    const rfHint = (rapidfireExtra > 0) ? ` (+${rapidfireExtra} rapidfire)` : '';
+    const label = `${weaponName} · ${which === 'damage' ? 'Damage' : 'Attack'}${atkHint}${rfHint}`;
 
     if (typeof ctx.sendWeaponToRollCalc === 'function') {
       ctx.sendWeaponToRollCalc({
@@ -5444,6 +5583,7 @@ export function createInventorySection(ctx) {
     weaponReloadAmmo,
     weaponToggleRaw,
     weaponSetAtk,
+    weaponSetRapidfire,
     weaponSetSlotOverride,
     weaponResetOverrides,
     weaponSetRange,
