@@ -544,6 +544,17 @@ window.RULESET_DEFAULTS = {
   // rather than id, so tags renamed/copied into custom rulesets still
   // behave correctly as long as the name matches. IDs are stable for
   // cross-reference.
+  // Tag categories — nested tree for grouping weapon tags so large
+  // tag catalogues stay manageable in the editor and on weapon cards.
+  // Shape: {id, name, parentId|null, builtIn?}. Like item categories
+  // (see categories[] elsewhere) but scoped ONLY to weapon tags. The
+  // built-in "Uncategorized" category is the default home for tags
+  // that don't specify a categoryId — deleting it is tolerated, but
+  // the normalizer re-seeds it so at least one home always exists.
+  tagCategories: [
+    { id: 'tcat_uncategorized', name: 'Uncategorized', parentId: null, builtIn: true }
+  ],
+
   weaponTags: [
     {
       id: 't_shotgun',
@@ -1396,10 +1407,61 @@ window.normalizeRuleset = function(rs) {
     }
   });
 
+  // Tag categories — nested tree (same shape as item `categories`).
+  // Each category is {id, name, parentId|null, builtIn?}. Seed with
+  // the built-in "Uncategorized" if missing so the fallback home for
+  // orphaned tags always exists. Invalid entries (no id or no name)
+  // are dropped. Cycles (a category's parent pointing back to itself
+  // or a descendant) are broken by nulling the offending parentId.
+  if (!Array.isArray(out.tagCategories)) out.tagCategories = [];
+  const tcatSeen = new Set();
+  out.tagCategories = out.tagCategories.map(c => {
+    if (!c || typeof c !== 'object') return null;
+    const name = (typeof c.name === 'string') ? c.name.trim() : '';
+    if (!name) return null;
+    let id = (typeof c.id === 'string' && c.id) ? c.id : nextSynthId('tcat');
+    while (tcatSeen.has(id)) id = nextSynthId('tcat');
+    tcatSeen.add(id);
+    return {
+      id,
+      name,
+      parentId: (typeof c.parentId === 'string' && c.parentId) ? c.parentId : null,
+      builtIn: !!c.builtIn
+    };
+  }).filter(Boolean);
+  // Seed the built-in Uncategorized if absent.
+  if (!out.tagCategories.some(c => c.id === 'tcat_uncategorized')) {
+    out.tagCategories.unshift({
+      id: 'tcat_uncategorized',
+      name: 'Uncategorized',
+      parentId: null,
+      builtIn: true
+    });
+  }
+  // Break parent cycles + repair orphaned parentIds.
+  const tcatIds = new Set(out.tagCategories.map(c => c.id));
+  out.tagCategories.forEach(c => {
+    if (c.parentId && !tcatIds.has(c.parentId)) c.parentId = null;
+  });
+  const tcatHasCycle = (cid, visited) => {
+    if (!cid) return false;
+    if (visited.has(cid)) return true;
+    visited.add(cid);
+    const c = out.tagCategories.find(x => x.id === cid);
+    return c ? tcatHasCycle(c.parentId, visited) : false;
+  };
+  out.tagCategories.forEach(c => {
+    if (c.parentId && tcatHasCycle(c.parentId, new Set([c.id]))) {
+      c.parentId = null;
+    }
+  });
+
   // Weapon tags — shared tag catalogue used across all weapons in this
-  // ruleset. Each tag is {id, name, description}. Tags without a usable
-  // name are dropped. Missing descriptions become empty strings. IDs
-  // autogenerate with the `t_` prefix if absent (or invalid).
+  // ruleset. Each tag is {id, name, description, categoryId?, params?}.
+  // Tags without a usable name are dropped. Missing descriptions become
+  // empty strings. IDs autogenerate with the `t_` prefix if absent (or
+  // invalid). A missing or orphaned categoryId is repaired to point at
+  // the built-in Uncategorized so the display layer always has a bucket.
   if (!Array.isArray(out.weaponTags)) out.weaponTags = [];
   const tagSeen = new Set();
   out.weaponTags = out.weaponTags.map(t => {
@@ -1431,10 +1493,17 @@ window.normalizeRuleset = function(rs) {
       }).filter(Boolean);
       if (clean.length > 0) params = clean;
     }
+    // Resolve categoryId — use the provided value if it references an
+    // existing category; otherwise drop it into Uncategorized.
+    let categoryId = 'tcat_uncategorized';
+    if (typeof t.categoryId === 'string' && t.categoryId && tcatIds.has(t.categoryId)) {
+      categoryId = t.categoryId;
+    }
     const tag = {
       id,
       name,
-      description: (typeof t.description === 'string') ? t.description : ''
+      description: (typeof t.description === 'string') ? t.description : '',
+      categoryId
     };
     if (params) tag.params = params;
     return tag;
@@ -1452,7 +1521,8 @@ window.normalizeRuleset = function(rs) {
       const injected = {
         id:          stdTag.id,
         name:        stdTag.name,
-        description: stdTag.description || ''
+        description: stdTag.description || '',
+        categoryId:  'tcat_uncategorized'
       };
       if (Array.isArray(stdTag.params)) {
         injected.params = stdTag.params.map(p => Object.assign({}, p));
