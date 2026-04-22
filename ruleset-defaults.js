@@ -1309,20 +1309,22 @@ window.normalizeRuleset = function(rs) {
   // The item's Armor RATING (integer, used for both damage mitigation
   // and durability computation) lives at `item.armor` (top-level,
   // every item has one). This facet only carries what's specific to
-  // WORN armor: which hit locations it protects, and a fluff label.
+  // WORN armor: which hit locations it protects.
   //
   // Shape:
-  //   coverage:        [string] — array of hit-location codes this
-  //                    armor protects. References `hitLocations[].code`
-  //                    (e.g. 'head', 'torso').
-  //   condition:       string — fluff label: 'pristine' | 'worn' |
-  //                    'damaged' | 'broken'. Not mechanically binding.
+  //   coverage:  [string] — array of coverage labels. Typically these
+  //              match `hitLocations[].code` entries (e.g. 'head',
+  //              'torso') but authors can also add custom free-text
+  //              labels for partial-coverage pieces not aligned with
+  //              the ruleset's standard hit locations.
   const coerceArmorWornBlock = (raw, legacyArmor) => {
     // `legacyArmor` is passed when migrating from the old shape where
     // armor was a single block `{value, coverage, maxDurability, condition}`.
-    // We extract coverage + condition from it here; the value part
-    // migrates to the top-level `armor` integer separately (see
-    // normalizeItem below).
+    // We extract coverage here; the value part migrates to the top-level
+    // `armor` integer separately (see normalizeItem below). condition
+    // and maxDurability from the legacy shape are dropped — durability
+    // tracking is now opt-in per-entry and condition is tracked by
+    // direct durability-damage decisions, not a fluff label.
     const src = raw || legacyArmor;
     if (!src || typeof src !== 'object') return null;
     // Coverage — normalize to array of non-empty strings, deduped.
@@ -1337,16 +1339,11 @@ window.normalizeRuleset = function(rs) {
         coverage.push(t);
       });
     }
-    const condRaw = (typeof src.condition === 'string') ? src.condition.trim().toLowerCase() : '';
-    const validConds = new Set(['pristine','worn','damaged','broken']);
-    const condition = validConds.has(condRaw) ? condRaw : 'pristine';
-    // Only return a real facet when at least one meaningful field is
-    // populated. Empty armorWorn objects collapse to null so the
-    // display layer can check presence with a simple truthy test.
-    if (coverage.length === 0 && condition === 'pristine') {
-      return null;
-    }
-    return { coverage, condition };
+    // Only return a real facet when at least one coverage label is set.
+    // An empty-coverage armor block would be meaningless (armor that
+    // protects nothing) so collapse it to null.
+    if (coverage.length === 0) return null;
+    return { coverage };
   };
 
   // Helper: extract the legacy armor `value` field from an old-shape
@@ -1700,10 +1697,13 @@ window.normalizeRuleset = function(rs) {
   // Dimension presets — named L×W×H (+ weight) shapes that the UI
   // exposes as a quick-pick dropdown on item dimension inputs. Each
   // preset is {id, name, dimensions:{l,w,h}, weight, builtIn?}.
-  // Built-ins from RULESET_DEFAULTS are auto-merged into any ruleset
-  // missing them, same pattern as Standard Set tags. Author-edited
-  // built-ins keep the author's values (name match is case-insensitive).
-  if (!Array.isArray(out.dimensionPresets)) out.dimensionPresets = [];
+  // Built-ins from RULESET_DEFAULTS are auto-seeded into FRESH rulesets
+  // (those missing the field entirely). Rulesets with an existing
+  // dimensionPresets array are left alone — authors can delete built-ins
+  // and the normalizer won't re-inject them. This matches the author's
+  // intent: an empty list means "I don't want any presets".
+  const hadDimensionPresets = Array.isArray(out.dimensionPresets);
+  if (!hadDimensionPresets) out.dimensionPresets = [];
   const dpSeen = new Set();
   out.dimensionPresets = out.dimensionPresets.map(p => {
     if (!p || typeof p !== 'object') return null;
@@ -1725,12 +1725,11 @@ window.normalizeRuleset = function(rs) {
       builtIn:    p.builtIn === true
     };
   }).filter(Boolean);
-  // Auto-merge built-ins from defaults if the ruleset is missing them.
-  // Match on case-insensitive name. Author's values (if they already
-  // defined "Pistol" with different dimensions) win — we don't overwrite.
-  const havePresetNames = new Set(out.dimensionPresets.map(p => (p.name || '').toLowerCase()));
-  (d.dimensionPresets || []).forEach(std => {
-    if (!havePresetNames.has((std.name || '').toLowerCase())) {
+  // Seed defaults ONLY if the ruleset didn't carry the field at all.
+  // This is the "first load on a fresh ruleset" case. Once the author
+  // has saved any change, the field exists and their deletions stick.
+  if (!hadDimensionPresets) {
+    (d.dimensionPresets || []).forEach(std => {
       out.dimensionPresets.push({
         id:         std.id,
         name:       std.name,
@@ -1738,8 +1737,8 @@ window.normalizeRuleset = function(rs) {
         weight:     std.weight || 0,
         builtIn:    true
       });
-    }
-  });
+    });
+  }
 
   return out;
 };
