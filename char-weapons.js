@@ -433,12 +433,32 @@ export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, 
   const rsWeapons = (ruleset && ruleset.weapons) || {};
   const rsTags    = Array.isArray(ruleset && ruleset.weaponTags) ? ruleset.weaponTags : [];
 
-  // Normalize rapidfire input — only meaningful for ranged weapons.
-  const rfExtra = (weapon.kind === 'ranged'
-                   && Number.isFinite(rapidfireExtra)
-                   && rapidfireExtra > 0)
-    ? Math.floor(rapidfireExtra)
-    : 0;
+  // Normalize rapidfire input. Two modes:
+  //   - Number  : legacy single value. Goes to the damage bucket.
+  //   - Object  : { damage: N, sweep: M }. N AMMO boost DMGMOD and
+  //     provoke recoil. M AMMO widen the Rapidfire Sweep cube and do
+  //     NOT grant DMGMOD — the player splits a single AMMO pool
+  //     between the two modes. Both are integer ≥ 0.
+  // Only meaningful for ranged weapons.
+  let rfDamage = 0;
+  let rfSweep = 0;
+  if (weapon.kind === 'ranged') {
+    if (typeof rapidfireExtra === 'object' && rapidfireExtra !== null) {
+      if (Number.isFinite(rapidfireExtra.damage) && rapidfireExtra.damage > 0) {
+        rfDamage = Math.floor(rapidfireExtra.damage);
+      }
+      if (Number.isFinite(rapidfireExtra.sweep) && rapidfireExtra.sweep > 0) {
+        rfSweep = Math.floor(rapidfireExtra.sweep);
+      }
+    } else if (Number.isFinite(rapidfireExtra) && rapidfireExtra > 0) {
+      rfDamage = Math.floor(rapidfireExtra);
+    }
+  }
+  // Legacy alias for existing callers/readers of rapidfire that
+  // expect a single rfExtra. rfExtra == rfDamage for all downstream
+  // math (only damage-extra creates DMGMOD + recoil; sweep-extra is
+  // handled separately in the Rapidfire Sweep tag block).
+  const rfExtra = rfDamage;
 
   // Compute the Shotgun close-range damage bonus up front so we can
   // bake it into DMGMOD before the damage formula evaluates. The
@@ -639,19 +659,17 @@ export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, 
     }
 
     // Rapidfire Sweep — ROF ≥ 2 gates this tag's effect. Each AMMO
-    // spent beyond the first (minimum 2 total) adds 2.5×ROF feet to
-    // each side of a cubic AOE, so side = 2.5 × ROF × (AMMO − 1).
+    // spent into the SWEEP bucket (from the split rapidfire control)
+    // widens the cubic AOE by 2.5×ROF feet on every side, starting
+    // from nothing at 0-1 AMMO. Side = 2.5 × ROF × max(0, sweepAmmo − 1).
     // Volume = side³. The area can take ANY shape whose volume does
     // not exceed this cube (line, cone, zig-zag, dome, irregular).
     //
-    // IMPORTANT: AMMO spent on a sweep does NOT also grant the
-    // Rapidfire damage/DMGMOD bonus — the player picks one mode or
-    // the other. Combined mixed spends can be expressed by splitting
-    // AMMO between "regular rapidfire" and "sweep" portions, but
-    // the resolver's `rfExtra` and this sweep computation are
-    // independent. The UI is responsible for communicating this
-    // tradeoff; the resolver doesn't prevent you from computing
-    // both at once for display.
+    // Key separation: AMMO spent on a sweep does NOT grant the
+    // Rapidfire damage bonus. The player splits a single AMMO pool
+    // between the two modes via the UI's two-input rapidfire panel.
+    // `computeArea(ammo)` stays exported so authors and tools can
+    // preview arbitrary splits without touching the card's state.
     //
     //   ROF 2, 2 AMMO  → side 5,  volume 125        (5×5×5)
     //   ROF 2, 3 AMMO  → side 10, volume 1,000      (10×10×10)
@@ -660,17 +678,23 @@ export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, 
     if (hasTag('Rapidfire Sweep')) {
       const rofRaw = out.rof && out.rof.resolved;
       const rofValue = Number.isFinite(Number(rofRaw)) ? Math.max(0, Number(rofRaw)) : 0;
+      const computeArea = function(ammo) {
+        const a = Math.max(0, Math.floor(ammo || 0));
+        if (a < 2 || rofValue < 2) return { sideLen: 0, area: 0, volume: 0, ammo: a };
+        const side = 2.5 * rofValue * (a - 1);
+        const area = side * side;
+        const volume = side * side * side;
+        return { sideLen: side, area, volume, ammo: a };
+      };
+      const activeArea = computeArea(rfSweep);
       out.rapidfireSweep = {
         available: rofValue >= 2,
         rofValue,
-        computeArea: function(ammo) {
-          const a = Math.max(0, Math.floor(ammo || 0));
-          if (a < 2 || rofValue < 2) return { sideLen: 0, area: 0, volume: 0, ammo: a };
-          const side = 2.5 * rofValue * (a - 1);
-          const area = side * side;
-          const volume = side * side * side;
-          return { sideLen: side, area, volume, ammo: a };
-        }
+        activeAmmo: rfSweep,             // how many AMMO the player selected
+        sideLen:    activeArea.sideLen,   // current cube side (0 when < 2 ammo)
+        area:       activeArea.area,
+        volume:     activeArea.volume,
+        computeArea                       // for arbitrary "what if?" previews
       };
     }
 
@@ -682,11 +706,16 @@ export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, 
 
     // ─── RAPIDFIRE ─────────────────────────────────────────────────
     // DMGMOD bonus + recoil difficulty + ROF + stabilization absorption.
-    if (rfExtra > 0) {
+    // Separate AMMO pools: rfDamage adds DMGMOD and provokes recoil;
+    // rfSweep widens the sweep cube and does NOT affect recoil or
+    // DMGMOD (handled in the Rapidfire Sweep tag block above). Both
+    // get reported here so the UI and Roll Calc can show the full
+    // breakdown.
+    if (rfDamage > 0 || rfSweep > 0) {
       const strVal = Number.isFinite(Number(symbols.STR)) ? Number(symbols.STR) : 0;
-      const effectiveDmgmod = baseDmgmod + rfExtra;
+      const effectiveDmgmod = baseDmgmod + rfDamage;
       const overCapacity = Math.max(0, effectiveDmgmod - strVal);
-      const recoilDifficulty = Math.min(rfExtra, overCapacity);
+      const recoilDifficulty = Math.min(rfDamage, overCapacity);
       // ROF absorption FIRST.
       const rofRaw = out.rof && out.rof.resolved;
       const rofValue = Number.isFinite(Number(rofRaw)) ? Math.max(0, Number(rofRaw)) : 0;
@@ -697,20 +726,27 @@ export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, 
       const finalDifficulty = afterRof - stabMitigation;
 
       out.rapidfire = {
-        extra:             rfExtra,
-        dmgmodBonus:       rfExtra,
+        // Split AMMO — UI reads both.
+        damageExtra:       rfDamage,
+        sweepExtra:        rfSweep,
+        // Legacy alias for any code still reading `extra` as
+        // "rapidfire damage extra". Always == damageExtra.
+        extra:             rfDamage,
+        dmgmodBonus:       rfDamage,
         baseDmgmod,
         effectiveDmgmod,
         strVal,
         overCapacity,       // raw STR shortfall (uncapped)
-        recoilDifficulty,   // capped at rfExtra
+        recoilDifficulty,   // capped at rfDamage
         rofValue,
         rofMitigation,
         stabilizationBonus,
         stabilizationLabel,
         stabilizationMitigation: stabMitigation,
         finalDifficulty,
-        totalAmmoCost:     1 + rfExtra
+        // Total AMMO consumed this action = 1 base shot + damage extra
+        // + sweep extra. Both split pools contribute to the AMMO bill.
+        totalAmmoCost:     1 + rfDamage + rfSweep
       };
     }
   }
