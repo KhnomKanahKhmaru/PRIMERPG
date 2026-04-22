@@ -386,6 +386,73 @@
     .cat-name:focus { border-color: #444; }
     .cat-desc { background: #0a0a0a; border: 1px solid #222; color: #ccc; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 5px 8px; border-radius: 3px; outline: none; }
     .cat-desc:focus { border-color: #444; }
+
+    /* Category defaults row — appears under each cat-row with L/W/H/weight */
+    .cat-defaults-row {
+      display: flex; align-items: center; gap: 5px;
+      margin: -2px 0 4px 0;
+      padding: 3px 8px 4px;
+      font-size: 10px; color: #666;
+    }
+    .cat-defaults-label {
+      font-weight: 600; letter-spacing: .04em;
+      text-transform: uppercase; color: #666; margin-right: 4px;
+    }
+    .cat-default-num {
+      background: #0a0a0a; border: 1px solid #1a1a1a;
+      color: #c8c8c8; font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 10px; padding: 2px 5px; border-radius: 2px;
+      width: 52px; text-align: center; outline: none;
+    }
+    .cat-default-num:focus { border-color: #333; color: #e0e0e0; }
+    .cat-defaults-x, .cat-defaults-sep { color: #444; font-size: 10px; }
+    .cat-defaults-unit { color: #555; font-size: 9px; }
+
+    /* Dimension Preset editor rows */
+    .preset-row {
+      display: flex; align-items: center; gap: 6px;
+      background: #111; border: 1px solid #1a1a1a; border-radius: 4px;
+      padding: 6px 10px; margin-bottom: 4px;
+    }
+    .preset-name {
+      flex: 1; max-width: 240px;
+      background: #0a0a0a; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 12px;
+      font-weight: 500; padding: 5px 8px; border-radius: 3px; outline: none;
+    }
+    .preset-name:focus { border-color: #444; }
+    .preset-group {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 6px;
+      background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 3px;
+    }
+    .preset-num {
+      background: #0a0a0a; border: 1px solid #1a1a1a;
+      color: #c8c8c8; font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 11px; padding: 3px 6px; border-radius: 2px;
+      width: 56px; text-align: center; outline: none;
+    }
+    .preset-num:focus { border-color: #333; color: #e0e0e0; }
+    .preset-x { color: #555; font-size: 10px; }
+    .preset-unit { color: #666; font-size: 10px; margin-right: 2px; }
+    .preset-sep { color: #333; font-size: 14px; }
+
+    /* Item card — preset quick-pick dropdown above the L/W/H inputs */
+    .inv-dims-preset-row {
+      display: flex; align-items: center; margin-bottom: 4px;
+    }
+    .inv-dims-hint {
+      font-weight: 400; color: #555; font-size: 9px;
+      text-transform: none; letter-spacing: 0;
+    }
+    .item-preset-select {
+      background: #0a0a0a; border: 1px solid #222; color: #c8c8c8;
+      font-family: 'Open Sans', sans-serif; font-size: 11px;
+      padding: 4px 8px; border-radius: 3px; outline: none;
+      max-width: 280px;
+    }
+    .item-preset-select:focus { border-color: #444; }
+    .item-preset-select option { background: #111; color: #e0e0e0; }
     .cat-count { font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; color: #888; text-align: center; background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 3px; padding: 4px 6px; font-variant-numeric: tabular-nums; cursor: help; }
     .cat-badge { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #777; background: #0a0a0a; border: 1px solid #222; padding: 3px 6px; border-radius: 2px; text-align: center; }
     .cat-delete { color: #555; font-size: 18px; cursor: pointer; text-align: center; line-height: 1; user-select: none; }
@@ -962,6 +1029,20 @@
 
       <div class="section">
         <div class="section-header">
+          <div class="section-title">Dimension Presets</div>
+        </div>
+        <div class="section-desc">Named size templates players can pick when creating items instead of typing L×W×H every time. A preset can also carry a default weight. Edit the shipped built-ins if your setting uses different conventions; add custom presets for shapes unique to your ruleset. Picking a preset on an item copies its values — the item stays independent of the preset afterwards.</div>
+
+        <div id="dimension-preset-list"></div>
+
+        <div class="slot-add-row" style="grid-template-columns:1fr auto;margin-top:10px">
+          <input type="text" id="new-preset-name" placeholder="New preset name (e.g. Carbine, Small Tool)" onkeydown="if(event.key==='Enter')addDimensionPreset()">
+          <button class="inv-add-btn" onclick="addDimensionPreset()">+ Add Preset</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">
           <div class="section-title">Items</div>
         </div>
         <div class="section-desc">Everything carryable: weapons, tools, armor, consumables, containers. An item becomes a container when its <b>Also a container</b> toggle is on — ammo pouches, backpacks, and weapon holsters all live here as items with a capacity block. Dimensions and weight feed the packing math on the character sheet. <b>Packing Efficiency</b> (on containers): 1.0 = perfectly-fitted hard case, 0.75 = typical soft bag, 0.5 = loose sack or odd shape.</div>
@@ -1176,6 +1257,7 @@
 
     // Inventory tab
     renderCategoryTree();
+    renderDimensionPresets();
     renderItemList();
     refreshCategorySelects();
 
@@ -2862,6 +2944,8 @@
       const hasChildren = children.length > 0;
       const itemCount = state.items.filter(i => (i.categoryId || null) === c.id).length;
       const caret = hasChildren ? (collapsed ? '▸' : '▾') : '•';
+      const dd = c.defaultDimensions || { l: 0, w: 0, h: 0 };
+      const dw = c.defaultWeight || 0;
 
       html += `<div class="cat-row" style="padding-left:${depth * 18}px">
         <span class="cat-caret" onclick="toggleCategoryCollapse('${q(c.id)}')" ${hasChildren ? 'style="cursor:pointer"' : 'style="cursor:default;color:#333"'}>${caret}</span>
@@ -2869,6 +2953,18 @@
         <input type="text" class="cat-desc" value="${q(c.description || '')}" placeholder="Optional description (what lives here?)" oninput="updateCategoryField('${q(c.id)}','description',this.value)">
         <span class="cat-count" title="${itemCount} direct item${itemCount === 1 ? '' : 's'} in this category (excludes subcategories)">${itemCount}</span>
         ${c.builtIn ? '<span class="cat-badge">built-in</span>' : `<span class="cat-delete" onclick="deleteCategory('${q(c.id)}')" title="Delete this category (items inside reassign to Miscellaneous)">×</span>`}
+      </div>
+      <div class="cat-defaults-row" style="padding-left:${depth * 18 + 22}px" title="Default dimensions and weight for new items in this category. Leave at 0 for no default.">
+        <span class="cat-defaults-label">Defaults:</span>
+        <input type="number" class="cat-default-num" step="0.25" min="0" value="${q(dd.l)}" placeholder="L" oninput="updateCategoryDefaultDim('${q(c.id)}','l',this.value)" title="Default length (inches)">
+        <span class="cat-defaults-x">×</span>
+        <input type="number" class="cat-default-num" step="0.25" min="0" value="${q(dd.w)}" placeholder="W" oninput="updateCategoryDefaultDim('${q(c.id)}','w',this.value)" title="Default width (inches)">
+        <span class="cat-defaults-x">×</span>
+        <input type="number" class="cat-default-num" step="0.25" min="0" value="${q(dd.h)}" placeholder="H" oninput="updateCategoryDefaultDim('${q(c.id)}','h',this.value)" title="Default height (inches)">
+        <span class="cat-defaults-unit">in</span>
+        <span class="cat-defaults-sep">·</span>
+        <input type="number" class="cat-default-num" step="0.1" min="0" value="${q(dw)}" placeholder="Wt" oninput="updateCategoryDefaultWeight('${q(c.id)}',this.value)" title="Default weight (lbs)">
+        <span class="cat-defaults-unit">lb</span>
       </div>`;
 
       if (!collapsed) children.forEach(child => renderNode(child, depth + 1));
@@ -2925,6 +3021,194 @@
     // focus from the input the user is typing in).
     if (field === 'name') refreshCategorySelects();
   };
+
+  // Update a single default dimension (l/w/h) for a category. The
+  // values feed autofill when new items are added to this category
+  // (the editor's Add Item row calls applyCategoryDefaults at create
+  // time). 0 means "no default" — the item keeps whatever it was
+  // created with. Doesn't re-render: the input is already live, we
+  // just write the coerced number back to state.
+  window.updateCategoryDefaultDim = function(id, axis, value) {
+    const c = state.categories.find(x => x.id === id);
+    if (!c) return;
+    if (!c.defaultDimensions || typeof c.defaultDimensions !== 'object') {
+      c.defaultDimensions = { l: 0, w: 0, h: 0 };
+    }
+    const n = parseFloat(value);
+    c.defaultDimensions[axis] = Number.isFinite(n) && n >= 0 ? n : 0;
+  };
+  window.updateCategoryDefaultWeight = function(id, value) {
+    const c = state.categories.find(x => x.id === id);
+    if (!c) return;
+    const n = parseFloat(value);
+    c.defaultWeight = Number.isFinite(n) && n >= 0 ? n : 0;
+  };
+
+  // ── Dimension Presets ──
+  //
+  // Named L×W×H (+ weight) shapes the item editor exposes as a quick
+  // pick. Built-ins ship in RULESET_DEFAULTS and are auto-merged by
+  // normalizeRuleset. Authors can rename/resize any preset including
+  // built-ins, but built-ins cannot be deleted — the dropdown always
+  // has a baseline set. Custom presets are fully mutable.
+  function renderDimensionPresets() {
+    const host = document.getElementById('dimension-preset-list');
+    if (!host) return;
+    if (!Array.isArray(state.dimensionPresets)) state.dimensionPresets = [];
+    if (state.dimensionPresets.length === 0) {
+      host.innerHTML = '<div class="empty" style="font-size:12px;color:#555;padding:10px">No dimension presets defined. Add one below to start your quick-pick catalogue.</div>';
+      return;
+    }
+    let html = '';
+    state.dimensionPresets.forEach((p, i) => {
+      const dims = p.dimensions || { l: 0, w: 0, h: 0 };
+      const weight = Number.isFinite(p.weight) ? p.weight : 0;
+      const delBtn = p.builtIn
+        ? '<span class="cat-badge">built-in</span>'
+        : `<span class="cat-delete" onclick="removeDimensionPreset(${i})" title="Delete this preset">×</span>`;
+      html += `<div class="preset-row">
+        <input type="text" class="preset-name" value="${q(p.name || '')}" placeholder="Preset name" oninput="updateDimensionPreset(${i},'name',this.value)" ${p.builtIn ? 'title="Built-in preset. Rename freely — cannot be deleted."' : ''}>
+        <span class="preset-group">
+          <input type="number" class="preset-num" step="0.25" min="0" value="${q(dims.l)}" placeholder="L" oninput="updateDimensionPreset(${i},'l',this.value)" title="Length (inches)">
+          <span class="preset-x">×</span>
+          <input type="number" class="preset-num" step="0.25" min="0" value="${q(dims.w)}" placeholder="W" oninput="updateDimensionPreset(${i},'w',this.value)" title="Width (inches)">
+          <span class="preset-x">×</span>
+          <input type="number" class="preset-num" step="0.25" min="0" value="${q(dims.h)}" placeholder="H" oninput="updateDimensionPreset(${i},'h',this.value)" title="Height (inches)">
+          <span class="preset-unit">in</span>
+        </span>
+        <span class="preset-sep">·</span>
+        <input type="number" class="preset-num" step="0.1" min="0" value="${q(weight)}" placeholder="Wt" oninput="updateDimensionPreset(${i},'weight',this.value)" title="Weight (lbs). Leave 0 for no default weight.">
+        <span class="preset-unit">lb</span>
+        ${delBtn}
+      </div>`;
+    });
+    host.innerHTML = html;
+  }
+
+  window.addDimensionPreset = function() {
+    if (!Array.isArray(state.dimensionPresets)) state.dimensionPresets = [];
+    const input = document.getElementById('new-preset-name');
+    if (!input) return;
+    const name = (input.value || '').trim();
+    if (!name) return;
+    state.dimensionPresets.push({
+      id: genDimensionPresetId(),
+      name,
+      dimensions: { l: 0, w: 0, h: 0 },
+      weight: 0,
+      builtIn: false
+    });
+    input.value = '';
+    renderDimensionPresets();
+    refreshDimensionPresetSelects();
+  };
+
+  window.updateDimensionPreset = function(index, field, value) {
+    if (!Array.isArray(state.dimensionPresets)) return;
+    const p = state.dimensionPresets[index];
+    if (!p) return;
+    if (field === 'name') {
+      p.name = typeof value === 'string' ? value : '';
+      refreshDimensionPresetSelects();
+    } else if (field === 'l' || field === 'w' || field === 'h') {
+      if (!p.dimensions || typeof p.dimensions !== 'object') {
+        p.dimensions = { l: 0, w: 0, h: 0 };
+      }
+      const n = parseFloat(value);
+      p.dimensions[field] = Number.isFinite(n) && n >= 0 ? n : 0;
+    } else if (field === 'weight') {
+      const n = parseFloat(value);
+      p.weight = Number.isFinite(n) && n >= 0 ? n : 0;
+    }
+  };
+
+  window.removeDimensionPreset = function(index) {
+    if (!Array.isArray(state.dimensionPresets)) return;
+    const p = state.dimensionPresets[index];
+    if (!p) return;
+    if (p.builtIn) {
+      alert('Built-in presets cannot be deleted. You can rename or resize them, though.');
+      return;
+    }
+    state.dimensionPresets.splice(index, 1);
+    renderDimensionPresets();
+    refreshDimensionPresetSelects();
+  };
+
+  // Refresh the preset dropdowns sitting inside every open item card's
+  // Dimensions row. Called whenever a preset is added/renamed/removed
+  // so all open cards see the change. The selects have a known id
+  // pattern (`item-preset-select-<itemId>`) keyed on item id.
+  function refreshDimensionPresetSelects() {
+    const selects = document.querySelectorAll('.item-preset-select');
+    selects.forEach(sel => {
+      const current = sel.value;
+      sel.innerHTML = buildDimensionPresetOptions();
+      if (current) sel.value = current;
+    });
+  }
+
+  // Build the <option>s for a dimension-preset <select>. A leading
+  // empty option means "no preset picked". Each preset shows its
+  // dimensions inline so players don't have to memorize them.
+  function buildDimensionPresetOptions(selectedId) {
+    const presets = Array.isArray(state.dimensionPresets) ? state.dimensionPresets : [];
+    let html = '<option value="">— pick a preset —</option>';
+    presets.forEach(p => {
+      const dims = p.dimensions || { l: 0, w: 0, h: 0 };
+      const weight = Number.isFinite(p.weight) && p.weight > 0 ? ', ' + p.weight + 'lb' : '';
+      const label = `${p.name} (${dims.l}×${dims.w}×${dims.h}${weight})`;
+      const sel = (selectedId && p.id === selectedId) ? ' selected' : '';
+      html += `<option value="${q(p.id)}"${sel}>${qText(label)}</option>`;
+    });
+    return html;
+  }
+
+  // Generate a unique dimension-preset id. Matches the synth-id pattern
+  // used elsewhere (`dp_` prefix + integer suffix).
+  function genDimensionPresetId() {
+    let i = 1;
+    const existing = new Set((state.dimensionPresets || []).map(p => p.id));
+    while (existing.has('dp_' + i)) i++;
+    return 'dp_' + i;
+  }
+
+  // Apply a dimension preset to an item's dimensions + weight fields.
+  // Called by the per-item Dimensions row's preset <select>. Writes
+  // the preset's values into the item's top-level dimensions and
+  // (when non-zero) weight. A blank value clears no fields — the
+  // user would have to actively edit the fields to revert.
+  window.applyDimensionPresetToItem = function(itemId, presetId) {
+    const it = state.items.find(x => x.id === itemId);
+    if (!it) return;
+    if (!presetId) return;   // "— pick a preset —" sentinel
+    const presets = Array.isArray(state.dimensionPresets) ? state.dimensionPresets : [];
+    const p = presets.find(x => x.id === presetId);
+    if (!p) return;
+    const dims = p.dimensions || { l: 0, w: 0, h: 0 };
+    it.dimensions = { l: dims.l || 0, w: dims.w || 0, h: dims.h || 0 };
+    if (Number.isFinite(p.weight) && p.weight > 0) it.weight = p.weight;
+    renderItemList();
+  };
+
+  // Apply a category's L/W/H/weight defaults to an item. Used when
+  // creating a new item so it auto-fills. Only overrides fields where
+  // the category has a non-zero default AND the item field is currently
+  // empty/zero — an item that already has dimensions won't be stomped.
+  function applyCategoryDefaults(it) {
+    if (!it || !it.categoryId) return;
+    const cat = (state.categories || []).find(c => c.id === it.categoryId);
+    if (!cat) return;
+    const dd = cat.defaultDimensions || {};
+    if (!it.dimensions || typeof it.dimensions !== 'object') {
+      it.dimensions = { l: 0, w: 0, h: 0 };
+    }
+    if ((it.dimensions.l || 0) === 0 && (dd.l || 0) > 0) it.dimensions.l = dd.l;
+    if ((it.dimensions.w || 0) === 0 && (dd.w || 0) > 0) it.dimensions.w = dd.w;
+    if ((it.dimensions.h || 0) === 0 && (dd.h || 0) > 0) it.dimensions.h = dd.h;
+    const dw = Number(cat.defaultWeight);
+    if ((it.weight || 0) === 0 && Number.isFinite(dw) && dw > 0) it.weight = dw;
+  }
 
   window.addCategory = function() {
     const nameInput = document.getElementById('new-category-name');
@@ -3112,7 +3396,14 @@
         </div>
 
         <div class="inv-field">
-          <label>Dimensions (L × W × H, inches)</label>
+          <label>Dimensions (L × W × H, inches) <span class="inv-dims-hint">— pick a preset to autofill</span></label>
+          <div class="inv-dims-preset-row">
+            <select class="item-preset-select" id="item-preset-select-${q(it.id)}"
+                    onchange="applyDimensionPresetToItem('${q(it.id)}', this.value); this.value='';"
+                    title="Pick a shape to autofill dimensions (and weight when the preset has one).">
+              ${buildDimensionPresetOptions()}
+            </select>
+          </div>
           <div class="inv-dims-row">
             <input type="number" step="0.25" min="0" value="${q(dims.l)}" placeholder="L" oninput="updateItemDim('${q(it.id)}','l',this.value)">
             <input type="number" step="0.25" min="0" value="${q(dims.w)}" placeholder="W" oninput="updateItemDim('${q(it.id)}','w',this.value)">
@@ -3332,13 +3623,19 @@
       id: nextStateId('item'),
       name: name || '',
       description: '',
-      dimensions: { l: 6, w: 3, h: 1 },
-      weight: 0.5,
+      dimensions: { l: 0, w: 0, h: 0 },
+      weight: 0,
       categoryId: null,
       legacyCategory: '',
       weaponId: null,
       containerOf: null
     };
+    // New items default to Miscellaneous so applyCategoryDefaults has
+    // somewhere to pull from. If the user moves it to a different
+    // category via the per-item select, the category change handler
+    // applies that category's defaults in turn.
+    it.categoryId = 'cat_misc';
+    applyCategoryDefaults(it);
     state.items.push(it);
     openInvCards.add(it.id);
     if (input) input.value = '';
@@ -3385,8 +3682,15 @@
       it.weight = Number.isFinite(n) && n >= 0 ? n : 0;
     } else if (field === 'categoryId') {
       it.categoryId = (typeof value === 'string' && value) ? value : null;
+      // Apply the new category's defaults to any fields the user
+      // hasn't filled in yet. Already-set fields are preserved —
+      // a Glock moved from Miscellaneous to Pistols keeps its
+      // hand-entered dimensions, but an Unnamed item picks up the
+      // category's 8×1.5×5.5 defaults on the move.
+      applyCategoryDefaults(it);
       // Moving an item between categories needs a full re-render since
-      // it changes which header it sits under.
+      // it changes which header it sits under AND its dimensions may
+      // have auto-filled.
       renderItemList();
       return;
     } else {
