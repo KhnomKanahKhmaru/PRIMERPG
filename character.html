@@ -3336,6 +3336,62 @@
     .inv-weapon-editor-tag:hover { border-color: #2a2a2a; }
     .inv-weapon-editor-tag input[type="checkbox"] { margin: 0; cursor: pointer; }
 
+    /* ── Rapidfire selector (ranged only) ── */
+    .inv-weapon-rf-row {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+      margin-bottom: 10px; padding: 7px 10px;
+      background: #0f0c0a; border: 1px solid #2a1f18; border-radius: 3px;
+      font-size: 11px;
+    }
+    .inv-weapon-rf-label {
+      font-size: 10px; font-weight: 700; letter-spacing: .1em;
+      text-transform: uppercase; color: #d4a574;
+    }
+    .inv-weapon-rf-extra-label { font-size: 10px; color: #888; }
+    .inv-weapon-rf-input {
+      background: #0a0a0a; border: 1px solid #2a1f18; color: #e8e8e8;
+      font-family: 'Courier New', monospace;
+      font-size: 12px; padding: 3px 6px; border-radius: 2px;
+      width: 52px; text-align: center; outline: none;
+    }
+    .inv-weapon-rf-input:focus { border-color: #4a3525; }
+    .inv-weapon-rf-input:disabled { opacity: 0.4; cursor: not-allowed; }
+    .inv-weapon-rf-max { color: #666; font-size: 10px; }
+    .inv-weapon-rf-clear {
+      background: none; border: none; color: #666; cursor: pointer;
+      font-size: 14px; line-height: 1; padding: 0 2px;
+    }
+    .inv-weapon-rf-clear:hover { color: #cc6666; }
+    .inv-weapon-rf-chips {
+      display: flex; flex-wrap: wrap; gap: 5px;
+      margin-left: auto;
+    }
+    .inv-weapon-rf-chip {
+      font-size: 10px; padding: 2px 7px; border-radius: 2px;
+      border: 1px solid #2a2a2a; background: #0a0a0a;
+      font-family: 'Courier New', monospace;
+    }
+    .inv-weapon-rf-chip.rf-dmgmod {
+      color: #e8a874; border-color: #3a2f1a; background: #1a1815;
+    }
+    .inv-weapon-rf-chip.rf-recoil {
+      color: #e8a8a8; border-color: #352525; background: #1a1515;
+    }
+    .inv-weapon-rf-chip.rf-controlled {
+      color: #9ed0a8; border-color: #253322; background: #151a10;
+      font-style: italic;
+    }
+    .inv-weapon-rf-chip.rf-rof {
+      color: #9ed0a8; border-color: #253322;
+    }
+    .inv-weapon-rf-chip.rf-cost {
+      color: #aaa; border-color: #2a2a2a;
+    }
+    .inv-weapon-rf-hint {
+      font-size: 10px; color: #666; font-style: italic;
+      margin-left: auto; max-width: 50%; text-align: right;
+    }
+
     /* Custom-def form inside the modal — same field shape as edit-ruleset */
     .inv-custom-form .inv-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
     .inv-custom-form .inv-field label { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #888; }
@@ -4717,6 +4773,7 @@
     invWeaponReloadAmmo:     (id)                 => inventory.weaponReloadAmmo(id),
     invWeaponToggleRaw:      (id, rawKey)         => inventory.weaponToggleRaw(id, rawKey),
     invWeaponSetAtk:         (id, value)          => inventory.weaponSetAtk(id, value),
+    invWeaponSetRapidfire:   (id, value)          => inventory.weaponSetRapidfire(id, value),
     invWeaponSetSlotOverride:(id, roll, fr, to)   => inventory.weaponSetSlotOverride(id, roll, fr, to),
     invWeaponResetOverrides: (id)                 => inventory.weaponResetOverrides(id),
     invWeaponSetRange:       (id, value)          => inventory.weaponSetRange(id, value),
