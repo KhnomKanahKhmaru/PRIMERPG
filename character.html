@@ -3387,9 +3387,33 @@
     .inv-weapon-rf-chip.rf-cost {
       color: #aaa; border-color: #2a2a2a;
     }
+    .inv-weapon-rf-chip.rf-sweep {
+      color: #c0b8e8; border-color: #2a2540; background: #15131f;
+    }
+    .inv-weapon-rf-chip.rf-stab {
+      color: #b5d0d8; border-color: #1e3038; background: #0f1a1e;
+    }
     .inv-weapon-rf-hint {
       font-size: 10px; color: #666; font-style: italic;
       margin-left: auto; max-width: 50%; text-align: right;
+    }
+    .inv-weapon-rf-sublabel {
+      font-size: 9px; font-weight: 600; letter-spacing: .08em;
+      text-transform: uppercase; color: #888;
+      cursor: help;
+    }
+    .inv-weapon-rf-divider {
+      font-size: 14px; color: #444; font-weight: 300;
+      margin: 0 2px;
+    }
+    .inv-weapon-rf-disabled {
+      font-size: 10px; color: #555; font-style: italic;
+      padding: 2px 6px; border: 1px dashed #2a2a2a; border-radius: 3px;
+      cursor: help;
+    }
+    .inv-weapon-sweep-hint {
+      font-size: 9px; color: #666; font-style: italic;
+      margin-left: 6px;
     }
 
     /* Custom-def form inside the modal — same field shape as edit-ruleset */
@@ -4773,7 +4797,9 @@
     invWeaponReloadAmmo:     (id)                 => inventory.weaponReloadAmmo(id),
     invWeaponToggleRaw:      (id, rawKey)         => inventory.weaponToggleRaw(id, rawKey),
     invWeaponSetAtk:         (id, value)          => inventory.weaponSetAtk(id, value),
-    invWeaponSetRapidfire:   (id, value)          => inventory.weaponSetRapidfire(id, value),
+    invWeaponSetRapidfire:        (id, value)     => inventory.weaponSetRapidfire(id, value),
+    invWeaponSetRapidfireDamage:  (id, value)     => inventory.weaponSetRapidfireDamage(id, value),
+    invWeaponSetRapidfireSweep:   (id, value)     => inventory.weaponSetRapidfireSweep(id, value),
     invWeaponSetSlotOverride:(id, roll, fr, to)   => inventory.weaponSetSlotOverride(id, roll, fr, to),
     invWeaponResetOverrides: (id)                 => inventory.weaponResetOverrides(id),
     invWeaponSetRange:       (id, value)          => inventory.weaponSetRange(id, value),
