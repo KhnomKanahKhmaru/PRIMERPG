@@ -1278,6 +1278,67 @@ window.normalizeRuleset = function(rs) {
     return { kind: 'ranged', dice, pen, tags, range, dmgmod, ammo, rof, tagParams };
   };
 
+  // ── ARMOR block ──
+  //
+  // An item becomes an armor piece when `item.armor` is a populated
+  // object. Parallel to `containerOf` and `weapon` — orthogonal facets;
+  // a single item can carry any combination. A helmet is armor + not a
+  // container. A tactical vest can be armor + container. A spiked
+  // shield could be armor + weapon.
+  //
+  // Shape:
+  //   value:           integer — armor rating, used as the attacker's
+  //                    effective armor reduction in damage math
+  //                    (Armor 0–6 by convention, but not clamped here
+  //                    so exotic rulesets can exceed).
+  //   coverage:        [string] — array of hit-location codes this
+  //                    armor protects. References `hitLocations[].code`
+  //                    (e.g. 'head', 'torso'). Unknown codes are kept
+  //                    but will be silently ignored by resolve time.
+  //   maxDurability:   integer — total condition points before the
+  //                    armor breaks. 0 = no durability tracking.
+  //   condition:       string — free-text label for fluff state:
+  //                    'pristine' | 'worn' | 'damaged' | 'broken'.
+  //                    Not mechanically binding — the GM interprets.
+  //                    Per-instance current durability is NOT stored
+  //                    here; it lives on character inventory entries
+  //                    (snapshot copy + entry.armorDurability runtime).
+  const coerceArmorBlock = (raw) => {
+    if (!raw || typeof raw !== 'object') return null;
+    const value = (() => {
+      const n = Number(raw.value);
+      return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+    })();
+    // Coverage — normalize to array of non-empty strings, deduped.
+    let coverage = [];
+    if (Array.isArray(raw.coverage)) {
+      const seen = new Set();
+      raw.coverage.forEach(c => {
+        if (typeof c !== 'string') return;
+        const t = c.trim();
+        if (!t || seen.has(t)) return;
+        seen.add(t);
+        coverage.push(t);
+      });
+    }
+    const maxDurability = (() => {
+      const n = Number(raw.maxDurability);
+      return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+    })();
+    const condRaw = (typeof raw.condition === 'string') ? raw.condition.trim().toLowerCase() : '';
+    const validConds = new Set(['pristine','worn','damaged','broken']);
+    const condition = validConds.has(condRaw) ? condRaw : 'pristine';
+    // Only return a real armor block when at least one field is
+    // non-default — fully empty armor objects become null so they
+    // don't leak empty facets onto every item. Value > 0 is the
+    // primary signal; coverage alone also qualifies (a blocker piece
+    // with 0 armor value is weird but valid authorship).
+    if (value === 0 && coverage.length === 0 && maxDurability === 0 && condition === 'pristine') {
+      return null;
+    }
+    return { value, coverage, maxDurability, condition };
+  };
+
   // Normalize a single item record. Shared by the migration path
   // (legacy entry → item) and the validation path (existing item → item).
   // `sourceKind` is 'container' when coming from the old containers
@@ -1332,6 +1393,10 @@ window.normalizeRuleset = function(rs) {
       // 'ranged'). Added to the catalogue item's def; snapshot-copied
       // onto inventory entries at add-time (see char-inventory.js).
       weapon:       coerceWeapon(raw.weapon),
+      // Armor block — present when the item is (or is also) armor.
+      // Null/omitted for non-armor items. Orthogonal to containerOf
+      // and weapon facets; all three can co-exist on one item.
+      armor:        coerceArmorBlock(raw.armor),
       // Default body slot — set on containers so adding one to a
       // character pre-selects the right slot.
       defaultSlot:  (typeof raw.defaultSlot === 'string' && raw.defaultSlot) ? raw.defaultSlot : null,
