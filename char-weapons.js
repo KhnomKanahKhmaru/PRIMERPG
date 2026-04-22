@@ -640,15 +640,23 @@ export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, 
 
     // Rapidfire Sweep — ROF ≥ 2 gates this tag's effect. Each AMMO
     // spent beyond the first (minimum 2 total) adds 2.5×ROF feet to
-    // the side of a square AOE. So side = 2.5 × ROF × (AMMO − 1).
-    // Area = side² (the shape can be any layout of that total length
-    // / area, per the rule — line, cone, zig-zag, etc.). Spending
-    // fewer than 2 AMMO or wielding a ROF < 2 weapon returns 0.
+    // each side of a cubic AOE, so side = 2.5 × ROF × (AMMO − 1).
+    // Volume = side³. The area can take ANY shape whose volume does
+    // not exceed this cube (line, cone, zig-zag, dome, irregular).
     //
-    //   ROF 2, 2 AMMO  → side 5,  area 25    (5×5)
-    //   ROF 2, 3 AMMO  → side 10, area 100   (10×10)
-    //   ROF 2, 6 AMMO  → side 25, area 625   (25×25)
-    //   ROF 3, 4 AMMO  → side 22.5, area ~506 (22.5×22.5)
+    // IMPORTANT: AMMO spent on a sweep does NOT also grant the
+    // Rapidfire damage/DMGMOD bonus — the player picks one mode or
+    // the other. Combined mixed spends can be expressed by splitting
+    // AMMO between "regular rapidfire" and "sweep" portions, but
+    // the resolver's `rfExtra` and this sweep computation are
+    // independent. The UI is responsible for communicating this
+    // tradeoff; the resolver doesn't prevent you from computing
+    // both at once for display.
+    //
+    //   ROF 2, 2 AMMO  → side 5,  volume 125        (5×5×5)
+    //   ROF 2, 3 AMMO  → side 10, volume 1,000      (10×10×10)
+    //   ROF 2, 6 AMMO  → side 25, volume 15,625     (25×25×25)
+    //   ROF 3, 4 AMMO  → side 22.5, volume ~11,391  (22.5×22.5×22.5)
     if (hasTag('Rapidfire Sweep')) {
       const rofRaw = out.rof && out.rof.resolved;
       const rofValue = Number.isFinite(Number(rofRaw)) ? Math.max(0, Number(rofRaw)) : 0;
@@ -657,10 +665,11 @@ export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, 
         rofValue,
         computeArea: function(ammo) {
           const a = Math.max(0, Math.floor(ammo || 0));
-          if (a < 2 || rofValue < 2) return { sideLen: 0, area: 0, ammo: a };
+          if (a < 2 || rofValue < 2) return { sideLen: 0, area: 0, volume: 0, ammo: a };
           const side = 2.5 * rofValue * (a - 1);
           const area = side * side;
-          return { sideLen: side, area, ammo: a };
+          const volume = side * side * side;
+          return { sideLen: side, area, volume, ammo: a };
         }
       };
     }
