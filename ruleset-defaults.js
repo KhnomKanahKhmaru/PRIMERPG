@@ -538,7 +538,59 @@ window.RULESET_DEFAULTS = {
   // Tag catalogue. Order matters for display but not behavior. Each
   // entry is { id, name, description }. IDs follow the `t_` prefix
   // convention to avoid collisions with item ids elsewhere.
-  weaponTags: []
+  //
+  // The Standard Set ships with seven mechanically-active tags. The
+  // resolver and card UI key off these by NAME (case-insensitive)
+  // rather than id, so tags renamed/copied into custom rulesets still
+  // behave correctly as long as the name matches. IDs are stable for
+  // cross-reference.
+  weaponTags: [
+    {
+      id: 't_shotgun',
+      name: 'Shotgun',
+      description: 'Mag-fed Shotguns reload as normal; tube-shell Shotguns reload 1 AMMO per Fast Action spent. Damage +1 within half of the first range band, +2 within a quarter, +3 closer than that. If capable of sweeping, sweep AOE is doubled and requires 1 shell per increment instead of 5 rounds.'
+    },
+    {
+      id: 't_firearm',
+      name: 'Firearm',
+      description: 'Firearm attacks are +3 Difficulty to Dodge without cover; +2 within half of one\'s dodge distance from cover, +1 within a quarter, +0 closer than that. Firearm attacks are +6 Difficulty to Defend against without a valid deflection, redirection (e.g. shield), or being in melee range.'
+    },
+    {
+      id: 't_rapidfire_sweep',
+      name: 'Rapidfire Sweep',
+      description: 'Ranged weapons with ROF ≥ 2 can perform a Rapidfire Sweep against an area and all targets within it, one Attack roll and one Damage roll. For each AMMO spent (minimum 2) the area covered is ((2.5×ROF)×(2.5×ROF))×AMMO square feet. Any shape (line, circle, zig-zag, cone). Example: RF 2 with 6 AMMO → up to 30×30 ft.'
+    },
+    {
+      id: 't_scoped',
+      name: 'Scoped',
+      description: 'When the Aim action is taken, effective range is multiplied by the scope\'s magnification value.',
+      params: [
+        {
+          key: 'magnification',
+          type: 'number',
+          label: 'Magnification',
+          default: 4,
+          min: 1,
+          max: 50
+        }
+      ]
+    },
+    {
+      id: 't_major_stabilization',
+      name: 'Major Stabilization',
+      description: 'Stabilized by a major fixture (tripod, vehicle mount, structural mount). Recoil is decreased by 3.'
+    },
+    {
+      id: 't_stabilization',
+      name: 'Stabilization',
+      description: 'Stabilized by a standard fixture (bipod or similar). Recoil is decreased by 2.'
+    },
+    {
+      id: 't_minor_stabilization',
+      name: 'Minor Stabilization',
+      description: 'Stabilized by a minor method (stationary prone, terrain, improvised stabilization, a specialized shooting stance). Recoil is decreased by 1.'
+    }
+  ]
 };
 
 // Normalize any ruleset doc by filling in missing fields from defaults.
@@ -1101,6 +1153,30 @@ window.normalizeRuleset = function(rs) {
       });
     }
 
+    // Tag parameter values. Shape: { [tagId]: { [paramKey]: value } }.
+    // E.g. { t_scoped: { magnification: 4 } }. Preserved verbatim
+    // here — the resolver looks up parameter defaults from the
+    // ruleset's tag definitions and fills in missing values. Orphan
+    // tagParams (for tags the weapon doesn't actually have) are
+    // tolerated; they just do nothing.
+    let tagParams = null;
+    if (raw.tagParams && typeof raw.tagParams === 'object') {
+      const clean = {};
+      Object.keys(raw.tagParams).forEach(tagId => {
+        const v = raw.tagParams[tagId];
+        if (!v || typeof v !== 'object') return;
+        const sub = {};
+        Object.keys(v).forEach(key => {
+          const val = v[key];
+          if (typeof val === 'number' && Number.isFinite(val)) sub[key] = val;
+          else if (typeof val === 'string') sub[key] = val;
+          else if (typeof val === 'boolean') sub[key] = val;
+        });
+        if (Object.keys(sub).length > 0) clean[tagId] = sub;
+      });
+      if (Object.keys(clean).length > 0) tagParams = clean;
+    }
+
     if (kindRaw === 'melee') {
       // Range bands. Stored as an array of {s, e} objects (NOT nested
       // arrays — Firestore doesn't support those). Legacy data
@@ -1126,7 +1202,7 @@ window.normalizeRuleset = function(rs) {
           ranges.push({ s, e });
         });
       }
-      return { kind: 'melee', dice, pen, tags, ranges };
+      return { kind: 'melee', dice, pen, tags, ranges, tagParams };
     }
 
     // ranged
@@ -1142,7 +1218,18 @@ window.normalizeRuleset = function(rs) {
     };
     const ammo = coerceNumOrFormula(raw.ammo, 1);
     const rof  = coerceNumOrFormula(raw.rof,  0);
-    return { kind: 'ranged', dice, pen, tags, range, dmgmod, ammo, rof };
+    // Legacy scopeMagnification field: if present, migrate into
+    // tagParams.t_scoped.magnification so all tag parameters live in
+    // one place going forward.
+    if (Number.isFinite(Number(raw.scopeMagnification))) {
+      const mag = Math.max(1, Number(raw.scopeMagnification));
+      if (!tagParams) tagParams = {};
+      if (!tagParams.t_scoped) tagParams.t_scoped = {};
+      if (tagParams.t_scoped.magnification == null) {
+        tagParams.t_scoped.magnification = mag;
+      }
+    }
+    return { kind: 'ranged', dice, pen, tags, range, dmgmod, ammo, rof, tagParams };
   };
 
   // Normalize a single item record. Shared by the migration path
@@ -1323,12 +1410,56 @@ window.normalizeRuleset = function(rs) {
     // Avoid duplicate ids — if two tags share, the later one gets a new id.
     while (tagSeen.has(id)) id = nextSynthId('t');
     tagSeen.add(id);
-    return {
+    // Preserve structured params if present. Each param is
+    // {key, type, label, default, min?, max?}. Invalid entries drop.
+    let params = null;
+    if (Array.isArray(t.params) && t.params.length > 0) {
+      const clean = t.params.map(p => {
+        if (!p || typeof p !== 'object') return null;
+        const key = (typeof p.key === 'string' && p.key.trim()) ? p.key.trim() : '';
+        const type = (typeof p.type === 'string' && p.type.trim()) ? p.type.trim() : 'number';
+        if (!key) return null;
+        const entry = {
+          key, type,
+          label: (typeof p.label === 'string' && p.label) ? p.label : key,
+          default: (typeof p.default === 'number' || typeof p.default === 'string' || typeof p.default === 'boolean')
+            ? p.default : null
+        };
+        if (Number.isFinite(Number(p.min))) entry.min = Number(p.min);
+        if (Number.isFinite(Number(p.max))) entry.max = Number(p.max);
+        return entry;
+      }).filter(Boolean);
+      if (clean.length > 0) params = clean;
+    }
+    const tag = {
       id,
       name,
       description: (typeof t.description === 'string') ? t.description : ''
     };
+    if (params) tag.params = params;
+    return tag;
   }).filter(Boolean);
+
+  // Auto-merge the Standard Set's mechanically-active tags if the
+  // ruleset is missing them. Match on case-insensitive name: if a
+  // user-authored tag happens to be named "Shotgun" already, we
+  // leave it alone (their description wins). Only absent tags get
+  // injected. This keeps older rulesets working with the new
+  // tag-driven mechanics without overwriting custom descriptions.
+  const haveTagNames = new Set(out.weaponTags.map(t => (t.name || '').toLowerCase()));
+  (d.weaponTags || []).forEach(stdTag => {
+    if (!haveTagNames.has((stdTag.name || '').toLowerCase())) {
+      const injected = {
+        id:          stdTag.id,
+        name:        stdTag.name,
+        description: stdTag.description || ''
+      };
+      if (Array.isArray(stdTag.params)) {
+        injected.params = stdTag.params.map(p => Object.assign({}, p));
+      }
+      out.weaponTags.push(injected);
+    }
+  });
 
   return out;
 };
