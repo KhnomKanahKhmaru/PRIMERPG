@@ -3087,6 +3087,20 @@
     .inv-entry-dur-state-bad {
       background: #2a0808; color: #e07070; border: 1px solid #5a2020;
     }
+
+    /* Armor chip inline on the durability row — warm-metal palette
+       matching the ruleset editor's Armor pill. Positioned between
+       the Dur value and the state badge so the reader sees "Dur 10/10,
+       armor 6, functional" in a single sweep. */
+    .inv-entry-dur-armor {
+      font-size: 9px; font-weight: 700;
+      letter-spacing: .06em; text-transform: uppercase;
+      color: #caa060;
+      background: #1a1408; border: 1px solid #3a2a14;
+      padding: 1px 6px; border-radius: 2px;
+      font-family: 'Open Sans', sans-serif;
+      cursor: help;
+    }
     .inv-entry-dur-instances {
       display: inline-flex; gap: 3px; align-items: center;
       flex-wrap: wrap; margin-left: 6px;
