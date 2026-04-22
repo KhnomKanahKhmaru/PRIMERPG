@@ -3043,6 +3043,88 @@
       margin-left: 8px; vertical-align: middle;
       cursor: help;
     }
+
+    /* Durability row — appears below an entry's name row when tracking
+       is on. Compact inline layout: label, value, state badge,
+       instance chips, damage input, clear button. Muted/olive palette
+       so it reads as metadata rather than primary UI. */
+    .inv-entry-dur-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 4px 12px 4px 36px;
+      background: #0a0a0a; border-top: 1px solid #1a1a1a;
+      font-size: 11px; font-family: 'Consolas', 'Courier New', monospace;
+    }
+    .inv-entry-dur-label {
+      font-size: 9px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #666;
+    }
+    .inv-entry-dur-value {
+      color: #c8c8c8; font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .inv-entry-dur-state {
+      font-size: 9px; font-weight: 700; letter-spacing: .06em;
+      text-transform: uppercase;
+      padding: 1px 6px; border-radius: 2px;
+      font-family: 'Open Sans', sans-serif;
+    }
+    .inv-entry-dur-state-ok {
+      background: #081a0d; color: #8ab48a; border: 1px solid #1e3a24;
+    }
+    .inv-entry-dur-state-warn {
+      background: #2a1f08; color: #d4a574; border: 1px solid #5a4820;
+    }
+    .inv-entry-dur-state-bad {
+      background: #2a0808; color: #e07070; border: 1px solid #5a2020;
+    }
+    .inv-entry-dur-instances {
+      display: inline-flex; gap: 3px; align-items: center;
+      flex-wrap: wrap; margin-left: 6px;
+    }
+    .inv-entry-dur-chip {
+      display: inline-block;
+      font-size: 10px; font-weight: 600;
+      color: #c88; background: #1a0a0a; border: 1px solid #3a1a1a;
+      padding: 1px 6px; border-radius: 2px; cursor: pointer;
+      font-variant-numeric: tabular-nums;
+      transition: background 0.1s, border-color 0.1s, color 0.1s;
+    }
+    .inv-entry-dur-chip:hover {
+      background: #2a0f0f; border-color: #5a2020; color: #e0a0a0;
+    }
+    .inv-entry-dur-chip.readonly { cursor: help; }
+    .inv-entry-dur-input {
+      width: 60px; padding: 2px 6px;
+      background: #0f0f0f; border: 1px solid #222; color: #e0e0e0;
+      font-size: 11px; font-family: 'Consolas', 'Courier New', monospace;
+      border-radius: 2px; outline: none; text-align: center;
+      font-variant-numeric: tabular-nums;
+      margin-left: auto;
+    }
+    .inv-entry-dur-input:focus { border-color: #444; }
+    .inv-entry-dur-input::placeholder { color: #555; }
+    .inv-entry-dur-clear {
+      font-size: 10px; font-weight: 600; letter-spacing: .04em;
+      padding: 2px 8px;
+      background: #1a1a1a; color: #888;
+      border: 1px solid #2a2a2a; border-radius: 2px;
+      cursor: pointer; font-family: 'Open Sans', sans-serif;
+      transition: background 0.1s, color 0.1s, border-color 0.1s;
+    }
+    .inv-entry-dur-clear:hover {
+      background: #251010; color: #c88; border-color: #3a1a1a;
+    }
+
+    /* Edit panel subsection — groups related fields under a small label */
+    .inv-edit-panel-subsection {
+      margin-top: 10px; padding-top: 10px;
+      border-top: 1px solid #2a2010;
+    }
+    .inv-edit-panel-sub-label {
+      font-size: 9px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #caa060;
+      margin-bottom: 6px;
+    }
     .inv-entry-info { background: #0d0d0d; border: 1px solid #1a1a1a; border-top: none; border-radius: 0 0 3px 3px; padding: 8px 12px; margin-top: -1px; font-size: 12px; color: #bbb; line-height: 1.55; }
     .inv-entry-info-desc { white-space: pre-wrap; }
     .inv-entry-info-notes { margin-top: 6px; padding-top: 6px; border-top: 1px solid #1a1a1a; color: #999; white-space: pre-wrap; }
@@ -4954,6 +5036,11 @@
     invWeaponSetRange:       (id, value)          => inventory.weaponSetRange(id, value),
     invWeaponToggleEdit:     (id)                 => inventory.weaponToggleEdit(id),
     invWeaponToggleTagCatCollapse: (scope, catId)  => inventory.weaponToggleTagCatCollapse(scope, catId),
+    // Durability tracking (opt-in per entry)
+    invDurabilityToggleTracked:    (id)                     => inventory.durabilityToggleTracked(id),
+    invDurabilityAddInstance:      (id, amountStr)          => inventory.durabilityAddInstance(id, amountStr),
+    invDurabilityRemoveInstance:   (id, idx)                => inventory.durabilityRemoveInstance(id, idx),
+    invDurabilityClear:            (id)                     => inventory.durabilityClear(id),
     invWeaponSnapUpdate:     (id, field, value)   => inventory.weaponSnapUpdate(id, field, value),
     invWeaponSnapSetKind:    (id, kind)           => inventory.weaponSnapSetKind(id, kind),
     invWeaponSnapAddRange:   (id)                 => inventory.weaponSnapAddRange(id),
