@@ -3029,6 +3029,20 @@
     .inv-entry-name-clickable { cursor: pointer; }
     .inv-entry-name-clickable:hover { color: #fff; }
     .inv-entry-info-caret { font-size: 9px; color: #666; margin-left: 6px; }
+
+    /* Armor pill — inline on item/container entries when the snapshot
+       carries an armor block. Matches the ruleset editor's warm-metal
+       palette so the pill reads the same in both places. */
+    .inv-entry-armor-pill {
+      display: inline-block;
+      font-size: 9px; font-weight: 600;
+      letter-spacing: .06em; text-transform: uppercase;
+      color: #caa060;
+      background: #1a1408; border: 1px solid #3a2a14;
+      padding: 1px 6px; border-radius: 2px;
+      margin-left: 8px; vertical-align: middle;
+      cursor: help;
+    }
     .inv-entry-info { background: #0d0d0d; border: 1px solid #1a1a1a; border-top: none; border-radius: 0 0 3px 3px; padding: 8px 12px; margin-top: -1px; font-size: 12px; color: #bbb; line-height: 1.55; }
     .inv-entry-info-desc { white-space: pre-wrap; }
     .inv-entry-info-notes { margin-top: 6px; padding-top: 6px; border-top: 1px solid #1a1a1a; color: #999; white-space: pre-wrap; }
