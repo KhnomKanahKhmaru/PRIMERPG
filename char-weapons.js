@@ -426,7 +426,7 @@ function applyOverrides(formula, mapping) {
 //
 // Returns the readout object described at the top of this file. If the
 // weapon argument is null/undefined or has no kind, returns null.
-export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, penaltyPct, rapidfireExtra) {
+export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, penaltyPct, rapidfireExtra, currentRange) {
   if (!weapon || (weapon.kind !== 'melee' && weapon.kind !== 'ranged')) return null;
 
   const symbols = buildSymbolTable(character || {}, ruleset || {});
@@ -439,6 +439,35 @@ export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, 
                    && rapidfireExtra > 0)
     ? Math.floor(rapidfireExtra)
     : 0;
+
+  // Compute the Shotgun close-range damage bonus up front so we can
+  // bake it into DMGMOD before the damage formula evaluates. The
+  // bonus is: +3 ≤ range × 0.25, +2 ≤ range × 0.5, +1 ≤ range,
+  // 0 past range. Only applies when the Shotgun tag is present AND
+  // a current engagement range is set. Tag detection happens below
+  // (case-insensitive name match); we do it early here so the
+  // weapon symbols can include the bonus.
+  let shotgunBonus = 0;
+  let shotgunZoneLabel = null;
+  const tagIdsForEarly = Array.isArray(weapon.tags) ? weapon.tags : [];
+  const earlyTagNames = new Set(tagIdsForEarly
+    .map(id => rsTags.find(t => t.id === id))
+    .filter(Boolean)
+    .map(t => (t.name || '').toLowerCase()));
+  const hasShotgunTag = earlyTagNames.has('shotgun');
+  if (hasShotgunTag && weapon.kind === 'ranged'
+      && Number.isFinite(currentRange) && currentRange >= 0) {
+    const firstBandEnd = Number.isFinite(weapon.range) ? weapon.range : 0;
+    if (firstBandEnd > 0) {
+      if (currentRange <= firstBandEnd * 0.25) {
+        shotgunBonus = 3; shotgunZoneLabel = 'point blank';
+      } else if (currentRange <= firstBandEnd * 0.5) {
+        shotgunBonus = 2; shotgunZoneLabel = 'close';
+      } else if (currentRange <= firstBandEnd) {
+        shotgunBonus = 1; shotgunZoneLabel = 'short';
+      }
+    }
+  }
 
   // Weapon-local symbols overlaid on character symbols. DMGMOD falls
   // back to whatever the character symbol table already had (DEXMOD
@@ -454,8 +483,9 @@ export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, 
     ? weapon.dmgmod
     : 0;
   if (weapon.kind === 'ranged') {
-    // Rapidfire adds directly to DMGMOD (each extra ammo = +1).
-    weaponSymbols.WEAPONDMGMOD = baseDmgmod + rfExtra;
+    // DMGMOD = base + rapidfire + shotgun close-range bonus. Each
+    // source stacks in a single flat number the formula sees.
+    weaponSymbols.WEAPONDMGMOD = baseDmgmod + rfExtra + shotgunBonus;
     weaponSymbols.DMGMOD       = weaponSymbols.WEAPONDMGMOD;
   } else {
     weaponSymbols.WEAPONDMGMOD = 0;
@@ -518,29 +548,141 @@ export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, 
     out.ammo   = resolveAmmoRof(weapon.ammo, symbols);
     out.rof    = resolveAmmoRof(weapon.rof,  symbols);
 
-    // Rapidfire: compute DMGMOD bonus, recoil-based Difficulty penalty,
-    // and ROF mitigation. Only populated when rapidfireExtra > 0.
-    // The UI feeds `finalDifficulty` into the existing Difficulty row
-    // so skill-tier mitigation (secondary/specialty) can further offset.
+    // ─── TAG-DRIVEN MECHANICAL BEHAVIOR ────────────────────────────
+    //
+    // Detection is name-based (case-insensitive) so tags carry their
+    // mechanics even when ids differ between rulesets. Names match
+    // the Standard Set: Shotgun, Firearm, Scoped, Rapidfire Sweep,
+    // Major Stabilization, Stabilization, Minor Stabilization.
+    //
+    // Each block emits a field on `out` that the UI reads. Missing
+    // tags → field absent; the card skips the corresponding panel.
+
+    const tagNames = new Set(tags.map(t => (t.name || '').toLowerCase().trim()));
+    const hasTag = (name) => tagNames.has(name.toLowerCase());
+
+    // Stabilization — the three tiers decrease recoil by 3/2/1
+    // respectively. Only the HIGHEST tier counts if a weapon is
+    // somehow tagged with multiple (a tripod is not also a bipod).
+    // Stacks with ROF mitigation on top — ROF absorbs first, then
+    // stabilization absorbs whatever rapidfire recoil remains.
+    let stabilizationBonus = 0;
+    let stabilizationLabel = null;
+    if (hasTag('Major Stabilization'))      { stabilizationBonus = 3; stabilizationLabel = 'Major Stabilization'; }
+    else if (hasTag('Stabilization'))       { stabilizationBonus = 2; stabilizationLabel = 'Stabilization'; }
+    else if (hasTag('Minor Stabilization')) { stabilizationBonus = 1; stabilizationLabel = 'Minor Stabilization'; }
+    if (stabilizationBonus > 0) {
+      out.stabilization = {
+        bonus: stabilizationBonus,
+        label: stabilizationLabel
+      };
+    }
+
+    // Scoped — expose the magnification + computed aim-action range
+    // (base range × magnification). The card shows both numbers. The
+    // magnification value comes from tagParams.t_scoped.magnification
+    // (per-weapon override); if unset, falls back to the ruleset's
+    // Scoped tag default (4×); if the ruleset doesn't define a
+    // default, falls back to 1× (inert).
+    if (hasTag('Scoped')) {
+      let mag = null;
+      const tp = weapon.tagParams && weapon.tagParams.t_scoped;
+      if (tp && Number.isFinite(Number(tp.magnification))) {
+        mag = Math.max(1, Number(tp.magnification));
+      }
+      if (mag == null) {
+        // Look up ruleset default for the magnification param.
+        const scopedDef = rsTags.find(t => (t.name || '').toLowerCase() === 'scoped');
+        if (scopedDef && Array.isArray(scopedDef.params)) {
+          const magParam = scopedDef.params.find(p => p.key === 'magnification');
+          if (magParam && Number.isFinite(Number(magParam.default))) {
+            mag = Math.max(1, Number(magParam.default));
+          }
+        }
+      }
+      if (mag == null) mag = 1;
+      out.scoped = {
+        magnification: mag,
+        baseRange:     out.range,
+        aimedRange:    out.range * mag
+      };
+    }
+
+    // Shotgun — close-range damage bonus that's applied during damage
+    // resolution (doesn't affect DMGMOD, and therefore doesn't affect
+    // recoil). The UI computes which zone the current engagement
+    // range falls in and exposes a chip; the damage block applies
+    // the bonus once the player has selected an engagement range.
+    //
+    // The first range band's end is used as the reference point:
+    //   distance ≤ band.end × 0.25 → +3 damage
+    //   distance ≤ band.end × 0.5  → +2 damage
+    //   distance ≤ band.end        → +1 damage
+    //   distance >  band.end       → no bonus (past the first band)
+    // Falls back to `range` for weapons without explicit bands.
+    if (hasTag('Shotgun')) {
+      const firstBandEnd = out.range;   // base range = end of the "first band"
+      out.shotgun = {
+        firstBandEnd,
+        // Currently-active bonus/zone when engagement range is set.
+        // Computed up-front (same time DMGMOD was built) so the card's
+        // damage dice pool already includes it.
+        activeBonus: shotgunBonus,
+        activeZone:  shotgunZoneLabel,
+        currentRange: Number.isFinite(currentRange) ? currentRange : null,
+        zones: [
+          { maxDist: firstBandEnd * 0.25, bonus: 3, label: 'point blank' },
+          { maxDist: firstBandEnd * 0.5,  bonus: 2, label: 'close' },
+          { maxDist: firstBandEnd,        bonus: 1, label: 'short' }
+        ]
+      };
+    }
+
+    // Rapidfire Sweep — ROF ≥ 2 gates this tag's effect. Emit a
+    // helper that, given an AMMO spend, returns the max covered
+    // area side length and total square footage. UI shows it as
+    // informational text with a small calculator.
+    if (hasTag('Rapidfire Sweep')) {
+      const rofRaw = out.rof && out.rof.resolved;
+      const rofValue = Number.isFinite(Number(rofRaw)) ? Math.max(0, Number(rofRaw)) : 0;
+      out.rapidfireSweep = {
+        available: rofValue >= 2,
+        rofValue,
+        // Area for a given AMMO spend (minimum 2) = ((2.5*ROF)^2) * AMMO.
+        // Returns { sideLen, area } for quick display — sideLen is the
+        // side of a square with the same area, useful shorthand for
+        // "X by X feet".
+        computeArea: function(ammo) {
+          const a = Math.max(0, Math.floor(ammo || 0));
+          if (a < 2 || rofValue < 2) return { sideLen: 0, area: 0, ammo: a };
+          const side = 2.5 * rofValue;
+          const area = (side * side) * a;
+          return { sideLen: Math.sqrt(area), area, ammo: a };
+        }
+      };
+    }
+
+    // Firearm — pure description, no math. The card still shows the
+    // tag's description prominently so players can see the
+    // dodge/defense difficulty bonuses. We don't emit anything
+    // special here — the base `tags` array already carries the
+    // description for hover.
+
+    // ─── RAPIDFIRE ─────────────────────────────────────────────────
+    // DMGMOD bonus + recoil difficulty + ROF + stabilization absorption.
     if (rfExtra > 0) {
-      // Character STR — look up from the symbol table (STR is aliased
-      // there by buildSymbolTable). Falls back to 0 if missing so the
-      // recoil check treats an unknown STR as the worst case.
       const strVal = Number.isFinite(Number(symbols.STR)) ? Number(symbols.STR) : 0;
       const effectiveDmgmod = baseDmgmod + rfExtra;
-      // Recoil check — each point of effective DMGMOD above STR adds
-      // Difficulty, capped at the extra ammo count (rapidfire can't
-      // punish you for baseline recoil that wasn't caused by it).
       const overCapacity = Math.max(0, effectiveDmgmod - strVal);
       const recoilDifficulty = Math.min(rfExtra, overCapacity);
-      // ROF mitigation — the weapon's ROF value cancels that many
-      // points of rapidfire-induced difficulty. Uses the resolved
-      // numeric ROF (could come from a formula). Treats unresolved
-      // or negative ROF as 0.
+      // ROF absorption FIRST.
       const rofRaw = out.rof && out.rof.resolved;
       const rofValue = Number.isFinite(Number(rofRaw)) ? Math.max(0, Number(rofRaw)) : 0;
       const rofMitigation = Math.min(recoilDifficulty, rofValue);
-      const finalDifficulty = recoilDifficulty - rofMitigation;
+      // Stabilization absorbs whatever ROF didn't.
+      const afterRof = recoilDifficulty - rofMitigation;
+      const stabMitigation = Math.min(afterRof, stabilizationBonus);
+      const finalDifficulty = afterRof - stabMitigation;
 
       out.rapidfire = {
         extra:             rfExtra,
@@ -552,6 +694,9 @@ export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, 
         recoilDifficulty,   // capped at rfExtra
         rofValue,
         rofMitigation,
+        stabilizationBonus,
+        stabilizationLabel,
+        stabilizationMitigation: stabMitigation,
         finalDifficulty,
         totalAmmoCost:     1 + rfExtra
       };
