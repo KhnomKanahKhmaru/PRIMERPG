@@ -722,11 +722,15 @@ export function createInventorySection(ctx) {
         // Weapon snapshot — deep clone so mutations on the entry
         // don't leak back to the def.
         weapon:        def.weapon ? JSON.parse(JSON.stringify(def.weapon)) : null,
-        // Armor snapshot — same pattern as weapon. Per-instance
-        // durability tracking can later be added as an `armorDurability`
-        // field on the entry itself (not on the snapshot) so each piece
-        // of armor tracks its own wear without drifting the def.
-        armor:         def.armor ? JSON.parse(JSON.stringify(def.armor)) : null
+        // SIZE + material Armor integer — feeds Durability computation
+        // on the character sheet. Both have sensible defaults for
+        // defs that don't carry them (legacy migrations, custom items).
+        size:          Number.isFinite(def.size) ? def.size : 3,
+        armor:         Number.isFinite(def.armor) ? def.armor : 0,
+        // Armor-worn facet — present when the item is wearable armor.
+        // Carries coverage + condition only; the numeric rating lives
+        // at `.armor` above.
+        armorWorn:     def.armorWorn ? JSON.parse(JSON.stringify(def.armorWorn)) : null
       };
     }
     // Def is missing entirely — build a minimal placeholder snapshot
@@ -739,7 +743,9 @@ export function createInventorySection(ctx) {
       containerOf:   null,
       legacyCategory: '',
       weapon:        null,
-      armor:         null
+      size:          3,
+      armor:         0,
+      armorWorn:     null
     };
   }
 
@@ -1862,10 +1868,15 @@ export function createInventorySection(ctx) {
     const isEditing = editingEntryId === entry.id;
 
     // Armor pill — containers can also be armor (e.g. a tactical
-    // vest that holds magazines). Same pill pattern as item entries.
-    const armor = snap && snap.armor;
-    const armorPill = armor
-      ? `<span class="inv-entry-armor-pill" title="Armor ${armor.value || 0}${armor.coverage && armor.coverage.length ? ' — covers ' + armor.coverage.join(', ') : ''}">Armor ${armor.value || 0}</span>`
+    // vest that holds magazines). Reads the new top-level snap.armor
+    // integer.
+    const armorVal = snap && Number.isFinite(snap.armor) ? snap.armor : 0;
+    const armorWorn = snap && snap.armorWorn;
+    const armorTip = armorVal > 0
+      ? `Armor ${armorVal}${armorWorn && armorWorn.coverage && armorWorn.coverage.length ? ' — covers ' + armorWorn.coverage.join(', ') : ''}`
+      : '';
+    const armorPill = armorVal > 0
+      ? `<span class="inv-entry-armor-pill" title="${armorTip}">Armor ${armorVal}</span>`
       : '';
 
     let html = `<div class="inv-entry inv-entry-container${open ? ' open' : ''}${isEditing ? ' editing' : ''}" style="margin-left:${depth * 16}px">
@@ -1955,13 +1966,17 @@ export function createInventorySection(ctx) {
 
     const isEditing = editingEntryId === entry.id;
 
-    // Armor pill — shown inline on the entry row when the item's
-    // snapshot carries an armor block. Mirrors the card-header pill
-    // in the ruleset editor so the visual is consistent across the
-    // two places a player sees "this item is armor".
-    const armor = snap && snap.armor;
-    const armorPill = armor
-      ? `<span class="inv-entry-armor-pill" title="Armor ${armor.value || 0}${armor.coverage && armor.coverage.length ? ' — covers ' + armor.coverage.join(', ') : ''}">Armor ${armor.value || 0}</span>`
+    // Armor pill — shown inline on the entry row when the item has a
+    // non-zero Armor rating. Reads the new top-level snap.armor integer
+    // (not the legacy object shape). Tooltip adds coverage when the
+    // item is also wearable armor (armorWorn facet populated).
+    const armorVal = snap && Number.isFinite(snap.armor) ? snap.armor : 0;
+    const armorWorn = snap && snap.armorWorn;
+    const armorTip = armorVal > 0
+      ? `Armor ${armorVal}${armorWorn && armorWorn.coverage && armorWorn.coverage.length ? ' — covers ' + armorWorn.coverage.join(', ') : ''}`
+      : '';
+    const armorPill = armorVal > 0
+      ? `<span class="inv-entry-armor-pill" title="${armorTip}">Armor ${armorVal}</span>`
       : '';
 
     let html = `<div class="inv-entry inv-entry-item${infoOpen ? ' info-open' : ''}${isEditing ? ' editing' : ''}" style="margin-left:${depth * 16}px">
@@ -3214,10 +3229,12 @@ export function createInventorySection(ctx) {
       } : null,
       legacyCategory: prevSnap.legacyCategory || '',
       weapon:         prevSnap.weapon || null,
-      // Preserve armor verbatim — the inline edit panel doesn't expose
-      // armor fields. Wiping it here would strip the Armor readout from
-      // any armor piece being "just renamed".
-      armor:          prevSnap.armor || null
+      // Preserve size/armor/armorWorn verbatim — the inline edit panel
+      // doesn't expose these fields. Wiping them here would strip the
+      // Armor/Durability pills from any piece being "just renamed".
+      size:           Number.isFinite(prevSnap.size) ? prevSnap.size : 3,
+      armor:          Number.isFinite(prevSnap.armor) ? prevSnap.armor : 0,
+      armorWorn:      prevSnap.armorWorn || null
     };
     entry.snapshot = newSnapshot;
 
@@ -5289,12 +5306,15 @@ export function createInventorySection(ctx) {
     } else {
       snapshot.weapon = null;
     }
-    // Custom item form doesn't expose armor authoring yet — future
-    // enhancement. For now, custom items created on the character
-    // sheet are always non-armor. Authors who want armor should
-    // create the item in their personal catalogue or the ruleset
-    // editor instead.
-    snapshot.armor = null;
+    // Custom item form doesn't expose size/armor/armorWorn authoring
+    // yet — future enhancement. For now, custom items created on the
+    // character sheet get default SIZE 3 (Small), zero material Armor,
+    // and no wearable-armor facet. Authors who want those fields
+    // should create the item in the personal catalogue or the
+    // ruleset editor instead.
+    snapshot.size      = 3;
+    snapshot.armor     = 0;
+    snapshot.armorWorn = null;
 
     const isContainerRole = !!snapshot.containerOf;
     const defKind = isContainerRole ? 'container' : 'equipment';
