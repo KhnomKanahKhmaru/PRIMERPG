@@ -2187,12 +2187,14 @@ export function createInventorySection(ctx) {
     let chipsHtml = '';
     if (resolved.rapidfire) {
       const rf = resolved.rapidfire;
-      if (rf.damageExtra > 0) {
-        chipsHtml += `<span class="inv-weapon-rf-chip rf-dmgmod" title="Each AMMO in the Damage pool adds +1 to DMGMOD. Flows into the Damage formula.">+${rf.dmgmodBonus} DMGMOD → ${rf.effectiveDmgmod}</span>`;
+      if (rf.damageExtra > 0 || rf.sweepExtra > 0) {
+        if (rf.damageExtra > 0) {
+          chipsHtml += `<span class="inv-weapon-rf-chip rf-dmgmod" title="Each AMMO in the Damage pool adds +1 to DMGMOD. Flows into the Damage formula.">+${rf.dmgmodBonus} DMGMOD → ${rf.effectiveDmgmod}</span>`;
+        }
         if (rf.recoilDifficulty > 0) {
-          chipsHtml += `<span class="inv-weapon-rf-chip rf-recoil" title="Recoil: effective DMGMOD ${rf.effectiveDmgmod} exceeds STR ${rf.strVal} by ${rf.overCapacity}. Capped at damage-extra ${rf.damageExtra}.">+${rf.recoilDifficulty} Difficulty (recoil)</span>`;
+          chipsHtml += `<span class="inv-weapon-rf-chip rf-recoil" title="Recoil: ${rf.totalExtra} extra AMMO kicks the weapon like effective DMGMOD ${rf.recoilRef} (base ${rf.baseDmgmod} + ${rf.damageExtra} damage + ${rf.sweepExtra} sweep); STR ${rf.strVal} falls short by ${rf.overCapacity}. Capped at total extra ammo ${rf.totalExtra}.">+${rf.recoilDifficulty} Difficulty (recoil)</span>`;
         } else {
-          chipsHtml += `<span class="inv-weapon-rf-chip rf-controlled" title="STR ${rf.strVal} handles effective DMGMOD ${rf.effectiveDmgmod}. No recoil.">controlled · no recoil</span>`;
+          chipsHtml += `<span class="inv-weapon-rf-chip rf-controlled" title="STR ${rf.strVal} handles effective recoil ${rf.recoilRef} (base ${rf.baseDmgmod} + ${rf.totalExtra} extra AMMO). No recoil difficulty.">controlled · no recoil</span>`;
         }
         if (rf.rofMitigation > 0) {
           chipsHtml += `<span class="inv-weapon-rf-chip rf-rof" title="ROF ${rf.rofValue} absorbs ${rf.rofMitigation} point(s) of recoil.">ROF absorbs −${rf.rofMitigation}</span>`;
@@ -2486,7 +2488,7 @@ export function createInventorySection(ctx) {
       if (rf && rf.recoilDifficulty > 0) {
         diffAdditions += rf.recoilDifficulty;
         additionChips.push({
-          label: `Rapidfire recoil (+${rf.extra} ammo, STR ${rf.strVal} vs DMGMOD ${rf.effectiveDmgmod})`,
+          label: `Rapidfire recoil (+${rf.totalExtra} ammo: ${rf.damageExtra} damage + ${rf.sweepExtra} sweep, STR ${rf.strVal} vs effective ${rf.recoilRef})`,
           delta: rf.recoilDifficulty,
           cls: 'penalty'
         });
@@ -2495,6 +2497,17 @@ export function createInventorySection(ctx) {
           mitigationChips.push({
             label: `ROF ${rf.rofValue} absorbs recoil`,
             delta: -rf.rofMitigation,
+            cls: 'mitigation'
+          });
+        }
+        // Stabilization absorbs whatever ROF didn't. Resolver already
+        // computed the capped amount; we just echo it into the
+        // Difficulty row as an additional mitigation chip.
+        if (rf.stabilizationMitigation > 0) {
+          diffMitigation += rf.stabilizationMitigation;
+          mitigationChips.push({
+            label: `${rf.stabilizationLabel || 'Stabilization'} absorbs recoil`,
+            delta: -rf.stabilizationMitigation,
             cls: 'mitigation'
           });
         }
@@ -5700,6 +5713,7 @@ export function createInventorySection(ctx) {
       if (resolved.rapidfire) {
         additions += resolved.rapidfire.recoilDifficulty;
         mitigation += resolved.rapidfire.rofMitigation;
+        mitigation += resolved.rapidfire.stabilizationMitigation;
       }
       roll.diceSlots.forEach(s => {
         if (s.category === 'skill') {
