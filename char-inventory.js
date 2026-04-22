@@ -721,7 +721,12 @@ export function createInventorySection(ctx) {
         legacyCategory: def.legacyCategory || def.category || '',
         // Weapon snapshot — deep clone so mutations on the entry
         // don't leak back to the def.
-        weapon:        def.weapon ? JSON.parse(JSON.stringify(def.weapon)) : null
+        weapon:        def.weapon ? JSON.parse(JSON.stringify(def.weapon)) : null,
+        // Armor snapshot — same pattern as weapon. Per-instance
+        // durability tracking can later be added as an `armorDurability`
+        // field on the entry itself (not on the snapshot) so each piece
+        // of armor tracks its own wear without drifting the def.
+        armor:         def.armor ? JSON.parse(JSON.stringify(def.armor)) : null
       };
     }
     // Def is missing entirely — build a minimal placeholder snapshot
@@ -733,7 +738,8 @@ export function createInventorySection(ctx) {
       weight:        0,
       containerOf:   null,
       legacyCategory: '',
-      weapon:        null
+      weapon:        null,
+      armor:         null
     };
   }
 
@@ -1855,11 +1861,18 @@ export function createInventorySection(ctx) {
 
     const isEditing = editingEntryId === entry.id;
 
+    // Armor pill — containers can also be armor (e.g. a tactical
+    // vest that holds magazines). Same pill pattern as item entries.
+    const armor = snap && snap.armor;
+    const armorPill = armor
+      ? `<span class="inv-entry-armor-pill" title="Armor ${armor.value || 0}${armor.coverage && armor.coverage.length ? ' — covers ' + armor.coverage.join(', ') : ''}">Armor ${armor.value || 0}</span>`
+      : '';
+
     let html = `<div class="inv-entry inv-entry-container${open ? ' open' : ''}${isEditing ? ' editing' : ''}" style="margin-left:${depth * 16}px">
       <div class="inv-entry-head" onclick="invToggleEntry('${escapeHtml(entry.id)}')">
         <span class="inv-entry-caret">${open ? '▾' : '▸'}</span>
         <span class="inv-entry-icon" title="Container">▣</span>
-        <span class="inv-entry-name">${escapeHtml(name)}</span>
+        <span class="inv-entry-name">${escapeHtml(name)}${armorPill}</span>
         <span class="inv-entry-dims">${fmt(outerDims.l)}×${fmt(outerDims.w)}×${fmt(outerDims.h)} in</span>
         <span class="inv-entry-capacity" title="${escapeHtml(capTip)}">${fmt(stats.usedVolume)}/${fmt(stats.availableVolume)} in³ (${pct}%)</span>
         <span class="inv-entry-weight">${fmt(stats.totalWeight)} lb</span>
@@ -1942,10 +1955,19 @@ export function createInventorySection(ctx) {
 
     const isEditing = editingEntryId === entry.id;
 
+    // Armor pill — shown inline on the entry row when the item's
+    // snapshot carries an armor block. Mirrors the card-header pill
+    // in the ruleset editor so the visual is consistent across the
+    // two places a player sees "this item is armor".
+    const armor = snap && snap.armor;
+    const armorPill = armor
+      ? `<span class="inv-entry-armor-pill" title="Armor ${armor.value || 0}${armor.coverage && armor.coverage.length ? ' — covers ' + armor.coverage.join(', ') : ''}">Armor ${armor.value || 0}</span>`
+      : '';
+
     let html = `<div class="inv-entry inv-entry-item${infoOpen ? ' info-open' : ''}${isEditing ? ' editing' : ''}" style="margin-left:${depth * 16}px">
       <div class="inv-entry-head inv-entry-head-item">
         <span class="inv-entry-icon" title="Item">◆</span>
-        <span${nameAttrs}>${escapeHtml(name)}${escapeHtml(catLabel)}${hasExpandable ? `<span class="inv-entry-info-caret">${infoOpen ? '▾' : '▸'}</span>` : ''}</span>
+        <span${nameAttrs}>${escapeHtml(name)}${escapeHtml(catLabel)}${armorPill}${hasExpandable ? `<span class="inv-entry-info-caret">${infoOpen ? '▾' : '▸'}</span>` : ''}</span>
         <span class="inv-entry-qty">${canEdit
           ? `<button class="inv-qty-btn" onclick="invTickQty('${escapeHtml(entry.id)}',-1)" title="Decrease quantity" ${qty <= 1 ? 'disabled' : ''}>−</button>`
           : ''}
@@ -3191,7 +3213,11 @@ export function createInventorySection(ctx) {
         packingEfficiency: clampEff(d.innerPacking, 0.75)
       } : null,
       legacyCategory: prevSnap.legacyCategory || '',
-      weapon:         prevSnap.weapon || null
+      weapon:         prevSnap.weapon || null,
+      // Preserve armor verbatim — the inline edit panel doesn't expose
+      // armor fields. Wiping it here would strip the Armor readout from
+      // any armor piece being "just renamed".
+      armor:          prevSnap.armor || null
     };
     entry.snapshot = newSnapshot;
 
@@ -5263,6 +5289,12 @@ export function createInventorySection(ctx) {
     } else {
       snapshot.weapon = null;
     }
+    // Custom item form doesn't expose armor authoring yet — future
+    // enhancement. For now, custom items created on the character
+    // sheet are always non-armor. Authors who want armor should
+    // create the item in their personal catalogue or the ruleset
+    // editor instead.
+    snapshot.armor = null;
 
     const isContainerRole = !!snapshot.containerOf;
     const defKind = isContainerRole ? 'container' : 'equipment';
