@@ -352,8 +352,13 @@ export function createCombatSection(ctx) {
     // (e.g. STRMOD for Health). Added to the total of a roll's summed dice.
     //   roll = sum of (value)D10 + rollModifier
     // This is separate from dice mods, which add bonus DICE to the pool.
+    //
+    // Hidden entirely for non-rollable stats — if you don't roll the stat,
+    // the modifier is meaningless. (Moved the isRollable check below the
+    // dice-pill block just to centralize the derive, but we reference it
+    // here by re-deriving locally; both calls are cheap.)
     let rollBadge = '';
-    if (Number.isFinite(rollModifier)) {
+    if (def.rollable !== false && Number.isFinite(rollModifier)) {
       const sign = rollModifier > 0 ? '+' : (rollModifier < 0 ? '−' : '±');
       const absNum = Math.abs(rollModifier);
       const tip = def.rollModifier
@@ -369,6 +374,11 @@ export function createCombatSection(ctx) {
     // When the pool == base dice (no mods AND no strain penalty), nothing
     // to show in view-only mode — keeps clean cards. Edit mode still shows
     // the "+ Dice Mod" pill so players can add mods.
+    //
+    // SKIPPED ENTIRELY for stats marked `rollable: false` (SPD, SPDUP, AGL,
+    // RFX, FORT — static derived values that aren't rolled as dice pools).
+    // Default `rollable === true` preserves behavior for existing stats
+    // (HP, SAN, INIT, and any ruleset-authored stat without the field).
     const hasDiceMods = Array.isArray(diceMods) && diceMods.length > 0;
     const isPassive = entry.isPassive === true;
     const penaltyDice = entry.penaltyDice || 0;
@@ -378,8 +388,9 @@ export function createCombatSection(ctx) {
     const baseDice = Number.isFinite(value) ? value : 0;
     const dicePoolDiffersFromBase = finalDice !== baseDice;
     const openPanel = expandedDiceMods.has(def.code);
+    const isRollable = def.rollable !== false;
     let dicePill = '';
-    if (canEdit || hasDiceMods || dicePoolDiffersFromBase) {
+    if (isRollable && (canEdit || hasDiceMods || dicePoolDiffersFromBase)) {
       let pillLabel;
       let pillClass;
       if (dicePoolDiffersFromBase || hasDiceMods) {
