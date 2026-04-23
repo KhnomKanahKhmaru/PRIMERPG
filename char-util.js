@@ -6,7 +6,6 @@
 import {
   SEVERITY_OPTIONS,
   STAT_LABELS,
-  SIZE_OPTIONS,
   SKILL_LABELS,
   STAT_XP,
   PRIM_XP,
@@ -62,20 +61,12 @@ export function getStatLabel(v) {
   return STAT_LABELS[Math.min(Math.max(0, Math.floor(v)), 20)] || '';
 }
 
-// Get the SIZE tier label for a given size value.
-// Walks the SIZE_OPTIONS array from highest to lowest and returns the
-// first tier whose value is ≤ the given size. "Nano" as fallback.
-export function getSizeLabel(v) {
-  const o = SIZE_OPTIONS.slice().reverse().find(opt => v >= opt.value);
-  return o ? o.label : 'Nano';
-}
-
-// Compose the "You are of X Y" flavor line for a stat.
-// SIZE is special-cased because it uses tier labels instead of adjectives.
-export function getStatLevelText(key, total) {
-  if (key === 'size') return getSizeLabel(total);
-  return `You are of ${getStatLabel(total)} ${key.toUpperCase()}`;
-}
+// Note: getSizeLabel and getStatLevelText used to live here. Both were
+// dead code that depended on the removed SIZE_OPTIONS table. char-stats.js
+// has its own ruleset-aware versions of both (different signatures —
+// `getStatLevelText(s, total)` takes the stat definition object instead
+// of a key string). Callers should use the char-stats versions, which
+// read tier data from the active ruleset.
 
 // Compose the "You have X in this Skill" flavor line.
 export function getSkillLevelText(val) {
