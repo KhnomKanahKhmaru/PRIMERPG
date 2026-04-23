@@ -1959,10 +1959,11 @@
       background: transparent;
       border: 1px dashed #2a2a2a;
       color: #555;
-      font-weight: 500;
-      font-family: 'Open Sans', sans-serif;
-      font-size: 10px;
-      letter-spacing: .04em;
+      /* Keep mono + original font size for "Xd" labels — previously
+         this state rendered "+ Dice Mod" text so it dropped to Open
+         Sans; now it's always "Xd" which needs to match has-mods'
+         mono style so the two states don't visually feel like
+         different elements. */
     }
     .ds-card-dicepill.empty:hover { border-style: solid; border-color: #555; color: #aaa; background: #141414; }
     .ds-card-dicepill.open {
