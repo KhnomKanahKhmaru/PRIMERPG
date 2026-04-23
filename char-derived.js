@@ -1257,10 +1257,21 @@ export function computeDerivedStats(character, ruleset) {
 
     // Value reduction — for stats like SPD/SPDUP where Penalty cuts the
     // displayed value rather than the dice pool.
+    //
+    // For integer-valued stats (keepDecimals: false, e.g. INIT), the
+    // reduction itself is floored so the effective value (base − reduction)
+    // stays an integer. Without this, a character with INIT 12 at 40%
+    // Penalty would show "12 − 4.8" → effective 7.2, which reads wrong
+    // for a dice-pool stat meant to be a whole number.
+    //
+    // Stats with keepDecimals: true (SPD at "15 − 5.97 ft/sec", RFX)
+    // keep the fractional reduction since their values are naturally
+    // fractional to begin with.
     let penaltyValueReduction = 0;
     if (def.penaltyReducesValue === true && !isPassive
         && entry.value != null && Number.isFinite(entry.value)) {
-      penaltyValueReduction = entry.value * penaltyPct / 100;
+      const raw = entry.value * penaltyPct / 100;
+      penaltyValueReduction = def.keepDecimals === true ? raw : Math.floor(raw);
     }
 
     entry.isPassive = isPassive;
