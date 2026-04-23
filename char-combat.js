@@ -960,9 +960,13 @@ export function createCombatSection(ctx) {
     // Wrap with collapsible shell. Key is stable across re-renders;
     // click routes to window.combatToggleCollapse (defined in
     // character.html) which toggles the flag and re-invokes renderAll.
+    // Title reads from the ruleset's 'health' group label so a renamed
+    // group propagates (e.g. "Physical", "Body", "Vitality").
+    const healthGroup = (ruleset.derivedStatGroups || []).find(g => g.code === 'health');
+    const healthTitle = (healthGroup && healthGroup.label) ? healthGroup.label : 'Health';
     return wrapCollapsibleSection(
       'prime.collapse.combat.health',
-      '<span class="combat-section-title-text">Health</span>',
+      `<span class="combat-section-title-text">${escapeHtml(healthTitle)}</span>`,
       body_html,
       { wrapperClass: 'combat-section', collapsibleClass: 'combat-section-title', rerenderHandler: 'combatToggleCollapse' }
     );
@@ -1761,7 +1765,12 @@ export function createCombatSection(ctx) {
 
     // Head: title + the Edit Modifiers button (event.stopPropagation
     // on the button prevents its click from also collapsing the section).
-    let head_html = '<span class="combat-section-title-text">Sanity</span>';
+    // Title reads from the ruleset's 'mental' group label so a renamed
+    // group propagates (e.g. "Sanity", "Mental", "Psyche").
+    const ruleset = ctx.getRuleset();
+    const mentalGroup = (ruleset.derivedStatGroups || []).find(g => g.code === 'mental');
+    const sanTitle = (mentalGroup && mentalGroup.label) ? mentalGroup.label : 'Sanity';
+    let head_html = `<span class="combat-section-title-text">${escapeHtml(sanTitle)}</span>`;
     if (canEdit) {
       head_html += `<button class="hl-edit-btn${editSanModifiersMode ? ' active' : ''}" onclick="event.stopPropagation();toggleSanModifierEdit()">` +
                    `${editSanModifiersMode ? 'Done' : 'Edit Modifiers'}</button>`;
