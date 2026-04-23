@@ -909,11 +909,48 @@ export function computeDerivedStats(character, ruleset) {
     // change whether the default applies.
     const rawName = (typeof character.powerName === 'string') ? character.powerName.trim() : '';
     const name = rawName || 'POWER';
+
+    // Status label — ten-tier flavor scale. Reads the ratio of
+    // current / max and maps to a descriptive word so the Overview
+    // Power tile can show a status pill similar to Body (Alive, Dying,
+    // Dead) and Sanity (Healthy, In Shock, Insane, Broken).
+    //
+    // Tier brackets are INCLUSIVE of the lower bound:
+    //   100%       → Full
+    //   [90, 100)  → Nearly Full
+    //   [80, 90)   → Brimming
+    //   [70, 80)   → Abundant
+    //   [60, 70)   → Ample
+    //   [50, 60)   → Half-Full
+    //   [40, 50)   → Waning
+    //   [30, 40)   → Drained
+    //   [20, 30)   → Slivers
+    //   [10, 20)   → Nearly Empty
+    //   0          → Exhausted
+    //
+    // If max is 0 (no pool purchased yet), report 'Exhausted' since
+    // there's nothing to spend regardless of current.
+    const pct = powerMax > 0 ? (powerCurrent / powerMax) * 100 : 0;
+    let statusLabel;
+    if      (pct >= 100) statusLabel = 'Full';
+    else if (pct >= 90)  statusLabel = 'Nearly Full';
+    else if (pct >= 80)  statusLabel = 'Brimming';
+    else if (pct >= 70)  statusLabel = 'Abundant';
+    else if (pct >= 60)  statusLabel = 'Ample';
+    else if (pct >= 50)  statusLabel = 'Half-Full';
+    else if (pct >= 40)  statusLabel = 'Waning';
+    else if (pct >= 30)  statusLabel = 'Drained';
+    else if (pct >= 20)  statusLabel = 'Slivers';
+    else if (pct >= 10)  statusLabel = 'Nearly Empty';
+    else                 statusLabel = 'Exhausted';
+
     power = {
       max: powerMax,
       current: powerCurrent,
       color,
-      name
+      name,
+      statusLabel,
+      statusPct: Math.round(pct)
     };
   }
 
