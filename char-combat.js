@@ -114,7 +114,7 @@ export function createCombatSection(ctx) {
 
   // ─── STATE OF THINGS (overview dashboard) ───
   // Extracted to char-overview.js. The module renders Body / Sanity /
-  // Power / Movement / Strain tiles into the Overview tab's #state-body
+  // Power / Movement / Penalty tiles into the Overview tab's #state-body
   // host. We also re-use its renderPenaltyTile inline on the Combat tab.
   //
   // We inject getCollapsedPenaltyValues so Movement tile can read the
@@ -258,7 +258,7 @@ export function createCombatSection(ctx) {
   // UI-only state: which cards currently have their dice-mod panel expanded.
   // Set of stat codes. Not persisted across reloads.
   const expandedDiceMods = new Set();
-  // Tracks which stat cards have their strain-reduced value COLLAPSED —
+  // Tracks which stat cards have their penalty-reduced value COLLAPSED —
   // i.e. showing just the final effective number ("7.5 ft/sec") rather
   // than the full breakdown ("10 − 2.5 ft/sec"). Per-stat toggle, lives
   // in memory only (resets on full re-render, persists across in-place
@@ -280,7 +280,7 @@ export function createCombatSection(ctx) {
   // 'mph','kmh','mps'.
   const speedConversionChoice = new Map();
 
-  // Toggle handler for the strain-value display. CSS-driven: flips a class
+  // Toggle handler for the penalty-value display. CSS-driven: flips a class
   // on the card(s) with this stat code, so both display variants live in
   // the DOM and we swap visibility without running renderAll. That avoids
   // losing focus/scroll and makes the click feel instant.
@@ -326,7 +326,7 @@ export function createCombatSection(ctx) {
     const display = error ? 'ERR' : fmt(value);
     const unit = def.unit ? ` <span class="ds-card-unit">${escapeHtml(def.unit)}</span>` : '';
 
-    // Inline strain value reduction — for movement-style stats flagged as
+    // Inline penalty value reduction — for movement-style stats flagged as
     // penaltyReducesValue. Two display modes baked into the markup at once:
     //
     //   EXPANDED (default):  "10 − 2.5 ft/sec"   ← base and reduction both shown
@@ -623,7 +623,7 @@ export function createCombatSection(ctx) {
   }
 
   // Dice modifier editor panel — lives inside an expanded card. Shows the
-  // total dice the player rolls (base + all mods − strain) at the top, then
+  // total dice the player rolls (base + all mods − Penalty) at the top, then
   // the list of mods with name/value/delete, then an add button.
   function renderDiceModPanel(code, baseValue, diceMods, diceModTotal, penaltyInfo) {
     const mods = Array.isArray(diceMods) ? diceMods : [];
@@ -635,8 +635,8 @@ export function createCombatSection(ctx) {
 
     // Summary line: the final dice count with a compact breakdown.
     //   "Rolling 12d   = 10 base + 2 bonus"
-    //   "Rolling 8d    = 10 base + 2 bonus − 4 strain (50%)"
-    //   "Rolling 10d   = 10 base  (passive — strain doesn't apply)"
+    //   "Rolling 8d    = 10 base + 2 bonus − 4 penalty (50%)"
+    //   "Rolling 10d   = 10 base  (passive — Penalty doesn't apply)"
     const breakdownParts = [`${base} base`];
     if (modTotal !== 0) breakdownParts.push(`${modTotal >= 0 ? '+' : '−'} ${Math.abs(modTotal)} bonus`);
     if (si.penaltyDice > 0) breakdownParts.push(`− ${si.penaltyDice} penalty (${si.penaltyPercent}%)`);
@@ -2718,7 +2718,7 @@ export function createCombatSection(ctx) {
     addSanDamageMod, updateSanDamageMod, deleteSanDamageMod,
     // Card dice modifiers (player/GM-editable bonus dice for rolls)
     toggleDiceModPanel, addDiceMod, updateDiceMod, deleteDiceMod,
-    // Strain value-display toggle (click to collapse "10 − 2.5" to "7.5")
+    // Penalty value-display toggle (click to collapse "10 − 2.5" to "7.5")
     togglePenaltyValueDisplay,
     // Speed conversions panel toggle (⇅ caret on SPD/SPDUP cards)
     toggleSpeedConversions,
