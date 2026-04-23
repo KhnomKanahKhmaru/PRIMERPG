@@ -211,9 +211,18 @@ export function createOverviewSection(ctx) {
     const headInner = `
       <span class="state-tile-label">Body</span>
       <span class="state-tile-nums">${body.current}<span class="sep">/</span><span class="max">${body.max}</span></span>`;
+    // Description block (player-overridable). Renders the ruleset's
+    // ruleset.tileDescriptions.body with a pencil-edit affordance for
+    // players with edit rights. If the descriptions module isn't
+    // wired in yet (backward compat), emit nothing — the tile keeps
+    // its pre-Phase-2 layout.
+    const descHtml = ctx.renderDescriptionDisplay
+      ? ctx.renderDescriptionDisplay('tiles', 'body', { wrapperClass: 'state-tile-desc' })
+      : '';
     const bodyHtml = `
       <div class="state-bar">${segHtml}</div>
-      <span class="state-tile-status ${statusClass}">${escapeHtml(label)}</span>`;
+      <span class="state-tile-status ${statusClass}">${escapeHtml(label)}</span>
+      ${descHtml}`;
     return wrapCollapsibleTile('body', '', headInner, bodyHtml);
   }
 
@@ -273,9 +282,13 @@ export function createOverviewSection(ctx) {
     const headInner = `
       <span class="state-tile-label">Sanity</span>
       <span class="state-tile-nums">${san.current}<span class="sep">/</span><span class="max">${san.max}</span></span>`;
+    const descHtml = ctx.renderDescriptionDisplay
+      ? ctx.renderDescriptionDisplay('tiles', 'sanity', { wrapperClass: 'state-tile-desc' })
+      : '';
     const bodyHtml = `
       <div class="state-bar">${segHtml}</div>
-      <span class="state-tile-status ${tier.cls}">${escapeHtml(tier.label)}</span>`;
+      <span class="state-tile-status ${tier.cls}">${escapeHtml(tier.label)}</span>
+      ${descHtml}`;
     return wrapCollapsibleTile('sanity', '', headInner, bodyHtml);
   }
 
@@ -489,6 +502,9 @@ export function createOverviewSection(ctx) {
     const headInner = `
       <span class="state-tile-label">Penalty</span>
       <span class="state-penalty-big" style="color:${pctColor}">${pct}%</span>`;
+    const descHtml = ctx.renderDescriptionDisplay
+      ? ctx.renderDescriptionDisplay('tiles', 'penalty', { wrapperClass: 'state-tile-desc' })
+      : '';
     const bodyHtml = `
       <div class="state-penalty-rows-inline">
         <div class="state-penalty-row">
@@ -508,7 +524,8 @@ export function createOverviewSection(ctx) {
           <span class="state-penalty-v">${escapeHtml(otherSummaryPct)}%</span>
         </div>
       </div>
-      ${othersEditor}`;
+      ${othersEditor}
+      ${descHtml}`;
 
     if (collapsible) {
       const wrapOpts = rerenderHandler ? { rerenderHandler } : undefined;
