@@ -3948,6 +3948,90 @@
     .inv-weapon-editor-tag:hover { border-color: #2a2a2a; }
     .inv-weapon-editor-tag input[type="checkbox"] { margin: 0; cursor: pointer; }
 
+    /* Snap editor — expanded tag (when tag has params AND is checked). */
+    .inv-weapon-editor-tag-expanded {
+      flex: 0 0 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      padding: 5px 8px;
+      background: #0f0f0f;
+      border: 1px solid #2a2a2a;
+      border-radius: 3px;
+      font-size: 10px;
+    }
+    .inv-weapon-editor-tag-check {
+      display: inline-flex; align-items: center; gap: 4px;
+      color: #bbb; cursor: pointer;
+    }
+    .inv-weapon-editor-tag-check input[type="checkbox"] { margin: 0; cursor: pointer; }
+    .inv-weapon-editor-tag-params {
+      display: flex; flex-direction: column; gap: 4px;
+      padding-left: 18px;
+    }
+    .inv-weapon-editor-tag-param-row {
+      display: grid;
+      grid-template-columns: 90px 1fr 130px;
+      gap: 5px;
+      align-items: center;
+    }
+    .inv-weapon-editor-tag-param-label {
+      font-size: 9px; color: #888;
+      text-transform: uppercase; letter-spacing: .06em;
+    }
+    .inv-weapon-editor-tag-param-select,
+    .inv-weapon-editor-tag-param-input {
+      background: #0a0a0a; border: 1px solid #1a1a1a;
+      color: #c8c8c8; font-family: inherit; font-size: 10px;
+      padding: 3px 5px; border-radius: 3px; outline: none; min-width: 0;
+    }
+    .inv-weapon-editor-tag-param-select:focus,
+    .inv-weapon-editor-tag-param-input:focus { border-color: #333; }
+    .inv-weapon-editor-tag-param-input {
+      font-family: 'Consolas', 'Courier New', monospace;
+    }
+
+    /* Draft weapon editor (catalog manager + custom item modal) —
+       matches the draft-tag chip style but expanded. */
+    .inv-weapon-draft-tag-expanded {
+      flex: 0 0 100%;
+      display: flex; flex-direction: column; gap: 5px;
+      padding: 6px 10px;
+      background: #141414; border: 1px solid #2a2a2a;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+    .inv-weapon-draft-tag-check {
+      display: inline-flex; align-items: center; gap: 4px;
+      color: #c8c8c8; cursor: pointer;
+    }
+    .inv-weapon-draft-tag-check input[type="checkbox"] { margin: 0; cursor: pointer; }
+    .inv-weapon-draft-tag-params {
+      display: flex; flex-direction: column; gap: 4px;
+      padding-left: 20px;
+    }
+    .inv-weapon-draft-tag-param-row {
+      display: grid;
+      grid-template-columns: 110px 1fr 140px;
+      gap: 6px;
+      align-items: center;
+    }
+    .inv-weapon-draft-tag-param-label {
+      font-size: 10px; color: #888;
+      text-transform: uppercase; letter-spacing: .06em;
+    }
+    .inv-weapon-draft-tag-param-select,
+    .inv-weapon-draft-tag-param-input {
+      background: #0a0a0a; border: 1px solid #222;
+      color: #c8c8c8; font-family: inherit; font-size: 11px;
+      padding: 4px 6px; border-radius: 3px; outline: none; min-width: 0;
+    }
+    .inv-weapon-draft-tag-param-select:focus,
+    .inv-weapon-draft-tag-param-input:focus { border-color: #444; }
+    .inv-weapon-draft-tag-param-input {
+      font-family: 'Consolas', 'Courier New', monospace;
+    }
+
     /* ── Rapidfire selector (ranged only) ── */
     .inv-weapon-rf-row {
       display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
@@ -5568,6 +5652,8 @@
     invWeaponSnapRemoveRange:(id, bi)             => inventory.weaponSnapRemoveRange(id, bi),
     invWeaponSnapUpdateRange:(id, bi, w, v)       => inventory.weaponSnapUpdateRange(id, bi, w, v),
     invWeaponSnapToggleTag:  (id, tagId, on)      => inventory.weaponSnapToggleTag(id, tagId, on),
+    invWeaponSnapUpdateTagParam:    (id, tagId, paramKey, value)       => inventory.weaponSnapUpdateTagParam(id, tagId, paramKey, value),
+    invWeaponSnapSetTagParamPreset: (id, tagId, paramKey, optionValue) => inventory.weaponSnapSetTagParamPreset(id, tagId, paramKey, optionValue),
     invWeaponToRollCalc:     (id, which)          => inventory.weaponToRollCalc(id, which),
     // Carry cards (CAP / ENC / LIFT) + group-level encumbrance toggle
     invToggleCarryCard:      (key)                => inventory.toggleCarryCard(key),
