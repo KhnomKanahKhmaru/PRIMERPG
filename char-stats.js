@@ -199,6 +199,29 @@ export function createStatsSection(ctx) {
 
   // ─── BUILDING THE SECTION ───
 
+  // Build the hover tooltip HTML for a stat row — either a resolver-
+  // backed editable tooltip (when the descriptions module is wired in)
+  // or the legacy read-only tooltip. Called from both the view and edit
+  // rows so the two render identically.
+  //
+  // When editing is active for this stat's description, the tooltip is
+  // replaced with an inline editor block since the tooltip-hover model
+  // can't host a textarea (hover would close it as soon as the player
+  // moves their cursor).
+  function buildStatTooltip(s) {
+    // SIZE is stored in ruleset.size.tiers (not ruleset.stats), so the
+    // description resolver can't find it by code 'SIZE'. Keep the legacy
+    // read-only tooltip for SIZE until we give it a proper description
+    // field in the ruleset. All other stats route through the resolver.
+    if (s.isSize || !ctx.renderDescriptionDisplay) {
+      return `<div class="stat-tooltip">${s.description}</div>`;
+    }
+    return ctx.renderDescriptionDisplay('stats', s.code, {
+      wrapperClass: 'stat-tooltip',
+      emptyHidden: false
+    });
+  }
+
   function buildStatsSection() {
     const container = document.getElementById('stats-list');
     container.innerHTML = '';
@@ -232,7 +255,7 @@ export function createStatsSection(ctx) {
       viewRow.innerHTML =
         `<div class="stat-icon-wrap">` +
           `<div class="stat-icon">${renderStatIcon(s)}</div>` +
-          `<div class="stat-tooltip">${s.description}</div>` +
+          buildStatTooltip(s) +
         `</div>` +
         `<div class="stat-info">` +
           `<div class="stat-label">${labelHtml}</div>` +
@@ -260,7 +283,7 @@ export function createStatsSection(ctx) {
         editRow.innerHTML =
           `<div class="stat-icon-wrap">` +
             `<div class="stat-icon">${renderStatIcon(s)}</div>` +
-            `<div class="stat-tooltip">${s.description}</div>` +
+            buildStatTooltip(s) +
           `</div>` +
           `<div class="stat-info">` +
             `<div class="stat-label">${labelHtml}</div>` +
@@ -275,7 +298,7 @@ export function createStatsSection(ctx) {
         editRow.innerHTML =
           `<div class="stat-icon-wrap">` +
             `<div class="stat-icon">${renderStatIcon(s)}</div>` +
-            `<div class="stat-tooltip">${s.description}</div>` +
+            buildStatTooltip(s) +
           `</div>` +
           `<div class="stat-info">` +
             `<div class="stat-label">${labelHtml}</div>` +
