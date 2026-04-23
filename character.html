@@ -164,6 +164,38 @@
     .skill-add-select { background: #111; border: 1px solid #222; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 6px; border-radius: 3px; outline: none; }
     .skill-add-btn { background: #1a1a1a; border: 1px solid #333; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 11px; padding: 4px 10px; border-radius: 3px; cursor: pointer; }
     .skill-add-btn:hover { border-color: #555; }
+    .skill-add-desc {
+      flex: 1 1 180px;
+      min-width: 140px;
+    }
+    /* In-row description editor for secondary / specialty skills.
+       Appears inline when skillsEditMode is on — replaces the hover
+       tooltip since hover popups with textareas are fiddly. Compact
+       so it doesn't crowd out the value input + delete × on the same
+       row. Grows vertically as the player types more. */
+    .skill-desc-edit {
+      flex: 1 1 120px;
+      min-width: 100px;
+      background: #0a0a0a;
+      border: 1px solid #222;
+      color: #c8c8c8;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 10px;
+      line-height: 1.4;
+      padding: 3px 6px;
+      border-radius: 2px;
+      outline: none;
+      resize: vertical;
+    }
+    .skill-desc-edit:focus { border-color: #444; }
+    .skill-desc-edit::placeholder { color: #555; }
+    /* When a skill row is in edit mode, allow it to grow taller since
+       the textarea will take its own vertical space. Without this
+       the min-height:44px on .skill-item would clip it awkwardly. */
+    .skill-item-editing {
+      min-height: auto;
+      align-items: flex-start;
+    }
     .sec-skill-under { font-size: 9px; color: #666; font-style: italic; white-space: nowrap; }
     .char-power-bar { display: flex; align-items: center; gap: 16px; margin-top: 6px; margin-bottom: 4px; flex-wrap: wrap; }
     .power-pill { display: flex; align-items: center; gap: 6px; }
@@ -4708,6 +4740,7 @@
           <div class="skill-add-row" id="sec-skill-add-row" style="display:none">
             <input type="text" class="skill-add-input" id="sec-skill-name" placeholder="Skill name">
             <select class="skill-add-select" id="sec-skill-under"></select>
+            <input type="text" class="skill-add-input skill-add-desc" id="sec-skill-desc" placeholder="Description (optional)">
             <button class="skill-add-btn" onclick="addSecondarySkill()">Add</button>
           </div>
         </div>
@@ -4717,6 +4750,7 @@
           <div class="skill-add-row" id="spec-skill-add-row" style="display:none">
             <input type="text" class="skill-add-input" id="spec-skill-name" placeholder="Skill name">
             <select class="skill-add-select" id="spec-skill-under"></select>
+            <input type="text" class="skill-add-input skill-add-desc" id="spec-skill-desc" placeholder="Description (optional)">
             <button class="skill-add-btn" onclick="addSpecialtySkill()">Add</button>
           </div>
         </div>
@@ -5185,6 +5219,10 @@
     saveSpecSkill: skills.saveSpecSkill,
     renameSpecSkill: skills.renameSpecSkill,
     deleteSpecSkill: async (...a) => { await skills.deleteSpecSkill(...a); if (window.refreshOverviewCollapse) window.refreshOverviewCollapse(); },
+    // Player-authored skill descriptions — free-text shown as hover
+    // tooltip on the skill row. Editable inline in edit mode.
+    updateSecSkillDescription: skills.updateSecSkillDescription,
+    updateSpecSkillDescription: skills.updateSpecSkillDescription,
     // Stats
     toggleStatsEdit: (...a) => {
       const outer = ensureExpanded('prime.collapse.overview.statsSkills');
