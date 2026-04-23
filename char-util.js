@@ -413,9 +413,20 @@ function lookupRulesetDescription(category, id, ruleset) {
       const hit = list.find(s => s && s.code === id);
       return (hit && typeof hit.description === 'string') ? hit.description : '';
     }
-    // Phase-1 only covers stats + derivedStats. The other four
-    // categories fall through to empty here; they'll be wired in
-    // Phase 2 as we add their editor UIs to character-sheet surfaces.
+    case 'tiles': {
+      // Overview tiles (Body, Sanity, Penalty) — computed summaries
+      // that don't live in derivedStats. Descriptions are stored in
+      // a dedicated ruleset.tileDescriptions map keyed by tile id.
+      const map = ruleset.tileDescriptions;
+      if (map && typeof map === 'object' && typeof map[id] === 'string') return map[id];
+      return '';
+    }
+    // Phase-1 only covers stats + derivedStats; tiles were added in
+    // Phase 2 alongside the Body/Sanity/Penalty hover editors. The
+    // other four categories (skills, advantages, tags, conditions)
+    // still fall through to empty — those concepts are already
+    // ruleset-editable so they don't need the descriptions-module
+    // override pattern.
     default:
       return '';
   }
