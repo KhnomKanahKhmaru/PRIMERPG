@@ -411,12 +411,12 @@ export function createCombatSection(ctx) {
     const isRollable = def.rollable !== false;
     let dicePill = '';
     if (isRollable) {
-      // Pill label: "Xd" always. Previously we showed "+ Dice Mod" as the
-      // label in the "canEdit + no mods + no penalty" case; that was
-      // confusing signage (looked like an empty add button rather than
-      // "this is a dice stat"). Now the pill always reads as a dice pool;
-      // the edit affordance comes from it being clickable.
-      const pillLabel = `${finalDice}d`;
+      // Pill label: "X DICE" always. The full word "DICE" is used
+      // instead of the terse "d" suffix so the pill reads as an
+      // unambiguous "this is a dice pool" label even at a glance.
+      // Previously showed "Xd" which looked more like a shorthand
+      // number-with-unit than a "dice stat" signifier.
+      const pillLabel = `${finalDice} DICE`;
       let pillClass;
       if (dicePoolDiffersFromBase || hasDiceMods) {
         pillClass = ' has-mods';
