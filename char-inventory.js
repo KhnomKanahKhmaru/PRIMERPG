@@ -2702,7 +2702,9 @@ export function createInventorySection(ctx) {
               { level:  0, label: 'Action Fire' },
               { level:  1, label: 'Semi-Automatic' },
               { level:  2, label: 'Automatic' },
-              { level:  3, label: 'Fully Automatic' }
+              { level:  3, label: 'Fully Automatic' },
+              { level:  4, label: 'Super Automatic' },
+              { level:  5, label: 'Mega Automatic' }
             ];
         const currNum = Number(currStr);
         const isPreset = currStr !== '' && Number.isFinite(currNum) && rofTable.some(r => Number(r.level) === currNum);
@@ -2761,7 +2763,9 @@ export function createInventorySection(ctx) {
               { level:  0, label: 'Action Fire' },
               { level:  1, label: 'Semi-Automatic' },
               { level:  2, label: 'Automatic' },
-              { level:  3, label: 'Fully Automatic' }
+              { level:  3, label: 'Fully Automatic' },
+              { level:  4, label: 'Super Automatic' },
+              { level:  5, label: 'Mega Automatic' }
             ];
         const currNum = Number(currStr);
         const isPreset = currStr !== '' && Number.isFinite(currNum) && rofTable.some(r => Number(r.level) === currNum);
