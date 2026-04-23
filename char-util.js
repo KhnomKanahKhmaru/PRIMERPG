@@ -361,3 +361,87 @@ function escapeAttr(s) {
     .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
+
+// ─── DESCRIPTION OVERRIDE SYSTEM ───
+//
+// PRIME lets both GMs (via ruleset) and players (via character-level
+// overrides) customize the hover/display descriptions for game-content
+// concepts — stats, derived stats, skills, advantages, weapon tags,
+// conditions. This is the resolver + renderer layer used by every
+// surface that shows one of those descriptions.
+//
+// Resolution order (first non-null wins):
+//   1. character.descriptionOverrides[category][id]  — player override
+//   2. ruleset-defined description                   — GM default
+//   3. empty string                                  — fallback
+//
+// `category` is one of: 'stats', 'derivedStats', 'skills', 'advantages',
+// 'tags', 'conditions'. `id` is the stable identifier for that category
+// (stat code, skill name, advantage id, etc.).
+//
+// Callers pass the resolved text through escapeHtml/escapeAttr as needed
+// — this helper does NOT escape. Keep it raw so the caller can choose
+// how to render (tooltip attr vs. HTML body).
+export function resolveDescription(category, id, ruleset, character) {
+  if (!category || !id) return '';
+  // Player override wins if present (including empty string — explicit
+  // "hide this description" choice).
+  const overrides = character && character.descriptionOverrides;
+  if (overrides && typeof overrides === 'object') {
+    const bucket = overrides[category];
+    if (bucket && typeof bucket === 'object' && Object.prototype.hasOwnProperty.call(bucket, id)) {
+      const v = bucket[id];
+      if (typeof v === 'string') return v;
+    }
+  }
+  // Fall back to ruleset default. Each category stores descriptions
+  // differently (stats is an array, advantages is a tree, etc.), so
+  // this helper delegates to per-category lookups.
+  return lookupRulesetDescription(category, id, ruleset);
+}
+
+function lookupRulesetDescription(category, id, ruleset) {
+  if (!ruleset || typeof ruleset !== 'object') return '';
+  switch (category) {
+    case 'stats': {
+      const stats = Array.isArray(ruleset.stats) ? ruleset.stats : [];
+      const hit = stats.find(s => s && s.code === id);
+      return (hit && typeof hit.description === 'string') ? hit.description : '';
+    }
+    case 'derivedStats': {
+      const list = Array.isArray(ruleset.derivedStats) ? ruleset.derivedStats : [];
+      const hit = list.find(s => s && s.code === id);
+      return (hit && typeof hit.description === 'string') ? hit.description : '';
+    }
+    // Phase-1 only covers stats + derivedStats. The other four
+    // categories fall through to empty here; they'll be wired in
+    // Phase 2 as we add their editor UIs to character-sheet surfaces.
+    default:
+      return '';
+  }
+}
+
+// Check whether a specific description has a player override in place.
+// Used by the UI to decide whether to show the reset button.
+export function hasDescriptionOverride(category, id, character) {
+  if (!category || !id || !character) return false;
+  const overrides = character.descriptionOverrides;
+  if (!overrides || typeof overrides !== 'object') return false;
+  const bucket = overrides[category];
+  if (!bucket || typeof bucket !== 'object') return false;
+  return Object.prototype.hasOwnProperty.call(bucket, id);
+}
+
+// Ensure the override bucket exists on the character object, returning
+// it for in-place mutation. Handlers use this before setting a value
+// so they don't have to branch on whether the structure exists yet.
+export function ensureDescriptionOverrideBucket(character, category) {
+  if (!character || !category) return null;
+  if (!character.descriptionOverrides || typeof character.descriptionOverrides !== 'object') {
+    character.descriptionOverrides = {};
+  }
+  if (!character.descriptionOverrides[category] || typeof character.descriptionOverrides[category] !== 'object') {
+    character.descriptionOverrides[category] = {};
+  }
+  return character.descriptionOverrides[category];
+}
