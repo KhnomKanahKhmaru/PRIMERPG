@@ -567,6 +567,13 @@ export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, 
     out.dmgmod = weaponSymbols.WEAPONDMGMOD;
     out.ammo   = resolveAmmoRof(weapon.ammo, symbols);
     out.rof    = resolveAmmoRof(weapon.rof,  symbols);
+    // Resolve ROF through the tag system — returns {level, label,
+    // perAmmo, dm} with the GM's rofTable applied. Used by the
+    // weapon card's ROF chip for display and by the rapidfire
+    // mitigation calc below. Kept as `out.rofInfo` so card code
+    // can read the GM-authored label/perAmmo without re-doing the
+    // tag lookup.
+    out.rofInfo = resolveRofFromTag(weapon, rsTags);
 
     // ─── TAG-DRIVEN MECHANICAL BEHAVIOR ────────────────────────────
     //
@@ -752,7 +759,10 @@ export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, 
       // clamp is `max(-totalExtra, dm)` instead of `max(0, dm)` —
       // we cap the penalty at the total extra AMMO so a single-fire
       // rapidfire can't add penalty beyond the recoil cost itself.
-      const rofInfo = resolveRofFromTag(weapon, rsTags);
+      //
+      // Uses out.rofInfo resolved earlier (above the tag-behavior
+      // block) so we don't duplicate the lookup here.
+      const rofInfo = out.rofInfo;
       const rofValue = rofInfo.level;
       const rofDm = rofInfo.dm;
       // When DM is positive, it ABSORBS recoil difficulty up to its value.
