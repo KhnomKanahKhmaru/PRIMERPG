@@ -5030,7 +5030,15 @@
     getRuleset:      () => activeRuleset,
     getCanEdit:      () => !!canEdit,
     saveCharacter:   () => saveCharacter(),
-    escapeHtml:      (s) => escapeHtml(s),
+    // Inline escapeHtml — each module carries its own copy since
+    // there's no shared utility module exporting one. Matches the
+    // implementation in char-combat.js / char-util.js.
+    escapeHtml:      (s) => String(s == null ? '' : s)
+                             .replace(/&/g, '&amp;')
+                             .replace(/</g, '&lt;')
+                             .replace(/>/g, '&gt;')
+                             .replace(/"/g, '&quot;')
+                             .replace(/'/g, '&#39;'),
     // Only re-render the two surfaces that currently use descriptions —
     // stat rows (base stats) and derived stat cards (on Combat tab).
     // Both also appear on the Overview tab via derived mirror, but Combat
