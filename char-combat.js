@@ -468,7 +468,9 @@ export function createCombatSection(ctx) {
         ${formulaBadge}
         <div class="ds-card-value${error ? ' ds-card-error' : ''}">${valueBody}${unit}${speedToggle}</div>
         ${dicePill}
-        ${def.description ? `<div class="ds-card-desc">${escapeHtml(def.description)}</div>` : ''}
+        ${ctx.renderDescriptionDisplay
+          ? ctx.renderDescriptionDisplay('derivedStats', def.code, { wrapperClass: 'ds-card-desc' })
+          : (def.description ? `<div class="ds-card-desc">${escapeHtml(def.description)}</div>` : '')}
         ${speedPanelHtml}
         ${panelHtml}
       </div>`;
