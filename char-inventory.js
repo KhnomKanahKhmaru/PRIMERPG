@@ -2675,6 +2675,132 @@ export function createInventorySection(ctx) {
   // Only owners/GMs can edit — the caller gates on getCanEdit().
   // Tags list pulls from ruleset.weaponTags; kind-specific fields
   // only render for the matching kind.
+  // Render tag parameter inputs inside the inline weapon-snapshot
+  // editor (the in-entry panel that edits a specific inventory
+  // weapon instance). Generic over tag.params; Rate of Fire is
+  // special-cased with a dropdown + Custom formula input. Writes go
+  // through invWeaponSnapUpdateTagParam.
+  //
+  // `id` = entry id (already escaped). `t` = ruleset tag def.
+  // `vals` = the weapon's current tagParams[t.id] (may be empty).
+  function renderSnapTagParamInputs(id, t, vals) {
+    const tagIdEsc = escapeHtml(t.id);
+    const isRofTag = (t.name || '').toLowerCase() === 'rate of fire';
+    const params = Array.isArray(t.params) ? t.params : [];
+    let html = '';
+    params.forEach(p => {
+      if (!p || !p.key) return;
+      const paramKeyEsc = escapeHtml(p.key);
+      const labelEsc = escapeHtml(p.label || p.key);
+      const curr = (vals && vals[p.key] != null) ? vals[p.key] : (p.default != null ? p.default : '');
+      const currStr = String(curr);
+      if (isRofTag && p.key === 'level') {
+        const rofTable = Array.isArray(t.rofTable) && t.rofTable.length > 0
+          ? t.rofTable
+          : [
+              { level: -1, label: 'Single-Fire' },
+              { level:  0, label: 'Action Fire' },
+              { level:  1, label: 'Semi-Automatic' },
+              { level:  2, label: 'Automatic' },
+              { level:  3, label: 'Fully Automatic' }
+            ];
+        const currNum = Number(currStr);
+        const isPreset = currStr !== '' && Number.isFinite(currNum) && rofTable.some(r => Number(r.level) === currNum);
+        const selected = isPreset ? String(Math.round(currNum)) : '__custom__';
+        const opts = rofTable
+          .slice()
+          .sort((a, b) => Number(a.level) - Number(b.level))
+          .map(r => `<option value="${escapeHtml(String(r.level))}"${String(r.level) === selected ? ' selected' : ''}>ROF ${r.level} — ${escapeHtml(r.label || '')}</option>`)
+          .join('') + `<option value="__custom__"${selected === '__custom__' ? ' selected' : ''}>Custom / Formula…</option>`;
+        html += `<div class="inv-weapon-editor-tag-param-row">
+          <span class="inv-weapon-editor-tag-param-label">${labelEsc}</span>
+          <select class="inv-weapon-editor-tag-param-select"
+                  onchange="invWeaponSnapSetTagParamPreset('${id}','${tagIdEsc}','${paramKeyEsc}',this.value)">
+            ${opts}
+          </select>
+          <input type="text" class="inv-weapon-editor-tag-param-input" value="${escapeHtml(currStr)}"
+                 placeholder="value or formula"
+                 oninput="invWeaponSnapUpdateTagParam('${id}','${tagIdEsc}','${paramKeyEsc}',this.value)">
+        </div>`;
+        return;
+      }
+      // Generic param — plain text input (accepts number or formula).
+      html += `<div class="inv-weapon-editor-tag-param-row">
+        <span class="inv-weapon-editor-tag-param-label">${labelEsc}</span>
+        <input type="text" class="inv-weapon-editor-tag-param-input"
+               value="${escapeHtml(currStr)}"
+               placeholder="${escapeHtml(String(p.default != null ? p.default : ''))}"
+               oninput="invWeaponSnapUpdateTagParam('${id}','${tagIdEsc}','${paramKeyEsc}',this.value)">
+      </div>`;
+    });
+    return html;
+  }
+
+  // Render tag parameter inputs inside the catalog-manager / custom
+  // item / new-def weapon editors. Uses the `upd` factory passed in
+  // so writes route to the correct draft (catMgr edit, catMgr new,
+  // or custom modal). Parallel to renderSnapTagParamInputs but
+  // operates on a draft's weaponTagParams rather than a weapon
+  // snapshot.
+  function renderDraftTagParamInputs(t, currParams, upd) {
+    const isRofTag = (t.name || '').toLowerCase() === 'rate of fire';
+    const params = Array.isArray(t.params) ? t.params : [];
+    const tagIdEsc = escapeHtml(t.id);
+    let html = '';
+    params.forEach(p => {
+      if (!p || !p.key) return;
+      const paramKeyEsc = escapeHtml(p.key);
+      const labelEsc = escapeHtml(p.label || p.key);
+      const curr = (currParams && currParams[p.key] != null) ? currParams[p.key] : (p.default != null ? p.default : '');
+      const currStr = String(curr);
+      if (isRofTag && p.key === 'level') {
+        const rofTable = Array.isArray(t.rofTable) && t.rofTable.length > 0
+          ? t.rofTable
+          : [
+              { level: -1, label: 'Single-Fire' },
+              { level:  0, label: 'Action Fire' },
+              { level:  1, label: 'Semi-Automatic' },
+              { level:  2, label: 'Automatic' },
+              { level:  3, label: 'Fully Automatic' }
+            ];
+        const currNum = Number(currStr);
+        const isPreset = currStr !== '' && Number.isFinite(currNum) && rofTable.some(r => Number(r.level) === currNum);
+        const selected = isPreset ? String(Math.round(currNum)) : '__custom__';
+        const opts = rofTable
+          .slice()
+          .sort((a, b) => Number(a.level) - Number(b.level))
+          .map(r => `<option value="${escapeHtml(String(r.level))}"${String(r.level) === selected ? ' selected' : ''}>ROF ${r.level} — ${escapeHtml(r.label || '')}</option>`)
+          .join('') + `<option value="__custom__"${selected === '__custom__' ? ' selected' : ''}>Custom / Formula…</option>`;
+        // Dispatch a compound field name that the draft routers unpack
+        // into tagId + paramKey. Format: `tagParam:TAGID:PARAMKEY`
+        const fieldName = `tagParam:${t.id}:${p.key}`;
+        const fieldNamePreset = `tagParamPreset:${t.id}:${p.key}`;
+        html += `<div class="inv-weapon-draft-tag-param-row">
+          <span class="inv-weapon-draft-tag-param-label">${labelEsc}</span>
+          <select class="inv-weapon-draft-tag-param-select"
+                  onchange="${upd(fieldNamePreset, 'this.value')}">
+            ${opts}
+          </select>
+          <input type="text" class="inv-weapon-draft-tag-param-input"
+                 value="${escapeHtml(currStr)}"
+                 placeholder="value or formula"
+                 oninput="${upd(fieldName, 'this.value')}">
+        </div>`;
+        return;
+      }
+      // Generic param — plain text input, accepts number or formula.
+      const fieldName = `tagParam:${t.id}:${p.key}`;
+      html += `<div class="inv-weapon-draft-tag-param-row">
+        <span class="inv-weapon-draft-tag-param-label">${labelEsc}</span>
+        <input type="text" class="inv-weapon-draft-tag-param-input"
+               value="${escapeHtml(currStr)}"
+               placeholder="${escapeHtml(String(p.default != null ? p.default : ''))}"
+               oninput="${upd(fieldName, 'this.value')}">
+      </div>`;
+    });
+    return html;
+  }
+
   function renderWeaponSnapshotEditor(entry) {
     const weapon = entry && entry.snapshot && entry.snapshot.weapon;
     if (!weapon) return '';
@@ -2735,7 +2861,9 @@ export function createInventorySection(ctx) {
       const range  = Number.isFinite(weapon.range)  ? weapon.range  : 0;
       const dmgmod = Number.isFinite(weapon.dmgmod) ? weapon.dmgmod : 0;
       const ammo   = weapon.ammo != null ? weapon.ammo : '';
-      const rof    = weapon.rof  != null ? weapon.rof  : '';
+      // ROF is gone from this block — it's on the Rate of Fire tag,
+      // editable inline below in the Tags section when the tag is
+      // checked.
       html += `<div class="inv-weapon-editor-row">
         <div class="inv-weapon-editor-field">
           <label>Range (ft)</label>
@@ -2747,15 +2875,10 @@ export function createInventorySection(ctx) {
           <input type="number" step="1" value="${escapeHtml(String(dmgmod))}"
                  oninput="invWeaponSnapUpdate('${id}','dmgmod',this.value)">
         </div>
-        <div class="inv-weapon-editor-field">
+        <div class="inv-weapon-editor-field" style="flex:2">
           <label>AMMO <span class="inv-weapon-editor-hint">(number or formula)</span></label>
           <input type="text" value="${escapeHtml(String(ammo))}"
                  onchange="invWeaponSnapUpdate('${id}','ammo',this.value)">
-        </div>
-        <div class="inv-weapon-editor-field">
-          <label>ROF <span class="inv-weapon-editor-hint">(number or formula)</span></label>
-          <input type="text" value="${escapeHtml(String(rof))}"
-                 onchange="invWeaponSnapUpdate('${id}','rof',this.value)">
         </div>
       </div>`;
     }
@@ -2774,9 +2897,24 @@ export function createInventorySection(ctx) {
       const scope = 'editor:' + entry.id;
       const collapsedSet = getCollapsedTagCats(scope);
       const singleUncat = groups.length === 1 && groups[0].cat.id === 'tcat_uncategorized';
+      const weaponTagParams = (weapon.tagParams && typeof weapon.tagParams === 'object') ? weapon.tagParams : {};
       const renderCheckbox = (t) => {
-        const checked = weaponTagIds.includes(t.id) ? ' checked' : '';
+        const on = weaponTagIds.includes(t.id);
+        const checked = on ? ' checked' : '';
         const descAttr = t.description ? ` title="${escapeHtml(t.description)}"` : '';
+        const hasParams = Array.isArray(t.params) && t.params.length > 0;
+        if (on && hasParams) {
+          const currParams = weaponTagParams[t.id] || {};
+          return `<div class="inv-weapon-editor-tag-expanded"${descAttr}>
+            <label class="inv-weapon-editor-tag-check">
+              <input type="checkbox"${checked} onchange="invWeaponSnapToggleTag('${id}','${escapeHtml(t.id)}',this.checked)">
+              ${escapeHtml(t.name || t.id)}
+            </label>
+            <div class="inv-weapon-editor-tag-params">
+              ${renderSnapTagParamInputs(id, t, currParams)}
+            </div>
+          </div>`;
+        }
         return `<label class="inv-weapon-editor-tag"${descAttr}>
           <input type="checkbox"${checked} onchange="invWeaponSnapToggleTag('${id}','${escapeHtml(t.id)}',this.checked)">
           ${escapeHtml(t.name || t.id)}
@@ -3390,9 +3528,74 @@ export function createInventorySection(ctx) {
       // instead, which does trigger a re-render.
       const n = parseInt(value, 10);
       editDraft[field] = Number.isFinite(n) && n >= 0 ? n : 0;
+    } else if (typeof field === 'string' && field.indexOf('tagParam:') === 0) {
+      // Generic weapon-tag-param update. Field shape:
+      //   "tagParam:TAGID:PARAMKEY"        — set the value
+      //   "tagParamPreset:TAGID:PARAMKEY"  — preset dropdown, re-renders
+      applyTagParamFieldToDraft(editDraft, field, value, /*rerender=*/renderAll);
+    } else if (typeof field === 'string' && field.indexOf('tagParamPreset:') === 0) {
+      applyTagParamFieldToDraft(editDraft, field, value, /*rerender=*/renderAll);
     } else {
       editDraft[field] = typeof value === 'string' ? value : '';
     }
+  }
+
+  // Parse "tagParam:TAGID:PARAMKEY" or "tagParamPreset:..." compound
+  // field names and apply the update to a draft's weaponTagParams.
+  // Used by all four draft routers (editDraft, catMgr edit/new,
+  // custom modal) so the generic tag-param UI works uniformly.
+  //
+  // `rerender` is the render callback the dropdown preset path calls
+  // after a pick so the sibling text input updates in-place. Text
+  // input path skips rendering (field holds its own value).
+  function applyTagParamFieldToDraft(draft, field, value, rerender) {
+    const isPreset = field.indexOf('tagParamPreset:') === 0;
+    const prefix = isPreset ? 'tagParamPreset:' : 'tagParam:';
+    const rest = field.slice(prefix.length);
+    const sep = rest.indexOf(':');
+    if (sep < 0) return;
+    const tagId = rest.slice(0, sep);
+    const paramKey = rest.slice(sep + 1);
+    if (!tagId || !paramKey) return;
+
+    // Preset path: '__custom__' leaves the draft alone; a numeric
+    // value writes it and re-renders so the sibling text input
+    // reflects the pick.
+    if (isPreset) {
+      if (value === '__custom__') return;
+      const n = parseInt(value, 10);
+      if (!Number.isFinite(n)) return;
+      if (!draft.weaponTagParams) draft.weaponTagParams = {};
+      if (!draft.weaponTagParams[tagId]) draft.weaponTagParams[tagId] = {};
+      draft.weaponTagParams[tagId][paramKey] = n;
+      if (typeof rerender === 'function') rerender();
+      return;
+    }
+
+    // Text path. Empty clears; numeric string stores as number;
+    // anything else stores as formula string.
+    const raw = (value == null) ? '' : String(value);
+    if (raw === '') {
+      if (draft.weaponTagParams && draft.weaponTagParams[tagId]) {
+        delete draft.weaponTagParams[tagId][paramKey];
+        if (Object.keys(draft.weaponTagParams[tagId]).length === 0) {
+          delete draft.weaponTagParams[tagId];
+        }
+        if (Object.keys(draft.weaponTagParams).length === 0) {
+          delete draft.weaponTagParams;
+        }
+      }
+      return;
+    }
+    if (!draft.weaponTagParams) draft.weaponTagParams = {};
+    if (!draft.weaponTagParams[tagId]) draft.weaponTagParams[tagId] = {};
+    const n = Number(raw.trim());
+    if (Number.isFinite(n) && String(n) === raw.trim()) {
+      draft.weaponTagParams[tagId][paramKey] = n;
+    } else {
+      draft.weaponTagParams[tagId][paramKey] = raw;
+    }
+    // No re-render — input keeps its value.
   }
 
   // Preset dropdown path for SIZE on the inline edit panel. Unlike the
@@ -4045,8 +4248,12 @@ export function createInventorySection(ctx) {
       </div>`;
     } else {
       // ranged
+      //
+      // ROF is NOT a weapon field anymore — it lives on the Rate of
+      // Fire tag (weapon.tagParams.t_rate_of_fire.level). See the
+      // Tag assignment block below; when the tag is checked, the
+      // generic tag-param UI renders a level dropdown inline.
       const ammo = (draft.weaponAmmo == null) ? '' : String(draft.weaponAmmo);
-      const rof  = (draft.weaponRof  == null) ? '' : String(draft.weaponRof);
       html += `<div class="inv-pair-row">
         <div class="inv-field" style="max-width:140px">
           <label>Base Range (ft)</label>
@@ -4066,13 +4273,7 @@ export function createInventorySection(ctx) {
           <label>AMMO (number or formula)</label>
           <input type="text" value="${escapeHtml(ammo)}" placeholder="e.g. 6  or  STR"
                  oninput="${upd('weaponAmmo', 'this.value')}">
-          <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">Literal magazine size or a formula like <code>STR</code> or <code>DEXMOD+2</code>.</div>
-        </div>
-        <div class="inv-field">
-          <label>ROF (number or formula)</label>
-          <input type="text" value="${escapeHtml(rof)}" placeholder="e.g. 1  or  (DEXMOD/2)-1"
-                 oninput="${upd('weaponRof', 'this.value')}">
-          <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">-1 Single · 0 Action · 1 Semi · 2 Auto · 3 Full · 4 Chain.</div>
+          <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">Literal magazine size or a formula like <code>STR</code> or <code>DEXMOD+2</code>. <em>ROF is set via the Rate of Fire tag below.</em></div>
         </div>
       </div>`;
     }
@@ -4097,9 +4298,27 @@ export function createInventorySection(ctx) {
       const singleUncat = groups.length === 1 && groups[0].cat.id === 'tcat_uncategorized';
       const collapsedSet = getCollapsedTagCats(scopeKey);
       const renderCheckbox = (t) => {
-        const checked = tagIds.includes(t.id) ? ' checked' : '';
+        const on = tagIds.includes(t.id);
+        const checked = on ? ' checked' : '';
         const name = escapeHtml(t.name || t.id);
         const desc = escapeHtml(t.description || '');
+        const hasParams = Array.isArray(t.params) && t.params.length > 0;
+        // When the tag is checked AND has params, expand the chip to a
+        // full-row block with the param inputs inside it. Otherwise a
+        // plain inline checkbox chip.
+        if (on && hasParams) {
+          const draftParams = (draft.weaponTagParams && typeof draft.weaponTagParams === 'object')
+            ? (draft.weaponTagParams[t.id] || {}) : {};
+          return `<div class="inv-weapon-draft-tag-expanded" title="${desc}">
+            <label class="inv-weapon-draft-tag-check">
+              <input type="checkbox"${checked} onchange="${tagToggle(t.id)}">
+              ${name}
+            </label>
+            <div class="inv-weapon-draft-tag-params">
+              ${renderDraftTagParamInputs(t, draftParams, upd)}
+            </div>
+          </div>`;
+        }
         return `<label class="inv-weapon-draft-tag" title="${desc}">
           <input type="checkbox"${checked} onchange="${tagToggle(t.id)}">
           ${name}
@@ -4195,7 +4414,13 @@ export function createInventorySection(ctx) {
       // same shape the form typed in, save coerces.
       weaponAmmo:     w ? (w.ammo != null ? String(w.ammo) : '1') : '1',
       weaponRof:      w ? (w.rof  != null ? String(w.rof)  : '0') : '0',
-      weaponTags:     w && Array.isArray(w.tags) ? w.tags.slice() : []
+      weaponTags:     w && Array.isArray(w.tags) ? w.tags.slice() : [],
+      // Tag parameters — { [tagId]: { [paramKey]: value } }. Carried
+      // through so ROF level / scope magnification / etc. survive
+      // round-tripping through the editor.
+      weaponTagParams: w && w.tagParams && typeof w.tagParams === 'object'
+        ? JSON.parse(JSON.stringify(w.tagParams))
+        : {}
     };
     catalogManager.drafts.set(def.id, Object.assign({
       name:         def.name || '',
@@ -4394,6 +4619,12 @@ export function createInventorySection(ctx) {
   // exactly, but the coercer runs again at ruleset-load time so any
   // drift gets cleaned up on the next session. We're just building a
   // "best effort" save shape here.
+  //
+  // NOTE: syncRofTagOnDraft was removed — ROF is now edited through
+  // the generic tag-param UI rather than a sidecar rof field, so
+  // there's no "sync" needed. The draft's weaponTagParams.t_rate_of_fire
+  // IS the source of truth for ROF level during an edit session.
+
   function buildWeaponFromDraft(d) {
     const kind = d.weaponKind === 'ranged' ? 'ranged' : 'melee';
     const dice = Number.isFinite(d.weaponDice) ? Math.max(0, Math.floor(d.weaponDice)) : 0;
@@ -4432,7 +4663,29 @@ export function createInventorySection(ctx) {
       if (Number.isFinite(n) && s === String(n)) return n;
       return s;
     };
-    return {
+    // Carry the draft's tagParams through to the weapon. Filtered to
+    // only include params for tags the weapon actually has (orphan
+    // tagParams for removed tags get dropped). Shape matches
+    // ruleset-side coerceWeapon: { [tagId]: { [paramKey]: value } }.
+    let tagParams = null;
+    if (d.weaponTagParams && typeof d.weaponTagParams === 'object') {
+      const filtered = {};
+      Object.keys(d.weaponTagParams).forEach(tagId => {
+        if (!tags.includes(tagId)) return;
+        const src = d.weaponTagParams[tagId];
+        if (!src || typeof src !== 'object') return;
+        const sub = {};
+        Object.keys(src).forEach(k => {
+          const v = src[k];
+          if (typeof v === 'number' && Number.isFinite(v)) sub[k] = v;
+          else if (typeof v === 'string') sub[k] = v;
+          else if (typeof v === 'boolean') sub[k] = v;
+        });
+        if (Object.keys(sub).length > 0) filtered[tagId] = sub;
+      });
+      if (Object.keys(filtered).length > 0) tagParams = filtered;
+    }
+    const weapon = {
       kind: 'ranged',
       dice, pen, tags,
       range,
@@ -4440,6 +4693,8 @@ export function createInventorySection(ctx) {
       ammo: asNum(d.weaponAmmo, 0),
       rof:  asNum(d.weaponRof,  0)
     };
+    if (tagParams) weapon.tagParams = tagParams;
+    return weapon;
   }
 
   // Instance-preserving delete from the manager. Reuses the same
@@ -4475,7 +4730,8 @@ export function createInventorySection(ctx) {
       weaponDmgmod: 0,
       weaponAmmo: '1',
       weaponRof:  '0',
-      weaponTags: []
+      weaponTags: [],
+      weaponTagParams: {}
     };
     renderCatalogManager();
   }
@@ -4562,7 +4818,17 @@ export function createInventorySection(ctx) {
       // ("6") or a formula ("STR" or "(DEXMOD/2)-1"). The save path
       // coerces pure-numeric strings into numbers before writing to
       // def.weapon.ammo / def.weapon.rof.
+      //
+      // weaponRof is still kept here for legacy import compatibility;
+      // new authoring happens via the Rate of Fire tag's level param,
+      // not this field.
       d[field] = (typeof value === 'string') ? value : '';
+      return;
+    }
+    if (typeof field === 'string'
+        && (field.indexOf('tagParam:') === 0 || field.indexOf('tagParamPreset:') === 0)) {
+      // Generic tag-param update. See applyTagParamFieldToDraft.
+      applyTagParamFieldToDraft(d, field, value, /*rerender=*/renderCatalogManager);
       return;
     }
 
@@ -5530,6 +5796,11 @@ export function createInventorySection(ctx) {
       d[field] = Number.isFinite(n) ? Math.floor(n) : 0;
     } else if (weaponTextFields.has(field)) {
       d[field] = (value == null) ? '' : String(value);
+    } else if (typeof field === 'string'
+               && (field.indexOf('tagParam:') === 0 || field.indexOf('tagParamPreset:') === 0)) {
+      // Generic weapon-tag-param update — see applyTagParamFieldToDraft.
+      applyTagParamFieldToDraft(d, field, value, /*rerender=*/renderActiveModal);
+      return;
     } else if (field === 'alsoContainer') {
       d[field] = !!value;
       renderActiveModal();
@@ -6221,8 +6492,81 @@ export function createInventorySection(ctx) {
     const w = entry.snapshot.weapon;
     if (!Array.isArray(w.tags)) w.tags = [];
     const idx = w.tags.indexOf(tagId);
-    if (on && idx < 0) w.tags.push(tagId);
-    else if (!on && idx >= 0) w.tags.splice(idx, 1);
+    if (on && idx < 0) {
+      w.tags.push(tagId);
+      // Seed tag param defaults when a tag with params is newly
+      // checked, so its param inputs render with sensible starting
+      // values (matches the ruleset editor behavior).
+      const rs = getRuleset() || {};
+      const tagDef = Array.isArray(rs.weaponTags)
+        ? rs.weaponTags.find(t => t.id === tagId)
+        : null;
+      if (tagDef && Array.isArray(tagDef.params) && tagDef.params.length > 0) {
+        if (!w.tagParams) w.tagParams = {};
+        if (!w.tagParams[tagId]) w.tagParams[tagId] = {};
+        tagDef.params.forEach(p => {
+          if (p && p.key && w.tagParams[tagId][p.key] == null && p.default != null) {
+            w.tagParams[tagId][p.key] = p.default;
+          }
+        });
+      }
+    } else if (!on && idx >= 0) {
+      w.tags.splice(idx, 1);
+      // Clean up orphaned tagParams for the untoggled tag.
+      if (w.tagParams && w.tagParams[tagId]) {
+        delete w.tagParams[tagId];
+        if (Object.keys(w.tagParams).length === 0) delete w.tagParams;
+      }
+    }
+    renderAll();
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
+  // Update a single weapon-tag parameter on a specific weapon
+  // snapshot. Called by the inline param inputs rendered under
+  // each checked tag in the weapon-snapshot editor. Generic over
+  // param key. Empty string clears the param back to its default;
+  // numeric strings store as numbers; anything else (formulas)
+  // stores as string.
+  async function weaponSnapUpdateTagParam(id, tagId, paramKey, value) {
+    if (!getCanEdit()) return;
+    const entry = findEntry(id);
+    if (!entry || !entry.snapshot || !entry.snapshot.weapon) return;
+    const w = entry.snapshot.weapon;
+    if (!w.tagParams) w.tagParams = {};
+    if (!w.tagParams[tagId]) w.tagParams[tagId] = {};
+    const raw = (value == null) ? '' : String(value);
+    if (raw === '') {
+      delete w.tagParams[tagId][paramKey];
+      if (Object.keys(w.tagParams[tagId]).length === 0) delete w.tagParams[tagId];
+      if (Object.keys(w.tagParams).length === 0) delete w.tagParams;
+    } else {
+      const n = Number(raw.trim());
+      if (Number.isFinite(n) && String(n) === raw.trim()) {
+        w.tagParams[tagId][paramKey] = n;
+      } else {
+        w.tagParams[tagId][paramKey] = raw;
+      }
+    }
+    // No re-render on text input — keep focus. Caller issues save.
+    try { await save(); } catch (e) { console.error('inventory save failed', e); }
+  }
+
+  // Preset picker for tag params with a lookup dropdown (Rate of
+  // Fire's level). '__custom__' is a no-op so the sibling text
+  // input can drive; a numeric pick writes and re-renders so the
+  // text input reflects the new value.
+  async function weaponSnapSetTagParamPreset(id, tagId, paramKey, optionValue) {
+    if (!getCanEdit()) return;
+    if (optionValue === '__custom__') return;
+    const n = parseInt(optionValue, 10);
+    if (!Number.isFinite(n)) return;
+    const entry = findEntry(id);
+    if (!entry || !entry.snapshot || !entry.snapshot.weapon) return;
+    const w = entry.snapshot.weapon;
+    if (!w.tagParams) w.tagParams = {};
+    if (!w.tagParams[tagId]) w.tagParams[tagId] = {};
+    w.tagParams[tagId][paramKey] = n;
     renderAll();
     try { await save(); } catch (e) { console.error('inventory save failed', e); }
   }
@@ -6649,6 +6993,8 @@ export function createInventorySection(ctx) {
     weaponSnapRemoveRange,
     weaponSnapUpdateRange,
     weaponSnapToggleTag,
+    weaponSnapUpdateTagParam,
+    weaponSnapSetTagParamPreset,
     weaponToRollCalc,
     removeEntry: removeEntryHandler,
     // Catalog view
