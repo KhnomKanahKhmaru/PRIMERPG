@@ -711,9 +711,12 @@ window.RULESET_DEFAULTS = {
           key: 'level',
           type: 'number',
           label: 'ROF Level',
-          default: 0,
-          min: -1,
-          max: 3
+          default: 0
+          // No min/max — rulesets are free to define levels like
+          // ROF 5 (Chain-Automatic), ROF 10 (experimental gatling),
+          // or ROF -3 (siege weapon requiring multi-turn prep).
+          // Clamping happened in early drafts and caused surprises
+          // when homebrew tables exceeded the hardcoded bounds.
         }
       ],
       // ROF table — maps level to display label, ammo-per-shot multiplier,
@@ -1513,7 +1516,10 @@ window.normalizeRuleset = function(rs) {
       if (!tagParams) tagParams = {};
       if (!tagParams.t_rate_of_fire) tagParams.t_rate_of_fire = {};
       if (tagParams.t_rate_of_fire.level == null) {
-        tagParams.t_rate_of_fire.level = Math.max(-1, Math.min(3, Math.round(rof)));
+        // Preserve the original rof value as-is (rounded to integer).
+        // No bounds clamp — rulesets with custom ROF tables may use
+        // levels outside the Standard Set's -1..3 range.
+        tagParams.t_rate_of_fire.level = Math.round(rof);
       }
     }
     return { kind: 'ranged', dice, pen, tags, range, dmgmod, ammo, rof, tagParams };
