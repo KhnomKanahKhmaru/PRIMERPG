@@ -15,7 +15,7 @@
 // Calc), so this module exports renderPenaltyTile for that caller too.
 //
 // ctx shape:
-//   getCollapsedPenaltyValues() → Set of stat codes whose strain-reduced
+//   getCollapsedPenaltyValues() → Set of stat codes whose penalty-reduced
 //      value is currently collapsed (click-to-toggle in Movement tile).
 //      Shared with combat.js so the two views stay in sync without this
 //      module needing to own the state itself.
@@ -380,12 +380,12 @@ export function createOverviewSection(ctx) {
       const valStr = fmt(value);
       const unit = def.unit ? `<span class="mi-unit">${escapeHtml(def.unit)}</span>` : '';
       const reduction = entry.penaltyValueReduction || 0;
-      const hasStrain = reduction > 0;
+      const hasPenaltyReduction = reduction > 0;
 
-      // Strain-reduced stat — emit both display variants and wire the
+      // Penalty-reduced stat — emit both display variants and wire the
       // click handler so toggling the Overview item syncs with the same
       // toggle on the Combat tab (they share data-code + .penalty-collapsed).
-      if (hasStrain) {
+      if (hasPenaltyReduction) {
         const effective = Math.max(0, value - reduction);
         const effStr = fmt(effective);
         const redStr = fmt(reduction);
@@ -404,7 +404,7 @@ export function createOverviewSection(ctx) {
           </div>`;
       }
 
-      // Non-strain stat — plain read-only display, no click affordance.
+      // Unreduced stat — plain read-only display, no click affordance.
       return `
         <div class="state-movement-item" title="${escapeHtml(def.description || '')}">
           <span class="mi-label">${escapeHtml(def.name)}</span>
