@@ -2637,27 +2637,37 @@ export function createInventorySection(ctx) {
       </div>`;
     }
     // Live preview — use the sweep-pool spend from weaponUI. Falls
-    // back to a 2-AMMO example if nothing committed (shows the
-    // minimum effective cube).
+    // back to an input-of-1 example (2 AMMO total, the minimum
+    // effective cube).
+    //
+    // The sweep input represents AMMO spent on top of a 2-AMMO
+    // baseline needed to activate the sweep. So "sweep input 0" =
+    // not committed; "sweep input 1" = 2 AMMO total (minimum sweep);
+    // "sweep input N" = N+1 AMMO total.
     const ui = entry.weaponUI || {};
     const split = readRapidfireSplit(ui, resolved.kind);
-    const committed = split.sweep;           // what the player actually chose
-    const previewAmmo = committed >= 2 ? committed : 2;
-    const isPreview = committed < 2;
-    const result = sweep.computeArea(previewAmmo);
+    const committed = split.sweep;           // extras past the base
+    const previewInput = committed >= 1 ? committed : 1;
+    const isPreview = committed < 1;
+    const result = sweep.computeArea(previewInput);
     const side = result.sideLen;
     const sideRounded = Math.round(side * 10) / 10;
     const volRounded = Math.round(result.volume);
     const multiplier = sweep.multiplier || 1;
     const sideDelta = 2.5 * sweep.rofValue * multiplier;
+    // Display helpers — "total AMMO" is what the player actually
+    // spends; the input is always +1 less than that because the
+    // first AMMO activates the sweep without widening the cube
+    // beyond the base 2×ROF side.
+    const totalAmmo = previewInput + 1;
     const shotgunBadge = sweep.shotgun
       ? ` <span class="inv-weapon-sweep-shotgun" title="Shotgun tag doubles effective sweep AOE (each sweep AMMO counts double for sizing).">×2 shotgun</span>`
       : '';
     const stateHtml = isPreview
-      ? `<span class="inv-weapon-sweep-example">preview: ${previewAmmo} sweep AMMO → ${sideRounded}×${sideRounded}×${sideRounded}ft <span class="inv-weapon-sweep-area">(${volRounded} cu ft)</span></span>
+      ? `<span class="inv-weapon-sweep-example">preview: ${totalAmmo} AMMO → ${sideRounded}×${sideRounded}×${sideRounded}ft <span class="inv-weapon-sweep-area">(${volRounded} cu ft)</span></span>
          <span class="inv-weapon-sweep-hint">set Rapidfire → sweep field to commit</span>`
-      : `<span class="inv-weapon-sweep-example">${previewAmmo} sweep AMMO → ${sideRounded}×${sideRounded}×${sideRounded}ft <span class="inv-weapon-sweep-area">(${volRounded} cu ft)</span></span>`;
-    return `<div class="inv-weapon-sweep-panel" title="Cube side = 2.5 × ROF × (AMMO − 1)${sweep.shotgun ? ' × 2 (shotgun)' : ''}. Reshape freely — line, cone, zig-zag, dome. AMMO spent on sweep does NOT grant Rapidfire damage bonus.">
+      : `<span class="inv-weapon-sweep-example">${totalAmmo} AMMO → ${sideRounded}×${sideRounded}×${sideRounded}ft <span class="inv-weapon-sweep-area">(${volRounded} cu ft)</span></span>`;
+    return `<div class="inv-weapon-sweep-panel" title="Cube side = 2.5 × ROF × (sweep input + 1)${sweep.shotgun ? ' × 2 (shotgun)' : ''}. Sweep input is AMMO spent past the 2-AMMO baseline. Reshape freely — line, cone, zig-zag, dome. AMMO spent on sweep does NOT grant Rapidfire damage bonus.">
       <span class="inv-weapon-sweep-label">Rapidfire Sweep${shotgunBadge}</span>
       <span class="inv-weapon-sweep-formula">side +${sideDelta}ft / extra AMMO</span>
       ${stateHtml}
