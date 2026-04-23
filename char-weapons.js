@@ -856,7 +856,11 @@ function resolveRofFromTag(weapon, rsTags) {
     level = weapon.rof;
   }
   if (level == null) level = 0;
-  level = Math.max(-10, Math.min(10, Math.round(level)));
+  // Sanity clamp — catches NaN-ish values and truly absurd inputs
+  // but doesn't constrain custom rulesets that define high/low
+  // levels. Rulesets that invent "ROF 50" or "ROF -20" will work
+  // fine. Anything past ±1000 is assumed to be data corruption.
+  level = Math.max(-1000, Math.min(1000, Math.round(level)));
 
   // Look up in the tag's rofTable. Falls back to DEFAULT_ROF_TABLE
   // when the tag is missing one OR when the tag's table lacks this
