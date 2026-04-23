@@ -4549,26 +4549,63 @@ export function createInventorySection(ctx) {
     else if (which === 'end') band.e = safe;
     // No re-render — user might still be typing the other side.
   }
-  function _weaponToggleTag(d, tagId, on) {
+  // Shared tag-toggle helper for all draft editors (catMgr edit,
+  // catMgr new, custom modal). When a tag with params is newly
+  // checked, seeds its params from the ruleset tag's defaults so
+  // the inline param UI renders with sensible starting values.
+  // When unchecked, clears the weapon's tagParams entry for that
+  // tag so stale values don't leak into the saved weapon.
+  //
+  // `rerender` is the callback to trigger after the state change
+  // — catMgr uses renderCatalogManager, custom modal uses
+  // renderActiveModal. Re-rendering is REQUIRED here because
+  // checking a tag with params expands it inline; the old behavior
+  // of letting the browser handle the checkbox state left a stale
+  // UI (no param inputs visible until a full re-render).
+  function _weaponToggleTag(d, tagId, on, rerender) {
     if (!d) return;
     if (!Array.isArray(d.weaponTags)) d.weaponTags = [];
     const idx = d.weaponTags.indexOf(tagId);
-    if (on && idx < 0) d.weaponTags.push(tagId);
-    else if (!on && idx >= 0) d.weaponTags.splice(idx, 1);
-    // No re-render — checkbox visual handled by browser.
+    if (on && idx < 0) {
+      d.weaponTags.push(tagId);
+      // Seed tag param defaults from the ruleset definition so
+      // the inline param inputs render with useful initial values.
+      const rs = getRuleset() || {};
+      const tagDef = Array.isArray(rs.weaponTags)
+        ? rs.weaponTags.find(t => t.id === tagId)
+        : null;
+      if (tagDef && Array.isArray(tagDef.params) && tagDef.params.length > 0) {
+        if (!d.weaponTagParams) d.weaponTagParams = {};
+        if (!d.weaponTagParams[tagId]) d.weaponTagParams[tagId] = {};
+        tagDef.params.forEach(p => {
+          if (p && p.key && d.weaponTagParams[tagId][p.key] == null && p.default != null) {
+            d.weaponTagParams[tagId][p.key] = p.default;
+          }
+        });
+      }
+    } else if (!on && idx >= 0) {
+      d.weaponTags.splice(idx, 1);
+      // Clean up tagParams for the removed tag so the save path
+      // doesn't persist stale entries.
+      if (d.weaponTagParams && d.weaponTagParams[tagId]) {
+        delete d.weaponTagParams[tagId];
+        if (Object.keys(d.weaponTagParams).length === 0) delete d.weaponTagParams;
+      }
+    }
+    if (typeof rerender === 'function') rerender();
   }
 
   // Edit-draft variants — wire up via invCatMgrWeapon* window handlers.
   function catMgrWeaponAddRange(defId)                       { _weaponAddRange(_getEditDraft(defId)); }
   function catMgrWeaponRemoveRange(defId, bandIdx)           { _weaponRemoveRange(_getEditDraft(defId), bandIdx); }
   function catMgrWeaponUpdateRange(defId, bandIdx, w, value) { _weaponUpdateRange(_getEditDraft(defId), bandIdx, w, value); }
-  function catMgrWeaponToggleTag(defId, tagId, on)           { _weaponToggleTag(_getEditDraft(defId), tagId, on); }
+  function catMgrWeaponToggleTag(defId, tagId, on)           { _weaponToggleTag(_getEditDraft(defId), tagId, on, renderCatalogManager); }
 
   // New-draft variants — invCatMgrNewWeapon* window handlers.
   function catMgrNewWeaponAddRange()                       { _weaponAddRange(_getNewDraft()); }
   function catMgrNewWeaponRemoveRange(bandIdx)             { _weaponRemoveRange(_getNewDraft(), bandIdx); }
   function catMgrNewWeaponUpdateRange(bandIdx, w, value)   { _weaponUpdateRange(_getNewDraft(), bandIdx, w, value); }
-  function catMgrNewWeaponToggleTag(tagId, on)             { _weaponToggleTag(_getNewDraft(), tagId, on); }
+  function catMgrNewWeaponToggleTag(tagId, on)             { _weaponToggleTag(_getNewDraft(), tagId, on, renderCatalogManager); }
 
   async function catMgrSaveEdit(defKind, defId) {
     const inv = ensureInventory();
@@ -5939,14 +5976,10 @@ export function createInventorySection(ctx) {
   }
   function customDraftWeaponToggleTag(tagId, on) {
     if (!activeModal || !activeModal.customDraft) return;
-    const d = activeModal.customDraft;
-    if (!Array.isArray(d.weaponTags)) d.weaponTags = [];
-    const idx = d.weaponTags.indexOf(tagId);
-    if (on && idx < 0) d.weaponTags.push(tagId);
-    else if (!on && idx >= 0) d.weaponTags.splice(idx, 1);
-    // Tag toggle doesn't re-render the whole modal — the checkbox
-    // state is tracked by the browser. If we DID re-render, the
-    // cursor position in any focused input would be lost.
+    // Shared helper seeds/cleans tagParams and re-renders so the
+    // inline param UI (e.g. ROF dropdown) appears when the tag is
+    // newly checked.
+    _weaponToggleTag(activeModal.customDraft, tagId, on, renderActiveModal);
   }
 
   // Create a one-off entry from the inline custom form in the picker
