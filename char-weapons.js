@@ -742,9 +742,31 @@ export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, 
       // than the extra AMMO you chose to spend this action.
       const recoilDifficulty = Math.min(totalExtra, overCapacity);
       // ROF absorption FIRST.
-      const rofRaw = out.rof && out.rof.resolved;
-      const rofValue = Number.isFinite(Number(rofRaw)) ? Math.max(0, Number(rofRaw)) : 0;
-      const rofMitigation = Math.min(recoilDifficulty, rofValue);
+      //
+      // ROF is now a weapon tag ('Rate of Fire') with a 'level' param
+      // and a rofTable lookup for the numeric DM (difficulty mitigation)
+      // each level provides. Falls back to the legacy `weapon.rof`
+      // scalar + hardcoded table if either the tag isn't present or
+      // the tag definition is missing the rofTable. Negative DM (e.g.
+      // ROF-1 → -1) penalizes the roll rather than mitigating, so the
+      // clamp is `max(-totalExtra, dm)` instead of `max(0, dm)` —
+      // we cap the penalty at the total extra AMMO so a single-fire
+      // rapidfire can't add penalty beyond the recoil cost itself.
+      const rofInfo = resolveRofFromTag(weapon, rsTags);
+      const rofValue = rofInfo.level;
+      const rofDm = rofInfo.dm;
+      // When DM is positive, it ABSORBS recoil difficulty up to its value.
+      // When DM is negative, it ADDS to the difficulty (stacks on top
+      // of recoilDifficulty, not absorbed). Capped at ±totalExtra so
+      // extreme cases don't produce runaway values.
+      let rofMitigation;
+      if (rofDm >= 0) {
+        rofMitigation = Math.min(recoilDifficulty, rofDm);
+      } else {
+        // Negative DM: rofMitigation is negative, so "afterRof"
+        // becomes recoilDifficulty + |dm|, increasing difficulty.
+        rofMitigation = Math.max(-totalExtra, rofDm);
+      }
       // Stabilization absorbs whatever ROF didn't.
       const afterRof = recoilDifficulty - rofMitigation;
       const stabMitigation = Math.min(afterRof, stabilizationBonus);
@@ -781,9 +803,90 @@ export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, 
   return out;
 }
 
+// Resolve a weapon's ROF (Rate of Fire) from its tag + params. Returns
+// { level, label, perAmmo, dm } with the rofTable lookup applied. Falls
+// back through layers to keep legacy data working:
+//
+//   1. Look for the weapon's 'Rate of Fire' tag (by name, case-insensitive)
+//      in the ruleset's weaponTags. If found, get the weapon's level from
+//      tagParams.t_rate_of_fire.level.
+//   2. If no tag present, fall back to weapon.rof scalar (legacy field).
+//   3. Look up the level in the tag's rofTable (GM-authored). Falls
+//      back to the hardcoded DEFAULT_ROF_TABLE for levels not in the
+//      tag's table.
+//
+// `weapon` is the weapon block (melee or ranged). `rsTags` is
+// ruleset.weaponTags. Returns null-like `{level: null, ...}` if no
+// ROF is present at all — callers treat that as "no ROF, no mitigation".
+function resolveRofFromTag(weapon, rsTags) {
+  if (!weapon || typeof weapon !== 'object') {
+    return { level: 0, label: 'Action Fire', perAmmo: 1, dm: 0 };
+  }
+  const tags = Array.isArray(weapon.tags) ? weapon.tags : [];
+  const tagParams = (weapon.tagParams && typeof weapon.tagParams === 'object') ? weapon.tagParams : {};
+
+  // Find the ROF tag definition in the ruleset. Match by name since
+  // that's how all the other tag-driven mechanics work in this file
+  // (description-authored tags can carry different ids across rulesets
+  // but the name stays stable for mechanics lookup).
+  const rofTagDef = (Array.isArray(rsTags) ? rsTags : []).find(t =>
+    t && typeof t.name === 'string' && t.name.toLowerCase() === 'rate of fire'
+  );
+  const rofTagId = rofTagDef ? rofTagDef.id : 't_rate_of_fire';
+
+  // Get the weapon's level. Three sources in order of preference:
+  //   1. tagParams[rofTagId].level if set
+  //   2. Legacy weapon.rof scalar
+  //   3. Default 0 (Action Fire)
+  let level = null;
+  const hasTag = tags.includes(rofTagId);
+  if (hasTag && tagParams[rofTagId] && typeof tagParams[rofTagId].level === 'number') {
+    level = tagParams[rofTagId].level;
+  } else if (typeof weapon.rof === 'number' && Number.isFinite(weapon.rof)) {
+    level = weapon.rof;
+  }
+  if (level == null) level = 0;
+  level = Math.max(-10, Math.min(10, Math.round(level)));
+
+  // Look up in the tag's rofTable. Falls back to DEFAULT_ROF_TABLE
+  // when the tag is missing one OR when the tag's table lacks this
+  // specific level (GM might have customized some levels but not all).
+  const tableLookup = (table, lvl) => {
+    if (!Array.isArray(table)) return null;
+    return table.find(r => r && Number(r.level) === lvl) || null;
+  };
+  const gmEntry = rofTagDef ? tableLookup(rofTagDef.rofTable, level) : null;
+  const defaultEntry = tableLookup(DEFAULT_ROF_TABLE, level);
+  const entry = gmEntry || defaultEntry || { level, label: `ROF ${level}`, perAmmo: 1, dm: 0 };
+  return {
+    level,
+    label:   entry.label   || `ROF ${level}`,
+    perAmmo: Number.isFinite(Number(entry.perAmmo)) ? Math.max(1, Math.round(Number(entry.perAmmo))) : 1,
+    dm:      Number.isFinite(Number(entry.dm))      ? Math.round(Number(entry.dm))                   : 0
+  };
+}
+
+// Default ROF table — used as a fallback when a ruleset's tag lacks
+// a rofTable field or when a specific level isn't in the GM's
+// customized table. Matches the Standard Set values.
+const DEFAULT_ROF_TABLE = [
+  { level: -1, label: 'Single-Fire',     perAmmo: 1,  dm: -1 },
+  { level:  0, label: 'Action Fire',     perAmmo: 1,  dm:  0 },
+  { level:  1, label: 'Semi-Automatic',  perAmmo: 5,  dm:  1 },
+  { level:  2, label: 'Automatic',       perAmmo: 6,  dm:  2 },
+  { level:  3, label: 'Fully Automatic', perAmmo: 10, dm:  3 }
+];
+
 // Translate ROF level to the flavor text "N projectiles per ammo".
 // Maps from the rules given in the design doc. Passed through to the
 // UI so players see what their ROF level MEANS at a glance.
+//
+// With the tag-based ROF system this function is a legacy fallback —
+// callers that have access to the weapon + ruleset should use
+// resolveRofFromTag() instead, which honors GM customizations to
+// the rofTable. This hardcoded-table version is kept for callers
+// that only have a level number handy (e.g. old UI code that
+// computes ROF for display without a full weapon resolve).
 const ROF_FLAVOR = {
   '-1': { label: 'Single-Fire',    perAmmo: 1  },
   '0':  { label: 'Action Fire',    perAmmo: 1  },
