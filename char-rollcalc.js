@@ -676,10 +676,10 @@ export function createRollCalc(ctx) {
     const modSign = displayedMod >= 0 ? '+' : '−';
     const modAbs  = Math.abs(displayedMod);
     const toggleTip = r.isPassive
-      ? 'Passive — Strain does not apply to this roll.'
+      ? 'Passive — Penalty does not apply to this roll.'
       : (state.showRaw
-        ? `Showing raw pool. Click to see ${r.finalPool}d after Strain.`
-        : `Showing Strain-reduced pool. Click to see raw ${r.basePool}d.`);
+        ? `Showing raw pool. Click to see ${r.finalPool}d after Penalty.`
+        : `Showing Penalty-reduced pool. Click to see raw ${r.basePool}d.`);
 
     const diffNote = r.diffDelta === 0
       ? 'baseline'
@@ -712,8 +712,8 @@ export function createRollCalc(ctx) {
           <span class="state-tile-caret">${rcCaret}</span>
           <span class="state-tile-label">Roll Calculator</span>
           <div class="rc-mode" role="group" aria-label="Roll mode" onclick="event.stopPropagation()">
-            <button type="button" class="rc-mode-btn${!r.isPassive ? ' active' : ''}" onclick="rollCalcSetPassive(false)" title="Active roll — Strain reduces your dice pool">Active</button>
-            <button type="button" class="rc-mode-btn${r.isPassive ? ' active' : ''}"  onclick="rollCalcSetPassive(true)"  title="Passive roll — Strain does not apply (resistance checks)">Passive</button>
+            <button type="button" class="rc-mode-btn${!r.isPassive ? ' active' : ''}" onclick="rollCalcSetPassive(false)" title="Active roll — Penalty reduces your dice pool">Active</button>
+            <button type="button" class="rc-mode-btn${r.isPassive ? ' active' : ''}"  onclick="rollCalcSetPassive(true)"  title="Passive roll — Penalty does not apply (resistance checks)">Passive</button>
           </div>
           <span class="rc-hint">(Dice 1 + Dice 2 + Dice 3) @ Difficulty + Mod</span>
         </div>
