@@ -57,36 +57,42 @@ export function createCombatSection(ctx) {
     const result = computeDerivedStats(charData, ruleset);
 
     let html = '';
-    // Roll Calculator at the very top — the quick "how many dice will I
-    // actually roll?" scratch pad you reach for mid-turn. Sits ahead of
-    // Movement so it's the first thing visible when you swap to Combat.
+    // ── ROLL CALCULATOR SECTION ──
+    // The "what will I roll right now" block. Groups the Roll
+    // Calculator tile with the Penalty summary tile as one visual
+    // unit because the two numbers are read together mid-turn — the
+    // Roll Calc tells you your dice pool after Penalty reduction, and
+    // the Penalty tile tells you where the reduction came from. They
+    // live in one outer collapsible section so players who don't want
+    // either visible (e.g. during exploration scenes) can hide them
+    // both with a single click.
     //
-    // Every top-level combat section is wrapped in wrapCollapsibleSection
-    // so players can collapse whatever they don't need during a given
-    // scene. The Penalty tile is NOT wrapped because it's the paired
-    // companion to the Roll Calc — together they're the always-visible
-    // "what will I roll right now" block. Storage keys use
-    // `prime.collapse.combat.<slug>`. Click handler routes to
-    // window.combatToggleCollapse which toggles + re-renders.
-    html += rollcalc.renderTile(result, ruleset, charData);
-    // Penalty card right below — it's the biggest single factor affecting
-    // the Roll Calculator, so seeing them side-by-side (top of tab) is the
-    // most useful at-a-glance pairing. The detailed Pain/Stress editors
-    // still live inline in their Health and Sanity sections below;
-    // Others editor lives right inside this card.
-    const otherMods = Array.isArray(charData.otherModifiers) ? charData.otherModifiers : [];
-    // Collapsible:true emits the caret + click wiring. slug 'penalty-combat'
-    // keeps this tile's collapse state separate from the Overview-tab
-    // Penalty tile. rerenderHandler 'combatToggleTile' makes the click
-    // re-render THIS tab (Combat) rather than the Overview tab —
-    // without this override, the handler defaults to overviewToggleTile,
-    // which would toggle the flag but only repaint the Overview tab,
-    // leaving the Combat-tab caret visually stuck.
-    html += overview.renderPenaltyTile(result.pain, result.stress, result.penalty, otherMods, ctx.getCanEdit(), {
-      collapsible: true,
-      slug: 'penalty-combat',
-      rerenderHandler: 'combatToggleTile'
-    });
+    // The inner tiles each retain their own internal collapse for
+    // granular control — collapsing the outer section hides both at
+    // once; collapsing an inner tile affects only that tile. Storage
+    // keys don't conflict since the outer section uses its own slug.
+    const rollCalcSectionBody =
+      rollcalc.renderTile(result, ruleset, charData) +
+      overview.renderPenaltyTile(
+        result.pain, result.stress, result.penalty,
+        Array.isArray(charData.otherModifiers) ? charData.otherModifiers : [],
+        ctx.getCanEdit(),
+        {
+          collapsible: true,
+          slug: 'penalty-combat',
+          rerenderHandler: 'combatToggleTile'
+        }
+      );
+    html += wrapCollapsibleSection(
+      'prime.collapse.combat.rollcalc-section',
+      '<span class="combat-section-title-text">Roll Calculator</span>',
+      rollCalcSectionBody,
+      {
+        wrapperClass: 'combat-section combat-section-rollcalc',
+        collapsibleClass: 'combat-section-title',
+        rerenderHandler: 'combatToggleCollapse'
+      }
+    );
     // Movement below — speed, agility, reflex. Fast-lookup info you need
     // during play, positioned ahead of the more detailed health UI.
     html += renderDerivedStatsSection(result, ruleset, { includeGroups: ['movement'] });
