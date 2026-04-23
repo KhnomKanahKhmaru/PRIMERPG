@@ -414,12 +414,28 @@ function lookupRulesetDescription(category, id, ruleset) {
       return (hit && typeof hit.description === 'string') ? hit.description : '';
     }
     case 'tiles': {
-      // Overview tiles (Body, Sanity, Penalty) — computed summaries
-      // that don't live in derivedStats. Descriptions are stored in
-      // a dedicated ruleset.tileDescriptions map keyed by tile id.
+      // Overview tiles (Body, Sanity, Penalty, Power) — computed
+      // summaries that don't live in derivedStats. Descriptions are
+      // stored in a dedicated ruleset.tileDescriptions map keyed by
+      // tile id.
       const map = ruleset.tileDescriptions;
-      if (map && typeof map === 'object' && typeof map[id] === 'string') return map[id];
-      return '';
+      const explicit = (map && typeof map === 'object' && typeof map[id] === 'string') ? map[id] : null;
+
+      // Power tile has an organic fallback — the Power Pool itself
+      // carries a description field in the ruleset (authored in the
+      // Power Pool config block, rendered inline on the Combat tab).
+      // If tileDescriptions.power is empty or unset, fall through to
+      // that existing field. Means GMs don't have to maintain the
+      // same text in two places unless they want the two surfaces
+      // to differ. For non-power tiles the explicit value (including
+      // intentional empty string) is always returned as-is.
+      if (id === 'power') {
+        if (explicit != null && explicit.trim()) return explicit;
+        const pp = ruleset.powerPool;
+        if (pp && typeof pp.description === 'string') return pp.description;
+        return '';
+      }
+      return explicit != null ? explicit : '';
     }
     // Phase-1 only covers stats + derivedStats; tiles were added in
     // Phase 2 alongside the Body/Sanity/Penalty hover editors. The
