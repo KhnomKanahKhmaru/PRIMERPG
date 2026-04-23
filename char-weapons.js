@@ -683,8 +683,15 @@ export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, 
     //   ROF 2, 6 AMMO  → side 25, volume 15,625     (25×25×25)
     //   ROF 3, 4 AMMO  → side 22.5, volume ~11,391  (22.5×22.5×22.5)
     if (hasTag('Rapidfire Sweep')) {
-      const rofRaw = out.rof && out.rof.resolved;
-      const rofValue = Number.isFinite(Number(rofRaw)) ? Math.max(0, Number(rofRaw)) : 0;
+      // Read ROF level from the tag-resolved rofInfo (which honors
+      // tagParams.t_rate_of_fire.level and falls back to the legacy
+      // weapon.rof scalar only when no tag is present). Using
+      // out.rof.resolved directly here was a bug — after the tag
+      // migration a weapon's legacy `rof` field can be stale (0)
+      // while its actual ROF lives in tagParams, causing the sweep
+      // check to erroneously report "current ROF 0" on ROF-2+
+      // weapons. `rofInfo.level` is always the authoritative value.
+      const rofValue = Math.max(0, (out.rofInfo && Number.isFinite(out.rofInfo.level)) ? out.rofInfo.level : 0);
       // Shotgun synergy — "Shotguns have their effective Sweep AOE
       // doubled". Interpreted as doubling the side length of the
       // cube (each sweep AMMO counts double for sizing), so volume
