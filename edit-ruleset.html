@@ -1030,7 +1030,7 @@
         <div class="section-header">
           <div class="section-title">Overview Tile Descriptions</div>
         </div>
-        <div class="section-desc">Hover descriptions for the three computed summary tiles on the player's Overview tab. These are GM-authored defaults; players can override them on their own sheet.</div>
+        <div class="section-desc">Hover descriptions for the four computed summary tiles on the player's Overview tab. These are GM-authored defaults; players can override them on their own sheet. Leave Power blank to use the Power Pool's description from the Power Pool settings (recommended — avoids maintaining the same text twice).</div>
         <div class="tile-desc-grid">
           <div class="tile-desc-row">
             <label class="tile-desc-label">Body</label>
@@ -1049,6 +1049,12 @@
             <textarea id="tile-desc-penalty" rows="3"
                       oninput="updateTileDescription('penalty',this.value)"
                       placeholder="What does the Penalty tile represent?"></textarea>
+          </div>
+          <div class="tile-desc-row">
+            <label class="tile-desc-label">Power</label>
+            <textarea id="tile-desc-power" rows="3"
+                      oninput="updateTileDescription('power',this.value)"
+                      placeholder="Leave blank to use the Power Pool description. Fill in to customize just the Overview tile."></textarea>
           </div>
         </div>
       </div>
@@ -1439,17 +1445,19 @@
     document.getElementById('rs-statAbsMax').value = state.statMax ?? 20;
     document.getElementById('rs-skillMax').value = state.skillMax ?? 10;
 
-    // Overview tile descriptions — Body / Sanity / Penalty. Always
-    // populated, falling back to empty string if the ruleset predates
-    // the tileDescriptions field (the normalizer will have filled
-    // defaults by now, but belt-and-suspenders).
+    // Overview tile descriptions — Body / Sanity / Penalty / Power.
+    // Always populated, falling back to empty string if the ruleset
+    // predates the tileDescriptions field (the normalizer will have
+    // filled defaults by now, but belt-and-suspenders).
     const tdBody    = document.getElementById('tile-desc-body');
     const tdSanity  = document.getElementById('tile-desc-sanity');
     const tdPenalty = document.getElementById('tile-desc-penalty');
+    const tdPower   = document.getElementById('tile-desc-power');
     const td = (state.tileDescriptions && typeof state.tileDescriptions === 'object') ? state.tileDescriptions : {};
     if (tdBody)    tdBody.value    = td.body    || '';
     if (tdSanity)  tdSanity.value  = td.sanity  || '';
     if (tdPenalty) tdPenalty.value = td.penalty || '';
+    if (tdPower)   tdPower.value   = td.power   || '';
 
     document.getElementById('rs-startingXp').oninput = (e) => { state.startingXp = Math.max(0, parseInt(e.target.value) || 0); renderScaleSummary(); };
     document.getElementById('rs-statMax').oninput = () => { syncStatMaxFromInput(); renderStatLevelTable(); renderScaleSummary(); };
