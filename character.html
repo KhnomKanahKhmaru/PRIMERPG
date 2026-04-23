@@ -2644,6 +2644,27 @@
 
     /* ─── SANITY ─── */
     .san-section { }
+
+    /* Description block inside Combat-tab sections (Body row, SAN row,
+       and potentially others). Sits below the numeric/segmented bar
+       content and presents the same ruleset-authored hover description
+       players see on the Overview tiles — they're the same underlying
+       text, rendered on two surfaces for discoverability. Uses the
+       shared .pc-desc-* system so the pencil/reset/textarea UX is
+       identical. Muted color + italic so it doesn't fight the hot
+       numeric data above. */
+    .combat-section-desc.pc-desc-static,
+    .combat-section-desc.pc-desc-editing {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid #1a1a1a;
+      font-size: 11px;
+      color: #888;
+      line-height: 1.5;
+    }
+    .combat-section-desc.pc-desc-static { font-style: normal; }
+    .combat-section-desc.pc-desc-static .pc-desc-text { font-style: italic; }
+    .combat-section-desc.pc-desc-editing { font-style: normal; }
     .san-card-wrap { margin-bottom: 14px; }
     .san-top-row {
       display: flex; align-items: center; gap: 12px;
