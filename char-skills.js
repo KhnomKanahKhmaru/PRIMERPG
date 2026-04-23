@@ -144,8 +144,23 @@ export function createSkillsSection(ctx) {
               `<span style="font-size:9px;color:#666;width:34px;flex-shrink:0;text-align:right">${cost}xp</span>` +
               `<span class="mod-delete" onclick="deleteSecSkill(${i})">×</span>`
             : `<span class="skill-val-display" style="width:20px;flex-shrink:0">${s.value || 0}</span>`;
-          return `<div class="skill-item">` +
+          // Hover tooltip — shown when description is set. Same
+          // visual language as primary-skill tooltips. In edit mode,
+          // the tooltip is replaced by an inline description textarea
+          // so the author can type/edit without leaving the row. The
+          // textarea sits OUTSIDE the hover-clip issue because edit
+          // mode shows it inline, not as a popup.
+          const safeDesc = (s.description || '').replace(/"/g, '&quot;');
+          const descBlock = editMode
+            ? `<textarea class="skill-desc-edit" rows="2"
+                          placeholder="Description (optional) — shown as hover tooltip."
+                          onchange="updateSecSkillDescription(${i},this.value)">${escapeText(s.description || '')}</textarea>`
+            : (s.description
+                ? `<div class="skill-tooltip">${escapeText(s.description)}</div>`
+                : '');
+          return `<div class="skill-item${editMode ? ' skill-item-editing' : ''}">` +
             nameBlock +
+            descBlock +
             `<span style="font-size:10px;color:#888;flex:1 1 0;min-width:0;max-width:100%;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${levelText}</span>` +
             editor +
           `</div>`;
@@ -209,8 +224,16 @@ export function createSkillsSection(ctx) {
               `<span style="font-size:9px;color:#666;width:34px;flex-shrink:0;text-align:right">${cost}xp</span>` +
               `<span class="mod-delete" onclick="deleteSpecSkill(${i})">×</span>`
             : `<span class="skill-val-display" style="width:20px;flex-shrink:0">${s.value || 0}</span>`;
-          return `<div class="skill-item">` +
+          const descBlock = editMode
+            ? `<textarea class="skill-desc-edit" rows="2"
+                          placeholder="Description (optional) — shown as hover tooltip."
+                          onchange="updateSpecSkillDescription(${i},this.value)">${escapeText(s.description || '')}</textarea>`
+            : (s.description
+                ? `<div class="skill-tooltip">${escapeText(s.description)}</div>`
+                : '');
+          return `<div class="skill-item${editMode ? ' skill-item-editing' : ''}">` +
             nameBlock +
+            descBlock +
             `<span style="font-size:10px;color:#888;flex:1 1 0;min-width:0;max-width:100%;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${levelText}</span>` +
             editor +
           `</div>`;
@@ -250,12 +273,17 @@ export function createSkillsSection(ctx) {
     const name = document.getElementById('sec-skill-name').value.trim();
     const under = document.getElementById('sec-skill-under').value;
     if (!name || !under) return;
+    // Optional description from the add row — falls back to empty
+    // string if the input isn't present or the user didn't type one.
+    const descEl = document.getElementById('sec-skill-desc');
+    const description = descEl ? descEl.value.trim() : '';
     const charData = ctx.getCharData();
     if (!charData.skills) charData.skills = {};
     if (!charData.skills.secondary) charData.skills.secondary = [];
-    charData.skills.secondary.push({ name, under, value: 0 });
+    charData.skills.secondary.push({ name, under, value: 0, description });
     await saveCharacter(ctx.getCharId(), { 'skills.secondary': charData.skills.secondary });
     document.getElementById('sec-skill-name').value = '';
+    if (descEl) descEl.value = '';
     renderSecondarySkills();
   }
 
@@ -302,6 +330,22 @@ export function createSkillsSection(ctx) {
     renderSecondarySkills();
   }
 
+  // Update the description of a secondary skill. Description is a
+  // free-text string the player authors when creating or editing the
+  // skill — shown as a hover tooltip on the skill row (same visual
+  // language as primary skills' ruleset-authored descriptions). Empty
+  // string is valid and stored as-is; it means "no description, no
+  // tooltip".
+  async function updateSecSkillDescription(i, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!charData.skills || !charData.skills.secondary || !charData.skills.secondary[i]) return;
+    charData.skills.secondary[i].description = (typeof val === 'string') ? val : '';
+    await saveCharacter(ctx.getCharId(), { 'skills.secondary': charData.skills.secondary });
+    // No re-render — the textarea keeps its own content, and the
+    // tooltip only matters next time the player hovers.
+  }
+
   // ─── SPECIALTY SKILLS HANDLERS ───
 
   async function addSpecialtySkill() {
@@ -309,12 +353,15 @@ export function createSkillsSection(ctx) {
     const name = document.getElementById('spec-skill-name').value.trim();
     const under = document.getElementById('spec-skill-under').value;
     if (!name || !under) return;
+    const descEl = document.getElementById('spec-skill-desc');
+    const description = descEl ? descEl.value.trim() : '';
     const charData = ctx.getCharData();
     if (!charData.skills) charData.skills = {};
     if (!charData.skills.specialty) charData.skills.specialty = [];
-    charData.skills.specialty.push({ name, under, value: 0 });
+    charData.skills.specialty.push({ name, under, value: 0, description });
     await saveCharacter(ctx.getCharId(), { 'skills.specialty': charData.skills.specialty });
     document.getElementById('spec-skill-name').value = '';
+    if (descEl) descEl.value = '';
     renderSpecialtySkills();
   }
 
@@ -353,11 +400,38 @@ export function createSkillsSection(ctx) {
     renderSpecialtySkills();
   }
 
+  // Same pattern as updateSecSkillDescription — stores a free-text
+  // description on the specialty skill for hover display.
+  async function updateSpecSkillDescription(i, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!charData.skills || !charData.skills.specialty || !charData.skills.specialty[i]) return;
+    charData.skills.specialty[i].description = (typeof val === 'string') ? val : '';
+    await saveCharacter(ctx.getCharId(), { 'skills.specialty': charData.skills.specialty });
+  }
+
   return {
     buildSkillsSection, toggleSkillsEdit,
     renderPrimarySkills, renderSecondarySkills, renderSpecialtySkills,
     saveSkill,
     addSecondarySkill, saveSecSkill, renameSecSkill, deleteSecSkill,
     addSpecialtySkill, saveSpecSkill, renameSpecSkill, deleteSpecSkill,
+    // Description text for player-authored skills (secondary + specialty).
+    // Primary skill descriptions live in the ruleset and are handled by
+    // the descriptions module instead — these are for the skills the
+    // player themselves created on their sheet.
+    updateSecSkillDescription, updateSpecSkillDescription,
   };
+}
+
+// Small HTML-text escape helper — used for description blocks where
+// content flows into inline HTML. Called enough times below to warrant
+// a module-level helper rather than inlining at each site.
+function escapeText(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
