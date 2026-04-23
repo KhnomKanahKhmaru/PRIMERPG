@@ -3183,17 +3183,29 @@ export function createInventorySection(ctx) {
     </span>`;
   }
 
-  // ROF chip — shows the level + flavor label. rofFlavor maps -1..4
-  // to Single-Fire / Action / Semi / Auto / Full / Chain.
+  // ROF chip — shows the level + flavor label. Prefers the GM-authored
+  // rofInfo (populated by resolveWeapon from the Rate of Fire tag's
+  // rofTable) so rulesets that rename ROF levels display their custom
+  // names. Falls back to the hardcoded rofFlavor table if rofInfo isn't
+  // available (e.g. the weapon isn't ranged, or something went wrong
+  // in the resolve).
   function renderRofChip(resolved) {
     const rof = resolved.rof || { resolved: 0, raw: 0, error: null };
     if (rof.error) {
       return `<span class="inv-weapon-chip" title="${escapeHtml(rof.error)}"><span class="inv-weapon-chip-label">ROF</span><span class="inv-weapon-chip-val" style="color:#cc6666">err</span></span>`;
     }
     const level = Number.isFinite(rof.resolved) ? rof.resolved : 0;
-    const flavor = rofFlavor(level);
-    const label = flavor ? `${level} · ${flavor.label}` : String(level);
-    const tip = flavor ? `${flavor.label} — approx ${flavor.perAmmo} projectile${flavor.perAmmo === 1 ? '' : 's'} per ammo` : '';
+    const info = resolved.rofInfo;
+    const label    = info ? `${info.level} · ${info.label}` : (function(){
+      const flavor = rofFlavor(level);
+      return flavor ? `${level} · ${flavor.label}` : String(level);
+    })();
+    const tip = info
+      ? `${info.label} — ${info.perAmmo} projectile${info.perAmmo === 1 ? '' : 's'} per AMMO, ${info.dm >= 0 ? '+' : ''}${info.dm} DM vs rapidfire`
+      : (function(){
+          const flavor = rofFlavor(level);
+          return flavor ? `${flavor.label} — approx ${flavor.perAmmo} projectile${flavor.perAmmo === 1 ? '' : 's'} per AMMO` : '';
+        })();
     return `<span class="inv-weapon-chip" title="${escapeHtml(tip)}"><span class="inv-weapon-chip-label">ROF</span><span class="inv-weapon-chip-val">${escapeHtml(label)}</span></span>`;
   }
 
