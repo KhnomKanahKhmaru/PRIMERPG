@@ -270,8 +270,8 @@ window.RULESET_DEFAULTS = {
       showSpeedConversions: true
     },
     {
-      code: 'SPDUP',
-      name: 'Speed Boost',
+      code: 'SPR',
+      name: 'Sprint',
       description: 'You may add increments equal to this amount to your Speed; every time you do so, you gain +1 Dice Penalty towards all physical actions for the rest of the Round.',
       group: 'movement',
       formula: 'STR * 1',
@@ -897,14 +897,19 @@ window.normalizeRuleset = function(rs) {
     // non-rollable if they're still using default formulas. The
     // 'rollable' field was added late — saved rulesets pre-date it,
     // and without this nudge they'd keep showing dice pills on SPD,
-    // SPDUP, AGL, RFX, and FORT. We only flip stats that look like
-    // the original defaults (code + formula match) so homebrew
-    // rulesets that renamed/repurposed these codes are untouched.
-    // Runs every normalize — once the value is false it stays false
-    // (the assignment below is idempotent).
+    // SPR (formerly SPDUP), AGL, RFX, and FORT. We only flip stats
+    // that look like the original defaults (code + formula match) so
+    // homebrew rulesets that renamed/repurposed these codes are
+    // untouched.
+    //
+    // SPR is checked under both its current code and its legacy code
+    // SPDUP — saved rulesets from before the rename still have SPDUP,
+    // and the code-rename migration runs elsewhere in normalize, so
+    // this table needs to accept either.
     const staticDefaults = [
       { code: 'SPD',   formula: 'DEX * 2.5' },
-      { code: 'SPDUP', formula: 'STR * 1' },
+      { code: 'SPR',   formula: 'STR * 1' },
+      { code: 'SPDUP', formula: 'STR * 1' },  // legacy pre-rename
       { code: 'AGL',   formula: '(DEX + PER) / 2 - 1' },
       { code: 'RFX',   formula: '0.2 / (2 ^ ((DEXMOD + PERMOD) / 4))' },
       { code: 'FORT',  formula: 'FORT' }
@@ -916,6 +921,33 @@ window.normalizeRuleset = function(rs) {
         s.formula.replace(/\s+/g, '') === sd.formula.replace(/\s+/g, '')
       );
       if (match) match.rollable = false;
+    });
+
+    // ── CODE RENAMES ──
+    // When a default stat's code changes, saved rulesets still carry
+    // the old code. This block migrates those to the new code IF the
+    // stat looks like the original default — same formula, not a
+    // homebrew reuse of the old code.
+    //
+    // SPDUP → SPR (Sprint): part of the combat-section rework that
+    // clarified Speed Boost's role. Only migrates when formula matches
+    // 'STR * 1', preserving any homebrew that redefined SPDUP.
+    const codeRenames = [
+      { oldCode: 'SPDUP', newCode: 'SPR', expectedFormula: 'STR * 1' }
+    ];
+    codeRenames.forEach(r => {
+      const old = out.derivedStats.find(s => s.code === r.oldCode);
+      if (!old) return;
+      // Skip if the user's version has a different formula (homebrew).
+      const normFormula = typeof old.formula === 'string'
+        ? old.formula.replace(/\s+/g, '')
+        : '';
+      if (normFormula !== r.expectedFormula.replace(/\s+/g, '')) return;
+      // Skip if the new code is already taken (don't clobber).
+      if (out.derivedStats.some(s => s.code === r.newCode)) return;
+      old.code = r.newCode;
+      seenCodes.delete(r.oldCode);
+      seenCodes.add(r.newCode);
     });
 
     // Auto-inject any NEW default stats that aren't in the user's list yet.
@@ -956,10 +988,15 @@ window.normalizeRuleset = function(rs) {
         newName: 'Speed',
         newDesc: 'How fast you can move in feet per second.'
       },
-      SPDUP: {
+      SPR: {
+        // SPR also accepts the old 'Speed Boost' name (from before the
+        // code rename from SPDUP to SPR). The oldNames/oldDescs arrays
+        // are the match criteria — any stored value in here gets
+        // upgraded to newName/newDesc. The code rename itself happens
+        // earlier; this block handles the remaining name/desc refresh.
         oldNames: ['Speed Boost'],
         oldDescs: ['Bonus feet of movement from raw strength.'],
-        newName: 'Speed Boost',
+        newName: 'Sprint',
         newDesc: 'You may add increments equal to this amount to your Speed; every time you do so, you gain +1 Dice Penalty towards all physical actions for the rest of the Round.'
       },
       AGL: {
