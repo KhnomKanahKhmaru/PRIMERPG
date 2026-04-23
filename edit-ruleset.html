@@ -330,41 +330,73 @@
       font-size: 10px; color: #666; font-style: italic;
       line-height: 1.5; margin: 0 0 6px;
     }
-    /* ROF picker row in the weapon editor — dropdown + sibling text
-       input, laid out side-by-side. Select takes the bulk of the
-       width so the label reads clearly; input stays compact but
-       wide enough for formulas. */
-    .rof-picker-row {
-      display: flex;
-      gap: 6px;
-      align-items: stretch;
+    /* Weapon tag chips — checkbox + label. Chips are horizontally
+       tiled; if the tag has params AND is checked, it switches to
+       `.weapon-tag-expanded` which takes a full row so the param
+       inputs have room below. */
+    .weapon-tag-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 4px;
+      font-size: 11px;
+      cursor: pointer;
     }
-    .rof-picker-select {
-      flex: 1;
+    .weapon-tag-check {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .weapon-tag-expanded {
+      flex: 0 0 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 6px 10px;
+      background: #141414;
+      border: 1px solid #333;
+      border-radius: 4px;
+    }
+    .weapon-tag-params {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding-left: 22px;
+    }
+    .weapon-tag-param-row {
+      display: grid;
+      grid-template-columns: 120px 1fr 150px;
+      gap: 6px;
+      align-items: center;
+    }
+    .weapon-tag-param-label {
+      font-size: 10px;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+    .weapon-tag-param-select,
+    .weapon-tag-param-input {
       background: #0a0a0a;
       border: 1px solid #222;
       color: #c8c8c8;
       font-family: inherit;
       font-size: 11px;
-      padding: 5px 6px;
+      padding: 4px 6px;
       border-radius: 3px;
       outline: none;
       min-width: 0;
     }
-    .rof-picker-select:focus { border-color: #444; }
-    .rof-picker-input {
-      max-width: 110px;
-      flex-shrink: 0;
-      background: #0a0a0a;
-      border: 1px solid #222;
-      color: #c8c8c8;
+    .weapon-tag-param-select:focus,
+    .weapon-tag-param-input:focus { border-color: #444; }
+    .weapon-tag-param-input {
       font-family: 'Consolas', 'Courier New', monospace;
-      font-size: 11px;
-      padding: 5px 6px;
-      border-radius: 3px;
-      outline: none;
     }
-    .rof-picker-input:focus { border-color: #444; }
     .rof-table-header {
       display: grid;
       grid-template-columns: 64px 1fr 100px 80px 28px;
@@ -4274,41 +4306,16 @@
       } else if (kind === 'ranged') {
         const range   = Number.isFinite(w.range)   ? w.range   : 0;
         const dmgmod  = Number.isFinite(w.dmgmod)  ? w.dmgmod  : 0;
-        // ammo/rof may be a literal number OR a formula string. We
+        // ammo may be a literal number OR a formula string. We
         // always stringify for the UI — the resolver handles the
         // dual-shape at evaluate time.
+        //
+        // ROF is NOT a weapon field anymore — it lives on the Rate
+        // of Fire tag (weapon.tagParams.t_rate_of_fire.level). See
+        // the Tag assignment section below; when the tag is checked,
+        // its param inputs appear inline and let the GM pick a ROF
+        // level from the rofTable.
         const ammoVal = (w.ammo == null) ? '' : String(w.ammo);
-        const rofVal  = (w.rof  == null) ? '' : String(w.rof);
-        // Build a ROF dropdown from the Rate of Fire tag's rofTable.
-        // The dropdown lets GMs pick a preset level by name instead of
-        // memorizing the integer scale; the underlying value still
-        // saves as a number (-1 / 0 / 1 / 2 / 3) so the resolver is
-        // unchanged. A "Custom…" option keeps the text input usable
-        // for formula-based ROF (e.g. DEXMOD/2-1) or any non-standard
-        // value the GM wants. Dropdown + text stay in sync — picking
-        // a preset writes to the text field, and a custom text value
-        // makes the dropdown show "Custom…".
-        const rofTag = (state.weaponTags || []).find(t => (t.name || '').toLowerCase() === 'rate of fire');
-        const rofTable = (rofTag && Array.isArray(rofTag.rofTable) && rofTag.rofTable.length > 0)
-          ? rofTag.rofTable
-          : [
-              { level: -1, label: 'Single-Fire' },
-              { level:  0, label: 'Action Fire' },
-              { level:  1, label: 'Semi-Automatic' },
-              { level:  2, label: 'Automatic' },
-              { level:  3, label: 'Fully Automatic' }
-            ];
-        // Decide which preset (if any) matches the current rofVal.
-        // A number string that matches one of the table's levels →
-        // highlight that option. Anything else (formula, empty) →
-        // "Custom…".
-        const rofNum = Number(rofVal);
-        const matchingLevel = (rofVal !== '' && Number.isFinite(rofNum) && rofTable.some(r => Number(r.level) === rofNum))
-          ? String(Math.round(rofNum))
-          : '__custom__';
-        const rofOpts = rofTable.map(r =>
-          `<option value="${q(String(r.level))}"${String(r.level) === matchingLevel ? ' selected' : ''}>ROF ${r.level} — ${qText(r.label || '')}</option>`
-        ).join('') + `<option value="__custom__"${matchingLevel === '__custom__' ? ' selected' : ''}>Custom / Formula…</option>`;
         body += `<div class="inv-pair-row">
           <div class="inv-field" style="max-width:140px">
             <label>Base Range (ft)</label>
@@ -4328,21 +4335,7 @@
             <label>AMMO (number or formula)</label>
             <input type="text" value="${q(ammoVal)}" placeholder="e.g. 6  or  STR"
                    oninput="updateItemWeaponField('${q(it.id)}','ammo',this.value)">
-            <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">Literal magazine size, or a formula evaluated per-character (e.g. <code>STR</code>, <code>DEXMOD + 2</code>).</div>
-          </div>
-          <div class="inv-field">
-            <label>Rate of Fire</label>
-            <div class="rof-picker-row">
-              <select class="rof-picker-select"
-                      onchange="setItemWeaponRofPreset('${q(it.id)}', this.value)"
-                      title="Pick a preset ROF level from the rate-of-fire table, or Custom to enter a formula">
-                ${rofOpts}
-              </select>
-              <input type="text" class="rof-picker-input" value="${q(rofVal)}" placeholder="value or formula"
-                     oninput="updateItemWeaponField('${q(it.id)}','rof',this.value)"
-                     title="Numeric ROF level (e.g. 2) or a formula (e.g. DEXMOD/2-1). Edit this directly to use a custom value.">
-            </div>
-            <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">Pick a preset from the ROF table, or type a formula. The ROF table is editable on the Rate of Fire tag.</div>
+            <div style="font-size:10px;color:#666;line-height:1.4;margin-top:2px">Literal magazine size, or a formula evaluated per-character (e.g. <code>STR</code>, <code>DEXMOD + 2</code>). <em>ROF is set via the Rate of Fire tag below.</em></div>
           </div>
         </div>`;
       }
@@ -4351,6 +4344,7 @@
       // Empty ruleset tag catalogue shows a hint pointing to the
       // Weapon Tags section above so authors know where to define them.
       const tagIds = Array.isArray(w.tags) ? w.tags : [];
+      const tagParams = (w.tagParams && typeof w.tagParams === 'object') ? w.tagParams : {};
       const rsTags = Array.isArray(state.weaponTags) ? state.weaponTags : [];
       body += `<div class="inv-field">
         <label>Tags</label>`;
@@ -4359,13 +4353,31 @@
       } else {
         body += `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">`;
         rsTags.forEach(t => {
-          const checked = tagIds.includes(t.id) ? ' checked' : '';
+          const on = tagIds.includes(t.id);
+          const checked = on ? ' checked' : '';
           const escName = qText(t.name || t.id);
           const escDesc = qText(t.description || '');
-          body += `<label style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:4px;font-size:11px;cursor:pointer" title="${escDesc}">
-            <input type="checkbox"${checked} onchange="toggleItemWeaponTag('${q(it.id)}','${q(t.id)}',this.checked)">
-            ${escName}
-          </label>`;
+          const hasParams = Array.isArray(t.params) && t.params.length > 0;
+          // Tag with params: when checked, expand to show its param
+          // inputs inline. Collapsed (unchecked) = just the checkbox.
+          // Expanded tags take full row so the param inputs have room
+          // to breathe.
+          if (on && hasParams) {
+            body += `<div class="weapon-tag-expanded" title="${escDesc}">
+              <label class="weapon-tag-check">
+                <input type="checkbox"${checked} onchange="toggleItemWeaponTag('${q(it.id)}','${q(t.id)}',this.checked)">
+                ${escName}
+              </label>
+              <div class="weapon-tag-params">
+                ${renderItemTagParamInputs(it, t, tagParams[t.id] || {})}
+              </div>
+            </div>`;
+          } else {
+            body += `<label class="weapon-tag-chip" title="${escDesc}">
+              <input type="checkbox"${checked} onchange="toggleItemWeaponTag('${q(it.id)}','${q(t.id)}',this.checked)">
+              ${escName}
+            </label>`;
+          }
         });
         body += `</div>`;
       }
@@ -4376,6 +4388,90 @@
       <span class="inv-toggle${toggleCls}" onclick="toggleItemWeapon('${q(it.id)}')">${toggleLbl}</span>
       <span class="inv-toggle-hint">Turn on to make this item a weapon — reveals damage, range, tags, and the roll formulas that apply to it.</span>
     </div>${body}`;
+  }
+
+  // Render the per-weapon parameter inputs for a single attached tag.
+  // Generic over tag.params — walks the param list and renders an
+  // appropriate input for each. Rate of Fire is special-cased: its
+  // 'level' param uses a dropdown driven by the tag's rofTable plus
+  // a "Custom…" text input for formulas. Other numeric/string params
+  // fall back to plain inputs.
+  //
+  // `it` is the ruleset item. `t` is the tag definition. `vals` is
+  // the current param-value map for this tag on this weapon
+  // (weapon.tagParams[t.id] || {}).
+  function renderItemTagParamInputs(it, t, vals) {
+    const isRofTag = (t.name || '').toLowerCase() === 'rate of fire';
+    const params = Array.isArray(t.params) ? t.params : [];
+    let html = '';
+    params.forEach(p => {
+      if (!p || !p.key) return;
+      const curr = (vals && vals[p.key] != null) ? vals[p.key] : (p.default != null ? p.default : '');
+
+      // ROF 'level' param — custom dropdown + formula escape hatch.
+      if (isRofTag && p.key === 'level') {
+        const rofTable = Array.isArray(t.rofTable) && t.rofTable.length > 0
+          ? t.rofTable
+          : [
+              { level: -1, label: 'Single-Fire' },
+              { level:  0, label: 'Action Fire' },
+              { level:  1, label: 'Semi-Automatic' },
+              { level:  2, label: 'Automatic' },
+              { level:  3, label: 'Fully Automatic' }
+            ];
+        // current value is either a number (preset match) or a string formula
+        const currStr = String(curr);
+        const currNum = Number(currStr);
+        const isPreset = currStr !== '' && Number.isFinite(currNum) && rofTable.some(r => Number(r.level) === currNum);
+        const selected = isPreset ? String(Math.round(currNum)) : '__custom__';
+        const opts = rofTable
+          .slice()
+          .sort((a, b) => Number(a.level) - Number(b.level))
+          .map(r => `<option value="${q(String(r.level))}"${String(r.level) === selected ? ' selected' : ''}>ROF ${r.level} — ${qText(r.label || '')}</option>`)
+          .join('')
+          + `<option value="__custom__"${selected === '__custom__' ? ' selected' : ''}>Custom / Formula…</option>`;
+        html += `<div class="weapon-tag-param-row">
+          <span class="weapon-tag-param-label">${qText(p.label || p.key)}</span>
+          <select class="weapon-tag-param-select"
+                  onchange="setItemTagParamPreset('${q(it.id)}','${q(t.id)}','${q(p.key)}', this.value)">
+            ${opts}
+          </select>
+          <input type="text" class="weapon-tag-param-input" value="${q(currStr)}"
+                 placeholder="value or formula"
+                 oninput="updateItemTagParam('${q(it.id)}','${q(t.id)}','${q(p.key)}', this.value)"
+                 title="Numeric level (e.g. 2) or a formula (e.g. DEXMOD/2-1)">
+        </div>`;
+        return;
+      }
+
+      // Generic number param — plain number input, falls back to text
+      // for formulas. Tag params marked type:'number' still accept
+      // formula strings — the resolver decides at use-time.
+      if (p.type === 'number' || p.type === 'integer') {
+        const minAttr = Number.isFinite(Number(p.min)) ? ` min="${Number(p.min)}"` : '';
+        const maxAttr = Number.isFinite(Number(p.max)) ? ` max="${Number(p.max)}"` : '';
+        const stepAttr = (p.type === 'integer') ? ' step="1"' : ' step="any"';
+        html += `<div class="weapon-tag-param-row">
+          <span class="weapon-tag-param-label">${qText(p.label || p.key)}</span>
+          <input type="text" class="weapon-tag-param-input"
+                 value="${q(String(curr))}"${minAttr}${maxAttr}${stepAttr}
+                 placeholder="${q(String(p.default != null ? p.default : ''))}"
+                 oninput="updateItemTagParam('${q(it.id)}','${q(t.id)}','${q(p.key)}', this.value)"
+                 title="${qText(p.label || p.key)}${Number.isFinite(Number(p.default)) ? ' — default: ' + Number(p.default) : ''}">
+        </div>`;
+        return;
+      }
+
+      // Generic text param — plain text input.
+      html += `<div class="weapon-tag-param-row">
+        <span class="weapon-tag-param-label">${qText(p.label || p.key)}</span>
+        <input type="text" class="weapon-tag-param-input"
+               value="${q(String(curr))}"
+               placeholder="${q(String(p.default != null ? p.default : ''))}"
+               oninput="updateItemTagParam('${q(it.id)}','${q(t.id)}','${q(p.key)}', this.value)">
+      </div>`;
+    });
+    return html;
   }
 
   // Build the category select options for an item, flagging the current
@@ -4731,50 +4827,19 @@
       // the normalizer's auto-migration, but keeps the data model
       // consistent WHILE the GM edits (before a save+reload cycle
       // would trigger the normalizer).
-      if (field === 'rof' && typeof w[field] === 'number') {
-        if (!Array.isArray(w.tags)) w.tags = [];
-        if (!w.tags.includes('t_rate_of_fire')) w.tags.push('t_rate_of_fire');
-        if (!w.tagParams) w.tagParams = {};
-        if (!w.tagParams.t_rate_of_fire) w.tagParams.t_rate_of_fire = {};
-        w.tagParams.t_rate_of_fire.level = Math.round(w[field]);
-      }
+      // No rof→tag auto-sync anymore. ROF is fully tag-based: GMs
+      // check the Rate of Fire tag and the generic tag-param UI shows
+      // a level dropdown. Legacy weapon.rof is still accepted here
+      // so migration data that got through survives, but new weapons
+      // shouldn't write to this field.
       return;
     }
   };
 
-  // Preset picker for the weapon editor's ROF dropdown. Takes the
-  // selected option value — either '__custom__' (no-op, just leaves
-  // the text input as-is so the GM can type a formula) or a level
-  // string ('-1', '0', '1', '2', '3'). Writes the chosen level to
-  // both the rof field and the tagParams level, and updates the
-  // adjacent text input so the UI reads consistent.
-  window.setItemWeaponRofPreset = function(id, optionValue) {
-    const it = state.items.find(x => x.id === id);
-    if (!it || !it.weapon || it.weapon.kind !== 'ranged') return;
-    if (optionValue === '__custom__') {
-      // Do nothing — user will type a value into the adjacent text
-      // input. If we reset the rof field we'd wipe an in-progress
-      // formula they haven't finished typing.
-      return;
-    }
-    const level = parseInt(optionValue, 10);
-    if (!Number.isFinite(level)) return;
-    const w = it.weapon;
-    w.rof = level;
-    if (!Array.isArray(w.tags)) w.tags = [];
-    if (!w.tags.includes('t_rate_of_fire')) w.tags.push('t_rate_of_fire');
-    if (!w.tagParams) w.tagParams = {};
-    if (!w.tagParams.t_rate_of_fire) w.tagParams.t_rate_of_fire = {};
-    w.tagParams.t_rate_of_fire.level = level;
-    // Update the sibling text input to reflect the new value. Full
-    // re-render would collapse expanded sections — prefer a
-    // surgical DOM update.
-    const select = document.querySelector(`select[onchange*="'${id}'"]`);
-    if (select) {
-      const input = select.parentElement ? select.parentElement.querySelector('input.rof-picker-input') : null;
-      if (input) input.value = String(level);
-    }
-  };
+  // setItemWeaponRofPreset — REMOVED. ROF is now set via the generic
+  // tag-param UI below (renderTagParamInputs). The checkbox for
+  // "Rate of Fire" reveals a level dropdown inline; no separate
+  // ROF field in the weapon stats block.
 
   window.addItemWeaponRange = function(id) {
     const it = state.items.find(x => x.id === id);
@@ -4826,9 +4891,85 @@
     if (!it || !it.weapon) return;
     if (!Array.isArray(it.weapon.tags)) it.weapon.tags = [];
     const idx = it.weapon.tags.indexOf(tagId);
-    if (on && idx < 0) it.weapon.tags.push(tagId);
-    else if (!on && idx >= 0) it.weapon.tags.splice(idx, 1);
-    // No re-render — checkbox visual state is handled by the browser.
+    if (on && idx < 0) {
+      it.weapon.tags.push(tagId);
+      // Seed tag params from the ruleset tag's defaults so the
+      // inline inputs render with sensible starting values.
+      const tagDef = (state.weaponTags || []).find(t => t.id === tagId);
+      if (tagDef && Array.isArray(tagDef.params) && tagDef.params.length > 0) {
+        if (!it.weapon.tagParams) it.weapon.tagParams = {};
+        if (!it.weapon.tagParams[tagId]) it.weapon.tagParams[tagId] = {};
+        tagDef.params.forEach(p => {
+          if (p && p.key && it.weapon.tagParams[tagId][p.key] == null && p.default != null) {
+            it.weapon.tagParams[tagId][p.key] = p.default;
+          }
+        });
+      }
+    } else if (!on && idx >= 0) {
+      it.weapon.tags.splice(idx, 1);
+      // Clean up tagParams so a toggled-off tag doesn't leak stale
+      // param values back into the save.
+      if (it.weapon.tagParams && it.weapon.tagParams[tagId]) {
+        delete it.weapon.tagParams[tagId];
+        if (Object.keys(it.weapon.tagParams).length === 0) {
+          delete it.weapon.tagParams;
+        }
+      }
+    }
+    // Re-render so tags with params show their param inputs when
+    // newly-checked (and hide them when newly-unchecked). This used
+    // to skip the re-render, but the generic tag-param UI needs it.
+    renderItemList();
+  };
+
+  // Set a tag parameter's value on a specific weapon. Called by the
+  // inline param inputs rendered under each checked tag. Generic
+  // across all params — `paramKey` tells us which slot, `value` is
+  // the raw string from the input. The ruleset tag's param type
+  // is used to coerce: 'number' inputs accept numeric strings OR
+  // formula strings; anything else stores as-is.
+  window.updateItemTagParam = function(itemId, tagId, paramKey, value) {
+    const it = state.items.find(x => x.id === itemId);
+    if (!it || !it.weapon) return;
+    if (!it.weapon.tagParams) it.weapon.tagParams = {};
+    if (!it.weapon.tagParams[tagId]) it.weapon.tagParams[tagId] = {};
+    const raw = (value == null) ? '' : String(value);
+    // Empty string — clear the param, fall back to default at resolve time.
+    if (raw === '') {
+      delete it.weapon.tagParams[tagId][paramKey];
+      if (Object.keys(it.weapon.tagParams[tagId]).length === 0) {
+        delete it.weapon.tagParams[tagId];
+        if (Object.keys(it.weapon.tagParams).length === 0) {
+          delete it.weapon.tagParams;
+        }
+      }
+      return;
+    }
+    // Numeric string → store as number. Otherwise preserve as formula
+    // string (resolver evaluates at use-time).
+    const n = Number(raw.trim());
+    if (Number.isFinite(n) && String(n) === raw.trim()) {
+      it.weapon.tagParams[tagId][paramKey] = n;
+    } else {
+      it.weapon.tagParams[tagId][paramKey] = raw;
+    }
+    // No re-render — the input holds its value.
+  };
+
+  // Preset picker for tag params with a lookup dropdown (currently
+  // just Rate of Fire). '__custom__' leaves the text input alone so
+  // the GM can type a formula; a numeric value writes it and
+  // re-renders so the text input reflects the pick.
+  window.setItemTagParamPreset = function(itemId, tagId, paramKey, optionValue) {
+    if (optionValue === '__custom__') return;
+    const n = parseInt(optionValue, 10);
+    if (!Number.isFinite(n)) return;
+    const it = state.items.find(x => x.id === itemId);
+    if (!it || !it.weapon) return;
+    if (!it.weapon.tagParams) it.weapon.tagParams = {};
+    if (!it.weapon.tagParams[tagId]) it.weapon.tagParams[tagId] = {};
+    it.weapon.tagParams[tagId][paramKey] = n;
+    renderItemList();
   };
 
   window.deleteItem = function(id) {
