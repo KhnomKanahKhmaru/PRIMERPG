@@ -176,11 +176,29 @@ export function createPowerSection(ctx) {
                 title="Click to rename">`
       : `<span class="power-label">${escapeHtml(name)}</span>`;
 
+    // Status pill — same 10-tier scale as the Overview tile, computed
+    // once in char-derived.js and threaded through power.statusLabel.
+    // Uses the shared s-* palette classes so the pill visually matches
+    // Body (Alive/Dying/Dead) and Sanity (Healthy/In Shock/Insane/Broken)
+    // pills on the Combat tab. Rendered inside the top row so it sits
+    // next to the value — mirrors the layout of the Body row.
+    const pctForStatus = max > 0 ? (current / max) * 100 : 0;
+    let statusClass;
+    if      (pctForStatus >= 70) statusClass = 's-healthy';
+    else if (pctForStatus >= 40) statusClass = 's-injured';
+    else if (pctForStatus >= 20) statusClass = 's-disabled';
+    else                          statusClass = 's-dead';
+    const statusLabel = power.statusLabel || '';
+    const statusPill = statusLabel
+      ? `<span class="power-status-pill state-tile-status ${statusClass}">${escapeHtml(statusLabel)}</span>`
+      : '';
+
     return `
       <div class="power-block">
         <div class="power-top-row">
           ${nameEl}
           <span class="power-value">${fmt(current)} / ${fmt(max)}</span>
+          ${statusPill}
           ${segHint}
           ${colorPicker}
         </div>
