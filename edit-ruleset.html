@@ -85,6 +85,43 @@
     .ds-row .delete-x { color: #555; font-size: 18px; cursor: pointer; padding: 0 4px; line-height: 1.6; text-align: center; }
     .ds-row .delete-x:hover { color: #c84b4b; }
     .ds-row .ds-code { font-family: 'Consolas', 'Courier New', monospace; font-weight: 600; text-transform: uppercase; }
+    /* Description row below each ds-row — stretches full width so authors
+       have room to write substantive descriptions. Player sheets use these
+       as the hover text on the derived-stat card. */
+    .ds-desc-row {
+      display: grid;
+      grid-template-columns: 80px 1fr;
+      gap: 8px;
+      align-items: start;
+      padding: 2px 10px 8px;
+      margin: -4px 0 4px;
+      background: #0c0c0c;
+      border: 1px solid #1a1a1a;
+      border-top: none;
+      border-radius: 0 0 4px 4px;
+    }
+    .ds-desc-row label {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #666;
+      padding-top: 6px;
+    }
+    .ds-desc-row textarea {
+      background: #0a0a0a;
+      border: 1px solid #222;
+      color: #c8c8c8;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 11px;
+      line-height: 1.5;
+      padding: 5px 8px;
+      border-radius: 3px;
+      outline: none;
+      resize: vertical;
+      min-height: 40px;
+    }
+    .ds-desc-row textarea:focus { border-color: #444; }
 
     .ds-list-header { display: grid; grid-template-columns: 100px 140px 110px 1fr 70px 60px 60px 60px 24px; gap: 6px; padding: 0 10px 4px; font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #666; border-bottom: 1px solid #1a1a1a; margin-bottom: 8px; }
 
@@ -2439,6 +2476,11 @@
           <div class="ds-toggle ${ds.penaltyReducesValue ? 'on' : ''}" onclick="toggleDsFlag(${i},'penaltyReducesValue')" title="Penalty directly reduces the stat's value — e.g. SPD at 25% Penalty becomes 75% of its base. Off = Penalty only affects dice rolls on this stat, not its displayed value.">${ds.penaltyReducesValue ? '−%' : '—'}</div>
           <div class="ds-toggle ${ds.rollable !== false ? 'on' : ''}" onclick="toggleDsRollable(${i})" title="Stat is rolled as a dice pool. ON = shows dice-roll affordances (dice pill, mod badge). OFF = static derived value (SPD, AGL, RFX, FORT) — card shows just the value, no roll UI.">${ds.rollable !== false ? '🎲' : '—'}</div>
           <span class="delete-x" onclick="removeDerivedStat(${i})" title="Remove">×</span>
+        </div>
+        <div class="ds-desc-row">
+          <label>Description</label>
+          <textarea rows="2" oninput="updateDsField(${i},'description',this.value)"
+                    placeholder="What does this stat represent? Shown on the character sheet as the card's hover/description. Players can override per-character.">${escapeHtmlAttr(ds.description || '')}</textarea>
         </div>
         ${errMsg ? `<div class="ds-error-msg">${escapeHtmlAttr(ds.code||'?')}: ${escapeHtmlAttr(errMsg)}</div>` : ''}
       `;
