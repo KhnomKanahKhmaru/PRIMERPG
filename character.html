@@ -475,6 +475,26 @@
     .state-tile-status.s-insane   { background: #2a1a10; color: #d89060; border: 1px solid #4a2d20; }
     .state-tile-status.s-broken   { background: #2a0d0d; color: #e06060; border: 1px solid #6a2a2a; }
 
+    /* Description block inside Body / Sanity / Penalty tiles. Shown
+       below the status pill and data rows. Text is muted + italic to
+       read as supplementary info rather than competing with the
+       numeric content. Uses the shared .pc-desc-* system for the
+       player override editor (pencil appears on hover when editable).
+       Wider line-height than usual because the descriptions tend to
+       be 2-4 lines of explanatory prose. */
+    .state-tile-desc.pc-desc-static,
+    .state-tile-desc.pc-desc-editing {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid #1a1a1a;
+      font-size: 11px;
+      color: #888;
+      line-height: 1.5;
+    }
+    .state-tile-desc.pc-desc-static { font-style: normal; }
+    .state-tile-desc.pc-desc-static .pc-desc-text { font-style: italic; }
+    .state-tile-desc.pc-desc-editing { font-style: normal; }
+
     /* Segmented bar — re-uses visual language from HP/SAN bars in combat tab
        but with slightly smaller segments for the overview density. */
     .state-bar {
@@ -5110,7 +5130,19 @@
     getCharData:     () => charData,
     getRuleset:      () => activeRuleset,
     getCanEdit:      () => !!canEdit,
-    saveCharacter:   () => saveCharacter(),
+    // Persist JUST the descriptionOverrides field. Firestore rejects
+    // undefined, so we coerce to an empty object when the field was
+    // cleaned off via removeOverride (module sets character.descriptionOverrides
+    // = undefined after dropping the last override to keep doc shape tidy).
+    // Empty object is fine — it's effectively identical to "no overrides".
+    //
+    // Earlier versions of this ctx called saveCharacter() with no
+    // args, which silently wrote undefined to Firestore — overrides
+    // changed in memory but never persisted. This version reads the
+    // current charData and pushes just the overrides field.
+    saveCharacter:   () => saveCharacter(charId, {
+      descriptionOverrides: charData.descriptionOverrides || {}
+    }),
     // Inline escapeHtml — each module carries its own copy since
     // there's no shared utility module exporting one. Matches the
     // implementation in char-combat.js / char-util.js.
