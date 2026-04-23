@@ -198,8 +198,8 @@ export function createPowerSection(ctx) {
         <div class="power-top-row">
           ${nameEl}
           <span class="power-value">${fmt(current)} / ${fmt(max)}</span>
-          ${statusPill}
           ${segHint}
+          ${statusPill}
           ${colorPicker}
         </div>
         <div class="power-bar-bg">${segHtml}</div>
