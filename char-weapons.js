@@ -665,32 +665,34 @@ export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, 
       };
     }
 
-    // Rapidfire Sweep — ROF ≥ 2 gates this tag's effect. Each AMMO
-    // spent into the SWEEP bucket (from the split rapidfire control)
-    // widens the cubic AOE by 2.5×ROF feet on every side, starting
-    // from nothing at 0-1 AMMO. Side = 2.5 × ROF × max(0, sweepAmmo − 1).
+    // Rapidfire Sweep — ROF ≥ 2 gates this tag's effect. The sweep
+    // input in the UI represents AMMO spent ON TOP OF the 2-AMMO
+    // baseline required to activate the sweep at all:
+    //
+    //   sweep input 0 → no sweep (need at least 2 total AMMO)
+    //   sweep input 1 → 2 total AMMO → cube side = 2.5 × ROF × 2
+    //   sweep input 2 → 3 total AMMO → cube side = 2.5 × ROF × 3
+    //   sweep input N → (N+1) total AMMO → cube side = 2.5 × ROF × (N+1)
+    //
     // Volume = side³. The area can take ANY shape whose volume does
     // not exceed this cube (line, cone, zig-zag, dome, irregular).
     //
     // Key separation: AMMO spent on a sweep does NOT grant the
     // Rapidfire damage bonus. The player splits a single AMMO pool
     // between the two modes via the UI's two-input rapidfire panel.
-    // `computeArea(ammo)` stays exported so authors and tools can
+    // `computeArea(input)` stays exported so authors and tools can
     // preview arbitrary splits without touching the card's state.
     //
-    //   ROF 2, 2 AMMO  → side 5,  volume 125        (5×5×5)
-    //   ROF 2, 3 AMMO  → side 10, volume 1,000      (10×10×10)
-    //   ROF 2, 6 AMMO  → side 25, volume 15,625     (25×25×25)
-    //   ROF 3, 4 AMMO  → side 22.5, volume ~11,391  (22.5×22.5×22.5)
+    //   ROF 2, sweep input 1 (2 AMMO)  → side 10,   volume 1,000    (10×10×10)
+    //   ROF 2, sweep input 2 (3 AMMO)  → side 15,   volume 3,375    (15×15×15)
+    //   ROF 2, sweep input 4 (5 AMMO)  → side 25,   volume 15,625   (25×25×25)
+    //   ROF 3, sweep input 3 (4 AMMO)  → side 30,   volume 27,000   (30×30×30)
     if (hasTag('Rapidfire Sweep')) {
       // Read ROF level from the tag-resolved rofInfo (which honors
       // tagParams.t_rate_of_fire.level and falls back to the legacy
-      // weapon.rof scalar only when no tag is present). Using
-      // out.rof.resolved directly here was a bug — after the tag
-      // migration a weapon's legacy `rof` field can be stale (0)
-      // while its actual ROF lives in tagParams, causing the sweep
-      // check to erroneously report "current ROF 0" on ROF-2+
-      // weapons. `rofInfo.level` is always the authoritative value.
+      // weapon.rof scalar only when no tag is present). `rofInfo.level`
+      // is always the authoritative value — reading out.rof.resolved
+      // directly was a bug after the tag migration.
       const rofValue = Math.max(0, (out.rofInfo && Number.isFinite(out.rofInfo.level)) ? out.rofInfo.level : 0);
       // Shotgun synergy — "Shotguns have their effective Sweep AOE
       // doubled". Interpreted as doubling the side length of the
@@ -698,13 +700,17 @@ export function resolveWeapon(weapon, character, ruleset, overrides, atkResult, 
       // scales 8× vs non-shotgun sweepers. Matches the flavor of
       // shotguns saturating wide areas efficiently.
       const shotgunMultiplier = hasShotgunTag ? 2 : 1;
-      const computeArea = function(ammo) {
-        const a = Math.max(0, Math.floor(ammo || 0));
-        if (a < 2 || rofValue < 2) return { sideLen: 0, area: 0, volume: 0, ammo: a };
-        const side = 2.5 * rofValue * (a - 1) * shotgunMultiplier;
+      // `input` is the sweep value from the UI — extras past the
+      // 2-AMMO baseline. input < 1 means no sweep. Multiplier is
+      // input + 1 (the +1 is the first AMMO past the single-shot
+      // baseline; sweep then scales by input above that).
+      const computeArea = function(input) {
+        const n = Math.max(0, Math.floor(input || 0));
+        if (n < 1 || rofValue < 2) return { sideLen: 0, area: 0, volume: 0, ammo: n };
+        const side = 2.5 * rofValue * (n + 1) * shotgunMultiplier;
         const area = side * side;
         const volume = side * side * side;
-        return { sideLen: side, area, volume, ammo: a };
+        return { sideLen: side, area, volume, ammo: n };
       };
       const activeArea = computeArea(rfSweep);
       out.rapidfireSweep = {
