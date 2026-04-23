@@ -703,6 +703,36 @@ window.RULESET_DEFAULTS = {
       ]
     },
     {
+      id: 't_rate_of_fire',
+      name: 'Rate of Fire',
+      description: 'The weapon\'s rate of fire. ROF determines how many projectiles fire per AMMO spent and how much difficulty mitigation the weapon provides against rapidfire recoil. Higher ROF = better recoil control = more bullets in the air per trigger pull. ROF-1 (single-fire, e.g. bolt action) is penalized rather than mitigated — trying to rapidfire a bolt action is harder than normal.',
+      params: [
+        {
+          key: 'level',
+          type: 'number',
+          label: 'ROF Level',
+          default: 0,
+          min: -1,
+          max: 3
+        }
+      ],
+      // ROF table — maps level to display label, ammo-per-shot multiplier,
+      // and difficulty mitigation (DM) against rapidfire. GMs can edit
+      // these values in the tag settings to tune the system for their
+      // ruleset. `level` is the numeric tag param; `perAmmo` is how many
+      // projectiles fire per AMMO spent; `dm` is the difficulty
+      // mitigation applied to rapidfire attempts (negative values
+      // penalize instead of mitigating, which is why single-fire
+      // weapons are hard to rapidfire).
+      rofTable: [
+        { level: -1, label: 'Single-Fire',     perAmmo: 1,  dm: -1 },
+        { level:  0, label: 'Action Fire',     perAmmo: 1,  dm:  0 },
+        { level:  1, label: 'Semi-Automatic',  perAmmo: 5,  dm:  1 },
+        { level:  2, label: 'Automatic',       perAmmo: 6,  dm:  2 },
+        { level:  3, label: 'Fully Automatic', perAmmo: 10, dm:  3 }
+      ]
+    },
+    {
       id: 't_major_stabilization',
       name: 'Major Stabilization',
       description: 'Stabilized by a major fixture (tripod, vehicle mount, structural mount). Recoil is decreased by 3.'
@@ -1469,6 +1499,23 @@ window.normalizeRuleset = function(rs) {
         tagParams.t_scoped.magnification = mag;
       }
     }
+    // Auto-migrate legacy `rof` scalar → Rate of Fire tag. If the
+    // weapon already has a 't_rate_of_fire' tag we leave it alone —
+    // the GM already made a deliberate choice. Otherwise we inject
+    // the tag and seed its level param from the weapon.rof value.
+    // Only applies when rof is a finite number; string formulas
+    // aren't migrated because we can't evaluate them at normalize
+    // time. Keeps weapon.rof as-is for now so legacy readers still
+    // work during the one-cycle transition; the resolver prefers
+    // tagParams over weapon.rof when both are present.
+    if (!tags.includes('t_rate_of_fire') && typeof rof === 'number' && Number.isFinite(rof)) {
+      tags.push('t_rate_of_fire');
+      if (!tagParams) tagParams = {};
+      if (!tagParams.t_rate_of_fire) tagParams.t_rate_of_fire = {};
+      if (tagParams.t_rate_of_fire.level == null) {
+        tagParams.t_rate_of_fire.level = Math.max(-1, Math.min(3, Math.round(rof)));
+      }
+    }
     return { kind: 'ranged', dice, pen, tags, range, dmgmod, ammo, rof, tagParams };
   };
 
@@ -1842,6 +1889,25 @@ window.normalizeRuleset = function(rs) {
       categoryId
     };
     if (params) tag.params = params;
+    // Preserve rofTable — the ROF tag's level→{label, perAmmo, dm}
+    // lookup. Each entry: {level, label, perAmmo, dm}. Drops malformed
+    // entries silently. If the tag carries a rofTable field but it's
+    // invalid/empty, we leave the field off; downstream lookup falls
+    // back to the hardcoded default table.
+    if (Array.isArray(t.rofTable) && t.rofTable.length > 0) {
+      const cleanRof = t.rofTable.map(r => {
+        if (!r || typeof r !== 'object') return null;
+        const level = Number(r.level);
+        if (!Number.isFinite(level)) return null;
+        return {
+          level: Math.round(level),
+          label: (typeof r.label === 'string' && r.label.trim()) ? r.label.trim() : String(level),
+          perAmmo: Number.isFinite(Number(r.perAmmo)) ? Math.max(1, Math.round(Number(r.perAmmo))) : 1,
+          dm: Number.isFinite(Number(r.dm)) ? Math.round(Number(r.dm)) : 0
+        };
+      }).filter(Boolean);
+      if (cleanRof.length > 0) tag.rofTable = cleanRof;
+    }
     return tag;
   }).filter(Boolean);
 
@@ -1862,6 +1928,13 @@ window.normalizeRuleset = function(rs) {
       };
       if (Array.isArray(stdTag.params)) {
         injected.params = stdTag.params.map(p => Object.assign({}, p));
+      }
+      // Carry rofTable through when injecting the Rate of Fire tag.
+      // The tag is useless without its lookup table — level param
+      // alone wouldn't know what "ROF 2" means for per-ammo count
+      // or DM. Deep-copy so later edits don't mutate the default.
+      if (Array.isArray(stdTag.rofTable)) {
+        injected.rofTable = stdTag.rofTable.map(r => Object.assign({}, r));
       }
       out.weaponTags.push(injected);
     }
