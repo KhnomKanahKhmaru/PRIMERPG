@@ -181,8 +181,16 @@ window.RULESET_DEFAULTS = {
 
   // Groups for organizing derived stats on the Combat tab. GM-customizable.
   // Every group has a code (stable ID) and a label (display name).
+  // Codes stay stable because many files filter on them ('health',
+  // 'movement', 'mental'); the label is what the player sees on the
+  // sheet and is freely editable. Shipped labels:
+  //   health   → "Physical"   (Physical durability & body stats)
+  //   movement → "Combat"     (INIT, Speed, Sprint, Agility, Reflex)
+  //   mental   → "Mental"     (Sanity and mental stats)
+  //   power    → "Power"      (supernatural capacity)
+  //   carry    → "Carry"      (encumbrance + lift)
   derivedStatGroups: [
-    { code: 'health',   label: 'Health'   },
+    { code: 'health',   label: 'Physical' },
     // 'movement' group code stays for back-compat (many files filter on
     // it). The DISPLAY label is "Combat" — the group now holds INIT
     // alongside the movement stats since initiative belongs with the
@@ -833,6 +841,26 @@ window.normalizeRuleset = function(rs) {
           });
           seenGroups.add(defaultGroup.code);
         }
+      });
+      // One-shot label upgrades — when a group's stored label still
+      // matches a known previous default, bump it to the current
+      // default. Conservative: we ONLY change labels that exactly
+      // match an old shipped value, preserving any author rename
+      // (someone who renamed 'Health' to 'Vitality' keeps Vitality).
+      //
+      // This is how we propagate label renames to already-saved
+      // rulesets. A new label simply added to defaults wouldn't reach
+      // existing saves without this — the normalizer only seeds
+      // groups that are missing entirely, not ones whose labels
+      // drifted.
+      const LABEL_UPGRADES = {
+        health:   { oldLabels: ['Health'],   newLabel: 'Physical' },
+        movement: { oldLabels: ['Movement'], newLabel: 'Combat'   },
+        mental:   { oldLabels: ['Sanity'],   newLabel: 'Mental'   }
+      };
+      out.derivedStatGroups.forEach(g => {
+        const u = LABEL_UPGRADES[g.code];
+        if (u && u.oldLabels.includes(g.label)) g.label = u.newLabel;
       });
     }
   }
