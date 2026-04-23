@@ -331,10 +331,14 @@ export function createOverviewSection(ctx) {
     const headInner = `
       <span class="state-tile-label">Power</span>
       <span class="state-tile-nums">${fmt(current)}<span class="sep">/</span><span class="max">${fmt(max)}</span></span>`;
+    const descHtml = ctx.renderDescriptionDisplay
+      ? ctx.renderDescriptionDisplay('tiles', 'power', { wrapperClass: 'state-tile-desc' })
+      : '';
     const bodyHtml = `
       <div class="state-progress-bar">
         <div class="state-progress-fill" style="width:${pct}%;background:${escapeHtml(color)}"></div>
-      </div>`;
+      </div>
+      ${descHtml}`;
     return wrapCollapsibleTile('power', '', headInner, bodyHtml);
   }
 
