@@ -315,7 +315,7 @@
       outline: none;
     }
     .cond-rs-row-head input:focus { border-color: #444; }
-    .cond-rs-row-fields { display: flex; gap: 8px; }
+    .cond-rs-row-fields { display: flex; gap: 8px; flex-wrap: wrap; }
     .tag-cat-select {
       background: #0a0a0a; border: 1px solid #222; color: #c8c8c8;
       font-family: inherit; font-size: 11px;
@@ -323,6 +323,54 @@
       max-width: 170px; flex-shrink: 0;
     }
     .tag-cat-select:focus { border-color: #444; }
+    /* ROF table editor — shown inside the Rate of Fire tag card. Each
+       row is one ROF level, with inputs for label / per-AMMO / DM.
+       Grid columns match the header row for perfect alignment. */
+    .rof-table-hint {
+      font-size: 10px; color: #666; font-style: italic;
+      line-height: 1.5; margin: 0 0 6px;
+    }
+    .rof-table-header {
+      display: grid;
+      grid-template-columns: 64px 1fr 100px 80px;
+      gap: 6px;
+      padding: 2px 4px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #666;
+    }
+    .rof-row {
+      display: grid;
+      grid-template-columns: 64px 1fr 100px 80px;
+      gap: 6px;
+      padding: 2px 4px;
+      align-items: center;
+    }
+    .rof-row + .rof-row { margin-top: 3px; }
+    .rof-level {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      color: #c8c8c8;
+      text-align: center;
+    }
+    .rof-row input {
+      background: #0a0a0a;
+      border: 1px solid #222;
+      color: #c8c8c8;
+      font-family: inherit;
+      font-size: 11px;
+      padding: 4px 6px;
+      border-radius: 3px;
+      outline: none;
+    }
+    .rof-row input[type="number"] {
+      font-family: 'Consolas', 'Courier New', monospace;
+      text-align: center;
+    }
+    .rof-row input:focus { border-color: #444; }
     .subsection {
       margin: 10px 0 14px;
       padding: 8px 10px;
@@ -2020,7 +2068,15 @@
       return n;
     };
 
-    const renderTagCard = ({ tag: t, index: i }) => `
+    const renderTagCard = ({ tag: t, index: i }) => {
+      // Rate of Fire tag is special-cased — it carries a rofTable
+      // (level → {label, perAmmo, dm} map) that needs a row editor.
+      // Detection is by name so homebrew rulesets that renamed the
+      // default tag still get the editor.
+      const isRofTag = (t.name || '').toLowerCase() === 'rate of fire';
+      const rofEditor = isRofTag ? renderRofTableEditor(t, i) : '';
+
+      return `
       <div class="cond-rs-row tag-rs-row">
         <div class="cond-rs-row-head">
           <input type="text" placeholder="Tag name"
@@ -2039,8 +2095,57 @@
             <textarea placeholder="What does this tag mean? Displayed on weapon cards that use this tag."
                       oninput="updateWeaponTag(${i}, 'description', this.value)">${esc(t.description || '')}</textarea>
           </div>
+          ${rofEditor}
         </div>
       </div>`;
+    };
+
+    // ROF table editor — five rows (one per level, -1 through 3 by
+    // default) with label / perAmmo / dm inputs each. The GM can
+    // edit any cell; adding/removing levels isn't supported for
+    // simplicity (the level range is tied to the tag param's
+    // min/max, and changing that is a rarely-wanted operation).
+    function renderRofTableEditor(t, tagIndex) {
+      const table = Array.isArray(t.rofTable) && t.rofTable.length > 0
+        ? t.rofTable
+        : [
+            { level: -1, label: 'Single-Fire',     perAmmo: 1,  dm: -1 },
+            { level:  0, label: 'Action Fire',     perAmmo: 1,  dm:  0 },
+            { level:  1, label: 'Semi-Automatic',  perAmmo: 5,  dm:  1 },
+            { level:  2, label: 'Automatic',       perAmmo: 6,  dm:  2 },
+            { level:  3, label: 'Fully Automatic', perAmmo: 10, dm:  3 }
+          ];
+      const rows = table.map(r => `
+        <div class="rof-row">
+          <span class="rof-level">ROF ${r.level}</span>
+          <input type="text" placeholder="Label"
+                 value="${esc(r.label || '')}"
+                 oninput="updateRofRow(${tagIndex}, ${r.level}, 'label', this.value)"
+                 title="Display name for this ROF level">
+          <input type="number" step="1" min="1" placeholder="per AMMO"
+                 value="${Number(r.perAmmo) || 1}"
+                 oninput="updateRofRow(${tagIndex}, ${r.level}, 'perAmmo', this.value)"
+                 title="Projectiles fired per AMMO spent">
+          <input type="number" step="1" placeholder="DM"
+                 value="${Number(r.dm) || 0}"
+                 oninput="updateRofRow(${tagIndex}, ${r.level}, 'dm', this.value)"
+                 title="Difficulty mitigation applied to rapidfire (negative values penalize instead)">
+        </div>
+      `).join('');
+      return `
+        <div class="cond-rs-row-field" style="grid-column: 1 / -1;">
+          <label>ROF Table — level → (label, projectiles per AMMO, difficulty mitigation)</label>
+          <div class="rof-table-hint">Difficulty Mitigation (DM) reduces the rapidfire difficulty penalty. Negative values <em>increase</em> the penalty — single-fire weapons are harder to rapidfire than normal. Projectiles per AMMO determines how many bullets fire on each shell/round spent.</div>
+          <div class="rof-table-header">
+            <span>Level</span>
+            <span>Label</span>
+            <span>per AMMO</span>
+            <span>DM</span>
+          </div>
+          ${rows}
+        </div>
+      `;
+    }
 
     let html = '';
     const renderCatSection = (c, depth) => {
@@ -2194,6 +2299,40 @@
     if (!Array.isArray(state.weaponTags)) return;
     state.weaponTags.splice(i, 1);
     renderWeaponTags();
+  };
+
+  // Rate of Fire tag's rofTable editor — mutates a single cell in
+  // a specific level's row. `level` is the numeric ROF level that
+  // identifies the row (stable). `field` is 'label' | 'perAmmo' | 'dm'.
+  // If the tag has no rofTable yet (default case — GM just added the
+  // tag and hasn't customized), we seed it with the Standard Set
+  // values before applying the edit.
+  window.updateRofRow = function(tagIndex, level, field, value) {
+    if (!Array.isArray(state.weaponTags)) return;
+    const t = state.weaponTags[tagIndex];
+    if (!t) return;
+    if (!Array.isArray(t.rofTable) || t.rofTable.length === 0) {
+      t.rofTable = [
+        { level: -1, label: 'Single-Fire',     perAmmo: 1,  dm: -1 },
+        { level:  0, label: 'Action Fire',     perAmmo: 1,  dm:  0 },
+        { level:  1, label: 'Semi-Automatic',  perAmmo: 5,  dm:  1 },
+        { level:  2, label: 'Automatic',       perAmmo: 6,  dm:  2 },
+        { level:  3, label: 'Fully Automatic', perAmmo: 10, dm:  3 }
+      ];
+    }
+    const row = t.rofTable.find(r => Number(r.level) === Number(level));
+    if (!row) return;
+    if (field === 'label') {
+      row.label = typeof value === 'string' ? value : '';
+    } else if (field === 'perAmmo') {
+      const n = parseInt(value, 10);
+      row.perAmmo = Number.isFinite(n) ? Math.max(1, n) : 1;
+    } else if (field === 'dm') {
+      const n = parseInt(value, 10);
+      row.dm = Number.isFinite(n) ? n : 0;
+    }
+    // No re-render — the input holds the value itself. Save happens
+    // via the main Save button for the whole ruleset.
   };
 
   // ── Tag Category handlers ──
