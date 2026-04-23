@@ -190,7 +190,15 @@ export function createPowerSection(ctx) {
     else                          statusClass = 's-dead';
     const statusLabel = power.statusLabel || '';
     const statusPill = statusLabel
-      ? `<span class="power-status-pill state-tile-status ${statusClass}" style="margin-left:auto">${escapeHtml(statusLabel)}</span>`
+      ? `<span class="power-status-pill state-tile-status ${statusClass}">${escapeHtml(statusLabel)}</span>`
+      : '';
+
+    // Group the right-side elements (seghint, status pill, color
+    // picker) into a single wrapper that floats to the right via
+    // margin-left:auto. Individual auto-margins on each element were
+    // fighting the flex cascade and producing inconsistent gaps.
+    const rightGroup = (statusPill || segHint || colorPicker)
+      ? `<div class="power-right-group">${segHint}${statusPill}${colorPicker}</div>`
       : '';
 
     return `
@@ -198,9 +206,7 @@ export function createPowerSection(ctx) {
         <div class="power-top-row">
           ${nameEl}
           <span class="power-value">${fmt(current)} / ${fmt(max)}</span>
-          ${segHint}
-          ${statusPill}
-          ${colorPicker}
+          ${rightGroup}
         </div>
         <div class="power-bar-bg">${segHtml}</div>
         ${controls}
