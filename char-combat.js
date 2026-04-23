@@ -140,7 +140,18 @@ export function createCombatSection(ctx) {
     getCanEdit:  ctx.getCanEdit,
     escapeHtml,
     fmt,
-    conditionsSection
+    conditionsSection,
+    // Forward the description renderer from sectionCtx so the Body /
+    // Sanity / Penalty tiles can show the ruleset-authored, player-
+    // overridable description blocks. Read lazily because sectionCtx
+    // gets renderDescriptionDisplay attached AFTER combat.js runs its
+    // factory (the descriptions module is instantiated last so it can
+    // call back into stats/combat for re-renders). Using a getter
+    // means whatever value sectionCtx has at render time wins.
+    renderDescriptionDisplay: (category, id, opts) =>
+      (typeof ctx.renderDescriptionDisplay === 'function')
+        ? ctx.renderDescriptionDisplay(category, id, opts)
+        : ''
   });
 
 
