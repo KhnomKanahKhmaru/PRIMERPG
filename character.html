@@ -2839,12 +2839,25 @@
     .power-name-input:focus { border-color: #444; background: #0a0a0a; color: #ccc; }
     .power-name-input::placeholder { color: #444; }
     .power-value { font-size: 18px; font-weight: 700; color: #e8e8e8; font-variant-numeric: tabular-nums; }
-    .power-seghint { font-size: 10px; color: #555; font-style: italic; margin-left: auto; }
-
+    .power-seghint { font-size: 10px; color: #555; font-style: italic; }
+    /* Status pill owns the "push to the right" auto-margin — anything
+       to its right (color picker) sits as its neighbor. The color
+       picker no longer has its own auto-margin, which was orphaning
+       it at the far edge and leaving the pill stuck near the value. */
+    .power-status-pill { margin-left: auto; }
+    /* Wrapper for the right-side elements — pushes the whole group to
+       the far right of the top row via margin-left:auto, then the
+       elements inside flow tight together with a small gap. Replaces
+       the earlier per-element auto-margins which were fighting the
+       flex cascade and leaving huge unexpected gaps. */
+    .power-right-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+    }
     /* Color picker — tiny swatch that triggers the native color input */
-    .power-color-picker { position: relative; display: inline-flex; align-items: center; cursor: pointer; margin-left: auto; }
-    .power-color-picker:has(+ .power-seghint) { margin-left: 0; }
-    .power-seghint + .power-color-picker { margin-left: 0; }
+    .power-color-picker { position: relative; display: inline-flex; align-items: center; cursor: pointer; }
     .power-color-picker input[type="color"] { position: absolute; opacity: 0; width: 100%; height: 100%; cursor: pointer; top: 0; left: 0; }
     .power-color-swatch { display: inline-block; width: 18px; height: 18px; border-radius: 3px; border: 1px solid #333; transition: transform 0.15s; }
     .power-color-picker:hover .power-color-swatch { transform: scale(1.1); border-color: #555; }
