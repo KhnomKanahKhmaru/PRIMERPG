@@ -328,6 +328,20 @@ export function createOverviewSection(ctx) {
     const color = (power.color && typeof power.color === 'string' && power.color.trim())
       ? power.color
       : '#6a4a9a';
+
+    // Status pill class — maps the 10 power tiers to three visual
+    // severity buckets that share the palette with Body/Sanity status
+    // pills. Full / Nearly Full / Brimming read as healthy (green);
+    // middle tiers read as injured/depleted (yellow→orange);
+    // Slivers / Nearly Empty / Exhausted read as critical (red).
+    // Using the existing s-* classes avoids authoring new palette vars.
+    const statusLabel = power.statusLabel || 'Unknown';
+    let statusClass;
+    if      (pct >= 70) statusClass = 's-healthy';
+    else if (pct >= 40) statusClass = 's-injured';
+    else if (pct >= 20) statusClass = 's-disabled';
+    else                statusClass = 's-dead';
+
     const headInner = `
       <span class="state-tile-label">Power</span>
       <span class="state-tile-nums">${fmt(current)}<span class="sep">/</span><span class="max">${fmt(max)}</span></span>`;
@@ -338,6 +352,7 @@ export function createOverviewSection(ctx) {
       <div class="state-progress-bar">
         <div class="state-progress-fill" style="width:${pct}%;background:${escapeHtml(color)}"></div>
       </div>
+      <span class="state-tile-status ${statusClass}">${escapeHtml(statusLabel)}</span>
       ${descHtml}`;
     return wrapCollapsibleTile('power', '', headInner, bodyHtml);
   }
