@@ -367,7 +367,7 @@
     .rof-picker-input:focus { border-color: #444; }
     .rof-table-header {
       display: grid;
-      grid-template-columns: 64px 1fr 100px 80px;
+      grid-template-columns: 64px 1fr 100px 80px 28px;
       gap: 6px;
       padding: 2px 4px;
       font-size: 9px;
@@ -378,7 +378,7 @@
     }
     .rof-row {
       display: grid;
-      grid-template-columns: 64px 1fr 100px 80px;
+      grid-template-columns: 64px 1fr 100px 80px 28px;
       gap: 6px;
       padding: 2px 4px;
       align-items: center;
@@ -391,6 +391,19 @@
       color: #c8c8c8;
       text-align: center;
     }
+    .rof-level-input {
+      background: #0a0a0a;
+      border: 1px solid #222;
+      color: #c8c8c8;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 4px;
+      border-radius: 3px;
+      outline: none;
+      text-align: center;
+    }
+    .rof-level-input:focus { border-color: #555; }
     .rof-row input {
       background: #0a0a0a;
       border: 1px solid #222;
@@ -406,6 +419,44 @@
       text-align: center;
     }
     .rof-row input:focus { border-color: #444; }
+    .rof-del-btn {
+      background: transparent;
+      border: 1px solid #2a2a2a;
+      color: #666;
+      font-size: 14px;
+      line-height: 1;
+      padding: 0;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: all 0.12s;
+      width: 24px;
+      height: 24px;
+      font-family: inherit;
+    }
+    .rof-del-btn:hover {
+      background: #2a1010;
+      border-color: #5a2020;
+      color: #c88;
+    }
+    .rof-add-btn {
+      margin-top: 8px;
+      background: #0a0a0a;
+      border: 1px dashed #333;
+      color: #888;
+      font-family: inherit;
+      font-size: 11px;
+      padding: 5px 12px;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: all 0.12s;
+      width: 100%;
+    }
+    .rof-add-btn:hover {
+      background: #111;
+      border-color: #555;
+      border-style: solid;
+      color: #c8c8c8;
+    }
     .subsection {
       margin: 10px 0 14px;
       padding: 8px 10px;
@@ -2135,11 +2186,13 @@
       </div>`;
     };
 
-    // ROF table editor — five rows (one per level, -1 through 3 by
-    // default) with label / perAmmo / dm inputs each. The GM can
-    // edit any cell; adding/removing levels isn't supported for
-    // simplicity (the level range is tied to the tag param's
-    // min/max, and changing that is a rarely-wanted operation).
+    // ROF table editor — one row per level. The GM can edit any cell,
+    // including the level itself (number input), delete rows, and add
+    // new ones. Changing a level or deleting a row that weapons
+    // reference shows a confirm with the count so the GM knows what
+    // they're about to orphan. Weapons with orphaned levels fall back
+    // to DEFAULT_ROF_TABLE gracefully in the resolver, so breakage is
+    // visual (wrong label / DM) rather than fatal.
     function renderRofTableEditor(t, tagIndex) {
       const table = Array.isArray(t.rofTable) && t.rofTable.length > 0
         ? t.rofTable
@@ -2150,34 +2203,46 @@
             { level:  2, label: 'Automatic',       perAmmo: 6,  dm:  2 },
             { level:  3, label: 'Fully Automatic', perAmmo: 10, dm:  3 }
           ];
-      const rows = table.map(r => `
+      // Sort ascending by level for display. Mutations below use the
+      // ORIGINAL level value to find rows, so sorting at render time
+      // doesn't affect lookup logic.
+      const sorted = table.slice().sort((a, b) => Number(a.level) - Number(b.level));
+      const rows = sorted.map(r => {
+        const lvl = Number(r.level);
+        return `
         <div class="rof-row">
-          <span class="rof-level">ROF ${r.level}</span>
+          <input type="number" step="1" class="rof-level-input"
+                 value="${lvl}"
+                 onchange="updateRofRowLevel(${tagIndex}, ${lvl}, this.value)"
+                 title="ROF level \u2014 the numeric key weapons reference. Editing this may orphan weapons that use the old level.">
           <input type="text" placeholder="Label"
                  value="${esc(r.label || '')}"
-                 oninput="updateRofRow(${tagIndex}, ${r.level}, 'label', this.value)"
+                 oninput="updateRofRow(${tagIndex}, ${lvl}, 'label', this.value)"
                  title="Display name for this ROF level">
           <input type="number" step="1" min="1" placeholder="per AMMO"
                  value="${Number(r.perAmmo) || 1}"
-                 oninput="updateRofRow(${tagIndex}, ${r.level}, 'perAmmo', this.value)"
+                 oninput="updateRofRow(${tagIndex}, ${lvl}, 'perAmmo', this.value)"
                  title="Projectiles fired per AMMO spent">
           <input type="number" step="1" placeholder="DM"
                  value="${Number(r.dm) || 0}"
-                 oninput="updateRofRow(${tagIndex}, ${r.level}, 'dm', this.value)"
+                 oninput="updateRofRow(${tagIndex}, ${lvl}, 'dm', this.value)"
                  title="Difficulty mitigation applied to rapidfire (negative values penalize instead)">
+          <button class="rof-del-btn" onclick="removeRofRow(${tagIndex}, ${lvl})" title="Delete this ROF level">\u00d7</button>
         </div>
-      `).join('');
+      `}).join('');
       return `
         <div class="cond-rs-row-field" style="grid-column: 1 / -1;">
           <label>ROF Table — level → (label, projectiles per AMMO, difficulty mitigation)</label>
-          <div class="rof-table-hint">Difficulty Mitigation (DM) reduces the rapidfire difficulty penalty. Negative values <em>increase</em> the penalty — single-fire weapons are harder to rapidfire than normal. Projectiles per AMMO determines how many bullets fire on each shell/round spent.</div>
+          <div class="rof-table-hint">Difficulty Mitigation (DM) reduces the rapidfire difficulty penalty. Negative values <em>increase</em> the penalty — single-fire weapons are harder to rapidfire than normal. Projectiles per AMMO determines how many bullets fire on each shell/round spent. Edit the Level column to renumber a row (weapons referencing the old number will be warned).</div>
           <div class="rof-table-header">
             <span>Level</span>
             <span>Label</span>
             <span>per AMMO</span>
             <span>DM</span>
+            <span></span>
           </div>
           ${rows}
+          <button class="rof-add-btn" onclick="addRofRow(${tagIndex})" title="Add a new ROF level at the next available number">+ Add ROF Level</button>
         </div>
       `;
     }
@@ -2368,6 +2433,113 @@
     }
     // No re-render — the input holds the value itself. Save happens
     // via the main Save button for the whole ruleset.
+  };
+
+  // Count how many weapons in the current ruleset reference a given
+  // ROF level. Checks both tagParams.t_rate_of_fire.level AND the
+  // legacy weapon.rof scalar (tolerates rulesets partway through
+  // migration). Used to warn the GM before an edit that would
+  // orphan weapons.
+  function countRofRefs(level) {
+    if (!Array.isArray(state.items)) return 0;
+    let count = 0;
+    const target = Number(level);
+    state.items.forEach(it => {
+      const w = it && it.weapon;
+      if (!w || w.kind !== 'ranged') return;
+      // Prefer tagParams if present — post-migration shape.
+      if (w.tagParams && w.tagParams.t_rate_of_fire
+          && Number(w.tagParams.t_rate_of_fire.level) === target) {
+        count++;
+        return;
+      }
+      // Legacy scalar fallback.
+      if (typeof w.rof === 'number' && Number(w.rof) === target) {
+        count++;
+      }
+    });
+    return count;
+  }
+
+  // Rename the `level` key on a rofTable row. The key is what weapons
+  // reference via tagParams.t_rate_of_fire.level, so changing it
+  // effectively ORPHANS any weapon still using the old level (they
+  // fall back to DEFAULT_ROF_TABLE in the resolver). We warn the GM
+  // with a confirm dialog that includes the weapon count. Cancelled
+  // edits revert the input value so the UI stays consistent.
+  window.updateRofRowLevel = function(tagIndex, oldLevel, newValue) {
+    if (!Array.isArray(state.weaponTags)) return;
+    const t = state.weaponTags[tagIndex];
+    if (!t || !Array.isArray(t.rofTable)) return;
+    const oldNum = Number(oldLevel);
+    const newNum = parseInt(newValue, 10);
+    if (!Number.isFinite(newNum)) {
+      renderWeaponTags();
+      return;
+    }
+    if (newNum === oldNum) return;
+    // Duplicate check — can't have two rows with the same level.
+    if (t.rofTable.some(r => Number(r.level) === newNum)) {
+      alert('A row with ROF level ' + newNum + ' already exists. Delete it first or pick a different number.');
+      renderWeaponTags();
+      return;
+    }
+    // Weapon-ref warning.
+    const refs = countRofRefs(oldNum);
+    if (refs > 0) {
+      const msg = `${refs} weapon${refs === 1 ? '' : 's'} reference${refs === 1 ? 's' : ''} ROF ${oldNum}. `
+        + `Changing the level to ${newNum} will orphan ${refs === 1 ? 'that weapon' : 'those weapons'} — `
+        + `${refs === 1 ? 'it' : 'they'} will fall back to the hardcoded default table for ROF ${oldNum} `
+        + `until you re-assign ${refs === 1 ? 'it' : 'them'} on the weapon editor.\n\nContinue?`;
+      if (!confirm(msg)) {
+        renderWeaponTags();
+        return;
+      }
+    }
+    const row = t.rofTable.find(r => Number(r.level) === oldNum);
+    if (!row) return;
+    row.level = newNum;
+    renderWeaponTags();
+  };
+
+  // Delete a row from the rofTable. Warns if weapons reference it.
+  window.removeRofRow = function(tagIndex, level) {
+    if (!Array.isArray(state.weaponTags)) return;
+    const t = state.weaponTags[tagIndex];
+    if (!t || !Array.isArray(t.rofTable)) return;
+    const target = Number(level);
+    const refs = countRofRefs(target);
+    let msg;
+    if (refs > 0) {
+      msg = `${refs} weapon${refs === 1 ? '' : 's'} reference${refs === 1 ? 's' : ''} ROF ${target}. `
+        + `Deleting this row will orphan ${refs === 1 ? 'that weapon' : 'those weapons'} — `
+        + `${refs === 1 ? 'it' : 'they'} will fall back to the hardcoded default table for ROF ${target} `
+        + `until you re-assign ${refs === 1 ? 'it' : 'them'}.\n\nDelete anyway?`;
+    } else {
+      msg = `Delete ROF ${target} from the table?`;
+    }
+    if (!confirm(msg)) return;
+    t.rofTable = t.rofTable.filter(r => Number(r.level) !== target);
+    renderWeaponTags();
+  };
+
+  // Append a new row to the rofTable. Level is chosen as one above
+  // the current max, or 0 if the table is empty. GM can then edit
+  // the level inline to whatever they actually want.
+  window.addRofRow = function(tagIndex) {
+    if (!Array.isArray(state.weaponTags)) return;
+    const t = state.weaponTags[tagIndex];
+    if (!t) return;
+    if (!Array.isArray(t.rofTable)) t.rofTable = [];
+    const levels = t.rofTable.map(r => Number(r.level)).filter(Number.isFinite);
+    const nextLevel = levels.length > 0 ? Math.max.apply(null, levels) + 1 : 0;
+    t.rofTable.push({
+      level: nextLevel,
+      label: 'New ROF Level',
+      perAmmo: 1,
+      dm: 0
+    });
+    renderWeaponTags();
   };
 
   // ── Tag Category handlers ──
@@ -4564,7 +4736,7 @@
         if (!w.tags.includes('t_rate_of_fire')) w.tags.push('t_rate_of_fire');
         if (!w.tagParams) w.tagParams = {};
         if (!w.tagParams.t_rate_of_fire) w.tagParams.t_rate_of_fire = {};
-        w.tagParams.t_rate_of_fire.level = Math.max(-1, Math.min(3, Math.round(w[field])));
+        w.tagParams.t_rate_of_fire.level = Math.round(w[field]);
       }
       return;
     }
