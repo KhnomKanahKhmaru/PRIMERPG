@@ -728,11 +728,13 @@ window.RULESET_DEFAULTS = {
       // penalize instead of mitigating, which is why single-fire
       // weapons are hard to rapidfire).
       rofTable: [
-        { level: -1, label: 'Single-Fire',     perAmmo: 1,  dm: -1 },
-        { level:  0, label: 'Action Fire',     perAmmo: 1,  dm:  0 },
-        { level:  1, label: 'Semi-Automatic',  perAmmo: 5,  dm:  1 },
-        { level:  2, label: 'Automatic',       perAmmo: 6,  dm:  2 },
-        { level:  3, label: 'Fully Automatic', perAmmo: 10, dm:  3 }
+        { level: -1, label: 'Single-Fire',     perAmmo: 1,   dm: -1 },
+        { level:  0, label: 'Action Fire',     perAmmo: 1,   dm:  0 },
+        { level:  1, label: 'Semi-Automatic',  perAmmo: 5,   dm:  1 },
+        { level:  2, label: 'Automatic',       perAmmo: 6,   dm:  2 },
+        { level:  3, label: 'Fully Automatic', perAmmo: 10,  dm:  3 },
+        { level:  4, label: 'Super Automatic', perAmmo: 25,  dm:  4 },
+        { level:  5, label: 'Mega Automatic',  perAmmo: 100, dm:  5 }
       ]
     },
     {
