@@ -190,7 +190,7 @@ export function createPowerSection(ctx) {
     else                          statusClass = 's-dead';
     const statusLabel = power.statusLabel || '';
     const statusPill = statusLabel
-      ? `<span class="power-status-pill state-tile-status ${statusClass}">${escapeHtml(statusLabel)}</span>`
+      ? `<span class="power-status-pill state-tile-status ${statusClass}" style="margin-left:auto">${escapeHtml(statusLabel)}</span>`
       : '';
 
     return `
