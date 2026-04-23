@@ -81,8 +81,22 @@
     .stat-icon-wrap { position: relative; width: 36px; flex-shrink: 0; }
     .stat-icon { width: 36px; height: 36px; border-radius: 4px; overflow: hidden; background: #151515; border: 1px solid #252525; cursor: default; display: flex; align-items: center; justify-content: center; }
     .stat-icon svg { width: 34px; height: 34px; }
-    .stat-tooltip { display: none; position: absolute; left: 44px; top: 0; background: #1e1e1e; border: 1px solid #444; border-radius: 4px; padding: 7px 10px; font-size: 12px; color: #ccc; width: 200px; z-index: 200; pointer-events: none; white-space: normal; line-height: 1.5; }
-    .stat-icon-wrap:hover .stat-tooltip { display: block; }
+    /* Stat tooltip — hover popup showing the stat's description. Uses the
+       shared description display module (see .pc-desc-* below) so the
+       tooltip contains the pencil + reset buttons and textarea editor
+       when the player opens it. pointer-events: auto because the tooltip
+       body is now interactive (pencil button must be clickable). */
+    .stat-tooltip { display: none; position: absolute; left: 44px; top: 0; background: #1e1e1e; border: 1px solid #444; border-radius: 4px; padding: 7px 10px; font-size: 12px; color: #ccc; width: 240px; z-index: 200; pointer-events: auto; white-space: normal; line-height: 1.5; }
+    /* Show on wrap hover (stay pattern). Extended with .stat-tooltip:hover
+       so moving the cursor INTO the tooltip keeps it open — critical for
+       the pencil to be clickable without the tooltip dismissing first. */
+    .stat-icon-wrap:hover .stat-tooltip,
+    .stat-tooltip:hover,
+    .stat-tooltip.pc-desc-editing { display: block; }
+    /* When actively editing, pin the tooltip open regardless of hover —
+       otherwise clicking Save/Cancel would dismiss the tooltip before
+       the click registered. The pc-desc-editing class (added by the
+       descriptions module) wins via the rule above. */
     .stat-info { flex: 1; min-width: 0; }
     .stat-label { font-size: 12px; font-weight: 500; color: #666; }
     .stat-label .abbr { color: #aaa; font-weight: 700; }
@@ -2269,6 +2283,158 @@
       font-variant-numeric: tabular-nums;
     }
     .ds-card-desc { font-size: 11px; color: #666; line-height: 1.5; margin-top: 6px; font-style: italic; }
+
+    /* ═══ DESCRIPTION OVERRIDE SYSTEM ═══
+     * Shared styling for the player-editable description blocks. Used by
+     * base stat tooltips, derived stat cards, and (in later phases)
+     * skills, advantages, tags, conditions. The core pattern:
+     *
+     *   [description text]                    ← always visible
+     *   [pencil] [reset]                       ← appear on hover (edit rights)
+     *   (if editing) [textarea] [Save] [Cancel] [Reset]
+     *
+     * Everything keys off .pc-desc-wrap classes so the module works the
+     * same way across every surface. Per-surface tweaks (tooltip vs.
+     * card-footer) are handled by the wrapperClass option + specific
+     * parent scoping where needed.
+     */
+
+    /* Default wrapper — inline layout with the pencil floating right.
+       Overridable per surface; the ds-card and stat-tooltip selectors
+       below tweak spacing + color to fit their containers. */
+    .pc-desc-wrap.pc-desc-static {
+      position: relative;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .pc-desc-text {
+      flex: 1;
+      min-width: 0;
+      word-break: break-word;
+    }
+    .pc-desc-empty-placeholder {
+      color: #555;
+      font-style: italic;
+    }
+    .pc-desc-override-dot {
+      color: #d4a574;
+      margin-left: 4px;
+      font-weight: 700;
+      cursor: help;
+    }
+    /* Pencil + reset buttons — hidden by default, revealed on hover of
+       the wrapper. This matches "pencil icon appears on hover". */
+    .pc-desc-controls {
+      display: inline-flex;
+      gap: 2px;
+      flex-shrink: 0;
+      opacity: 0;
+      transition: opacity 0.12s;
+    }
+    .pc-desc-wrap:hover .pc-desc-controls {
+      opacity: 1;
+    }
+    /* Accessibility: make the pencil visible when focused via keyboard
+       even without hover, so keyboard users can reach it. */
+    .pc-desc-wrap:focus-within .pc-desc-controls {
+      opacity: 1;
+    }
+    .pc-desc-pencil,
+    .pc-desc-reset {
+      font-size: 11px;
+      padding: 1px 5px;
+      background: transparent;
+      border: 1px solid transparent;
+      color: #666;
+      border-radius: 3px;
+      cursor: pointer;
+      line-height: 1;
+      font-family: inherit;
+      transition: background 0.1s, color 0.1s, border-color 0.1s;
+    }
+    .pc-desc-pencil:hover {
+      color: #d4a574;
+      border-color: #3a2a14;
+      background: #1a1408;
+    }
+    .pc-desc-reset:hover {
+      color: #8ab48a;
+      border-color: #1e3a24;
+      background: #081a0d;
+    }
+
+    /* Editing mode — textarea + action buttons stacked below. */
+    .pc-desc-wrap.pc-desc-editing {
+      display: block;
+    }
+    .pc-desc-textarea {
+      width: 100%;
+      min-height: 70px;
+      background: #0a0a0a;
+      color: #e0e0e0;
+      border: 1px solid #3a2a14;
+      border-radius: 3px;
+      padding: 6px 8px;
+      font-size: 12px;
+      font-family: inherit;
+      line-height: 1.5;
+      outline: none;
+      resize: vertical;
+      box-sizing: border-box;
+    }
+    .pc-desc-textarea:focus { border-color: #5a4820; }
+    .pc-desc-edit-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+      flex-wrap: wrap;
+    }
+    .pc-desc-btn {
+      font-size: 11px;
+      padding: 3px 10px;
+      border: 1px solid #222;
+      background: #0a0a0a;
+      color: #aaa;
+      border-radius: 3px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.1s, color 0.1s, border-color 0.1s;
+    }
+    .pc-desc-btn:hover { border-color: #444; }
+    .pc-desc-btn-save {
+      background: #2a1f0c;
+      border-color: #5a4820;
+      color: #d4a574;
+    }
+    .pc-desc-btn-save:hover { background: #3a2a14; color: #e0b890; }
+    .pc-desc-btn-cancel:hover { color: #c88; border-color: #3a1a1a; }
+    .pc-desc-btn-reset {
+      color: #8ab48a;
+      border-color: #1e3a24;
+      background: #081a0d;
+    }
+    .pc-desc-btn-reset:hover { background: #0f2a16; color: #a8d0a8; }
+
+    /* Per-surface tweaks. */
+
+    /* Stat tooltip — tooltip container already handles position/bg; we
+       just shrink the textarea so it fits the 240px-wide tooltip and
+       reduce spacing so the whole block fits without scrolling. */
+    .stat-tooltip .pc-desc-textarea { min-height: 55px; font-size: 11px; }
+    .stat-tooltip .pc-desc-btn { font-size: 10px; padding: 2px 6px; }
+    /* Pencil/reset at the end of the text, compact. */
+    .stat-tooltip .pc-desc-controls { margin-top: 2px; }
+
+    /* Derived stat card — override the default ds-card-desc font-style.
+       The description module wraps content in its own <span>, so the
+       italic style on ds-card-desc would nest oddly. Strip italic from
+       the wrapper when used as a pc-desc-static container. */
+    .ds-card-desc.pc-desc-static { font-style: normal; }
+    .ds-card-desc.pc-desc-static .pc-desc-text { font-style: italic; }
+    .ds-card-desc.pc-desc-editing { font-style: normal; }
+
 
     /* Hit locations */
     .combat-section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #1a1a1a; }
@@ -4617,6 +4783,7 @@
   import { createCombatSection } from './char-combat.js';
   import { createInventorySection } from './char-inventory.js';
   import { createConditionsSection } from './char-conditions.js';
+  import { createDescriptionsModule } from './char-descriptions.js';
   import { attachCollapsible, toggleCollapsed, ensureExpanded } from './char-util.js';
 
   // All imports resolved — module body executes from here.
@@ -4852,6 +5019,36 @@
   const combat = createCombatSection(sectionCtx);
   const inventory = createInventorySection(sectionCtx);
 
+  // Descriptions module — centralized override editor for game-content
+  // text (stat/derived-stat/skill/etc descriptions). Must be created
+  // AFTER the modules it re-renders, since requestRerender needs to
+  // call those modules' render methods. Once created, its renderer is
+  // injected back into sectionCtx so consuming modules (combat, stats)
+  // can call ctx.renderDescriptionDisplay at render time.
+  const descriptions = createDescriptionsModule({
+    getCharData:     () => charData,
+    getRuleset:      () => activeRuleset,
+    getCanEdit:      () => !!canEdit,
+    saveCharacter:   () => saveCharacter(),
+    escapeHtml:      (s) => escapeHtml(s),
+    // Only re-render the two surfaces that currently use descriptions —
+    // stat rows (base stats) and derived stat cards (on Combat tab).
+    // Both also appear on the Overview tab via derived mirror, but Combat
+    // renderAll() handles both through its internal logic.
+    requestRerender: () => {
+      if (stats && typeof stats.buildStatsSection === 'function') stats.buildStatsSection();
+      if (combat && typeof combat.renderAll === 'function') combat.renderAll();
+    }
+  });
+
+  // Inject the renderer into sectionCtx so modules that render cards
+  // (stats, combat) can pull the inline-editable description block
+  // without importing the descriptions module directly. Read at render
+  // time via ctx.renderDescriptionDisplay — modules call it if it
+  // exists, fall back to legacy rendering if it doesn't.
+  sectionCtx.renderDescriptionDisplay = (category, id, opts) =>
+    descriptions.renderDescriptionDisplay(category, id, opts);
+
   // Bridge inventory → combat's Roll Calc. Can't wire this in the
   // initial sectionCtx because `combat` doesn't exist yet when
   // sectionCtx is built. Since char-inventory.js reads
@@ -4947,6 +5144,13 @@
     saveStatBase: stats.saveStatBase,
     addModifier: stats.addModifier,
     deleteModifier: stats.deleteModifier,
+    // Description override editor — used by both base stat rows and
+    // derived stat cards. The inline markup calls these five by name.
+    descOpenEditor:  (category, id) => descriptions.openEditor(category, id),
+    descSaveEditor:  ()              => descriptions.saveEditor(),
+    descCancelEditor:()              => descriptions.cancelEditor(),
+    descUpdateDraft: (value)         => descriptions.updateDraft(value),
+    descResetOverride:(category, id) => descriptions.resetOverride(category, id),
     // Bio
     editBio: () => {
       const wasCollapsed = ensureExpanded('prime.collapse.overview.bio');
