@@ -876,6 +876,12 @@ window.normalizeRuleset = function(rs) {
           // Legacy field `strainReducesValue` still read as a fallback so
           // saved rulesets from before the rename auto-migrate.
           penaltyReducesValue: s.penaltyReducesValue === true || s.strainReducesValue === true,
+          // Rollable — default TRUE (stat is rolled as a dice pool and
+          // shows dice-affordance UI on the card). Set explicitly to
+          // false for derived values that aren't rolled: SPD, SPDUP,
+          // AGL, RFX, FORT. Undefined coerces to true (matches the
+          // renderDsCard check `def.rollable !== false`).
+          rollable: s.rollable !== false,
           // Expandable conversion panel on the stat card — 3s/6s/min/hr/mph.
           // Useful for speed stats (SPD, SPDUP, future burrow/swim/etc.).
           // The card's value is treated as ft/sec for the math.
@@ -886,6 +892,31 @@ window.normalizeRuleset = function(rs) {
         };
       })
       .filter(Boolean);
+
+    // One-shot migration: mark the five default static stats as
+    // non-rollable if they're still using default formulas. The
+    // 'rollable' field was added late — saved rulesets pre-date it,
+    // and without this nudge they'd keep showing dice pills on SPD,
+    // SPDUP, AGL, RFX, and FORT. We only flip stats that look like
+    // the original defaults (code + formula match) so homebrew
+    // rulesets that renamed/repurposed these codes are untouched.
+    // Runs every normalize — once the value is false it stays false
+    // (the assignment below is idempotent).
+    const staticDefaults = [
+      { code: 'SPD',   formula: 'DEX * 2.5' },
+      { code: 'SPDUP', formula: 'STR * 1' },
+      { code: 'AGL',   formula: '(DEX + PER) / 2 - 1' },
+      { code: 'RFX',   formula: '0.2 / (2 ^ ((DEXMOD + PERMOD) / 4))' },
+      { code: 'FORT',  formula: 'FORT' }
+    ];
+    staticDefaults.forEach(sd => {
+      const match = out.derivedStats.find(s =>
+        s.code === sd.code &&
+        typeof s.formula === 'string' &&
+        s.formula.replace(/\s+/g, '') === sd.formula.replace(/\s+/g, '')
+      );
+      if (match) match.rollable = false;
+    });
 
     // Auto-inject any NEW default stats that aren't in the user's list yet.
     // Rationale: when we add a core mechanic like FORT to the defaults, we
