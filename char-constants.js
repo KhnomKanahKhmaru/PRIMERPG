@@ -92,21 +92,13 @@ export const STAT_LABELS = [
   'Cosmic'
 ];
 
-// SIZE uses a tier-style scale instead of a linear label array.
-export const SIZE_OPTIONS = [
-  { value: 1,  label: '1 — Nano' },
-  { value: 2,  label: '2 — Micro' },
-  { value: 3,  label: '3 — Tiny' },
-  { value: 4,  label: '4 — Small' },
-  { value: 6,  label: '6 — Medium' },
-  { value: 8,  label: '8 — Large' },
-  { value: 10, label: '10 — Huge' },
-  { value: 12, label: '12 — Massive' },
-  { value: 16, label: '16 — Giant' },
-  { value: 20, label: '20 — Colossal' },
-  { value: 24, label: '24 — Behemoth' },
-  { value: 30, label: '30 — Cataclysmic' }
-];
+// SIZE is tier-based instead of having a single linear label array; its
+// tier definitions live in the ruleset (ruleset.size.tiers), not here,
+// so they can vary by game. char-stats.js reads directly from the
+// ruleset via `getSizeTiers()`. Previously this file exported a stale
+// SIZE_OPTIONS table with wrong numbers (e.g. Nano=1, Small=4) that
+// didn't match the canonical ruleset tiers (Nano=0, Small=3, Medium=4).
+// Removed to prevent anyone from importing stale data.
 
 // ── SKILLS ──
 // Skill level labels (0–10).
