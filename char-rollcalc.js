@@ -773,7 +773,7 @@ export function createRollCalc(ctx) {
           <div class="rc-breakdown">
             <div class="rc-line"><span class="rc-k">Pool</span><span class="rc-v">${poolLineText(r)}</span></div>
             ${penaltyLine}
-            <div class="rc-line"><span class="rc-k">After Strain</span><span class="rc-v"><b>${r.finalPool}d</b></span></div>
+            <div class="rc-line"><span class="rc-k">After Penalty</span><span class="rc-v"><b>${r.finalPool}d</b></span></div>
             <div class="rc-line"><span class="rc-k">Difficulty</span><span class="rc-v">${r.diff} − ${r.mit} mit − ${r.red} red = <b>${r.effDifficulty}</b>  <span class="rc-dim">(${diffNote})</span></span></div>
             <div class="rc-line"><span class="rc-k">Stat mod</span><span class="rc-v"><b>${modSign}${modAbs}</b>${escapeHtml(statmodNote)}</span></div>
           </div>
@@ -858,7 +858,7 @@ export function createRollCalc(ctx) {
       bd.innerHTML = `
         <div class="rc-line"><span class="rc-k">Pool</span><span class="rc-v">${poolLineText(r)}</span></div>
         ${penaltyLineHtml}
-        <div class="rc-line"><span class="rc-k">After Strain</span><span class="rc-v"><b>${r.finalPool}d</b></span></div>
+        <div class="rc-line"><span class="rc-k">After Penalty</span><span class="rc-v"><b>${r.finalPool}d</b></span></div>
         <div class="rc-line"><span class="rc-k">Difficulty</span><span class="rc-v">${r.diff} − ${r.mit} mit − ${r.red} red = <b>${r.effDifficulty}</b>  <span class="rc-dim">(${diffNote})</span></span></div>
         <div class="rc-line"><span class="rc-k">Stat mod</span><span class="rc-v"><b>${modSign}${modAbs}</b>${escapeHtml(statmodNote)}</span></div>`;
     }
