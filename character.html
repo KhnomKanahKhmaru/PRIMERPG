@@ -2293,16 +2293,16 @@
      *   [pencil] [reset]                       ← appear on hover (edit rights)
      *   (if editing) [textarea] [Save] [Cancel] [Reset]
      *
-     * Everything keys off .pc-desc-wrap classes so the module works the
-     * same way across every surface. Per-surface tweaks (tooltip vs.
-     * card-footer) are handled by the wrapperClass option + specific
-     * parent scoping where needed.
+     * Everything keys off .pc-desc-static / .pc-desc-editing classes so
+     * the module works the same way across every surface. Per-surface
+     * tweaks (tooltip vs. card-footer) are handled by the wrapperClass
+     * option + specific parent scoping where needed.
      */
 
     /* Default wrapper — inline layout with the pencil floating right.
        Overridable per surface; the ds-card and stat-tooltip selectors
        below tweak spacing + color to fit their containers. */
-    .pc-desc-wrap.pc-desc-static {
+    .pc-desc-static {
       position: relative;
       display: flex;
       align-items: flex-start;
@@ -2333,12 +2333,12 @@
       opacity: 0;
       transition: opacity 0.12s;
     }
-    .pc-desc-wrap:hover .pc-desc-controls {
+    .pc-desc-static:hover .pc-desc-controls {
       opacity: 1;
     }
     /* Accessibility: make the pencil visible when focused via keyboard
        even without hover, so keyboard users can reach it. */
-    .pc-desc-wrap:focus-within .pc-desc-controls {
+    .pc-desc-static:focus-within .pc-desc-controls {
       opacity: 1;
     }
     .pc-desc-pencil,
@@ -2366,7 +2366,7 @@
     }
 
     /* Editing mode — textarea + action buttons stacked below. */
-    .pc-desc-wrap.pc-desc-editing {
+    .pc-desc-editing {
       display: block;
     }
     .pc-desc-textarea {
