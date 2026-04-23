@@ -201,6 +201,23 @@ window.RULESET_DEFAULTS = {
     { code: 'carry',    label: 'Carry'    }
   ],
 
+  // Descriptions for the three computed summary tiles on the Overview
+  // tab — Body, Sanity, Penalty. These tiles are calculated from other
+  // stats (HP, SAN, Pain+Stress+Encumbrance+Others) so they don't have a
+  // single source stat we could hang a description on. Instead we give
+  // the GM a dedicated field in the ruleset for each, and let players
+  // override per-character via the descriptions module like any other
+  // game-content description.
+  //
+  // Keys match the descriptions module's tile IDs: 'body', 'sanity',
+  // 'penalty'. The resolver (resolveDescription in char-util.js) reads
+  // from ruleset.tileDescriptions[id] when category === 'tiles'.
+  tileDescriptions: {
+    body:    'Your physical integrity — HP tracks overall durability; hit locations take separate damage and can be disabled or destroyed even while you\'re still alive. The tile shows current / max HP plus your status (Alive, Dying, Dead).',
+    sanity:  'Your mental integrity, tracked with its own pool. SAN damage from trauma, horror, or supernatural exposure accumulates here. Low SAN contributes to Stress, which contributes to Penalty on all rolls.',
+    penalty: 'The sum of every modifier reducing your dice pools. Penalty = Pain + Stress + Encumbrance + Others. Applies to active rolls only — Passive rolls (resistances) ignore Penalty. Shown as a percentage; dice pool reduction is floor(pool × Penalty%).'
+  },
+
   derivedStats: [
     // HEALTH
     {
@@ -730,6 +747,31 @@ window.normalizeRuleset = function(rs) {
   if (!out.defaultPowerLevel) out.defaultPowerLevel = d.defaultPowerLevel;
   if (!Array.isArray(out.primarySkills) || out.primarySkills.length === 0) out.primarySkills = JSON.parse(JSON.stringify(d.primarySkills));
   if (!Array.isArray(out.morals)) out.morals = [];
+
+  // ── TILE DESCRIPTIONS ──
+  // Per-ruleset author-editable text for the three computed summary
+  // tiles (Body, Sanity, Penalty) that don't correspond to a single
+  // stat. Normalizer coerces the shape to ensure the three string
+  // fields exist, falling back to defaults when missing. Extra keys
+  // are preserved (a homebrew ruleset might author a description for a
+  // custom tile we haven't shipped yet — keeping unknown keys avoids
+  // silently destroying authored content).
+  const rawTileDescs = (out.tileDescriptions && typeof out.tileDescriptions === 'object')
+    ? out.tileDescriptions
+    : {};
+  out.tileDescriptions = Object.assign(
+    {},
+    d.tileDescriptions,       // defaults first
+    rawTileDescs               // then override with whatever was saved
+  );
+  // Coerce any non-string values to empty string; the resolver treats
+  // empty as "fall through to default", so this keeps the resolution
+  // order intact (override > ruleset > empty).
+  Object.keys(out.tileDescriptions).forEach(k => {
+    if (typeof out.tileDescriptions[k] !== 'string') {
+      out.tileDescriptions[k] = '';
+    }
+  });
 
   // ── CONDITIONS ──
   // Two preset lists (physical, mental). Each preset entry is {id,
