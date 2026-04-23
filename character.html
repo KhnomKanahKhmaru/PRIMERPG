@@ -2302,12 +2302,35 @@
     /* Default wrapper — inline layout with the pencil floating right.
        Overridable per surface; the ds-card and stat-tooltip selectors
        below tweak spacing + color to fit their containers. */
-    .pc-desc-static {
+    /* Layout for the STATIC-mode description block. Explicitly scoped
+       so it doesn't clobber parents that set display:none as their
+       default (like .stat-tooltip which is a hover popup). The inner
+       .pc-desc-static still flexes its children; the PARENT's display
+       rule (block for ds-card-desc, none-to-block for stat-tooltip)
+       is untouched. */
+    .ds-card-desc.pc-desc-static,
+    .pc-desc-inline.pc-desc-static {
       position: relative;
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
       gap: 6px;
+    }
+    /* For tooltip containers — the parent (.stat-tooltip) governs
+       display. Inner children use flex layout only when the tooltip
+       is actually visible. */
+    .stat-tooltip.pc-desc-static {
+      /* Do not set display here — stat-tooltip's own rules handle
+         show/hide. When visible, it's block; children below lay out
+         using their own rules. */
+      position: relative;
+    }
+    .stat-tooltip.pc-desc-static > .pc-desc-text {
+      display: block;
+      margin-bottom: 4px;
+    }
+    .stat-tooltip.pc-desc-static > .pc-desc-controls {
+      display: inline-flex;
     }
     .pc-desc-text {
       flex: 1;
@@ -2365,8 +2388,11 @@
       background: #081a0d;
     }
 
-    /* Editing mode — textarea + action buttons stacked below. */
-    .pc-desc-editing {
+    /* Editing mode — textarea + action buttons stacked below. Scoped
+       by surface to avoid forcing display:block on parents that rely
+       on display:none for hover-popup behavior (stat-tooltip). */
+    .ds-card-desc.pc-desc-editing,
+    .pc-desc-inline.pc-desc-editing {
       display: block;
     }
     .pc-desc-textarea {
