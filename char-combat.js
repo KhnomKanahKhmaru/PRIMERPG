@@ -385,14 +385,17 @@ export function createCombatSection(ctx) {
     }
 
     // Bottom-area DICE MOD pill — editable. Shows the FINAL dice count the
-    // player actually rolls, factoring in dice modifiers AND Strain penalty
+    // player actually rolls, factoring in dice modifiers AND Penalty
     // (for active rolls). Click to expand an editor with the full breakdown.
     //
-    // When the pool == base dice (no mods AND no strain penalty), nothing
-    // to show in view-only mode — keeps clean cards. Edit mode still shows
-    // the "+ Dice Mod" pill so players can add mods.
+    // ALWAYS shown for rollable stats — even when the pool equals the base
+    // and there are no mods. Previously the pill was suppressed in that
+    // "clean" case, which left cards like HP / SAN / INIT showing just a
+    // big number with no visual cue that the number IS a dice pool. Always
+    // showing the "Xd" pill makes "these are dice stats" unambiguous at
+    // a glance and unifies with the click-to-edit affordance.
     //
-    // SKIPPED ENTIRELY for stats marked `rollable: false` (SPD, SPDUP, AGL,
+    // SKIPPED ENTIRELY for stats marked `rollable: false` (SPD, SPR, AGL,
     // RFX, FORT — static derived values that aren't rolled as dice pools).
     // Default `rollable === true` preserves behavior for existing stats
     // (HP, SAN, INIT, and any ruleset-authored stat without the field).
@@ -407,14 +410,17 @@ export function createCombatSection(ctx) {
     const openPanel = expandedDiceMods.has(def.code);
     const isRollable = def.rollable !== false;
     let dicePill = '';
-    if (isRollable && (canEdit || hasDiceMods || dicePoolDiffersFromBase)) {
-      let pillLabel;
+    if (isRollable) {
+      // Pill label: "Xd" always. Previously we showed "+ Dice Mod" as the
+      // label in the "canEdit + no mods + no penalty" case; that was
+      // confusing signage (looked like an empty add button rather than
+      // "this is a dice stat"). Now the pill always reads as a dice pool;
+      // the edit affordance comes from it being clickable.
+      const pillLabel = `${finalDice}d`;
       let pillClass;
       if (dicePoolDiffersFromBase || hasDiceMods) {
-        pillLabel = `${finalDice}d`;
         pillClass = ' has-mods';
       } else {
-        pillLabel = '+ Dice Mod';
         pillClass = ' empty';
       }
       const tipParts = [];
@@ -435,7 +441,7 @@ export function createCombatSection(ctx) {
                   onclick="toggleDiceModPanel('${escapeHtml(def.code)}')"
                   title="${escapeHtml(pillTip)}"
                   type="button">${pillLabel}</button>`
-        : `<span class="ds-card-dicepill has-mods readonly" title="${escapeHtml(pillTip)}">${pillLabel}</span>`;
+        : `<span class="ds-card-dicepill${pillClass} readonly" title="${escapeHtml(pillTip)}">${pillLabel}</span>`;
     }
 
     // Expanded panel content (dice modifier editor).
