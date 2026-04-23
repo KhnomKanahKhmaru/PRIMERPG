@@ -1261,8 +1261,17 @@ export function createCombatSection(ctx) {
           <span class="body-value">${body.current} / ${body.max}</span>
           <span class="${statusClass}">${escapeHtml(body.statusLabel)}</span>
         </div>
-        <div class="body-bar-bg">${segHtml}</div>
-      </div>`;
+        <div class="body-bar-bg">${segHtml}</div>`;
+
+    // Description block (player-overridable). Same ruleset source as
+    // the Overview Body tile — tileDescriptions.body. Renders below
+    // the segmented bar so it doesn't crowd the numeric row. Wrapped
+    // in an explicit combat-body-desc class for scoped CSS.
+    if (ctx.renderDescriptionDisplay) {
+      html += ctx.renderDescriptionDisplay('tiles', 'body', { wrapperClass: 'combat-section-desc' });
+    }
+
+    html += `</div>`;
 
     if (editModifiersMode && canEdit) {
       html += renderModifierEditor('body', body.modifiers || [], bodyBase);
@@ -1745,6 +1754,13 @@ export function createCombatSection(ctx) {
     body_html += '<div class="san-bar">';
     body_html += renderSanSegments(san.max, san.damage, segCount);
     body_html += '</div>';
+
+    // Description block (player-overridable). Mirrors the Overview
+    // Sanity tile — pulls from ruleset.tileDescriptions.sanity, with
+    // optional per-character override via the descriptions module.
+    if (ctx.renderDescriptionDisplay) {
+      body_html += ctx.renderDescriptionDisplay('tiles', 'sanity', { wrapperClass: 'combat-section-desc' });
+    }
 
     // Damage controls (input shows effective current; +/- tick damage).
     if (canEdit) {
