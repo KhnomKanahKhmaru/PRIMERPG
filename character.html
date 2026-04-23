@@ -87,11 +87,32 @@
        when the player opens it. pointer-events: auto because the tooltip
        body is now interactive (pencil button must be clickable). */
     .stat-tooltip { display: none; position: absolute; left: 44px; top: 0; background: #1e1e1e; border: 1px solid #444; border-radius: 4px; padding: 7px 10px; font-size: 12px; color: #ccc; width: 240px; z-index: 200; pointer-events: auto; white-space: normal; line-height: 1.5; }
+    /* Invisible bridge element — fills the 8px gap between the stat
+       icon and the tooltip so moving the cursor across doesn't break
+       the :hover state. Without this, any cursor path from the icon
+       to the pencil inside the tooltip briefly loses :hover and the
+       tooltip dismisses mid-move, making it impossible to click the
+       pencil. The bridge has `pointer-events: auto` so it counts for
+       :hover detection, and a background of transparent so it's
+       invisible. */
+    .stat-tooltip::before {
+      content: '';
+      position: absolute;
+      left: -12px;
+      top: 0;
+      bottom: 0;
+      width: 12px;
+      background: transparent;
+    }
     /* Show on wrap hover (stay pattern). Extended with .stat-tooltip:hover
        so moving the cursor INTO the tooltip keeps it open — critical for
-       the pencil to be clickable without the tooltip dismissing first. */
+       the pencil to be clickable without the tooltip dismissing first.
+       The :focus-within case keeps the tooltip open while the textarea
+       inside is focused for editing — without it, clicking the textarea
+       focuses it but moving the cursor to type would dismiss the tooltip. */
     .stat-icon-wrap:hover .stat-tooltip,
     .stat-tooltip:hover,
+    .stat-tooltip:focus-within,
     .stat-tooltip.pc-desc-editing { display: block; }
     /* When actively editing, pin the tooltip open regardless of hover —
        otherwise clicking Save/Cancel would dismiss the tooltip before
