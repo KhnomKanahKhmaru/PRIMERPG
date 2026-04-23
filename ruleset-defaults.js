@@ -215,7 +215,8 @@ window.RULESET_DEFAULTS = {
   tileDescriptions: {
     body:    'Your physical integrity — HP tracks overall durability; hit locations take separate damage and can be disabled or destroyed even while you\'re still alive. The tile shows current / max HP plus your status (Alive, Dying, Dead).',
     sanity:  'Your mental integrity, tracked with its own pool. SAN damage from trauma, horror, or supernatural exposure accumulates here. Low SAN contributes to Stress, which contributes to Penalty on all rolls.',
-    penalty: 'The sum of every modifier reducing your dice pools. Penalty = Pain + Stress + Encumbrance + Others. Applies to active rolls only — Passive rolls (resistances) ignore Penalty. Shown as a percentage; dice pool reduction is floor(pool × Penalty%).'
+    penalty: 'The sum of every modifier reducing your dice pools. Penalty = Pain + Stress + Encumbrance + Others. Applies to active rolls only — Passive rolls (resistances) ignore Penalty. Shown as a percentage; dice pool reduction is floor(pool × Penalty%).',
+    power:   'Your supernatural capacity pool — spend Power Points on paradigm abilities, refresh per the rules of your paradigm. The bar shows current / max PP. Color and formula for PP are configured in the ruleset\'s Power Pool settings.'
   },
 
   derivedStats: [
