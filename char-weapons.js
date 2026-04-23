@@ -884,11 +884,13 @@ function resolveRofFromTag(weapon, rsTags) {
 // a rofTable field or when a specific level isn't in the GM's
 // customized table. Matches the Standard Set values.
 const DEFAULT_ROF_TABLE = [
-  { level: -1, label: 'Single-Fire',     perAmmo: 1,  dm: -1 },
-  { level:  0, label: 'Action Fire',     perAmmo: 1,  dm:  0 },
-  { level:  1, label: 'Semi-Automatic',  perAmmo: 5,  dm:  1 },
-  { level:  2, label: 'Automatic',       perAmmo: 6,  dm:  2 },
-  { level:  3, label: 'Fully Automatic', perAmmo: 10, dm:  3 }
+  { level: -1, label: 'Single-Fire',     perAmmo: 1,   dm: -1 },
+  { level:  0, label: 'Action Fire',     perAmmo: 1,   dm:  0 },
+  { level:  1, label: 'Semi-Automatic',  perAmmo: 5,   dm:  1 },
+  { level:  2, label: 'Automatic',       perAmmo: 6,   dm:  2 },
+  { level:  3, label: 'Fully Automatic', perAmmo: 10,  dm:  3 },
+  { level:  4, label: 'Super Automatic', perAmmo: 25,  dm:  4 },
+  { level:  5, label: 'Mega Automatic',  perAmmo: 100, dm:  5 }
 ];
 
 // Translate ROF level to the flavor text "N projectiles per ammo".
@@ -902,16 +904,17 @@ const DEFAULT_ROF_TABLE = [
 // that only have a level number handy (e.g. old UI code that
 // computes ROF for display without a full weapon resolve).
 const ROF_FLAVOR = {
-  '-1': { label: 'Single-Fire',    perAmmo: 1  },
-  '0':  { label: 'Action Fire',    perAmmo: 1  },
-  '1':  { label: 'Semi-Automatic', perAmmo: 5  },
-  '2':  { label: 'Automatic',      perAmmo: 6  },
-  '3':  { label: 'Fully Automatic', perAmmo: 10 },
-  '4':  { label: 'Chain Automatic', perAmmo: 50 }
+  '-1': { label: 'Single-Fire',     perAmmo: 1   },
+  '0':  { label: 'Action Fire',     perAmmo: 1   },
+  '1':  { label: 'Semi-Automatic',  perAmmo: 5   },
+  '2':  { label: 'Automatic',       perAmmo: 6   },
+  '3':  { label: 'Fully Automatic', perAmmo: 10  },
+  '4':  { label: 'Super Automatic', perAmmo: 25  },
+  '5':  { label: 'Mega Automatic',  perAmmo: 100 }
 };
 export function rofFlavor(level) {
   if (level == null || !Number.isFinite(level)) return null;
-  const clamped = Math.max(-1, Math.min(4, Math.round(level)));
+  const clamped = Math.max(-1, Math.min(5, Math.round(level)));
   return ROF_FLAVOR[String(clamped)] || null;
 }
 
