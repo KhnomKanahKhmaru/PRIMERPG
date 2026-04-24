@@ -631,11 +631,35 @@ export function computeDerivedStats(character, ruleset) {
     const diceMods = Array.isArray(diceMap[def.code]) ? diceMap[def.code] : [];
     const diceModTotal = diceMods.reduce((acc, m) => acc + (parseInt(m && m.value) || 0), 0);
 
+    // Value modifiers — player/GM-editable flat bonuses added to the
+    // VALUE of the stat (not the dice pool). E.g. "Running Shoes: +2"
+    // on SPD adds 2 ft/sec to the computed value. Stored per stat
+    // code on charData.valueMods. Parallel structure to diceModifiers.
+    // Only consulted for stats that opt in via def.allowValueMods;
+    // other stats ignore any stored entries for defensive safety.
+    const valueMap = (character && character.valueMods && typeof character.valueMods === 'object')
+      ? character.valueMods : {};
+    const valueMods = (def.allowValueMods === true && Array.isArray(valueMap[def.code]))
+      ? valueMap[def.code]
+      : [];
+    const valueModTotal = valueMods.reduce((acc, m) => acc + (parseFloat(m && m.value) || 0), 0);
+    // Apply the value mod total BEFORE symbol-table insertion so
+    // downstream stats that reference this one see the modified
+    // value. Integer stats floor the result; fractional stats keep
+    // decimals. `null` values (formula error) skip the mod.
+    if (value !== null && valueModTotal !== 0) {
+      value = value + valueModTotal;
+      if (!def.keepDecimals) value = Math.floor(value);
+      vars[def.code] = value;
+    }
+
     stats.set(def.code, {
       def, value,
       rollModifier,     // static mod (STRMOD, etc.) — read-only, added to roll total
       diceMods,         // list of {name, value} — editable bonus dice
-      diceModTotal      // sum of dice modifier values
+      diceModTotal,     // sum of dice modifier values
+      valueMods,        // list of {id, name, value} — editable flat value bonuses
+      valueModTotal     // sum of value modifier values
     });
   });
 
@@ -1277,6 +1301,49 @@ export function computeDerivedStats(character, ruleset) {
     percent:            penaltyPct
   };
 
+  // Per-stat penalty filter — OPTIONAL whitelist for a specific stat's
+  // Penalty computation. When a stat has a filter object present on
+  // `character.penaltyFilters[def.code]`, ONLY the sources marked true
+  // contribute to its Penalty %; when no filter object is present
+  // (undefined), the legacy/default behavior applies — ALL sources
+  // contribute. This preserves backward compatibility: existing
+  // characters with no filter field behave exactly as before.
+  //
+  // Filter shape:
+  //   { pain: true, stress: true, encumbrance: true, other: { [otherModId]: true, ... } }
+  //
+  // Missing boolean keys = "do not apply that source." The `other`
+  // object mirrors the shape — each otherMods[i].id can be toggled
+  // independently so GMs can say "only Encumbrance-from-armor
+  // affects SPD" by checking just that one entry.
+  //
+  // Returns a filtered Penalty % for the stat. Stats that don't opt
+  // in (or have no filter entry) return the global penaltyPct.
+  function penaltyPercentFor(statCode) {
+    const filters = (character && character.penaltyFilters && typeof character.penaltyFilters === 'object')
+      ? character.penaltyFilters : null;
+    if (!filters) return penaltyPct;
+    const f = filters[statCode];
+    // Missing key → legacy behavior (all sources apply).
+    if (!f || typeof f !== 'object') return penaltyPct;
+    let total = 0;
+    if (f.pain)        total += painPct;
+    if (f.stress)      total += stressPct;
+    if (f.encumbrance) total += encPct;
+    // Other mods — each entry independently whitelisted via f.other[modId].
+    // Accumulate only the values for otherModifiers whose id is listed true.
+    const otherFilter = (f.other && typeof f.other === 'object') ? f.other : null;
+    if (otherFilter) {
+      otherMods.forEach(m => {
+        if (!m || !m.id) return;
+        if (otherFilter[m.id] === true) {
+          total += (parseInt(m.value) || 0);
+        }
+      });
+    }
+    return Math.max(0, Math.min(100, total));
+  }
+
   // Post-pass: for each stat entry, compute Penalty-adjusted dice count.
   // Passive rolls are exempt (HP/SAN resistance rolls don't suffer Penalty).
   stats.forEach(entry => {
@@ -1287,9 +1354,15 @@ export function computeDerivedStats(character, ruleset) {
     const poolBeforePenalty = Math.max(0, baseDice + diceModTotal);
 
     const isPassive = def.passiveRoll === true;
+    // Stats with def.allowPenaltyFilter can have a per-stat filtered
+    // Penalty %. Everything else uses the global penaltyPct. Same
+    // opt-in pattern as allowValueMods.
+    const statPct = (def.allowPenaltyFilter === true)
+      ? penaltyPercentFor(def.code)
+      : penaltyPct;
     const penaltyDice = isPassive
       ? 0
-      : Math.floor(poolBeforePenalty * penaltyPct / 100);
+      : Math.floor(poolBeforePenalty * statPct / 100);
     const finalDice = Math.max(0, poolBeforePenalty - penaltyDice);
 
     // Value reduction — for stats like SPD/SPDUP where Penalty cuts the
@@ -1307,14 +1380,14 @@ export function computeDerivedStats(character, ruleset) {
     let penaltyValueReduction = 0;
     if (def.penaltyReducesValue === true && !isPassive
         && entry.value != null && Number.isFinite(entry.value)) {
-      const raw = entry.value * penaltyPct / 100;
+      const raw = entry.value * statPct / 100;
       penaltyValueReduction = def.keepDecimals === true ? raw : Math.floor(raw);
     }
 
     entry.isPassive = isPassive;
     entry.finalDice = finalDice;
     entry.penaltyDice = penaltyDice;
-    entry.penaltyPercent = penaltyPct;
+    entry.penaltyPercent = statPct;
     entry.penaltyValueReduction = penaltyValueReduction;
     entry.poolBeforePenalty = poolBeforePenalty;
   });
