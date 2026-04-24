@@ -676,6 +676,29 @@
     .state-penalty-other-del-ph {
       width: 18px;
     }
+    /* Tracker-sourced Other Mod rows — auto-managed by the Combat
+       Tracker widget. Read-only inputs + lock icon replace the
+       delete ×. Subtle tinted background so they visually
+       distinguish from user-authored entries at a glance. */
+    .state-penalty-other-row-locked {
+      background: #141410;
+      border-color: #201f18;
+    }
+    .state-penalty-other-row-locked .state-penalty-other-name,
+    .state-penalty-other-row-locked .state-penalty-other-val {
+      color: #8a8570;
+      cursor: default;
+      background: transparent;
+    }
+    .state-penalty-other-lock {
+      color: #6a6555;
+      font-size: 12px;
+      width: 18px;
+      text-align: center;
+      line-height: 1;
+      user-select: none;
+      cursor: help;
+    }
     .state-penalty-other-add-row {
       padding-top: 2px;
     }
@@ -5608,6 +5631,16 @@
     addOtherModifier:     () => combat.addOtherMod(),
     updateOtherModifier:  (idx, field, val) => combat.updateOtherMod(idx, field, val),
     deleteOtherModifier:  (idx) => combat.deleteOtherMod(idx),
+    // Combat Tracker — action economy widget on the Combat tab.
+    // Every mutation runs through trackerPersist → saves combatTracker,
+    // otherModifiers, and penaltyFilters in one write.
+    trackerAdjust:           (field, delta) => combat.trackerAdjust(field, delta),
+    trackerSet:              (field, val)   => combat.trackerSet(field, val),
+    trackerStartMyTurn:      () => combat.trackerStartMyTurn(),
+    trackerNextRound:        () => combat.trackerNextRound(),
+    trackerChainActions:     () => combat.trackerChainActions(),
+    trackerToggleAutoApply:  () => combat.trackerToggleAutoApply(),
+    trackerToggleCollapse:   () => combat.trackerToggleCollapse(),
     addHlMod:             (target)           => combat.addModifier(target),
     updateHlMod:          (target, i, field, val) => combat.updateModifier(target, i, field, val),
     deleteHlMod:          (target, i)        => combat.deleteModifier(target, i),
