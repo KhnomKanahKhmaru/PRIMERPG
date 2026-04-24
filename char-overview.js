@@ -489,11 +489,27 @@ export function createOverviewSection(ctx) {
         mods.forEach((m, i) => {
           const name = (m && m.name) || '';
           const val = (m && Number.isFinite(parseInt(m.value))) ? parseInt(m.value) : 0;
-          othersEditor += `<div class="state-penalty-other-row">
-            <input type="text" class="state-penalty-other-name" value="${escapeHtml(name)}" placeholder="Name (e.g. Exposure)" ${canEdit ? '' : 'readonly'} onchange="updateOtherModifier(${i}, 'name', this.value)">
-            <input type="number" class="state-penalty-other-val" value="${val}" step="1" ${canEdit ? '' : 'readonly'} onchange="updateOtherModifier(${i}, 'value', this.value)">
+          // Tracker-sourced entries (auto-managed by the Combat Tracker
+          // widget) render read-only. The user can't edit the name or
+          // value, and the delete × is replaced with a lock icon with
+          // explanatory tooltip. Clicking the row is a no-op — tracker
+          // entries are owned by the widget and clearing them means
+          // using the widget's Start My Turn button.
+          const isTrackerSource = m && m.source === 'tracker';
+          const lockTip = isTrackerSource
+            ? 'Managed by the Combat Tracker — edit counters in the tracker widget to change this value. Cleared by Start My Turn.'
+            : '';
+          const rowClass = isTrackerSource ? ' state-penalty-other-row-locked' : '';
+          const inputsReadonly = isTrackerSource || !canEdit;
+          othersEditor += `<div class="state-penalty-other-row${rowClass}"${isTrackerSource ? ` title="${escapeHtml(lockTip)}"` : ''}>
+            <input type="text" class="state-penalty-other-name" value="${escapeHtml(name)}" placeholder="Name (e.g. Exposure)" ${inputsReadonly ? 'readonly' : ''} onchange="updateOtherModifier(${i}, 'name', this.value)">
+            <input type="number" class="state-penalty-other-val" value="${val}" step="1" ${inputsReadonly ? 'readonly' : ''} onchange="updateOtherModifier(${i}, 'value', this.value)">
             <span class="state-penalty-other-unit">%</span>
-            ${canEdit ? `<span class="state-penalty-other-del" title="Remove modifier" onclick="deleteOtherModifier(${i})">×</span>` : '<span class="state-penalty-other-del-ph"></span>'}
+            ${
+              isTrackerSource
+                ? '<span class="state-penalty-other-lock" title="Tracker-managed">🔒</span>'
+                : (canEdit ? `<span class="state-penalty-other-del" title="Remove modifier" onclick="deleteOtherModifier(${i})">×</span>` : '<span class="state-penalty-other-del-ph"></span>')
+            }
           </div>`;
         });
       }
