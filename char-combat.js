@@ -3678,6 +3678,7 @@ export function createCombatSection(ctx) {
     rollCalcSetSlotValue:   rollcalc.setSlotValue,
     rollCalcSetStatmod:     rollcalc.setStatmod,
     rollCalcSetDifficulty:  rollcalc.setDifficulty,
+    rollCalcApplyReactionDifficulty: rollcalc.applyReactionDifficulty,
     rollCalcSetMitigation:  rollcalc.setMitigation,
     rollCalcSetReduction:   rollcalc.setReduction,
     rollCalcToggle:         rollcalc.toggleShowRaw,
