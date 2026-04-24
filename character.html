@@ -1928,6 +1928,198 @@
     .combat-section:last-child { margin-bottom: 0; }
     .combat-section-title { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #aaa; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #1a1a1a; }
 
+    /* ─── Combat Tracker (action-economy widget) ─── */
+    .combat-section-tracker {
+      /* Slight tinted border so it reads as "interactive tool"
+         vs the more document-y Combat sections. */
+      border-color: #2a2518;
+      background: #0f0e0a;
+    }
+    .combat-tracker-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #1f1c13;
+    }
+    .combat-tracker-caret {
+      background: transparent;
+      border: none;
+      color: #aaa;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      cursor: pointer;
+      padding: 2px 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex: 1;
+    }
+    .combat-tracker-caret:hover { color: #ddd; }
+    .combat-tracker-caret-icon {
+      color: #6a6555;
+      font-size: 10px;
+      width: 10px;
+      text-align: center;
+    }
+    .combat-tracker-title { letter-spacing: .12em; }
+    /* Penalty-live toggle pill in the header */
+    .combat-tracker-autopen {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 3px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      background: transparent;
+    }
+    .combat-tracker-autopen.on {
+      background: #1f2a1a;
+      border-color: #2d3f22;
+      color: #8fd67e;
+    }
+    .combat-tracker-autopen.off {
+      background: #1a1a1a;
+      border-color: #2a2a2a;
+      color: #666;
+    }
+    .combat-tracker-autopen:hover { filter: brightness(1.2); }
+    /* Collapsed single-line summary */
+    .combat-tracker-summary {
+      font-size: 11px;
+      color: #8a8570;
+      letter-spacing: .02em;
+      padding: 4px 0 2px;
+    }
+    /* Grid of tiles */
+    .combat-tracker-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 8px;
+    }
+    .ct-tile {
+      background: #141310;
+      border: 1px solid #241f14;
+      border-radius: 5px;
+      padding: 10px 11px 9px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 0;
+    }
+    /* Movement tile spans two columns on wide screens — it has more
+       controls than the single-counter tiles. On narrow it stays
+       single-column which is fine. */
+    .ct-tile-wide {
+      grid-column: span 2;
+      min-width: 0;
+    }
+    @media (max-width: 600px) {
+      .ct-tile-wide { grid-column: span 1; }
+    }
+    .ct-tile-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: #7a7260;
+    }
+    .ct-tile-value {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 20px;
+      color: #d8d3c2;
+      line-height: 1;
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+      min-width: 0;
+      flex-wrap: wrap;
+    }
+    .ct-tile-value-big { font-size: 26px; color: #e6e0cc; }
+    .ct-tile-denom { font-size: 13px; color: #7a7260; font-family: inherit; }
+    .ct-tile-unit  { font-size: 10px; color: #5f5a4b; font-family: inherit; text-transform: lowercase; letter-spacing: .04em; }
+    .ct-tile-controls {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+      flex-wrap: wrap;
+    }
+    .ct-tile-controls-center { justify-content: center; }
+    .ct-tile-extra {
+      margin-top: 2px;
+    }
+    .ct-tile-hint {
+      font-size: 9px;
+      color: #6a6555;
+      letter-spacing: .02em;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .ct-tile-penalty {
+      color: #d88e4b;
+      font-weight: 600;
+    }
+    /* Buttons */
+    .ct-btn {
+      background: #1a1812;
+      border: 1px solid #2a251a;
+      color: #c8c2ae;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 3px;
+      cursor: pointer;
+      min-width: 28px;
+      text-align: center;
+      font-family: inherit;
+    }
+    .ct-btn:hover:not(:disabled) { background: #252013; border-color: #403620; color: #e6dcc0; }
+    .ct-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .ct-btn-wide { width: 100%; padding: 6px 10px; }
+    .ct-btn-tight { padding: 2px 8px; font-size: 10px; min-width: 0; }
+    .ct-btn-secondary {
+      background: transparent;
+      border-color: #2a251a;
+      color: #8a8270;
+      font-size: 10px;
+      padding: 4px 10px;
+    }
+    .ct-btn-primary {
+      background: #2a2516;
+      border-color: #403620;
+      color: #e6dcc0;
+    }
+    .ct-btn-primary:hover:not(:disabled) { background: #3a3220; border-color: #554826; }
+    .ct-btn-accent {
+      background: #2a1c10;
+      border-color: #553820;
+      color: #e6b275;
+    }
+    .ct-btn-accent:hover:not(:disabled) { background: #3a2515; border-color: #7a4a25; color: #f5c590; }
+    /* Text input (movement exact entry) */
+    .ct-input {
+      background: #0a0908;
+      border: 1px solid #2a251a;
+      color: #d8d3c2;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 12px;
+      padding: 3px 6px;
+      border-radius: 3px;
+      width: 56px;
+      min-width: 0;
+      text-align: center;
+    }
+    .ct-input:focus { outline: none; border-color: #554826; }
+    .ct-input[readonly] { color: #6a6555; cursor: default; }
+
     /* Derived stat cards */
     .ds-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
     .ds-card { background: #111; border: 1px solid #1f1f1f; border-radius: 4px; padding: 10px 12px; position: relative; }
