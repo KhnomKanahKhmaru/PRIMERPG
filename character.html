@@ -474,6 +474,14 @@
     .state-tile-status.s-shock    { background: #2a2410; color: #d8c060; border: 1px solid #4a3d20; }
     .state-tile-status.s-insane   { background: #2a1a10; color: #d89060; border: 1px solid #4a2d20; }
     .state-tile-status.s-broken   { background: #2a0d0d; color: #e06060; border: 1px solid #6a2a2a; }
+    /* EXHAUSTION status pills — reuse the 4-step progression green →
+       yellow → orange → red to match the segmented bar palette. Reuses
+       the same color values as the HP/SAN status pills where the
+       meanings match: "ready" ≈ healthy, "unconscious" ≈ dead. */
+    .state-tile-status.e-ready       { background: #1a2a1a; color: #8cc080; border: 1px solid #2a4a2a; }
+    .state-tile-status.e-tired       { background: #2a2410; color: #d8c060; border: 1px solid #4a3d20; }
+    .state-tile-status.e-exhausted   { background: #2a1a10; color: #d89060; border: 1px solid #4a2d20; }
+    .state-tile-status.e-unconscious { background: #2a0d0d; color: #e06060; border: 1px solid #6a2a2a; }
 
     /* Description block inside Body / Sanity / Penalty tiles. Shown
        below the status pill and data rows. Text is muted + italic to
