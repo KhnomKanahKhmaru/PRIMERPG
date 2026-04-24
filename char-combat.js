@@ -2211,6 +2211,120 @@ export function createCombatSection(ctx) {
     </div>`;
   }
 
+  // ─── EXHAUSTION BAR (Combat tab) ───
+  //
+  // Vertical fill-bar widget that sits adjacent to the Hit Locations
+  // list. Mirrors the three-tier palette of the Overview tile but in
+  // a tall, narrow format so it reads as a "reservoir" during play.
+  //
+  // Widget layout (top to bottom):
+  //   Label          "Exhaustion"
+  //   Big number     current / max
+  //   Vertical bar   segments fill from the bottom; damage chews from top
+  //   Status pill    Ready / Tired / Exhausted / Unconscious
+  //   ± buttons      quick adjust for manual damage
+  //
+  // The bar itself visualizes damage via color bands on each segment,
+  // just like HP hit locations and the SAN pool tile do. Because EXH
+  // can go deeply negative (-2×max), the bar has THREE zones mapped
+  // to three color tiers: "positive" (ready), "0 to -max" (tired),
+  // "-max to -2×max" (exhausted).
+  //
+  // ± buttons write to `charData.exhDamage` (scalar manual damage),
+  // parallel to how SAN's manual damage field works. Structured
+  // damages (named entries with level modifiers) are a Turn-2
+  // feature — for now the widget just provides the simplest
+  // adjustment affordance.
+  function renderExhBar(exh) {
+    if (!exh || exh.max <= 0) return '';
+    const canEdit = ctx.getCanEdit();
+    const tierMap = {
+      ready:        { label: 'Ready',        cls: 'e-ready' },
+      tired:        { label: 'Tired',        cls: 'e-tired' },
+      exhausted:    { label: 'Exhausted',    cls: 'e-exhausted' },
+      unconscious:  { label: 'Unconscious',  cls: 'e-unconscious' }
+    };
+    const tier = tierMap[exh.status] || tierMap.ready;
+
+    // Segment count: one segment per EXH point, capped at a sane max.
+    // Small characters (EXH 3) get 3 segments; large characters (EXH 12)
+    // get 12. Bar height scales with the HL list naturally.
+    const segCount = Math.max(1, Math.min(exh.max, 20));
+    // Damage chews from the TOP downward. Negative current values mean
+    // "past zero" — the bar renders empty, and the tier changes to
+    // Tired/Exhausted to communicate the severity. At knockout, whole
+    // bar is red-shaded.
+    const segHtml = renderExhBarSegments(exh.max, exh.damage, segCount);
+
+    // ± buttons. Each click adjusts the manual damage by 1 up or down.
+    // trackerAdjust-style: goes through exhAdjust which saves + re-renders.
+    // Disabled when the character sheet is read-only.
+    const btn = canEdit ? '' : ' disabled';
+
+    return `
+      <div class="exh-bar-widget" title="Exhaustion — stamina pool. Spend to Exert on rolls, or take damage from exertion/exposure. At −2× max you fall Unconscious.">
+        <div class="exh-bar-label">Exhaustion</div>
+        <div class="exh-bar-nums">
+          <span class="exh-bar-current">${exh.current}</span>
+          <span class="exh-bar-sep">/</span>
+          <span class="exh-bar-max">${exh.max}</span>
+        </div>
+        <div class="exh-bar-fill">${segHtml}</div>
+        <div class="exh-bar-status ${tier.cls}">${escapeHtml(tier.label)}</div>
+        <div class="exh-bar-controls">
+          <button class="exh-bar-btn" onclick="exhAdjust(-1)" type="button"${btn} title="Heal 1 EXH (regain stamina)">−</button>
+          <button class="exh-bar-btn" onclick="exhAdjust(1)" type="button"${btn} title="Damage 1 EXH (spend / exert)">+</button>
+        </div>
+      </div>`;
+  }
+
+  function renderExhBarSegments(exhMax, damage, segCount) {
+    // Vertical bar — top-to-bottom rendering order puts segment 1 at
+    // the TOP. Damage chews from the top (so the bar "empties" from
+    // above, like a liquid draining). Color palette matches the
+    // Overview tile: green → yellow → orange → red as damage deepens
+    // past max thresholds.
+    const COLORS = { green: '#4a8a4a', yellow: '#bdb247', orange: '#c87a3a', red: '#a63a3a', empty: '#1a1a18' };
+    const dmgPerSeg = exhMax / segCount;
+    let html = '';
+    for (let i = 1; i <= segCount; i++) {
+      // i=1 is the TOPMOST segment. It represents the HIGHEST point
+      // of the pool, so it empties first. When total damage reaches
+      // i × dmgPerSeg, this segment is "eaten". Past that, the
+      // color bands show how deep into negative you are.
+      const topBoundary = i * dmgPerSeg;
+      let color;
+      if (damage >= topBoundary + 2 * exhMax)      color = COLORS.red;      // past -2×max — unconscious zone
+      else if (damage >= topBoundary + exhMax)     color = COLORS.orange;   // past -max — exhausted zone
+      else if (damage >= topBoundary)              color = COLORS.yellow;   // past 0 — tired zone
+      else                                          color = COLORS.green;    // still in positive — ready zone
+      // Empty look for segments that are depleted (damage ate this
+      // segment in the positive zone). Render with a slightly darker
+      // fill so the eaten-vs-remaining distinction is visible even
+      // when the whole bar has shifted yellow/orange for status.
+      const isEaten = damage >= topBoundary && color === COLORS.green;
+      const fillColor = isEaten ? COLORS.empty : color;
+      html += `<span class="exh-bar-seg" style="background:${fillColor}"></span>`;
+    }
+    return html;
+  }
+
+  // EXH adjust handler — called from the ± buttons on the Combat-tab
+  // bar widget. Mutates charData.exhDamage additively, clamps at 0 to
+  // prevent negative damage (which would mean "above max EXH" — use
+  // exhModifiers for bonus caps instead). Upper end is NOT clamped
+  // because going past max is the whole point of the mechanic.
+  async function exhAdjust(delta) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const cur = Math.max(0, Number.isFinite(charData.exhDamage) ? charData.exhDamage : 0);
+    const next = Math.max(0, cur + delta);
+    if (next === cur) return;
+    charData.exhDamage = next;
+    await saveCharacter(ctx.getCharId(), { exhDamage: next });
+    renderAll();
+  }
+
   // ─── HIT LOCATIONS ───
 
   // UI-only state: whether we're in "edit modifiers" mode for the Hit Locations
@@ -2231,9 +2345,13 @@ export function createCombatSection(ctx) {
     // Cards from the 'health' derived stat group, rendered at the top of the
     // section as an overview strip. These are ALSO filtered OUT of the normal
     // derived stats grid (renderDerivedStatsSection) so they don't appear twice.
+    //
+    // EXH is ALSO filtered out here — it has its own dedicated vertical-bar
+    // widget rendered inline with the Hit Locations list below, so showing
+    // it as a compact stat card at the top would be redundant.
     const healthStats = [];
     result.stats.forEach(entry => {
-      if (entry.def.group === 'health') healthStats.push(entry);
+      if (entry.def.group === 'health' && entry.def.code !== 'EXH') healthStats.push(entry);
     });
     if (healthStats.length > 0) {
       body_html += '<div class="ds-grid health-cards">';
@@ -2251,8 +2369,19 @@ export function createCombatSection(ctx) {
     }
     body_html += '</div>';
 
+    // Hit Locations + EXH rail. Side-by-side layout:
+    //   [ EXH vertical bar ]  [ Hit Location rows ]
+    // EXH is thematically physical (third pillar alongside HP/SAN) so it
+    // lives adjacent to the body diagram — players can see at a glance
+    // "how wrecked am I bodily, AND how much is left in the tank."
+    // The EXH rail is only rendered if the character actually has an
+    // EXH pool (exh.max > 0); otherwise the HL list goes full-width.
+    const exhBarHtml = (result.exh && result.exh.max > 0) ? renderExhBar(result.exh) : '';
+    body_html += '<div class="hl-row-wrap">';
+    if (exhBarHtml) body_html += exhBarHtml;
     body_html += '<div class="hl-list">';
     result.locations.forEach(loc => { body_html += renderHlRow(loc, body); });
+    body_html += '</div>';
     body_html += '</div>';
 
     // Body total goes at the bottom, summarizing the overall state after
@@ -4047,6 +4176,8 @@ export function createCombatSection(ctx) {
     toggleStressPanel, addStressMod, updateStressMod, deleteStressMod,
     // Other modifiers (free-form ±% entries like Exposure, Encumbrance)
     addOtherMod, updateOtherMod, deleteOtherMod,
+    // Exhaustion (EXH) — Combat-tab vertical bar widget
+    exhAdjust,
     // Combat Tracker (action economy tracker — per-character round state)
     trackerAdjust, trackerSet, trackerStartMyTurn, trackerNextRound,
     trackerResetRound, trackerChainActions,
