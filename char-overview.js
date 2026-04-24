@@ -128,6 +128,15 @@ export function createOverviewSection(ctx) {
       tiles.push(renderSanTile(san));
     }
 
+    // EXHAUSTION tile — EXH current/max, amber-palette bar, status
+    // label. Third pillar alongside Body and Sanity. Structurally
+    // identical — the three tiles together form the character's
+    // core pool-based resources.
+    const exh = result.exh;
+    if (exh && exh.max > 0) {
+      tiles.push(renderExhTile(exh));
+    }
+
     // POWER tile — power pool current/max, simple fill bar. Always
     // rendered when the pool is present in the result (even if max is 0
     // from a freshly-created character), so the Overview grid stays
@@ -307,6 +316,58 @@ export function createOverviewSection(ctx) {
       else if (damage > sanMax + base)    color = COLORS.orange;
       else if (damage > base)             color = COLORS.yellow;
       else                                color = COLORS.blue;
+      html += `<span class="state-bar-seg" style="background:${color}"></span>`;
+    }
+    return html;
+  }
+
+  // ─── EXHAUSTION TILE ───
+  //
+  // Third pool tile. Shape mirrors SAN exactly — segmented bar,
+  // numeric current/max readout, status pill. Palette shifted to
+  // amber tones (green-ready → yellow → orange → red-out) to read
+  // distinctly from HP's green-red and SAN's blue-red while keeping
+  // the same "fuller is better" visual grammar.
+  function renderExhTile(exh) {
+    const tierMap = {
+      ready:        { label: 'Ready',        cls: 'e-ready' },
+      tired:        { label: 'Tired',        cls: 'e-tired' },
+      exhausted:    { label: 'Exhausted',    cls: 'e-exhausted' },
+      unconscious:  { label: 'Unconscious',  cls: 'e-unconscious' }
+    };
+    const tier = tierMap[exh.status] || tierMap.ready;
+    const segCount = Math.min(exh.max, 40);
+    const segHtml = renderExhOverviewSegments(exh.max, exh.damage, segCount);
+    const headInner = `
+      <span class="state-tile-label">Exhaustion</span>
+      <span class="state-tile-nums">${exh.current}<span class="sep">/</span><span class="max">${exh.max}</span></span>`;
+    const descHtml = ctx.renderDescriptionDisplay
+      ? ctx.renderDescriptionDisplay('tiles', 'exhaustion', { wrapperClass: 'state-tile-desc' })
+      : '';
+    const bodyHtml = `
+      <div class="state-bar">${segHtml}</div>
+      <span class="state-tile-status ${tier.cls}">${escapeHtml(tier.label)}</span>
+      ${descHtml}`;
+    return wrapCollapsibleTile('exhaustion', '', headInner, bodyHtml);
+  }
+
+  function renderExhOverviewSegments(exhMax, damage, segCount) {
+    // Amber palette: green (ready) → yellow (tired) → orange (exhausted)
+    // → red (unconscious). Each segment represents the same ft-of-EXH as
+    // the SAN bar does for mental. Matches the progressive-coloring
+    // pattern used in SAN so the three tiles read as a coherent set.
+    if (exhMax <= 0 || segCount <= 0) return '';
+    const COLORS = { green: '#4a8a4a', yellow: '#bdb247', orange: '#c87a3a', red: '#a63a3a' };
+    const dmgPerSeg = exhMax / segCount;
+    let html = '';
+    for (let i = 1; i <= segCount; i++) {
+      const rightDistance = segCount - i + 1;
+      const base = (rightDistance - 1) * dmgPerSeg;
+      let color;
+      if (damage > 2 * exhMax + base)     color = COLORS.red;
+      else if (damage > exhMax + base)    color = COLORS.orange;
+      else if (damage > base)             color = COLORS.yellow;
+      else                                color = COLORS.green;
       html += `<span class="state-bar-seg" style="background:${color}"></span>`;
     }
     return html;
