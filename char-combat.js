@@ -107,6 +107,11 @@ export function createCombatSection(ctx) {
     html += renderHitLocationsSection(result);
     // Sanity section — mental health pool, placed between physical and power.
     html += renderSanSection(result);
+    // Exhaustion section — third pool tile alongside Body and Sanity.
+    // Same structural shape: ± damage controls, max modifiers list,
+    // structured damages list. Sits directly below Sanity so the three
+    // pool-based resources cluster together.
+    html += renderExhSection(result);
     // All other derived stat groups (mental, etc.) render below.
     // 'carry' is excluded because CAP / LIFT / ENC render as their own
     // cards at the top of the Inventory tab — putting them here too
