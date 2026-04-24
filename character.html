@@ -534,6 +534,27 @@
       transition: width 0.3s, background 0.2s;
     }
 
+    /* Power tile — sits in the bottom stack with Movement/Penalty as a
+       flat full-width strip. Body is a single inline row: bar taking
+       most of the width, status pill sitting on the right. Matches the
+       visual rhythm of the surrounding flat tiles instead of being
+       tall like the Body/Sanity/Exh pools above. */
+    .state-tile-power-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+    .state-tile-power-row > .state-progress-bar-inline {
+      flex: 1;
+      min-width: 0;
+      height: 12px;
+    }
+    .state-tile-power-row > .state-tile-status {
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+
     /* Wide tile — full-width inside the state grid. Used by Movement,
        Roll Calc, and Penalty in the bottom stack. */
     .state-tile-wide { grid-column: 1 / -1; }
