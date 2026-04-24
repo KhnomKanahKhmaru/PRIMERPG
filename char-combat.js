@@ -522,17 +522,41 @@ export function createCombatSection(ctx) {
                   title="${escapeHtml(pillTip)}"
                   type="button">${pillLabel}</button>`
         : `<span class="ds-card-dicepill${pillClass} readonly" title="${escapeHtml(pillTip)}">${pillLabel}</span>`;
+    } else if ((def.allowValueMods === true || def.allowPenaltyFilter === true) && canEdit) {
+      // Non-rollable stats that opt into value mods or the penalty
+      // filter get an "EDIT" pill instead of the dice pill. Same
+      // toggle behavior — click to expand the stat-edit panel.
+      // Without this the panel would be unreachable on SPD/SPR
+      // because the dice pill (the normal click target) is gated on
+      // isRollable.
+      const vmCount = Array.isArray(entry.valueMods) ? entry.valueMods.length : 0;
+      const charData = ctx.getCharData();
+      const hasFilter = !!(charData && charData.penaltyFilters && charData.penaltyFilters[def.code]);
+      const hasEdits = vmCount > 0 || hasFilter;
+      const pillLabel = hasEdits ? 'EDIT ✎' : 'EDIT';
+      const pillClass = hasEdits ? ' has-mods' : ' empty';
+      const hints = [];
+      if (def.allowValueMods) hints.push('flat value bonuses');
+      if (def.allowPenaltyFilter) hints.push('per-source Penalty filter');
+      const pillTip = `Click to edit: ${hints.join(', ')}`;
+      dicePill = `<button class="ds-card-dicepill${openPanel ? ' open' : ''}${pillClass}"
+                  onclick="toggleDiceModPanel('${escapeHtml(def.code)}')"
+                  title="${escapeHtml(pillTip)}"
+                  type="button">${pillLabel}</button>`;
     }
 
-    // Expanded panel content (dice modifier editor).
+    // Expanded panel content — dice modifier editor plus, for opted-in
+    // stats (allowValueMods / allowPenaltyFilter), sections for flat
+    // value bonuses and per-source Penalty whitelist. See
+    // renderStatEditPanel for the section breakdown.
     let panelHtml = '';
     if (openPanel && canEdit) {
-      panelHtml = renderDiceModPanel(def.code, value, diceMods, diceModTotal, {
+      panelHtml = renderStatEditPanel(def, value, diceMods, diceModTotal, {
         isPassive,
         penaltyDice,
         finalDice,
         penaltyPercent: entry.penaltyPercent || 0
-      });
+      }, entry.valueMods || [], entry.valueModTotal || 0);
     }
 
     const collapsedClass = hasPenaltyDisplay && collapsedPenaltyValues.has(def.code)
@@ -689,49 +713,188 @@ export function createCombatSection(ctx) {
   // Dice modifier editor panel — lives inside an expanded card. Shows the
   // total dice the player rolls (base + all mods − Penalty) at the top, then
   // the list of mods with name/value/delete, then an add button.
-  function renderDiceModPanel(code, baseValue, diceMods, diceModTotal, penaltyInfo) {
+  // Stat-edit panel — shows up when a stat card is expanded via its
+  // dice pill (click on "Xd"). Renders three sections in order:
+  //
+  //   1. Dice Modifiers — named +/− bonuses to the dice POOL (all
+  //      rollable stats). Always shown; this is the original panel.
+  //
+  //   2. Value Modifiers — named flat bonuses to the stat's VALUE
+  //      (e.g. SPD +2 "Running Shoes"). Shown only when def.allowValueMods.
+  //
+  //   3. Penalty Sources — per-source whitelist for which Strain
+  //      contributors affect THIS stat's Penalty %. Missing filter
+  //      object = legacy behavior (all sources apply). Shown only
+  //      when def.allowPenaltyFilter.
+  //
+  // Sections 2 and 3 read their state from the live charData so
+  // changes persist through renders. Handlers are below: addValueMod,
+  // updateValueMod, deleteValueMod, togglePenaltyFilterSource,
+  // togglePenaltyFilterOther, setPenaltyFilterMode.
+  function renderStatEditPanel(def, baseValue, diceMods, diceModTotal, penaltyInfo, valueMods, valueModTotal) {
+    const code = def.code;
     const mods = Array.isArray(diceMods) ? diceMods : [];
+    const vMods = Array.isArray(valueMods) ? valueMods : [];
     const base = Number.isFinite(baseValue) ? baseValue : 0;
     const modTotal = diceModTotal || 0;
     const si = penaltyInfo || { isPassive: false, penaltyDice: 0, finalDice: base + modTotal, penaltyPercent: 0 };
 
     let html = '<div class="ds-rollmod-panel">';
 
+    // ── Section 1: Dice summary + Dice Modifiers ──
+    //
     // Summary line: the final dice count with a compact breakdown.
     //   "Rolling 12d   = 10 base + 2 bonus"
     //   "Rolling 8d    = 10 base + 2 bonus − 4 penalty (50%)"
     //   "Rolling 10d   = 10 base  (passive — Penalty doesn't apply)"
-    const breakdownParts = [`${base} base`];
-    if (modTotal !== 0) breakdownParts.push(`${modTotal >= 0 ? '+' : '−'} ${Math.abs(modTotal)} bonus`);
-    if (si.penaltyDice > 0) breakdownParts.push(`− ${si.penaltyDice} penalty (${si.penaltyPercent}%)`);
-    const passiveNote = si.isPassive && si.penaltyPercent > 0
-      ? '<span class="ds-dm-passive-note"> · passive roll · Penalty does not apply</span>'
-      : '';
-    html += `<div class="ds-dicemod-summary">
-      <span class="ds-dm-summary-label">Rolling</span>
-      <span class="ds-dm-summary-value">${si.finalDice}d</span>
-      <span class="ds-dm-summary-breakdown">= ${breakdownParts.join(' ')}${passiveNote}</span>
-    </div>`;
+    //
+    // Non-rollable stats (SPD, SPR, etc.) skip the dice summary
+    // and dice-mod list entirely — those sections only make sense
+    // for stats you actually roll.
+    const isRollable = def.rollable !== false;
+    if (isRollable) {
+      const breakdownParts = [`${base} base`];
+      if (modTotal !== 0) breakdownParts.push(`${modTotal >= 0 ? '+' : '−'} ${Math.abs(modTotal)} bonus`);
+      if (si.penaltyDice > 0) breakdownParts.push(`− ${si.penaltyDice} penalty (${si.penaltyPercent}%)`);
+      const passiveNote = si.isPassive && si.penaltyPercent > 0
+        ? '<span class="ds-dm-passive-note"> · passive roll · Penalty does not apply</span>'
+        : '';
+      html += `<div class="ds-dicemod-summary">
+        <span class="ds-dm-summary-label">Rolling</span>
+        <span class="ds-dm-summary-value">${si.finalDice}d</span>
+        <span class="ds-dm-summary-breakdown">= ${breakdownParts.join(' ')}${passiveNote}</span>
+      </div>`;
 
-    if (mods.length === 0) {
-      html += '<div class="mod-empty">No dice modifiers. Add bonus dice from abilities or traits.</div>';
-    } else {
-      html += '<div class="mod-list">';
-      mods.forEach((mod, idx) => {
-        html += `<div class="mod-item">
-          <input type="text" class="mod-name-input" value="${escapeHtml(mod.name || '')}" placeholder="e.g. Brawny Trait"
-                 onchange="updateDiceMod('${escapeHtml(code)}',${idx},'name',this.value)">
-          <input type="number" class="mod-val-input" value="${mod.value || 0}" step="1"
-                 onchange="updateDiceMod('${escapeHtml(code)}',${idx},'value',this.value)"
-                 title="Bonus dice (negative = penalty dice)">
-          <span class="mod-delete" onclick="deleteDiceMod('${escapeHtml(code)}',${idx})" title="Delete">×</span>
-        </div>`;
-      });
-      html += '</div>';
+      html += `<div class="ds-edit-section-head">Dice Modifiers</div>`;
+      if (mods.length === 0) {
+        html += '<div class="mod-empty">No dice modifiers. Add bonus dice from abilities or traits.</div>';
+      } else {
+        html += '<div class="mod-list">';
+        mods.forEach((mod, idx) => {
+          html += `<div class="mod-item">
+            <input type="text" class="mod-name-input" value="${escapeHtml(mod.name || '')}" placeholder="e.g. Brawny Trait"
+                   onchange="updateDiceMod('${escapeHtml(code)}',${idx},'name',this.value)">
+            <input type="number" class="mod-val-input" value="${mod.value || 0}" step="1"
+                   onchange="updateDiceMod('${escapeHtml(code)}',${idx},'value',this.value)"
+                   title="Bonus dice (negative = penalty dice)">
+            <span class="mod-delete" onclick="deleteDiceMod('${escapeHtml(code)}',${idx})" title="Delete">×</span>
+          </div>`;
+        });
+        html += '</div>';
+      }
+      html += `<div class="mod-add-row"><button class="mod-add-btn" onclick="addDiceMod('${escapeHtml(code)}')">+ Add dice mod</button></div>`;
     }
-    html += `<div class="mod-add-row"><button class="mod-add-btn" onclick="addDiceMod('${escapeHtml(code)}')">+ Add dice mod</button></div>`;
+
+    // ── Section 2: Value Modifiers ──
+    //
+    // Named flat bonuses to the stat's raw value. Shown for stats
+    // that opt in via def.allowValueMods. Layout parallels dice
+    // mods — name + signed value + delete.
+    if (def.allowValueMods === true) {
+      const unitLabel = def.unit ? ` ${def.unit}` : '';
+      const totalDisplay = valueModTotal !== 0
+        ? ` <span class="ds-edit-section-total">(${valueModTotal >= 0 ? '+' : ''}${valueModTotal}${unitLabel} total)</span>`
+        : '';
+      html += `<div class="ds-edit-section-head">Value Modifiers${totalDisplay}</div>`;
+      if (vMods.length === 0) {
+        html += `<div class="mod-empty">No value modifiers. Add flat bonuses like "Running Shoes: +2" to your ${escapeHtml(def.name)}.</div>`;
+      } else {
+        html += '<div class="mod-list">';
+        vMods.forEach((mod, idx) => {
+          html += `<div class="mod-item">
+            <input type="text" class="mod-name-input" value="${escapeHtml(mod.name || '')}" placeholder="e.g. Running Shoes"
+                   onchange="updateValueMod('${escapeHtml(code)}',${idx},'name',this.value)">
+            <input type="number" class="mod-val-input" value="${mod.value || 0}" step="${def.keepDecimals ? 'any' : '1'}"
+                   onchange="updateValueMod('${escapeHtml(code)}',${idx},'value',this.value)"
+                   title="Flat value bonus (negative = penalty)">
+            <span class="mod-delete" onclick="deleteValueMod('${escapeHtml(code)}',${idx})" title="Delete">×</span>
+          </div>`;
+        });
+        html += '</div>';
+      }
+      html += `<div class="mod-add-row"><button class="mod-add-btn" onclick="addValueMod('${escapeHtml(code)}')">+ Add value mod</button></div>`;
+    }
+
+    // ── Section 3: Penalty Sources ──
+    //
+    // Per-source whitelist. Controls which Strain contributors
+    // (Pain, Stress, Encumbrance, individual Other entries) affect
+    // THIS stat's Penalty %. Missing filter object on the character
+    // = legacy behavior (all sources apply). Clicking a checkbox
+    // materializes the filter object if it didn't exist, seeded to
+    // match current behavior (everything on); unchecking then
+    // removes that source's contribution to this stat.
+    if (def.allowPenaltyFilter === true) {
+      const charData = ctx.getCharData();
+      const filters = (charData && charData.penaltyFilters && typeof charData.penaltyFilters === 'object')
+        ? charData.penaltyFilters : null;
+      const thisFilter = (filters && filters[code] && typeof filters[code] === 'object')
+        ? filters[code] : null;
+      // "No filter set" = legacy-apply-all. Display that explicitly so
+      // the player knows what state they're in. One click on any
+      // checkbox will switch to the filtered mode.
+      const hasFilter = !!thisFilter;
+      const headState = hasFilter ? 'Filtered' : 'Default (all sources apply)';
+      html += `<div class="ds-edit-section-head">Penalty Sources <span class="ds-edit-section-state">${escapeHtml(headState)}</span></div>`;
+
+      // Helper to render a single source checkbox row. When hasFilter
+      // is false, every box renders checked (that's the legacy
+      // behavior being displayed). Clicking any of them initializes
+      // the filter object, defaulting to the current "all true" state,
+      // then toggles the clicked box off.
+      const otherMods = Array.isArray(charData && charData.otherModifiers) ? charData.otherModifiers : [];
+      const srcRow = (key, label) => {
+        const checked = hasFilter ? (thisFilter[key] === true) : true;
+        return `<label class="ds-edit-filter-row">
+          <input type="checkbox"${checked ? ' checked' : ''}
+                 onchange="togglePenaltyFilterSource('${escapeHtml(code)}','${key}',this.checked)">
+          <span class="ds-edit-filter-label">${escapeHtml(label)}</span>
+          <span class="ds-edit-filter-hint">${escapeHtml(key === 'pain' ? 'from damage' : key === 'stress' ? 'from SAN loss' : 'from load')}</span>
+        </label>`;
+      };
+      html += '<div class="ds-edit-filter-list">';
+      html += srcRow('pain', 'Pain');
+      html += srcRow('stress', 'Stress');
+      html += srcRow('encumbrance', 'Encumbrance');
+      // Individual Other entries — each gets its own checkbox so the
+      // GM can say "only the Wounded Leg from Other affects SPD,
+      // ignore the Drugged one."
+      if (otherMods.length > 0) {
+        html += '<div class="ds-edit-filter-other-head">Other:</div>';
+        otherMods.forEach(m => {
+          if (!m || !m.id) return;
+          const otherFilter = hasFilter ? (thisFilter.other && typeof thisFilter.other === 'object' ? thisFilter.other : null) : null;
+          const checked = hasFilter ? (otherFilter && otherFilter[m.id] === true) : true;
+          const name = m.name || '(unnamed)';
+          const val = parseInt(m.value) || 0;
+          const valStr = (val >= 0 ? '+' : '') + val + '%';
+          html += `<label class="ds-edit-filter-row ds-edit-filter-other">
+            <input type="checkbox"${checked ? ' checked' : ''}
+                   onchange="togglePenaltyFilterOther('${escapeHtml(code)}','${escapeHtml(m.id)}',this.checked)">
+            <span class="ds-edit-filter-label">${escapeHtml(name)}</span>
+            <span class="ds-edit-filter-hint">${escapeHtml(valStr)}</span>
+          </label>`;
+        });
+      }
+      html += '</div>';
+      if (hasFilter) {
+        html += `<div class="mod-add-row"><button class="mod-add-btn" onclick="clearPenaltyFilter('${escapeHtml(code)}')">Reset to default (all sources)</button></div>`;
+      }
+    }
+
     html += '</div>';
     return html;
+  }
+
+  // Legacy alias — kept in case external modules or future code
+  // reach for the old name. Delegates to the new unified panel
+  // with empty value-mod args.
+  function renderDiceModPanel(code, baseValue, diceMods, diceModTotal, penaltyInfo) {
+    // Synthesize a minimal def so the panel only renders the dice
+    // section (allowValueMods / allowPenaltyFilter absent). Used by
+    // nothing currently — left for defensive compatibility.
+    const def = { code, rollable: true, name: code };
+    return renderStatEditPanel(def, baseValue, diceMods, diceModTotal, penaltyInfo, [], 0);
   }
 
   // ─── DICE MOD HANDLERS ───
@@ -774,6 +937,127 @@ export function createCombatSection(ctx) {
     list.splice(idx, 1);
     if (list.length === 0) delete charData.diceModifiers[code];
     await saveCharacter(ctx.getCharId(), { diceModifiers: charData.diceModifiers });
+    renderAll();
+  }
+
+  // ─── VALUE MOD HANDLERS ───
+  //
+  // Value modifiers are named flat bonuses to a stat's displayed
+  // value (e.g. "Running Shoes: +2" on SPD). Storage mirrors dice
+  // modifiers but on charData.valueMods. Each entry: {id, name, value}.
+  // Handlers mirror addDiceMod / updateDiceMod / deleteDiceMod.
+
+  async function addValueMod(code) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!charData.valueMods || typeof charData.valueMods !== 'object') {
+      charData.valueMods = {};
+    }
+    if (!Array.isArray(charData.valueMods[code])) charData.valueMods[code] = [];
+    charData.valueMods[code].push({
+      id: 'vm_' + Math.random().toString(36).slice(2, 10),
+      name: '',
+      value: 1
+    });
+    expandedDiceMods.add(code);
+    await saveCharacter(ctx.getCharId(), { valueMods: charData.valueMods });
+    renderAll();
+  }
+
+  async function updateValueMod(code, idx, field, val) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const list = charData.valueMods && charData.valueMods[code];
+    if (!Array.isArray(list) || !list[idx]) return;
+    if (field === 'name') {
+      list[idx].name = typeof val === 'string' ? val : '';
+    } else if (field === 'value') {
+      // Value mods accept floats for keepDecimals stats (like SPD).
+      // parseFloat covers both integer and decimal inputs.
+      const n = parseFloat(val);
+      list[idx].value = Number.isFinite(n) ? n : 0;
+    }
+    await saveCharacter(ctx.getCharId(), { valueMods: charData.valueMods });
+    renderAll();
+  }
+
+  async function deleteValueMod(code, idx) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const list = charData.valueMods && charData.valueMods[code];
+    if (!Array.isArray(list) || !list[idx]) return;
+    list.splice(idx, 1);
+    if (list.length === 0) delete charData.valueMods[code];
+    await saveCharacter(ctx.getCharId(), { valueMods: charData.valueMods });
+    renderAll();
+  }
+
+  // ─── PENALTY FILTER HANDLERS ───
+  //
+  // The filter object is created LAZILY on first edit. Until the
+  // player clicks a checkbox, charData.penaltyFilters[code] doesn't
+  // exist and the stat uses legacy "all sources apply" behavior.
+  //
+  // When a box is first toggled, we materialize the filter seeded
+  // with the CURRENT "everything on" state, then flip just the
+  // clicked box. This preserves the visible state from the player's
+  // perspective — they uncheck one source, everything else stays on.
+  //
+  // Helper: seed a fresh filter object from the live charData's
+  // other-modifiers so the "Other" sub-map starts complete.
+  function seedFilterObject(charData) {
+    const otherMods = Array.isArray(charData && charData.otherModifiers) ? charData.otherModifiers : [];
+    const otherMap = {};
+    otherMods.forEach(m => { if (m && m.id) otherMap[m.id] = true; });
+    return { pain: true, stress: true, encumbrance: true, other: otherMap };
+  }
+
+  async function togglePenaltyFilterSource(code, sourceKey, checked) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!charData.penaltyFilters || typeof charData.penaltyFilters !== 'object') {
+      charData.penaltyFilters = {};
+    }
+    if (!charData.penaltyFilters[code] || typeof charData.penaltyFilters[code] !== 'object') {
+      // First edit — materialize from current legacy state so only
+      // the clicked box appears to change.
+      charData.penaltyFilters[code] = seedFilterObject(charData);
+    }
+    charData.penaltyFilters[code][sourceKey] = !!checked;
+    await saveCharacter(ctx.getCharId(), { penaltyFilters: charData.penaltyFilters });
+    renderAll();
+  }
+
+  async function togglePenaltyFilterOther(code, otherId, checked) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!charData.penaltyFilters || typeof charData.penaltyFilters !== 'object') {
+      charData.penaltyFilters = {};
+    }
+    if (!charData.penaltyFilters[code] || typeof charData.penaltyFilters[code] !== 'object') {
+      charData.penaltyFilters[code] = seedFilterObject(charData);
+    }
+    if (!charData.penaltyFilters[code].other || typeof charData.penaltyFilters[code].other !== 'object') {
+      charData.penaltyFilters[code].other = {};
+    }
+    charData.penaltyFilters[code].other[otherId] = !!checked;
+    await saveCharacter(ctx.getCharId(), { penaltyFilters: charData.penaltyFilters });
+    renderAll();
+  }
+
+  async function clearPenaltyFilter(code) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    if (!charData.penaltyFilters || typeof charData.penaltyFilters !== 'object') return;
+    delete charData.penaltyFilters[code];
+    // Purge the object entirely if empty so the saved shape stays
+    // minimal (no stale `penaltyFilters: {}` field).
+    if (Object.keys(charData.penaltyFilters).length === 0) {
+      delete charData.penaltyFilters;
+      await saveCharacter(ctx.getCharId(), { penaltyFilters: null });
+    } else {
+      await saveCharacter(ctx.getCharId(), { penaltyFilters: charData.penaltyFilters });
+    }
     renderAll();
   }
 
@@ -2782,6 +3066,10 @@ export function createCombatSection(ctx) {
     addSanDamageMod, updateSanDamageMod, deleteSanDamageMod,
     // Card dice modifiers (player/GM-editable bonus dice for rolls)
     toggleDiceModPanel, addDiceMod, updateDiceMod, deleteDiceMod,
+    // Card value modifiers (flat bonuses on SPD/SPR-style stats)
+    addValueMod, updateValueMod, deleteValueMod,
+    // Per-stat penalty source filter (whitelist; toggling materializes)
+    togglePenaltyFilterSource, togglePenaltyFilterOther, clearPenaltyFilter,
     // Penalty value-display toggle (click to collapse "10 − 2.5" to "7.5")
     togglePenaltyValueDisplay,
     // Speed conversions panel toggle (⇅ caret on SPD/SPDUP cards)
