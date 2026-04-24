@@ -1373,6 +1373,19 @@
     }
     .rc-pen-panel.open { border-color: #2a2a2a; }
     .rc-pen-panel.rc-pen-passive { opacity: 0.75; }
+    /* Empty state — when there's no active Penalty, dim the panel
+       subtly so it reads as "nothing to do here" without disappearing
+       entirely. Panel still takes the same vertical space so the Roll
+       Calc layout doesn't shift when Penalty comes in/out. */
+    .rc-pen-panel.rc-pen-empty { opacity: 0.55; }
+    .rc-pen-panel.rc-pen-empty .rc-pen-head { cursor: pointer; }
+    .rc-pen-row.rc-pen-row-empty {
+      /* Keep the same vertical rhythm as a normal row so expanding
+         the empty state looks visually consistent with expanding
+         a populated one. */
+      padding: 8px 10px;
+      font-style: italic;
+    }
     .rc-pen-head {
       display: flex;
       align-items: center;
