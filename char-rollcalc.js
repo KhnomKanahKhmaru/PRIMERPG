@@ -595,22 +595,34 @@ export function createRollCalc(ctx) {
   // one checkbox per penalty component (Pain / Stress / Encumbrance /
   // each Other mod). Clicking a row flips that component's toggle for
   // THIS roll only — the main Penalty tile continues to show the full
-  // Penalty. Hidden entirely when the character has no active Penalty
-  // (nothing to toggle).
+  // Penalty.
+  //
+  // ALWAYS renders so the Roll Calc layout is locked — the panel's
+  // presence doesn't depend on whether the character currently has
+  // Penalty. When there's no non-zero Penalty source, the head bar
+  // shows "No Penalty" and expanding reveals a single placeholder
+  // row explaining there's nothing to toggle. This prevents the "page
+  // shifts when I add an Injury" problem where the panel materialized
+  // and pushed content down.
   function renderPenaltyToggles(r) {
     const breakdown = r.penaltyBreakdown || [];
-    // Hide when there are no non-zero components and the player hasn't
-    // opted into managing toggles. An empty breakdown would render a
-    // confusing "expand to see nothing" button.
     const anyNonZero = breakdown.some(c => c.value !== 0);
-    if (!anyNonZero) return '';
 
     // Summary line: "Applying 35% of 50% Penalty" when something's off,
-    // or "Applying full 50% Penalty" when everything's on.
-    const offCount = breakdown.filter(c => c.value !== 0 && !isToggleOn(c.key)).length;
-    const offSummary = offCount > 0
-      ? `Applying <b>${r.effectivePenaltyPct}%</b> of <span class="rc-dim">${r.fullPenaltyPct}%</span> Penalty · <b>${offCount}</b> skipped`
-      : `Applying full <b>${r.fullPenaltyPct}%</b> Penalty`;
+    // or "Applying full 50% Penalty" when everything's on. When there's
+    // no Penalty at all, we just show "No active Penalty" as a neutral
+    // label so the bar doesn't look broken.
+    const offCount = anyNonZero
+      ? breakdown.filter(c => c.value !== 0 && !isToggleOn(c.key)).length
+      : 0;
+    let offSummary;
+    if (!anyNonZero) {
+      offSummary = '<span class="rc-dim">No active Penalty</span>';
+    } else if (offCount > 0) {
+      offSummary = `Applying <b>${r.effectivePenaltyPct}%</b> of <span class="rc-dim">${r.fullPenaltyPct}%</span> Penalty · <b>${offCount}</b> skipped`;
+    } else {
+      offSummary = `Applying full <b>${r.fullPenaltyPct}%</b> Penalty`;
+    }
 
     // Passive mode bypasses all Penalty regardless — make that clear
     // by disabling the checkboxes and noting it in the summary.
@@ -622,39 +634,57 @@ export function createRollCalc(ctx) {
 
     let body = '';
     if (open) {
-      const rowsHtml = breakdown.map(c => {
-        const on = isToggleOn(c.key);
-        const isZero = c.value === 0;
-        const rowClass = [
-          'rc-pen-row',
-          on ? '' : 'rc-pen-row-off',
-          isZero ? 'rc-pen-row-zero' : '',
-          c.kind === 'other' ? 'rc-pen-row-other' : ''
-        ].filter(Boolean).join(' ');
-        // Checked checkbox = applies. Click triggers the toggle handler.
-        // The row itself is clickable for convenience (the <label>
-        // association makes the checkbox flip when the row is clicked).
-        const valSign = c.value > 0 ? '+' : (c.value < 0 ? '−' : '');
-        const valAbs  = Math.abs(c.value);
-        return `
-          <label class="${rowClass}"${r.isPassive ? '' : ` onclick="event.stopPropagation();rollCalcTogglePenalty('${escapeHtml(c.key)}')"`}>
-            <input type="checkbox" class="rc-pen-check"${on ? ' checked' : ''}${r.isPassive ? ' disabled' : ''} tabindex="-1">
-            <span class="rc-pen-name">${escapeHtml(c.label)}</span>
-            <span class="rc-pen-val">${valSign}${valAbs}%</span>
-          </label>`;
-      }).join('');
-      const resetBtn = (offCount > 0 && !r.isPassive)
-        ? `<button type="button" class="rc-pen-reset" onclick="rollCalcResetPenalty()" title="Re-enable all Penalty components for this roll.">Reset</button>`
-        : '';
-      body = `
-        <div class="rc-pen-body">
-          <div class="rc-pen-rows">${rowsHtml}</div>
-          ${resetBtn}
-        </div>`;
+      if (!anyNonZero) {
+        // Placeholder row so the expanded panel has consistent vertical
+        // footprint. Dimmed text explains why there's nothing to toggle.
+        body = `
+          <div class="rc-pen-body">
+            <div class="rc-pen-rows">
+              <div class="rc-pen-row rc-pen-row-empty">
+                <span class="rc-pen-name rc-dim">No active Penalty to toggle.</span>
+              </div>
+            </div>
+          </div>`;
+      } else {
+        const rowsHtml = breakdown.map(c => {
+          const on = isToggleOn(c.key);
+          const isZero = c.value === 0;
+          const rowClass = [
+            'rc-pen-row',
+            on ? '' : 'rc-pen-row-off',
+            isZero ? 'rc-pen-row-zero' : '',
+            c.kind === 'other' ? 'rc-pen-row-other' : ''
+          ].filter(Boolean).join(' ');
+          // Checked checkbox = applies. Click triggers the toggle handler.
+          // The row itself is clickable for convenience (the <label>
+          // association makes the checkbox flip when the row is clicked).
+          const valSign = c.value > 0 ? '+' : (c.value < 0 ? '−' : '');
+          const valAbs  = Math.abs(c.value);
+          return `
+            <label class="${rowClass}"${r.isPassive ? '' : ` onclick="event.stopPropagation();rollCalcTogglePenalty('${escapeHtml(c.key)}')"`}>
+              <input type="checkbox" class="rc-pen-check"${on ? ' checked' : ''}${r.isPassive ? ' disabled' : ''} tabindex="-1">
+              <span class="rc-pen-name">${escapeHtml(c.label)}</span>
+              <span class="rc-pen-val">${valSign}${valAbs}%</span>
+            </label>`;
+        }).join('');
+        const resetBtn = (offCount > 0 && !r.isPassive)
+          ? `<button type="button" class="rc-pen-reset" onclick="rollCalcResetPenalty()" title="Re-enable all Penalty components for this roll.">Reset</button>`
+          : '';
+        body = `
+          <div class="rc-pen-body">
+            <div class="rc-pen-rows">${rowsHtml}</div>
+            ${resetBtn}
+          </div>`;
+      }
     }
 
+    // The head is always clickable, even when empty. Expanding an empty
+    // panel feels fine — it still reveals SOMETHING (the placeholder
+    // row) and the user sees "nothing to toggle" as confirmation, not a
+    // broken click.
+    const emptyClass = !anyNonZero ? ' rc-pen-empty' : '';
     return `
-      <div class="rc-pen-panel${open ? ' open' : ''}${r.isPassive ? ' rc-pen-passive' : ''}">
+      <div class="rc-pen-panel${open ? ' open' : ''}${r.isPassive ? ' rc-pen-passive' : ''}${emptyClass}">
         <button type="button" class="rc-pen-head" onclick="rollCalcTogglePenaltyPanel()" title="Per-roll Penalty toggles — skip individual components for this roll only. The main Penalty tile keeps showing the full Penalty.">
           <span class="rc-pen-caret">${open ? '▾' : '▸'}</span>
           <span class="rc-pen-head-label">Penalty Components</span>
