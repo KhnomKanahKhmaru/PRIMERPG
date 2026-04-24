@@ -675,7 +675,7 @@ window.RULESET_DEFAULTS = {
     {
       id: 't_shotgun',
       name: 'Shotgun',
-      description: 'Mag-fed Shotguns reload as normal; tube-shell Shotguns reload 1 AMMO per Fast Action spent. Damage +1 within half of the first range band, +2 within a quarter, +3 closer than that. If capable of sweeping, sweep AOE is doubled and requires 1 shell per increment instead of 5 rounds.'
+      description: 'Mag-fed Shotguns reload as normal, while tube-shell shotguns reload 1 AMMO per Fast Action spent. A Shotgun deals +1 Damage within half of it\'s first band of Range, +2 within a quarter, and +3 at touch range. Shotguns capable of sweeping have their effective "Sweep AOE" doubled.'
     },
     {
       id: 't_firearm',
