@@ -3130,6 +3130,113 @@
     .hl-edit-btn.active { background: #2a2a2a; border-color: #555; color: #e0e0e0; }
 
     .hl-list { display: flex; flex-direction: column; gap: 6px; }
+    /* Hit Locations + EXH rail flex container. EXH vertical bar sits
+       on the LEFT, HL rows take the rest of the width. On very narrow
+       viewports this stacks — EXH above the HL list. */
+    .hl-row-wrap {
+      display: flex;
+      gap: 12px;
+      align-items: stretch;
+    }
+    .hl-row-wrap > .hl-list {
+      flex: 1;
+      min-width: 0;
+    }
+    @media (max-width: 480px) {
+      .hl-row-wrap { flex-direction: column; }
+    }
+    /* Exhaustion vertical bar widget. Narrow-and-tall rectangle with
+       label + current/max on top, segmented fill-bar in the middle,
+       status pill + ± buttons at the bottom. Designed to be roughly
+       the same height as the Hit Locations list beside it so the two
+       feel balanced. */
+    .exh-bar-widget {
+      flex: 0 0 auto;
+      width: 72px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 8px 6px;
+      background: #0a0908;
+      border: 1px solid #1f1c13;
+      border-radius: 4px;
+    }
+    .exh-bar-label {
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #998e70;
+      text-align: center;
+    }
+    .exh-bar-nums {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 14px;
+      color: #e6e0cc;
+      display: flex;
+      align-items: baseline;
+      gap: 2px;
+    }
+    .exh-bar-current { font-weight: 700; }
+    .exh-bar-sep { color: #5f5a4b; font-size: 11px; }
+    .exh-bar-max { color: #7a7260; font-size: 12px; }
+    .exh-bar-fill {
+      flex: 1;
+      width: 18px;
+      min-height: 80px;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      padding: 2px;
+      background: #050403;
+      border: 1px solid #1f1c13;
+      border-radius: 2px;
+    }
+    .exh-bar-seg {
+      flex: 1;
+      min-height: 4px;
+      border-radius: 1px;
+    }
+    .exh-bar-status {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      padding: 2px 6px;
+      border-radius: 2px;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .exh-bar-status.e-ready       { background: #1a2a1a; color: #8cc080; border: 1px solid #2a4a2a; }
+    .exh-bar-status.e-tired       { background: #2a2410; color: #d8c060; border: 1px solid #4a3d20; }
+    .exh-bar-status.e-exhausted   { background: #2a1a10; color: #d89060; border: 1px solid #4a2d20; }
+    .exh-bar-status.e-unconscious { background: #2a0d0d; color: #e06060; border: 1px solid #6a2a2a; }
+    .exh-bar-controls {
+      display: flex;
+      gap: 3px;
+    }
+    .exh-bar-btn {
+      background: #1a1812;
+      border: 1px solid #2a251a;
+      color: #c8c2ae;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 2px;
+      cursor: pointer;
+      min-width: 24px;
+      font-family: inherit;
+    }
+    .exh-bar-btn:hover:not(:disabled) {
+      background: #252013;
+      border-color: #403620;
+      color: #e6dcc0;
+    }
+    .exh-bar-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
     .hl-row {
       display: grid;
       grid-template-columns: 110px 120px 1fr auto;
@@ -6097,6 +6204,10 @@
     addOtherModifier:     () => combat.addOtherMod(),
     updateOtherModifier:  (idx, field, val) => combat.updateOtherMod(idx, field, val),
     deleteOtherModifier:  (idx) => combat.deleteOtherMod(idx),
+    // Exhaustion (EXH) — Combat tab vertical bar widget ± buttons.
+    // Writes to charData.exhDamage scalar. Structured-damage entries
+    // come in a later turn.
+    exhAdjust:            (delta) => combat.exhAdjust(delta),
     // Combat Tracker — action economy widget on the Combat tab.
     // Every mutation runs through trackerPersist → saves combatTracker,
     // otherModifiers, and penaltyFilters in one write.
