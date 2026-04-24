@@ -93,6 +93,13 @@ export function createCombatSection(ctx) {
         rerenderHandler: 'combatToggleCollapse'
       }
     );
+    // Combat Tracker — action-economy widget. Personal per-character
+    // tracker of Action / Fast Actions / Movement / SPR / Reactions
+    // within a round. Injects auto-managed entries into Other Mods
+    // for Fast Action and Sprint penalties. Sits between Roll Calc
+    // and the movement/health detail sections so it's visible
+    // without scrolling during combat.
+    html += renderCombatTrackerSection(result);
     // Movement below — speed, agility, reflex. Fast-lookup info you need
     // during play, positioned ahead of the more detailed health UI.
     html += renderDerivedStatsSection(result, ruleset, { includeGroups: ['movement'] });
@@ -1659,6 +1666,203 @@ export function createCombatSection(ctx) {
     state.collapsed = !state.collapsed;
     await trackerPersist(charData);
     renderAll();
+  }
+
+  // ─── COMBAT TRACKER (UI) ───
+  //
+  // Widget grid below Roll Calc. Seven tiles arranged in a responsive
+  // row; wraps on narrow viewports. Each tile is self-contained —
+  // handlers call trackerAdjust / trackerSet / trackerStartMyTurn /
+  // trackerNextRound / trackerChainActions / trackerToggleAutoApply.
+  //
+  // Tile order (left to right, reading order):
+  //   1. Round         — display + "Next Round" button
+  //   2. Turn          — "Start My Turn" reset button
+  //   3. Action        — used / granted, with Chain 4-FA button when ready
+  //   4. Fast Actions  — ± counter, shows free (AGL) vs billed
+  //   5. SPR           — ± counter, shows penalty contribution
+  //   6. Movement      — budget readout + ± 5ft + text input + Spend SPR
+  //   7. Reactions     — ± counter + pending Difficulty badge
+  //
+  // Collapsed state lives on charData.combatTracker.collapsed so it
+  // persists per-character across reloads.
+  function renderCombatTrackerSection(result) {
+    const charData = ctx.getCharData();
+    if (!charData) return '';
+    const state = getTrackerState();
+    if (!state) return '';
+    const canEdit = ctx.getCanEdit();
+    const agility = getTrackerAgility();
+
+    // SPD / SPR — read from derived stats for the Movement tile.
+    // Values include current Penalty-adjusted effective values, so the
+    // budget respects status effects automatically.
+    const spd = result && result.stats && result.stats.get && result.stats.get('SPD');
+    const spr = result && result.stats && result.stats.get && result.stats.get('SPR');
+    const spdBase  = (spd && Number.isFinite(spd.value)) ? spd.value : 0;
+    const sprBase  = (spr && Number.isFinite(spr.value)) ? spr.value : 0;
+    // Round-long movement budget. PRIME round is ~6 seconds → six
+    // seconds of SPD ft/sec, extended by sprIncrements × SPR per sprint.
+    const movementBudget = Math.round((spdBase * 6 + (state.sprIncrements || 0) * sprBase) * 10) / 10;
+    const movementUsed   = state.movementUsed || 0;
+    const movementLeft   = Math.max(0, movementBudget - movementUsed);
+
+    // Penalty contributions this tile actively shows.
+    const trackerPen = computeTrackerPenalty(state, agility);
+    const fastFree  = Math.max(0, agility - (state.fastActions || 0));
+    const fastBilled = Math.max(0, (state.fastActions || 0) - agility);
+
+    // Reaction pending difficulty — reactions past AGL incur a
+    // stacking +1 Difficulty per additional reaction. Tracker
+    // exposes the computed value; Roll Calc reads it (not yet
+    // implemented in Roll Calc itself — that's a follow-up).
+    const reactionsFree = Math.max(0, agility);
+    const pendingReactionDiff = Math.max(0, (state.reactionsTaken || 0) - reactionsFree);
+
+    // Chain gating — show the "Chain 4 → +1 Action" button when the
+    // player has stacked enough Fast Actions.
+    const canChain = (state.fastActions || 0) >= 4;
+
+    // Section header: collapsible title + settings toggle for
+    // autoApplyPenalty. Matches Roll Calc's section chrome.
+    const collapsed = !!state.collapsed;
+    const caret = collapsed ? '▸' : '▾';
+    const autoPenOn = state.autoApplyPenalty !== false;
+    const autoPenLabel = autoPenOn ? 'Penalty: LIVE' : 'Penalty: off';
+    const autoPenTip = autoPenOn
+      ? 'Click to disable: tracker will stop injecting Fast-Action / Sprint entries into Penalty (display only).'
+      : 'Click to enable: tracker will actively inject Fast-Action / Sprint Penalty entries.';
+
+    let head = `<div class="combat-tracker-head">
+      <button class="combat-tracker-caret" onclick="trackerToggleCollapse()" type="button" title="${collapsed ? 'Expand' : 'Collapse'} tracker">
+        <span class="combat-tracker-caret-icon">${caret}</span>
+        <span class="combat-tracker-title">Combat Tracker</span>
+      </button>
+      ${canEdit ? `<button class="combat-tracker-autopen ${autoPenOn ? 'on' : 'off'}" onclick="trackerToggleAutoApply()" title="${escapeHtml(autoPenTip)}" type="button">${autoPenLabel}</button>` : ''}
+    </div>`;
+
+    if (collapsed) {
+      // Collapsed form shows a compact summary line so the player can
+      // glance at the key numbers without expanding.
+      const summaryBits = [];
+      summaryBits.push(`Round ${state.round || 1}`);
+      if ((state.actionsUsed || 0) > 0 || (state.actionsGranted || 1) > 1) {
+        summaryBits.push(`Action ${state.actionsUsed || 0}/${state.actionsGranted || 1}`);
+      }
+      if ((state.fastActions || 0) > 0)   summaryBits.push(`${state.fastActions} FA`);
+      if ((state.sprIncrements || 0) > 0) summaryBits.push(`${state.sprIncrements} SPR`);
+      if (movementUsed > 0)                summaryBits.push(`${movementUsed}/${movementBudget}ft`);
+      if ((state.reactionsTaken || 0) > 0) summaryBits.push(`${state.reactionsTaken} react`);
+      return `<div class="combat-section combat-section-tracker">
+        ${head}
+        <div class="combat-tracker-summary">${summaryBits.join(' · ')}</div>
+      </div>`;
+    }
+
+    // ─ Expanded body — tile grid ─
+    const btn = canEdit ? '' : ' disabled';
+
+    const roundTile = `
+      <div class="ct-tile ct-tile-round" title="Round number is purely informational. Increments independently from Start My Turn.">
+        <div class="ct-tile-label">Round</div>
+        <div class="ct-tile-value ct-tile-value-big">${state.round || 1}</div>
+        <div class="ct-tile-controls">
+          <button class="ct-btn ct-btn-secondary" onclick="trackerNextRound()" type="button"${btn} title="Advance the round counter (does not reset Penalty counters).">+1 Next Round</button>
+        </div>
+      </div>`;
+
+    const turnTile = `
+      <div class="ct-tile ct-tile-turn" title="Resets action, Fast Actions, SPR increments, Movement, and Reactions. Clears tracker-injected Penalty.">
+        <div class="ct-tile-label">Turn</div>
+        <div class="ct-tile-controls ct-tile-controls-center">
+          <button class="ct-btn ct-btn-primary ct-btn-wide" onclick="trackerStartMyTurn()" type="button"${btn}>Start My Turn</button>
+        </div>
+        <div class="ct-tile-hint">Resets per-round counters</div>
+      </div>`;
+
+    const actionTile = `
+      <div class="ct-tile ct-tile-action" title="Main actions — attacks, abilities, big interactions. Chain 4 Fast Actions to earn an extra.">
+        <div class="ct-tile-label">Action</div>
+        <div class="ct-tile-value ct-tile-value-big">${state.actionsUsed || 0}<span class="ct-tile-denom">/${state.actionsGranted || 1}</span></div>
+        <div class="ct-tile-controls">
+          <button class="ct-btn" onclick="trackerAdjust('actionsUsed', -1)" type="button"${btn} title="Undo an action">−</button>
+          <button class="ct-btn" onclick="trackerAdjust('actionsUsed', 1)" type="button"${btn} title="Use an action">+</button>
+        </div>
+        ${canChain ? `<div class="ct-tile-extra"><button class="ct-btn ct-btn-accent ct-btn-wide" onclick="trackerChainActions()" type="button"${btn} title="Spend 4 Fast Actions to grant +1 Action this turn.">Chain 4 FA → +1 Action</button></div>` : ''}
+      </div>`;
+
+    const fastTile = `
+      <div class="ct-tile ct-tile-fastactions" title="Quick actions — draw a weapon, chamber a shell, open a door. First ${agility} are free (via AGL ${agility}). Each additional adds 25% Penalty until Start My Turn.">
+        <div class="ct-tile-label">Fast Actions</div>
+        <div class="ct-tile-value ct-tile-value-big">${state.fastActions || 0}</div>
+        <div class="ct-tile-controls">
+          <button class="ct-btn" onclick="trackerAdjust('fastActions', -1)" type="button"${btn}>−</button>
+          <button class="ct-btn" onclick="trackerAdjust('fastActions', 1)" type="button"${btn}>+</button>
+        </div>
+        <div class="ct-tile-hint">
+          ${fastFree > 0 ? `${fastFree} free left (AGL)` : fastBilled > 0 ? `<span class="ct-tile-penalty">${trackerPen.fastActions}% Penalty</span>` : `0 free (AGL ${agility})`}
+        </div>
+      </div>`;
+
+    const sprTile = `
+      <div class="ct-tile ct-tile-spr" title="Each SPR increment adds ${sprBase} ft to your Movement budget this round and 25% Penalty on physical actions (not Movement) until Start My Turn.">
+        <div class="ct-tile-label">SPR Increments</div>
+        <div class="ct-tile-value ct-tile-value-big">${state.sprIncrements || 0}</div>
+        <div class="ct-tile-controls">
+          <button class="ct-btn" onclick="trackerAdjust('sprIncrements', -1)" type="button"${btn}>−</button>
+          <button class="ct-btn" onclick="trackerAdjust('sprIncrements', 1)" type="button"${btn}>+</button>
+        </div>
+        <div class="ct-tile-hint">
+          ${(state.sprIncrements || 0) > 0 ? `<span class="ct-tile-penalty">${trackerPen.sprint}% Penalty</span>` : `+${sprBase} ft/increment`}
+        </div>
+      </div>`;
+
+    const movementTile = `
+      <div class="ct-tile ct-tile-movement ct-tile-wide" title="Base SPD × 6s = ${Math.round(spdBase * 6 * 10) / 10} ft. Each SPR increment adds ${sprBase} ft.">
+        <div class="ct-tile-label">Movement</div>
+        <div class="ct-tile-value">
+          <span class="ct-tile-value-big">${movementUsed}</span>
+          <span class="ct-tile-denom">/ ${movementBudget}</span>
+          <span class="ct-tile-unit">ft</span>
+        </div>
+        <div class="ct-tile-controls">
+          <button class="ct-btn" onclick="trackerAdjust('movementUsed', -5)" type="button"${btn} title="−5 ft">−5</button>
+          <input type="number" class="ct-input" value="${movementUsed}" step="1" min="0" onchange="trackerSet('movementUsed', this.value)" title="Set exact ft used"${canEdit ? '' : ' readonly'}>
+          <button class="ct-btn" onclick="trackerAdjust('movementUsed', 5)" type="button"${btn} title="+5 ft">+5</button>
+        </div>
+        <div class="ct-tile-hint">
+          ${movementLeft > 0 ? `${movementLeft} ft remaining` : `at budget — tap SPR below to extend`}
+          <button class="ct-btn ct-btn-tight" onclick="trackerAdjust('sprIncrements', 1)" type="button"${btn} title="Spend +1 SPR: extends budget by ${sprBase} ft and adds 25% Penalty.">+SPR</button>
+        </div>
+      </div>`;
+
+    const reactTile = `
+      <div class="ct-tile ct-tile-reactions" title="Reactions taken since your last turn. First ${reactionsFree} are free (via AGL). Each beyond that adds +1 Difficulty to the NEXT Reaction you take.">
+        <div class="ct-tile-label">Reactions</div>
+        <div class="ct-tile-value ct-tile-value-big">${state.reactionsTaken || 0}</div>
+        <div class="ct-tile-controls">
+          <button class="ct-btn" onclick="trackerAdjust('reactionsTaken', -1)" type="button"${btn}>−</button>
+          <button class="ct-btn" onclick="trackerAdjust('reactionsTaken', 1)" type="button"${btn}>+</button>
+        </div>
+        <div class="ct-tile-hint">
+          ${pendingReactionDiff > 0 ? `<span class="ct-tile-penalty">Next: +${pendingReactionDiff} Difficulty</span>` : ((state.reactionsTaken || 0) < agility ? `${agility - (state.reactionsTaken || 0)} free left` : `next is free`)}
+        </div>
+      </div>`;
+
+    const body = `<div class="combat-tracker-grid">
+      ${roundTile}
+      ${turnTile}
+      ${actionTile}
+      ${fastTile}
+      ${sprTile}
+      ${movementTile}
+      ${reactTile}
+    </div>`;
+
+    return `<div class="combat-section combat-section-tracker">
+      ${head}
+      ${body}
+    </div>`;
   }
 
   // ─── HIT LOCATIONS ───
