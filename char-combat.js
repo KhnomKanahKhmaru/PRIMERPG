@@ -1435,9 +1435,21 @@ export function createCombatSection(ctx) {
           source: 'tracker',
           trackerKey: d.key
         });
-        // New entry — also extend any active per-stat penalty filters
-        // so the new contribution is "applied" under whitelist semantics.
-        extendFiltersWithOtherId(charData, newId, true);
+        // New entry — extend active per-stat penalty filters so the
+        // new contribution is "applied" under whitelist semantics by
+        // default. BUT: the Sprint penalty should never hit SPD or
+        // SPR themselves (you don't get a movement Penalty for...
+        // moving fast). For Sprint specifically, we seed SPD/SPR
+        // filters with this id set to FALSE so the contribution is
+        // explicitly excluded. If SPD/SPR don't have a filter object
+        // yet, materialize one via seedFilterObject so the exclusion
+        // sticks (whitelist mode must be active on the stat for
+        // per-source filtering to work).
+        if (d.key === 'sprint') {
+          extendFiltersWithOtherIdExcludingStats(charData, newId, true, ['SPD', 'SPR']);
+        } else {
+          extendFiltersWithOtherId(charData, newId, true);
+        }
         changed = true;
       }
     });
@@ -1524,6 +1536,54 @@ export function createCombatSection(ctx) {
     if (!filters || typeof filters !== 'object') return false;
     let changed = false;
     Object.keys(filters).forEach(statCode => {
+      const f = filters[statCode];
+      if (!f || typeof f !== 'object') return;
+      if (!f.other || typeof f.other !== 'object') f.other = {};
+      if (f.other[otherId] !== applied) {
+        f.other[otherId] = applied;
+        changed = true;
+      }
+    });
+    return changed;
+  }
+
+  // Same as extendFiltersWithOtherId but with an explicit exclusion
+  // list. Stats in `excludeStats` get `filter.other[otherId] = false`
+  // regardless of other logic, and their filter objects are MATERIALIZED
+  // (seeded from current state) if they didn't exist yet. This is the
+  // hook for auto-exclusions like "Sprint penalty doesn't apply to
+  // Movement" — we proactively seed SPD/SPR filters with the new
+  // Sprint mod marked false so the penalty never leaks into their
+  // computation.
+  //
+  // Non-excluded stats that already have filter objects still get
+  // the new id marked applied=true (same as plain extend).
+  function extendFiltersWithOtherIdExcludingStats(charData, otherId, applied, excludeStats) {
+    if (!charData.penaltyFilters || typeof charData.penaltyFilters !== 'object') {
+      charData.penaltyFilters = {};
+    }
+    const filters = charData.penaltyFilters;
+    const excludeSet = new Set(excludeStats || []);
+    let changed = false;
+    // First: materialize + mark false for every exclusion target.
+    excludeSet.forEach(statCode => {
+      if (!filters[statCode] || typeof filters[statCode] !== 'object') {
+        filters[statCode] = seedFilterObject(charData);
+        changed = true;
+      }
+      if (!filters[statCode].other || typeof filters[statCode].other !== 'object') {
+        filters[statCode].other = {};
+        changed = true;
+      }
+      if (filters[statCode].other[otherId] !== false) {
+        filters[statCode].other[otherId] = false;
+        changed = true;
+      }
+    });
+    // Second: mark applied on any OTHER stat that already has a filter
+    // (normal extend behavior).
+    Object.keys(filters).forEach(statCode => {
+      if (excludeSet.has(statCode)) return;
       const f = filters[statCode];
       if (!f || typeof f !== 'object') return;
       if (!f.other || typeof f.other !== 'object') f.other = {};
@@ -1722,8 +1782,14 @@ export function createCombatSection(ctx) {
     const spdBase  = (spd && Number.isFinite(spd.value)) ? spd.value : 0;
     const sprBase  = (spr && Number.isFinite(spr.value)) ? spr.value : 0;
     // Round-long movement budget. PRIME round is ~6 seconds → six
-    // seconds of SPD ft/sec, extended by sprIncrements × SPR per sprint.
-    const movementBudget = Math.round((spdBase * 6 + (state.sprIncrements || 0) * sprBase) * 10) / 10;
+    // seconds of SPD ft/sec. Each SPR increment sprints for the full
+    // round too, adding sprBase × 6 feet (not sprBase × 1 — sprinting
+    // for only one second of the round would be a strange way to
+    // commit to sprinting). This matches the flavor: SPR is "ft/sec
+    // added to your movement rate for the round" not "a one-second
+    // burst". Example: SPD 5 + SPR 3 + 1 sprint increment → (5+3)×6
+    // = 48 ft budget, which is 5×6=30 base + 3×6=18 from sprint.
+    const movementBudget = Math.round((spdBase * 6 + (state.sprIncrements || 0) * sprBase * 6) * 10) / 10;
     const movementUsed   = state.movementUsed || 0;
     const movementLeft   = Math.max(0, movementBudget - movementUsed);
 
@@ -1851,12 +1917,19 @@ export function createCombatSection(ctx) {
           <button class="ct-btn" onclick="trackerAdjust('fastActions', 1)" type="button"${btn}>+</button>
         </div>
         <div class="ct-tile-hint">
-          ${fastFree > 0 ? `${fastFree} free left (AGL)` : fastBilled > 0 ? `<span class="ct-tile-penalty">${trackerPen.fastActions}% Penalty</span>` : `0 free (AGL ${agility})`}
+          ${
+            fastFree > 0
+              ? `${fastFree} free left (AGL)`
+              : fastBilled > 0
+                ? `<span class="ct-tile-penalty">${trackerPen.fastActions}% Penalty</span>`
+                : `next is +25% Penalty`
+          }
         </div>
       </div>`;
 
+    const sprPerIncrementFt = Math.round(sprBase * 6 * 10) / 10;
     const sprTile = `
-      <div class="ct-tile ct-tile-spr" title="Each SPR increment adds ${sprBase} ft to your Movement budget this round and 25% Penalty on physical actions (not Movement) until Start My Turn.">
+      <div class="ct-tile ct-tile-spr" title="Each SPR increment adds ${sprPerIncrementFt} ft to your Movement budget this round (SPR ${sprBase} ft/sec × 6s) and 25% Penalty on physical actions (not Movement) until Start My Turn.">
         <div class="ct-tile-label">SPR Increments</div>
         <div class="ct-tile-value">
           ${editableBig('sprIncrements', state.sprIncrements || 0)}
@@ -1866,12 +1939,12 @@ export function createCombatSection(ctx) {
           <button class="ct-btn" onclick="trackerAdjust('sprIncrements', 1)" type="button"${btn}>+</button>
         </div>
         <div class="ct-tile-hint">
-          ${(state.sprIncrements || 0) > 0 ? `<span class="ct-tile-penalty">${trackerPen.sprint}% Penalty</span>` : `+${sprBase} ft/increment`}
+          ${(state.sprIncrements || 0) > 0 ? `<span class="ct-tile-penalty">${trackerPen.sprint}% Penalty</span>` : `+${sprPerIncrementFt} ft/increment`}
         </div>
       </div>`;
 
     const movementTile = `
-      <div class="ct-tile ct-tile-movement ct-tile-wide" title="Base SPD × 6s = ${Math.round(spdBase * 6 * 10) / 10} ft. Each SPR increment adds ${sprBase} ft.">
+      <div class="ct-tile ct-tile-movement ct-tile-wide" title="Base SPD × 6s = ${Math.round(spdBase * 6 * 10) / 10} ft. Each SPR increment adds ${sprPerIncrementFt} ft (SPR ${sprBase} ft/sec × 6s).">
         <div class="ct-tile-label">Movement</div>
         <div class="ct-tile-value">
           ${editableBig('movementUsed', movementUsed)}
@@ -1884,7 +1957,7 @@ export function createCombatSection(ctx) {
         </div>
         <div class="ct-tile-hint">
           ${movementLeft > 0 ? `${movementLeft} ft remaining` : `at budget — tap SPR below to extend`}
-          <button class="ct-btn ct-btn-tight" onclick="trackerAdjust('sprIncrements', 1)" type="button"${btn} title="Spend +1 SPR: extends budget by ${sprBase} ft and adds 25% Penalty.">+SPR</button>
+          <button class="ct-btn ct-btn-tight" onclick="trackerAdjust('sprIncrements', 1)" type="button"${btn} title="Spend +1 SPR: extends budget by ${sprPerIncrementFt} ft and adds 25% Penalty.">+SPR</button>
         </div>
       </div>`;
 
@@ -1899,7 +1972,13 @@ export function createCombatSection(ctx) {
           <button class="ct-btn" onclick="trackerAdjust('reactionsTaken', 1)" type="button"${btn}>+</button>
         </div>
         <div class="ct-tile-hint">
-          ${pendingReactionDiff > 0 ? `<span class="ct-tile-penalty">Next: +${pendingReactionDiff} Difficulty</span>` : ((state.reactionsTaken || 0) < agility ? `${agility - (state.reactionsTaken || 0)} free left` : `next is free`)}
+          ${
+            pendingReactionDiff > 0
+              ? `<span class="ct-tile-penalty">Next: +${pendingReactionDiff} Difficulty</span>`
+              : (state.reactionsTaken || 0) < agility
+                ? `${agility - (state.reactionsTaken || 0)} free left`
+                : `next is +1 Difficulty`
+          }
         </div>
       </div>`;
 
