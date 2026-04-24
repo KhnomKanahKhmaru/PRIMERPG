@@ -826,6 +826,9 @@ export function createCombatSection(ctx) {
     // removes that source's contribution to this stat.
     if (def.allowPenaltyFilter === true) {
       const charData = ctx.getCharData();
+      // Backfill ids on any legacy otherModifiers that predate the
+      // filter feature. Side effect — saves if anything changed.
+      ensureOtherModIds(charData);
       const filters = (charData && charData.penaltyFilters && typeof charData.penaltyFilters === 'object')
         ? charData.penaltyFilters : null;
       const thisFilter = (filters && filters[code] && typeof filters[code] === 'object')
@@ -1010,6 +1013,39 @@ export function createCombatSection(ctx) {
     const otherMap = {};
     otherMods.forEach(m => { if (m && m.id) otherMap[m.id] = true; });
     return { pain: true, stress: true, encumbrance: true, other: otherMap };
+  }
+
+  // Backfill `id` on any legacy otherModifiers that predate the
+  // penalty-filter feature. Without this, legacy mods silently fail
+  // both filter lookup AND the rendered checkbox list (my filter
+  // code skips any mod without an id). Fires lazily — the first
+  // time the panel opens on a character with legacy data — and
+  // persists the new ids so the fixup only runs once.
+  //
+  // Also extends any existing penalty filters so the newly-idd
+  // mods are marked "applied" (matching the legacy-behavior
+  // assumption that every source contributed).
+  function ensureOtherModIds(charData) {
+    if (!charData || !Array.isArray(charData.otherModifiers)) return;
+    let changed = false;
+    charData.otherModifiers.forEach(m => {
+      if (m && typeof m === 'object' && !m.id) {
+        m.id = 'om_' + Math.random().toString(36).slice(2, 10);
+        changed = true;
+        // Extend existing filters so the legacy mod is still
+        // "applied" under whitelist semantics. If this is the
+        // first time the user has ever opened a penalty filter
+        // panel, charData.penaltyFilters is absent and this is
+        // a no-op.
+        extendFiltersWithOtherId(charData, m.id, true);
+      }
+    });
+    if (changed) {
+      const updates = { otherModifiers: charData.otherModifiers };
+      if (charData.penaltyFilters) updates.penaltyFilters = charData.penaltyFilters;
+      // Fire and forget — don't block the render on the save.
+      saveCharacter(ctx.getCharId(), updates).catch(e => console.error('otherMod backfill save failed', e));
+    }
   }
 
   async function togglePenaltyFilterSource(code, sourceKey, checked) {
@@ -1250,8 +1286,18 @@ export function createCombatSection(ctx) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     if (!Array.isArray(charData.otherModifiers)) charData.otherModifiers = [];
-    charData.otherModifiers.push({ name: '', value: 0 });
-    await saveCharacter(ctx.getCharId(), { otherModifiers: charData.otherModifiers });
+    const newId = 'om_' + Math.random().toString(36).slice(2, 10);
+    charData.otherModifiers.push({ id: newId, name: '', value: 0 });
+    // Auto-extend any existing penalty filters so the new Other mod
+    // is "applied" by default where filtering is active. Without this,
+    // whitelist semantics hide the new entry from stats that already
+    // have a filter object — counter-intuitive ("why doesn't this
+    // 25% apply?"). Missing filters are untouched (stats still in
+    // legacy mode stay there).
+    const changedFilters = extendFiltersWithOtherId(charData, newId, true);
+    const updates = { otherModifiers: charData.otherModifiers };
+    if (changedFilters) updates.penaltyFilters = charData.penaltyFilters;
+    await saveCharacter(ctx.getCharId(), updates);
     renderAll();
   }
   async function updateOtherMod(idx, field, val) {
@@ -1267,9 +1313,54 @@ export function createCombatSection(ctx) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     if (!Array.isArray(charData.otherModifiers) || !charData.otherModifiers[idx]) return;
+    const removed = charData.otherModifiers[idx];
     charData.otherModifiers.splice(idx, 1);
-    await saveCharacter(ctx.getCharId(), { otherModifiers: charData.otherModifiers });
+    // Clean up any per-stat filter entries that referenced this
+    // otherMod's id. Avoids dangling filter keys in saved data.
+    const changedFilters = (removed && removed.id)
+      ? purgeOtherIdFromFilters(charData, removed.id)
+      : false;
+    const updates = { otherModifiers: charData.otherModifiers };
+    if (changedFilters) updates.penaltyFilters = charData.penaltyFilters;
+    await saveCharacter(ctx.getCharId(), updates);
     renderAll();
+  }
+
+  // Mutate charData.penaltyFilters so every stat with an active
+  // filter object gets `filter.other[otherId] = applied` set. Returns
+  // true if any changes were made. Does NOT create new filter
+  // objects — only extends ones that already exist.
+  function extendFiltersWithOtherId(charData, otherId, applied) {
+    const filters = charData.penaltyFilters;
+    if (!filters || typeof filters !== 'object') return false;
+    let changed = false;
+    Object.keys(filters).forEach(statCode => {
+      const f = filters[statCode];
+      if (!f || typeof f !== 'object') return;
+      if (!f.other || typeof f.other !== 'object') f.other = {};
+      if (f.other[otherId] !== applied) {
+        f.other[otherId] = applied;
+        changed = true;
+      }
+    });
+    return changed;
+  }
+
+  // Strip otherId from every stat's filter.other sub-map. Called
+  // after an Other mod is deleted so the saved shape stays clean.
+  function purgeOtherIdFromFilters(charData, otherId) {
+    const filters = charData.penaltyFilters;
+    if (!filters || typeof filters !== 'object') return false;
+    let changed = false;
+    Object.keys(filters).forEach(statCode => {
+      const f = filters[statCode];
+      if (!f || !f.other || typeof f.other !== 'object') return;
+      if (otherId in f.other) {
+        delete f.other[otherId];
+        changed = true;
+      }
+    });
+    return changed;
   }
 
   // ─── HIT LOCATIONS ───
