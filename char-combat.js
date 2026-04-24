@@ -272,12 +272,52 @@ export function createCombatSection(ctx) {
   // resets on full re-render.
   const expandedSpeedConversions = new Set();
 
-  // Per-stat selection of WHICH conversion to show in the panel.
-  // Map<statCode, conversionKey>. Defaults to '6s' when a stat's
-  // panel is opened for the first time — in PRIME a combat round is
-  // 6 seconds, so that's the most immediately useful number. Valid
-  // keys match renderSpeedConversionsPanel: '3s','6s','1min','1hr',
-  // 'mph','kmh','mps'.
+  // Speed conversion table — maps a conversion key to its label, unit
+  // suffix, and multiplier against ft/sec. The 'sec' key is the
+  // identity (native ft/sec) so users can explicitly reset back to
+  // the base unit from the conversion panel's dropdown.
+  //
+  // Shared between the main card value (which swaps the displayed
+  // value AND unit when a non-'sec' choice is active) and the
+  // conversion panel (which shows the full seven options with
+  // previews). Keeping one source of truth means a label/mult edit
+  // only has to happen here.
+  const SPEED_CONVERSION_TABLE = {
+    'sec':  { label: 'per second',   unit: 'ft/sec', mult: 1 },
+    '3s':   { label: '3 seconds',    unit: 'ft',     mult: 3 },
+    '6s':   { label: '6 seconds',    unit: 'ft',     mult: 6 },
+    '1min': { label: 'per minute',   unit: 'ft',     mult: 60 },
+    '1hr':  { label: 'per hour',     unit: 'ft',     mult: 3600 },
+    'mph':  { label: 'miles/hour',   unit: 'mph',    mult: 3600 / 5280 },
+    'kmh':  { label: 'km/hour',      unit: 'km/h',   mult: 0.3048 * 3.6 },
+    'mps':  { label: 'meters/sec',   unit: 'm/s',    mult: 0.3048 }
+  };
+  const SPEED_CONVERSION_ORDER = ['sec','3s','6s','1min','1hr','mph','kmh','mps'];
+
+  // Format a speed-converted value with unit-appropriate precision.
+  // ft distances: comma-thousands for big (≥1k), integer for medium
+  // (≥100), one decimal otherwise. All other units: always one decimal.
+  // Kept as a free function (not nested in the panel renderer) so the
+  // main card value can use the exact same formatting.
+  function formatSpeedValue(n, unit) {
+    if (!Number.isFinite(n)) return '0';
+    if (unit === 'ft') {
+      if (n >= 1000) return Math.round(n).toLocaleString('en-US');
+      if (n >= 100)  return Math.round(n).toString();
+      return (Math.round(n * 10) / 10).toString();
+    }
+    return (Math.round(n * 10) / 10).toString();
+  }
+
+  // Per-stat selection of WHICH conversion to show in the panel AND
+  // on the main card value. Map<statCode, conversionKey>. Defaults
+  // to 'sec' (native ft/sec, no conversion applied) so cards open
+  // in their natural state. Picking any other key in the panel's
+  // dropdown persists here and causes the main card value to swap
+  // units — e.g. selecting '6s' makes the card read "30 ft" instead
+  // of "5 ft/sec". Collapsing the panel preserves the choice; the
+  // user has to open the panel and pick 'sec' to revert. Valid keys
+  // match SPEED_CONVERSION_TABLE above.
   const speedConversionChoice = new Map();
 
   // Toggle handler for the penalty-value display. CSS-driven: flips a class
@@ -308,14 +348,18 @@ export function createCombatSection(ctx) {
     renderAll();
   }
 
-  // Change which conversion is displayed in the panel for a given stat.
-  // Full re-render so the displayed result swaps to the new unit. The
-  // panel reads the CURRENT effective (post-Penalty) value each render
-  // so penalty changes propagate automatically.
+  // Change which conversion is displayed for a given stat. Full
+  // re-render so BOTH the panel result AND the main card value swap
+  // to the new unit. The card reads the CURRENT effective (post-
+  // Penalty) value each render so penalty changes propagate
+  // automatically.
+  //
+  // 'sec' is the identity choice — selecting it displays the card in
+  // its native ft/sec rather than any scaled unit. Users pick 'sec'
+  // to revert a previously-set override.
   function setSpeedConversionChoice(code, choice) {
     if (!code) return;
-    const valid = new Set(['3s','6s','1min','1hr','mph','kmh','mps']);
-    if (!valid.has(choice)) return;
+    if (!SPEED_CONVERSION_TABLE[choice]) return;
     speedConversionChoice.set(code, choice);
     renderAll();
   }
@@ -323,8 +367,32 @@ export function createCombatSection(ctx) {
   function renderDsCard(entry) {
     const { def, value, error, rollModifier, diceMods, diceModTotal } = entry;
     const canEdit = ctx.getCanEdit();
-    const display = error ? 'ERR' : fmt(value);
-    const unit = def.unit ? ` <span class="ds-card-unit">${escapeHtml(def.unit)}</span>` : '';
+
+    // Speed-conversion override — when this stat has showSpeedConversions
+    // AND the user has picked a conversion key other than 'sec', the
+    // card's main value displays the scaled result in the chosen unit
+    // instead of the native ft/sec. Choice persists on the
+    // speedConversionChoice Map across re-renders, so collapsing the
+    // panel doesn't revert the display (the user sees what they picked
+    // until they pick 'per second' explicitly to go back).
+    //
+    // `activeConv` is the lookup entry, null when not overriding.
+    // Downstream code uses it to swap value and unit in lockstep.
+    let activeConv = null;
+    if (def.showSpeedConversions === true && Number.isFinite(value) && !error) {
+      const choice = speedConversionChoice.get(def.code);
+      if (choice && choice !== 'sec' && SPEED_CONVERSION_TABLE[choice]) {
+        activeConv = SPEED_CONVERSION_TABLE[choice];
+      }
+    }
+
+    const display = error
+      ? 'ERR'
+      : (activeConv ? formatSpeedValue(value * activeConv.mult, activeConv.unit) : fmt(value));
+    const unitStr = activeConv
+      ? activeConv.unit
+      : (def.unit || '');
+    const unit = unitStr ? ` <span class="ds-card-unit">${escapeHtml(unitStr)}</span>` : '';
 
     // Inline penalty value reduction — for movement-style stats flagged as
     // penaltyReducesValue. Two display modes baked into the markup at once:
@@ -336,17 +404,29 @@ export function createCombatSection(ctx) {
     // collapse; CSS hides whichever span is inactive. Click anywhere on
     // the value toggles the class in-place (no re-render). Both spans
     // carry their own tooltip explaining the other mode.
+    //
+    // When a speed conversion is active, BOTH spans scale by the
+    // conversion multiplier so the card stays coherent — e.g. at 6s
+    // scale a "30 − 15 ft" breakdown replaces "5 − 2.5 ft/sec".
     let valueBody;
     const valReduction = entry.penaltyValueReduction || 0;
     const hasPenaltyDisplay = valReduction > 0 && Number.isFinite(value) && !error;
     if (hasPenaltyDisplay) {
       const effective = Math.max(0, value - valReduction);
-      const reductionStr = fmt(valReduction);
-      const effectiveStr = fmt(effective);
-      const baseStr = fmt(value);
+      // Scale all three values by the active conversion if one is set.
+      // Formatter picks thousand-separators / decimals based on the
+      // destination unit so the display stays readable at both scales.
+      const scale = activeConv ? activeConv.mult : 1;
+      const scaleUnit = activeConv ? activeConv.unit : '';
+      const fmtScaled = (n) => activeConv ? formatSpeedValue(n * scale, scaleUnit) : fmt(n);
+      const reductionStr = fmtScaled(valReduction);
+      const effectiveStr = fmtScaled(effective);
+      const baseStr      = fmtScaled(value);
       const pct = entry.penaltyPercent || 0;
-      const expandedTip = `Penalty reduces this value by ${reductionStr} (${pct}% of base ${baseStr}). Effective: ${effectiveStr}${def.unit ? ' ' + def.unit : ''}. Click to show effective only.`;
-      const collapsedTip = `Effective ${effectiveStr}${def.unit ? ' ' + def.unit : ''} — base ${baseStr} reduced by ${reductionStr} (${pct}% Penalty). Click to show breakdown.`;
+      const unitLabel = activeConv ? activeConv.unit : (def.unit || '');
+      const unitSuffix = unitLabel ? ' ' + unitLabel : '';
+      const expandedTip = `Penalty reduces this value by ${reductionStr} (${pct}% of base ${baseStr}). Effective: ${effectiveStr}${unitSuffix}. Click to show effective only.`;
+      const collapsedTip = `Effective ${effectiveStr}${unitSuffix} — base ${baseStr} reduced by ${reductionStr} (${pct}% Penalty). Click to show breakdown.`;
       valueBody = `<span class="ds-card-penalty-toggle" onclick="togglePenaltyValueDisplay('${escapeHtml(def.code)}')">` +
           `<span class="ds-card-penalty-expanded" title="${escapeHtml(expandedTip)}">${baseStr} <span class="ds-card-penalty-reduction">− ${reductionStr}</span></span>` +
           `<span class="ds-card-penalty-effective" title="${escapeHtml(collapsedTip)}">${effectiveStr}</span>` +
@@ -479,7 +559,12 @@ export function createCombatSection(ctx) {
             title="${escapeHtml(tip)}"
             type="button">⇅</button>`;
       if (isOpen) {
-        const choice = speedConversionChoice.get(def.code) || '6s';
+        // Default to 'sec' (native ft/sec, identity conversion) when
+        // no choice is set — the panel opens showing the card's native
+        // value in its natural unit, and the user picks from there to
+        // override. Explicitly picking 'sec' again is how users revert
+        // the card from a scaled view back to ft/sec.
+        const choice = speedConversionChoice.get(def.code) || 'sec';
         speedPanelHtml = renderSpeedConversionsPanel(def, value, effective, penaltyPct, choice);
       }
     }
@@ -522,35 +607,14 @@ export function createCombatSection(ctx) {
     const e = Number.isFinite(effective) ? effective : 0;
     const reduction = Math.max(0, b - e);
 
-    // All seven conversions — each computed for base, effective, and
-    // reduction so we can render the base−reduction breakdown when
-    // Penalty is active. Multiplier is the same number for base and
-    // effective; the RESULT differs because the input differs.
-    const order = ['3s','6s','1min','1hr','mph','kmh','mps'];
-    const units = {
-      '3s':   { label: '3 seconds',    unit: 'ft',   mult: 3 },
-      '6s':   { label: '6 seconds',    unit: 'ft',   mult: 6 },
-      '1min': { label: 'per minute',   unit: 'ft',   mult: 60 },
-      '1hr':  { label: 'per hour',     unit: 'ft',   mult: 3600 },
-      'mph':  { label: 'miles/hour',   unit: 'mph',  mult: 3600 / 5280 },
-      'kmh':  { label: 'km/hour',      unit: 'km/h', mult: 0.3048 * 3.6 },
-      'mps':  { label: 'meters/sec',   unit: 'm/s',  mult: 0.3048 }
-    };
-    const sel = units[choice] || units['6s'];
-
-    // Formatting rules for the result value.
-    const fmtN = (n, unit) => {
-      if (!Number.isFinite(n)) return '0';
-      // ft distances: comma-thousands for big, integer for medium,
-      // one decimal for small.
-      if (unit === 'ft') {
-        if (n >= 1000) return Math.round(n).toLocaleString('en-US');
-        if (n >= 100)  return Math.round(n).toString();
-        return (Math.round(n * 10) / 10).toString();
-      }
-      // Speed units: always 1 decimal
-      return (Math.round(n * 10) / 10).toString();
-    };
+    // Shared conversion table (SPEED_CONVERSION_TABLE) owns the label/
+    // unit/multiplier values. We just read from it here — the order
+    // and formatting rules live with the table so adding a new
+    // conversion is a one-place edit.
+    const order = SPEED_CONVERSION_ORDER;
+    const units = SPEED_CONVERSION_TABLE;
+    const sel = units[choice] || units['sec'];
+    const fmtN = formatSpeedValue;
 
     // Per-choice computed values.
     const resultEff  = e * sel.mult;
