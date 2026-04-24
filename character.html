@@ -2047,6 +2047,42 @@
       padding: 2px 0 5px;
       margin-bottom: 4px;
       border-bottom: 1px dashed #2a2418;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .combat-tracker-group-title {
+      /* Lets the title sit left while the budget floats right. */
+      flex: 1;
+      min-width: 0;
+    }
+    /* Shared Movement budget badge in the group head. Shows the
+       combined used / total ft so both "On your turn" and "Off your
+       turn" groups display the same authoritative readout — they
+       draw from the same pool, so one number describes both. */
+    .combat-tracker-group-budget {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .04em;
+      text-transform: none;
+      color: #c8c2ae;
+      padding: 2px 8px;
+      border: 1px solid #2a251a;
+      border-radius: 3px;
+      background: #0a0908;
+      cursor: help;
+    }
+    .combat-tracker-group-budget.over {
+      color: #e6b275;
+      border-color: #553820;
+      background: #1a130a;
+    }
+    /* Subtle Sprint-active indicator next to the +SPR button. */
+    .ct-tile-hint-spr-note {
+      font-size: 9px;
+      font-style: italic;
+      color: #8a8270;
     }
     /* Head bar controls — Round display cluster, Start My Turn, and
        Penalty toggle all live together to the right of the title. */
@@ -6070,7 +6106,6 @@
     trackerSetMovementIntervalFt:  (val) => combat.trackerSetMovementIntervalFt(val),
     trackerSetMovementIntervalSec: (val) => combat.trackerSetMovementIntervalSec(val),
     trackerMovementStep:           (dir) => combat.trackerMovementStep(dir),
-    trackerFollowFallbackStep:     (dir) => combat.trackerFollowFallbackStep(dir),
     addHlMod:             (target)           => combat.addModifier(target),
     updateHlMod:          (target, i, field, val) => combat.updateModifier(target, i, field, val),
     deleteHlMod:          (target, i)        => combat.deleteModifier(target, i),
