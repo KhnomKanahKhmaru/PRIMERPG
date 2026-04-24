@@ -1274,6 +1274,180 @@ export function createCombatSection(ctx) {
     renderAll();
   }
 
+  // ─── COMBAT TRACKER ───
+  //
+  // Personal per-character action-economy tracker. Matches the rule:
+  // Fast Action / SPR / Reaction penalties persist until that character's
+  // next turn (handled by the Start My Turn reset button).
+  //
+  // State lives on charData.combatTracker:
+  //   round:              Int   — display-only round number
+  //   collapsed:          Bool  — widget collapsed state (per-character)
+  //   autoApplyPenalty:   Bool  — when false, tracker doesn't inject
+  //                               Other Mods (display-only mode)
+  //   actionsUsed:        Int   — 0 or N (increments for each action)
+  //   actionsGranted:     Int   — base 1, +1 per Chain cash-in
+  //   fastActions:        Int   — count taken this turn-window
+  //   sprIncrements:      Int   — count of +SPR increments this round
+  //   movementUsed:       Num   — feet spent this round
+  //   reactionsTaken:     Int   — count taken since my last turn
+  //
+  // Missing field → all zeros, autoApplyPenalty=true, collapsed=false.
+  // Zero migration risk.
+  //
+  // Penalty injection: two entries maintained in charData.otherModifiers
+  // with { source: 'tracker', trackerKey: <key> } flags so they can be
+  // found and auto-managed without interfering with user-authored
+  // entries.
+  //
+  //   Combat: Fast Actions → 25% × max(0, fastActions − AGL)
+  //   Combat: Sprint       → 25% × sprIncrements
+
+  // Get the live tracker state object, creating defaults as needed.
+  // Never writes to charData — callers that mutate must persist.
+  function getTrackerState() {
+    const charData = ctx.getCharData();
+    if (!charData) return null;
+    const t = charData.combatTracker;
+    if (t && typeof t === 'object') return t;
+    // Lazy-init the default shape. Caller decides whether to save.
+    return {
+      round: 1,
+      collapsed: false,
+      autoApplyPenalty: true,
+      actionsUsed: 0,
+      actionsGranted: 1,
+      fastActions: 0,
+      sprIncrements: 0,
+      movementUsed: 0,
+      reactionsTaken: 0
+    };
+  }
+
+  // Ensure charData.combatTracker exists on the live char object.
+  // Mutates in place; returns the state for chaining.
+  function ensureTrackerState(charData) {
+    if (!charData.combatTracker || typeof charData.combatTracker !== 'object') {
+      charData.combatTracker = {
+        round: 1,
+        collapsed: false,
+        autoApplyPenalty: true,
+        actionsUsed: 0,
+        actionsGranted: 1,
+        fastActions: 0,
+        sprIncrements: 0,
+        movementUsed: 0,
+        reactionsTaken: 0
+      };
+    }
+    return charData.combatTracker;
+  }
+
+  // Read AGL from the live derived stats — drives Fast Action free
+  // allotment and the Reaction "free" cap. Falls back to 0 if the stat
+  // doesn't exist or the character has zero in it.
+  //
+  // Computes derived stats fresh rather than reaching through ctx
+  // (the ctx doesn't expose this) — the render cycle already calls
+  // computeDerivedStats multiple times per frame, so the cost is
+  // negligible and there's no stale-state risk.
+  function getTrackerAgility() {
+    const charData = ctx.getCharData();
+    const ruleset  = ctx.getRuleset();
+    if (!charData || !ruleset) return 0;
+    try {
+      const result = computeDerivedStats(charData, ruleset);
+      // stats is a Map<statCode, entry>. Entry carries .value and
+      // handles formula evaluation — no base-stats lookup needed.
+      const agl = result && result.stats && result.stats.get
+        ? result.stats.get('AGL')
+        : null;
+      if (!agl || !Number.isFinite(agl.value)) return 0;
+      return Math.max(0, Math.floor(agl.value));
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  // Compute the Penalty % that the tracker currently contributes, split
+  // into per-key values. Returns { fastActions, sprint }.
+  function computeTrackerPenalty(state, agility) {
+    const fastFree = Math.max(0, agility);
+    const fastBilled = Math.max(0, (state.fastActions || 0) - fastFree);
+    return {
+      fastActions: fastBilled * 25,
+      sprint:      (state.sprIncrements || 0) * 25
+    };
+  }
+
+  // Sync the tracker's two managed otherModifiers entries to reflect
+  // current state. Mutates charData.otherModifiers; does NOT save.
+  // Returns true if anything changed (so caller knows to persist).
+  //
+  // Rules:
+  //   - autoApplyPenalty: false → both entries removed (display-only mode)
+  //   - fastActions/sprint contribution = 0 → that entry removed
+  //   - entry otherwise exists with the right value
+  //   - entries carry { source: 'tracker', trackerKey: 'fastActions'|'sprint' }
+  function syncTrackerOtherMods(charData) {
+    if (!charData) return false;
+    if (!Array.isArray(charData.otherModifiers)) charData.otherModifiers = [];
+    const state = ensureTrackerState(charData);
+    const agility = getTrackerAgility();
+    const pen = computeTrackerPenalty(state, agility);
+    const desired = [];
+    if (state.autoApplyPenalty !== false) {
+      if (pen.fastActions > 0) desired.push({ key: 'fastActions', name: 'Combat: Fast Actions', value: pen.fastActions });
+      if (pen.sprint > 0)      desired.push({ key: 'sprint',      name: 'Combat: Sprint',       value: pen.sprint });
+    }
+
+    let changed = false;
+    // Index existing tracker entries by trackerKey for fast lookup.
+    const existing = new Map();
+    charData.otherModifiers.forEach((m, i) => {
+      if (m && m.source === 'tracker' && typeof m.trackerKey === 'string') {
+        existing.set(m.trackerKey, { mod: m, index: i });
+      }
+    });
+    // Update-or-insert desired entries.
+    desired.forEach(d => {
+      const found = existing.get(d.key);
+      if (found) {
+        if (found.mod.value !== d.value || found.mod.name !== d.name) {
+          found.mod.value = d.value;
+          found.mod.name  = d.name;
+          changed = true;
+        }
+        existing.delete(d.key);
+      } else {
+        const newId = 'om_' + Math.random().toString(36).slice(2, 10);
+        charData.otherModifiers.push({
+          id: newId,
+          name: d.name,
+          value: d.value,
+          source: 'tracker',
+          trackerKey: d.key
+        });
+        // New entry — also extend any active per-stat penalty filters
+        // so the new contribution is "applied" under whitelist semantics.
+        extendFiltersWithOtherId(charData, newId, true);
+        changed = true;
+      }
+    });
+    // Remove any tracker-managed entries we no longer want.
+    existing.forEach(({ mod, index }) => {
+      // Re-locate by id since the array may have shifted during the
+      // desired-insert phase.
+      const realIdx = charData.otherModifiers.findIndex(m => m === mod);
+      if (realIdx >= 0) {
+        if (mod.id) purgeOtherIdFromFilters(charData, mod.id);
+        charData.otherModifiers.splice(realIdx, 1);
+        changed = true;
+      }
+    });
+    return changed;
+  }
+
   // ─── OTHER MODIFIERS (part of Penalty) ───
   //
   // Named ±% entries that contribute to Penalty alongside Pain and Stress.
@@ -1304,6 +1478,10 @@ export function createCombatSection(ctx) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     if (!Array.isArray(charData.otherModifiers) || !charData.otherModifiers[idx]) return;
+    // Tracker-sourced entries are owned by the Combat Tracker widget
+    // — editing them here would immediately be overwritten by the
+    // next syncTrackerOtherMods pass anyway. Reject silently.
+    if (charData.otherModifiers[idx].source === 'tracker') return;
     if (field === 'name') charData.otherModifiers[idx].name = typeof val === 'string' ? val : '';
     else if (field === 'value') charData.otherModifiers[idx].value = parseInt(val) || 0;
     await saveCharacter(ctx.getCharId(), { otherModifiers: charData.otherModifiers });
@@ -1313,6 +1491,10 @@ export function createCombatSection(ctx) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     if (!Array.isArray(charData.otherModifiers) || !charData.otherModifiers[idx]) return;
+    // Block deletes on tracker-owned entries — user should use
+    // the tracker's Start My Turn / counter buttons to clear them.
+    // Re-adding manually would desync.
+    if (charData.otherModifiers[idx].source === 'tracker') return;
     const removed = charData.otherModifiers[idx];
     charData.otherModifiers.splice(idx, 1);
     // Clean up any per-stat filter entries that referenced this
@@ -1361,6 +1543,122 @@ export function createCombatSection(ctx) {
       }
     });
     return changed;
+  }
+
+  // ─── COMBAT TRACKER HANDLERS ───
+  //
+  // Each mutation sets the field on charData.combatTracker, runs
+  // syncTrackerOtherMods if the field affects Penalty, and saves
+  // both combatTracker + (if changed) otherModifiers. The handlers
+  // are bound to window via character.html.
+
+  async function trackerPersist(charData) {
+    const updates = { combatTracker: charData.combatTracker };
+    // Always persist otherModifiers alongside since sync may have
+    // mutated them. Filters too in case extendFiltersWithOtherId
+    // fired on a new entry.
+    updates.otherModifiers = charData.otherModifiers;
+    if (charData.penaltyFilters) updates.penaltyFilters = charData.penaltyFilters;
+    await saveCharacter(ctx.getCharId(), updates);
+  }
+
+  // Generic counter adjust — clamps to zero, supports +1/-1 from
+  // buttons. Auto-syncs Penalty when the affected counter drives it.
+  async function trackerAdjust(field, delta) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const state = ensureTrackerState(charData);
+    const next = Math.max(0, (state[field] || 0) + delta);
+    if (next === (state[field] || 0)) return;
+    state[field] = next;
+    if (field === 'fastActions' || field === 'sprIncrements') {
+      syncTrackerOtherMods(charData);
+    }
+    await trackerPersist(charData);
+    renderAll();
+  }
+
+  async function trackerSet(field, value) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const state = ensureTrackerState(charData);
+    const n = parseFloat(value);
+    const next = Number.isFinite(n) ? Math.max(0, n) : 0;
+    if (next === state[field]) return;
+    state[field] = next;
+    if (field === 'fastActions' || field === 'sprIncrements') {
+      syncTrackerOtherMods(charData);
+    }
+    await trackerPersist(charData);
+    renderAll();
+  }
+
+  // Start My Turn — clears Round-level counters + reactions. Leaves
+  // round number, collapsed, autoApplyPenalty alone. Purges the
+  // tracker's Other Mod entries (both keys) by syncing after reset.
+  async function trackerStartMyTurn() {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const state = ensureTrackerState(charData);
+    state.actionsUsed = 0;
+    state.actionsGranted = 1;
+    state.fastActions = 0;
+    state.sprIncrements = 0;
+    state.movementUsed = 0;
+    state.reactionsTaken = 0;
+    syncTrackerOtherMods(charData);
+    await trackerPersist(charData);
+    renderAll();
+  }
+
+  // Next Round — increments round display only. Per the design,
+  // Penalty and counters stay until Start My Turn fires. The round
+  // number is purely for player awareness / synchronization with
+  // the GM at the table.
+  async function trackerNextRound() {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const state = ensureTrackerState(charData);
+    state.round = (state.round || 1) + 1;
+    await trackerPersist(charData);
+    renderAll();
+  }
+
+  // Chain Fast Actions → +1 Action. Costs 4 fastActions tokens and
+  // grants 1 extra action for this turn. Tracker surfaces the button
+  // when fastActions >= 4; the count-down syncs Penalty downward
+  // too (since we billed based on the stacked count, spending 4
+  // reduces the Fast Action penalty contribution).
+  async function trackerChainActions() {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const state = ensureTrackerState(charData);
+    if ((state.fastActions || 0) < 4) return;
+    state.fastActions -= 4;
+    state.actionsGranted = (state.actionsGranted || 1) + 1;
+    syncTrackerOtherMods(charData);
+    await trackerPersist(charData);
+    renderAll();
+  }
+
+  async function trackerToggleAutoApply() {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const state = ensureTrackerState(charData);
+    state.autoApplyPenalty = state.autoApplyPenalty === false ? true : false;
+    // Flipping the toggle changes which Other Mod entries should exist.
+    syncTrackerOtherMods(charData);
+    await trackerPersist(charData);
+    renderAll();
+  }
+
+  async function trackerToggleCollapse() {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const state = ensureTrackerState(charData);
+    state.collapsed = !state.collapsed;
+    await trackerPersist(charData);
+    renderAll();
   }
 
   // ─── HIT LOCATIONS ───
@@ -3198,6 +3496,9 @@ export function createCombatSection(ctx) {
     toggleStressPanel, addStressMod, updateStressMod, deleteStressMod,
     // Other modifiers (free-form ±% entries like Exposure, Encumbrance)
     addOtherMod, updateOtherMod, deleteOtherMod,
+    // Combat Tracker (action economy tracker — per-character round state)
+    trackerAdjust, trackerSet, trackerStartMyTurn, trackerNextRound,
+    trackerChainActions, trackerToggleAutoApply, trackerToggleCollapse,
     // Afflictions tile (Conditions / Circumstances tracker on Overview tab)
     condOpenAdd:       conditionsSection.openAdd,
     condStartCustom:   conditionsSection.startCustom,
