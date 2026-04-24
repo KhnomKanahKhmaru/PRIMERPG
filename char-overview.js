@@ -137,20 +137,23 @@ export function createOverviewSection(ctx) {
       tiles.push(renderExhTile(exh));
     }
 
-    // POWER tile — power pool current/max, simple fill bar. Always
-    // rendered when the pool is present in the result (even if max is 0
-    // from a freshly-created character), so the Overview grid stays
-    // balanced and players can see "no power yet" at a glance. Slotted
-    // next to Body + Sanity in the top row since it behaves like another
-    // resource pool (not a derived percentage).
+    // Bottom section — full-width rows below the resource tiles. Power,
+    // Movement, and Penalty all get wide/flat treatment so the top row
+    // (Body + Sanity + Exhaustion) reads as a balanced trio, and the
+    // bottom stack reads as supporting / derived / summary info.
+    //
+    // Power was previously in the top row alongside Body/Sanity/Exh but
+    // was visually dwarfed: its single fill-bar carried less weight than
+    // the segmented bars of the other three pools, leaving it with a lot
+    // of empty space. Moving it down and widening it gives it room to
+    // breathe horizontally instead of vertically.
     const power = result.power;
     if (power) {
       tiles.push(renderPowerTile(power));
     }
 
-    // Bottom section — full-width rows below the resource tiles. The Roll
-    // Calculator lives on the Combat tab instead (it's a combat tool, not
-    // a state summary), so the Overview only shows Movement and Penalty.
+    // Movement tile — horizontal list of movement stats with Penalty
+    // reductions inline.
     const movementHtml = renderMovementTile(result, ruleset);
     if (movementHtml) tiles.push(movementHtml);
     const charData = getCharData ? getCharData() : null;
@@ -376,9 +379,11 @@ export function createOverviewSection(ctx) {
   // ─── POWER TILE ───
 
   function renderPowerTile(power) {
-    // Always renders — even if max is 0 (new character / power pool not
-    // yet purchased). Shows a full empty bar so the tile is always present
-    // on the overview grid, mirroring Body/Sanity which always show.
+    // Flat, full-width layout — sits in the bottom stack alongside
+    // Movement and Penalty (not the top Body/Sanity/Exhaustion row).
+    // Numbers + bar + status pill all on one line; no description
+    // text so the strip stays compact. Always renders even when max
+    // is 0 so the player can see "no power yet" at a glance.
     const max = power.max || 0;
     const current = power.current || 0;
     const pct = max > 0 ? Math.max(0, Math.min(100, (current / max) * 100)) : 0;
@@ -395,7 +400,6 @@ export function createOverviewSection(ctx) {
     // pills. Full / Nearly Full / Brimming read as healthy (green);
     // middle tiers read as injured/depleted (yellow→orange);
     // Slivers / Nearly Empty / Exhausted read as critical (red).
-    // Using the existing s-* classes avoids authoring new palette vars.
     const statusLabel = power.statusLabel || 'Unknown';
     let statusClass;
     if      (pct >= 70) statusClass = 's-healthy';
@@ -403,19 +407,19 @@ export function createOverviewSection(ctx) {
     else if (pct >= 20) statusClass = 's-disabled';
     else                statusClass = 's-dead';
 
+    // Head is compact — label + numbers only. Body is inline: bar on
+    // the left taking most of the width, status pill on the right.
     const headInner = `
       <span class="state-tile-label">Power</span>
       <span class="state-tile-nums">${fmt(current)}<span class="sep">/</span><span class="max">${fmt(max)}</span></span>`;
-    const descHtml = ctx.renderDescriptionDisplay
-      ? ctx.renderDescriptionDisplay('tiles', 'power', { wrapperClass: 'state-tile-desc' })
-      : '';
     const bodyHtml = `
-      <div class="state-progress-bar">
-        <div class="state-progress-fill" style="width:${pct}%;background:${escapeHtml(color)}"></div>
-      </div>
-      <span class="state-tile-status ${statusClass}">${escapeHtml(statusLabel)}</span>
-      ${descHtml}`;
-    return wrapCollapsibleTile('power', '', headInner, bodyHtml);
+      <div class="state-tile-power-row">
+        <div class="state-progress-bar state-progress-bar-inline">
+          <div class="state-progress-fill" style="width:${pct}%;background:${escapeHtml(color)}"></div>
+        </div>
+        <span class="state-tile-status ${statusClass}">${escapeHtml(statusLabel)}</span>
+      </div>`;
+    return wrapCollapsibleTile('power', 'state-tile-wide state-tile-power', headInner, bodyHtml);
   }
 
   // ─── MOVEMENT TILE ───
