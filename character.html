@@ -2068,6 +2068,42 @@
       flex-wrap: wrap;
     }
     .ct-tile-value-big { font-size: 26px; color: #e6e0cc; }
+    /* Click-to-edit big number — styled to look identical to the
+       plain .ct-tile-value-big display but accepts focus/typing.
+       Transparent background + no default input chrome so it reads
+       as a number, not a form field. On focus it gets a subtle
+       border so the user knows they're editing. */
+    .ct-tile-value-edit {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 26px;
+      color: #e6e0cc;
+      line-height: 1;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 3px;
+      padding: 1px 4px;
+      width: 60px;
+      min-width: 0;
+      text-align: left;
+      outline: none;
+      cursor: text;
+      -moz-appearance: textfield;
+    }
+    .ct-tile-value-edit:hover:not([readonly]) {
+      border-color: #2a251a;
+    }
+    .ct-tile-value-edit:focus:not([readonly]) {
+      border-color: #554826;
+      background: #0a0908;
+    }
+    .ct-tile-value-edit[readonly] {
+      cursor: default;
+    }
+    .ct-tile-value-edit::-webkit-outer-spin-button,
+    .ct-tile-value-edit::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
     .ct-tile-denom { font-size: 13px; color: #7a7260; font-family: inherit; }
     .ct-tile-unit  { font-size: 10px; color: #5f5a4b; font-family: inherit; text-transform: lowercase; letter-spacing: .04em; }
     .ct-tile-controls {
@@ -5861,6 +5897,7 @@
     trackerSet:              (field, val)   => combat.trackerSet(field, val),
     trackerStartMyTurn:      () => combat.trackerStartMyTurn(),
     trackerNextRound:        () => combat.trackerNextRound(),
+    trackerResetRound:       () => combat.trackerResetRound(),
     trackerChainActions:     () => combat.trackerChainActions(),
     trackerToggleAutoApply:  () => combat.trackerToggleAutoApply(),
     trackerToggleCollapse:   () => combat.trackerToggleCollapse(),
