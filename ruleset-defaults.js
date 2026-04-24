@@ -364,6 +364,41 @@ window.RULESET_DEFAULTS = {
       keepDecimals: false,
       unit: ''
     },
+    // EXHAUSTION — third pillar alongside HP/SAN.
+    //
+    // Tracks stamina and fatigue: distinct from bodily wounds (HP) and
+    // mental wounds (SAN). The average person has EXH 5 — enough reserve
+    // for a few moments of real exertion before needing rest. Drops
+    // from physical/mental exertion, exposure to extreme environments,
+    // and Exert-spending to push rolls.
+    //
+    // Behaves like HP/SAN structurally: has current+max, can go negative,
+    // reaches a terminal state at −2× max. Three-tier status:
+    //   current >  0            → Ready
+    //   0 ≥ current > -EXH      → Tired       (scaling Penalty kicks in)
+    //   -EXH ≥ current > -2*EXH → Exhausted   (Penalty approaches 100%)
+    //   current ≤ -2*EXH        → Unconscious (out until regen)
+    //
+    // Penalty contribution is LINEAR when current < 0: percentage of the
+    // range you've descended into the negative, where range is 2× max.
+    // At exhCurrent = -2×max, Penalty = 100% AND character is KO'd.
+    {
+      code: 'EXH',
+      name: 'Exhaustion',
+      description: 'Stamina and endurance pool. Average person has ~5. Drops from exertion, exposure, and pushing through rolls. Below 0 EXH you scale Penalty; at −2× max you fall Unconscious. Spend EXH before a roll to Exert — 1 Difficulty Reduction (max once) OR −25% Penalty per EXH spent.',
+      group: 'mental',
+      formula: '(HP / 2) + (SAN / 2)',
+      // Exhaustion-resistance rolls use the body's toughness as the
+      // stat mod — enduring cold, heat, dehydration, sleep deprivation
+      // is a physical challenge first.
+      rollModifier: 'STRMOD',
+      // Passive roll — resisting exposure / overexertion doesn't have
+      // Penalty stacked on top. Your EXH pool IS the resistance.
+      passiveRoll: true,
+      trackDamage: false,
+      keepDecimals: false,
+      unit: ''
+    },
     // POWER
     {
       code: 'POWER',
