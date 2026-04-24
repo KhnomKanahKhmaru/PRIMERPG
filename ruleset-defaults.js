@@ -293,7 +293,15 @@ window.RULESET_DEFAULTS = {
       // "10 − 2.5 ft/sec".
       penaltyReducesValue: true,
       // Expandable conversions panel on the card — 3s/6s/min/hr/mph/etc.
-      showSpeedConversions: true
+      showSpeedConversions: true,
+      // Opt-in to per-character value modifiers (flat ft/sec bonuses
+      // with names, e.g. "Running Shoes: +2"). Editable on the card.
+      allowValueMods: true,
+      // Opt-in to the per-stat penalty source filter. When a character
+      // creates a filter object for this stat, only whitelisted Strain
+      // sources contribute to its Penalty %. Missing filter = legacy
+      // behavior (all sources apply).
+      allowPenaltyFilter: true
     },
     {
       code: 'SPR',
@@ -306,7 +314,11 @@ window.RULESET_DEFAULTS = {
       keepDecimals: false,
       unit: 'ft',
       penaltyReducesValue: true,
-      showSpeedConversions: true
+      showSpeedConversions: true,
+      // Same opt-ins as SPD — flat bonus list and per-source
+      // penalty filter are surfaced on the SPR card.
+      allowValueMods: true,
+      allowPenaltyFilter: true
     },
     {
       code: 'AGL',
@@ -992,6 +1004,16 @@ window.normalizeRuleset = function(rs) {
           // Useful for speed stats (SPD, SPDUP, future burrow/swim/etc.).
           // The card's value is treated as ft/sec for the math.
           showSpeedConversions: s.showSpeedConversions === true,
+          // Opt-in flags for the SPD/SPR-style editable panels.
+          // `allowValueMods` surfaces a named flat-bonus editor on
+          // the card (stored in charData.valueMods[code]). Missing/
+          // false → the card treats the stat as read-only value.
+          // `allowPenaltyFilter` surfaces a per-source Penalty
+          // whitelist editor (stored in charData.penaltyFilters[code]).
+          // Missing filter object on a character → legacy behavior
+          // (all sources apply). Both preserve backward compatibility.
+          allowValueMods:      s.allowValueMods === true,
+          allowPenaltyFilter:  s.allowPenaltyFilter === true,
           trackDamage: s.trackDamage === true,
           keepDecimals: s.keepDecimals === true,
           unit: (typeof s.unit === 'string') ? s.unit : ''
@@ -1156,6 +1178,24 @@ window.normalizeRuleset = function(rs) {
         const defaultStat = d.derivedStats.find(ds => ds.code === s.code);
         if (defaultStat && defaultStat.showSpeedConversions === true) {
           s.showSpeedConversions = true;
+        }
+      }
+      // Backfill allowValueMods and allowPenaltyFilter the same way.
+      // These were added later than SPD/SPR themselves, so existing
+      // saved rulesets have the stats but lack the flags. Safe to
+      // flip on without user action — the features default to
+      // empty/absent on the character side, so there's no behavioral
+      // change until the player actually uses the new editors.
+      if (s.allowValueMods !== true) {
+        const defaultStat = d.derivedStats.find(ds => ds.code === s.code);
+        if (defaultStat && defaultStat.allowValueMods === true) {
+          s.allowValueMods = true;
+        }
+      }
+      if (s.allowPenaltyFilter !== true) {
+        const defaultStat = d.derivedStats.find(ds => ds.code === s.code);
+        if (defaultStat && defaultStat.allowPenaltyFilter === true) {
+          s.allowPenaltyFilter = true;
         }
       }
     });
