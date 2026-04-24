@@ -2182,6 +2182,60 @@
     }
     .ct-input:focus { outline: none; border-color: #554826; }
     .ct-input[readonly] { color: #6a6555; cursor: default; }
+    /* Movement interval picker — sits below the ± buttons in the
+       Movement tile. Three inputs in a row: ft preset dropdown,
+       seconds preset dropdown, and a custom ft number input. All
+       three resolve to the same movementIntervalFt state value;
+       whichever the user last touched wins. */
+    .ct-tile-interval {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex-wrap: wrap;
+      margin-top: 2px;
+      font-size: 10px;
+      color: #7a7260;
+    }
+    .ct-interval-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #6a6555;
+    }
+    .ct-interval-select {
+      background: #0a0908;
+      border: 1px solid #2a251a;
+      color: #c8c2ae;
+      font-family: inherit;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      outline: none;
+      cursor: pointer;
+    }
+    .ct-interval-select:focus { border-color: #554826; }
+    .ct-interval-select:disabled { opacity: 0.4; cursor: not-allowed; }
+    .ct-interval-custom {
+      background: #0a0908;
+      border: 1px solid #2a251a;
+      color: #d8d3c2;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 10px;
+      padding: 2px 5px;
+      border-radius: 3px;
+      width: 52px;
+      min-width: 0;
+      outline: none;
+      text-align: right;
+    }
+    .ct-interval-custom:focus { border-color: #554826; }
+    .ct-interval-custom[readonly] { color: #6a6555; cursor: default; }
+    .ct-interval-unit {
+      font-size: 10px;
+      color: #6a6555;
+      letter-spacing: .04em;
+    }
 
     /* Derived stat cards */
     .ds-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
@@ -5901,6 +5955,12 @@
     trackerChainActions:     () => combat.trackerChainActions(),
     trackerToggleAutoApply:  () => combat.trackerToggleAutoApply(),
     trackerToggleCollapse:   () => combat.trackerToggleCollapse(),
+    // Movement step interval — user picks ft preset, seconds preset,
+    // or custom ft value. The active interval drives the Movement
+    // tile's ± buttons.
+    trackerSetMovementIntervalFt:  (val) => combat.trackerSetMovementIntervalFt(val),
+    trackerSetMovementIntervalSec: (val) => combat.trackerSetMovementIntervalSec(val),
+    trackerMovementStep:           (dir) => combat.trackerMovementStep(dir),
     addHlMod:             (target)           => combat.addModifier(target),
     updateHlMod:          (target, i, field, val) => combat.updateModifier(target, i, field, val),
     deleteHlMod:          (target, i)        => combat.deleteModifier(target, i),
