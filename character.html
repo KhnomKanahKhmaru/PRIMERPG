@@ -1324,6 +1324,33 @@
     .rc-num[type=number] { -moz-appearance: textfield; }
     .rc-field-row .rc-num { flex: 0 0 auto; width: 60px; }
 
+    /* Reaction stacking pill — appears next to the Difficulty input
+       when the Combat Tracker reports pending Reaction Difficulty
+       (reactionsTaken > AGL). Click-to-apply: adds the stacking
+       value to the current Difficulty additively. Shares the orange
+       accent color with the tracker's own Penalty highlights so the
+       connection is visually obvious. */
+    .rc-react-pill {
+      align-self: flex-start;
+      margin-top: 4px;
+      background: #2a1c10;
+      border: 1px solid #553820;
+      color: #e6b275;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .04em;
+      padding: 3px 8px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+    }
+    .rc-react-pill:hover {
+      background: #3a2515;
+      border-color: #7a4a25;
+      color: #f5c590;
+    }
+
     /* Penalty toggles panel — collapsible, sits between grid and output.
        Head row is always visible (shows summary "Applying X% of Y%");
        body appears when expanded with one row per component. Each row
@@ -5782,6 +5809,10 @@
     rollCalcSetSlotValue:    (idx, v)    => combat.rollCalcSetSlotValue(idx, v),
     rollCalcSetStatmod:      (v)   => combat.rollCalcSetStatmod(v),
     rollCalcSetDifficulty:   (v)   => combat.rollCalcSetDifficulty(v),
+    // Apply the tracker's pending Reaction stacking to the Difficulty
+    // field. Called from the "+N React" pill rendered next to the
+    // Difficulty input in the Roll Calc tile.
+    rollCalcApplyReactionDifficulty: () => combat.rollCalcApplyReactionDifficulty(),
     rollCalcSetMitigation:   (v)   => combat.rollCalcSetMitigation(v),
     rollCalcSetReduction:    (v)   => combat.rollCalcSetReduction(v),
     rollCalcToggle:          ()    => combat.rollCalcToggle(),
