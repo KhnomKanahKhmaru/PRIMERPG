@@ -1590,7 +1590,11 @@ export function createCombatSection(ctx) {
     const charData = ctx.getCharData();
     const state = ensureTrackerState(charData);
     const n = parseFloat(value);
-    const next = Number.isFinite(n) ? Math.max(0, n) : 0;
+    // Per-field minimum. Round is the only counter that can't drop
+    // below 1 (a "Round 0" doesn't make sense — combat starts at 1).
+    // Everything else clamps to 0.
+    const minValue = (field === 'round') ? 1 : 0;
+    const next = Number.isFinite(n) ? Math.max(minValue, n) : minValue;
     if (next === state[field]) return;
     state[field] = next;
     if (field === 'fastActions' || field === 'sprIncrements') {
@@ -1627,6 +1631,22 @@ export function createCombatSection(ctx) {
     const charData = ctx.getCharData();
     const state = ensureTrackerState(charData);
     state.round = (state.round || 1) + 1;
+    await trackerPersist(charData);
+    renderAll();
+  }
+
+  // Reset Round — drops the round counter back to 1 without touching
+  // any other counters. For combat start/end: "new fight starts, round
+  // 1 again." Doesn't reset per-turn counters (use Start My Turn for
+  // that) or the Penalty toggle. Deliberately a separate button from
+  // Start My Turn so clearing the round display doesn't nuke
+  // mid-combat state.
+  async function trackerResetRound() {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const state = ensureTrackerState(charData);
+    if ((state.round || 1) === 1) return;
+    state.round = 1;
     await trackerPersist(charData);
     renderAll();
   }
@@ -1762,12 +1782,36 @@ export function createCombatSection(ctx) {
     // ─ Expanded body — tile grid ─
     const btn = canEdit ? '' : ' disabled';
 
+    // Editable big-number helper. Renders an <input> styled to look
+    // like the big value display — click to focus, type to edit,
+    // blur/Enter commits via trackerSet. Read-only when !canEdit.
+    // For each tile's main counter: click-to-edit instead of needing
+    // to hammer the ± buttons for big jumps.
+    const editableBig = (field, value, extraClass) => {
+      const roOnly = canEdit ? '' : ' readonly';
+      return `<input type="number" class="ct-tile-value-edit${extraClass ? ' ' + extraClass : ''}"
+             value="${value}" min="0" step="1"
+             onchange="trackerSet('${field}', this.value)"
+             onfocus="this.select()"
+             title="Click to edit directly"${roOnly}>`;
+    };
+
+    // Round tile — round number is also editable. +1 button and
+    // Reset-to-1 button flank the display. Reset is hidden when
+    // round is already 1 (nothing to reset).
+    const roundVal = state.round || 1;
+    const showResetRound = roundVal > 1;
     const roundTile = `
       <div class="ct-tile ct-tile-round" title="Round number is purely informational. Increments independently from Start My Turn.">
         <div class="ct-tile-label">Round</div>
-        <div class="ct-tile-value ct-tile-value-big">${state.round || 1}</div>
+        <div class="ct-tile-value">
+          <input type="number" class="ct-tile-value-edit" value="${roundVal}" min="1" step="1"
+                 onchange="trackerSet('round', this.value)" onfocus="this.select()"
+                 title="Click to set round number directly"${canEdit ? '' : ' readonly'}>
+        </div>
         <div class="ct-tile-controls">
-          <button class="ct-btn ct-btn-secondary" onclick="trackerNextRound()" type="button"${btn} title="Advance the round counter (does not reset Penalty counters).">+1 Next Round</button>
+          <button class="ct-btn ct-btn-secondary" onclick="trackerNextRound()" type="button"${btn} title="Advance the round counter (does not reset Penalty counters).">+1 Next</button>
+          ${showResetRound ? `<button class="ct-btn ct-btn-secondary" onclick="trackerResetRound()" type="button"${btn} title="Reset round counter to 1 (does not clear per-turn counters — use Start My Turn for that).">Reset</button>` : ''}
         </div>
       </div>`;
 
@@ -1780,10 +1824,15 @@ export function createCombatSection(ctx) {
         <div class="ct-tile-hint">Resets per-round counters</div>
       </div>`;
 
+    // Action tile — used/granted. Used is editable via the big
+    // number; granted is read-only (managed by chain button).
     const actionTile = `
       <div class="ct-tile ct-tile-action" title="Main actions — attacks, abilities, big interactions. Chain 4 Fast Actions to earn an extra.">
         <div class="ct-tile-label">Action</div>
-        <div class="ct-tile-value ct-tile-value-big">${state.actionsUsed || 0}<span class="ct-tile-denom">/${state.actionsGranted || 1}</span></div>
+        <div class="ct-tile-value">
+          ${editableBig('actionsUsed', state.actionsUsed || 0)}
+          <span class="ct-tile-denom">/${state.actionsGranted || 1}</span>
+        </div>
         <div class="ct-tile-controls">
           <button class="ct-btn" onclick="trackerAdjust('actionsUsed', -1)" type="button"${btn} title="Undo an action">−</button>
           <button class="ct-btn" onclick="trackerAdjust('actionsUsed', 1)" type="button"${btn} title="Use an action">+</button>
@@ -1794,7 +1843,9 @@ export function createCombatSection(ctx) {
     const fastTile = `
       <div class="ct-tile ct-tile-fastactions" title="Quick actions — draw a weapon, chamber a shell, open a door. First ${agility} are free (via AGL ${agility}). Each additional adds 25% Penalty until Start My Turn.">
         <div class="ct-tile-label">Fast Actions</div>
-        <div class="ct-tile-value ct-tile-value-big">${state.fastActions || 0}</div>
+        <div class="ct-tile-value">
+          ${editableBig('fastActions', state.fastActions || 0)}
+        </div>
         <div class="ct-tile-controls">
           <button class="ct-btn" onclick="trackerAdjust('fastActions', -1)" type="button"${btn}>−</button>
           <button class="ct-btn" onclick="trackerAdjust('fastActions', 1)" type="button"${btn}>+</button>
@@ -1807,7 +1858,9 @@ export function createCombatSection(ctx) {
     const sprTile = `
       <div class="ct-tile ct-tile-spr" title="Each SPR increment adds ${sprBase} ft to your Movement budget this round and 25% Penalty on physical actions (not Movement) until Start My Turn.">
         <div class="ct-tile-label">SPR Increments</div>
-        <div class="ct-tile-value ct-tile-value-big">${state.sprIncrements || 0}</div>
+        <div class="ct-tile-value">
+          ${editableBig('sprIncrements', state.sprIncrements || 0)}
+        </div>
         <div class="ct-tile-controls">
           <button class="ct-btn" onclick="trackerAdjust('sprIncrements', -1)" type="button"${btn}>−</button>
           <button class="ct-btn" onclick="trackerAdjust('sprIncrements', 1)" type="button"${btn}>+</button>
@@ -1821,13 +1874,12 @@ export function createCombatSection(ctx) {
       <div class="ct-tile ct-tile-movement ct-tile-wide" title="Base SPD × 6s = ${Math.round(spdBase * 6 * 10) / 10} ft. Each SPR increment adds ${sprBase} ft.">
         <div class="ct-tile-label">Movement</div>
         <div class="ct-tile-value">
-          <span class="ct-tile-value-big">${movementUsed}</span>
+          ${editableBig('movementUsed', movementUsed)}
           <span class="ct-tile-denom">/ ${movementBudget}</span>
           <span class="ct-tile-unit">ft</span>
         </div>
         <div class="ct-tile-controls">
           <button class="ct-btn" onclick="trackerAdjust('movementUsed', -5)" type="button"${btn} title="−5 ft">−5</button>
-          <input type="number" class="ct-input" value="${movementUsed}" step="1" min="0" onchange="trackerSet('movementUsed', this.value)" title="Set exact ft used"${canEdit ? '' : ' readonly'}>
           <button class="ct-btn" onclick="trackerAdjust('movementUsed', 5)" type="button"${btn} title="+5 ft">+5</button>
         </div>
         <div class="ct-tile-hint">
@@ -1839,7 +1891,9 @@ export function createCombatSection(ctx) {
     const reactTile = `
       <div class="ct-tile ct-tile-reactions" title="Reactions taken since your last turn. First ${reactionsFree} are free (via AGL). Each beyond that adds +1 Difficulty to the NEXT Reaction you take.">
         <div class="ct-tile-label">Reactions</div>
-        <div class="ct-tile-value ct-tile-value-big">${state.reactionsTaken || 0}</div>
+        <div class="ct-tile-value">
+          ${editableBig('reactionsTaken', state.reactionsTaken || 0)}
+        </div>
         <div class="ct-tile-controls">
           <button class="ct-btn" onclick="trackerAdjust('reactionsTaken', -1)" type="button"${btn}>−</button>
           <button class="ct-btn" onclick="trackerAdjust('reactionsTaken', 1)" type="button"${btn}>+</button>
@@ -3703,7 +3757,8 @@ export function createCombatSection(ctx) {
     addOtherMod, updateOtherMod, deleteOtherMod,
     // Combat Tracker (action economy tracker — per-character round state)
     trackerAdjust, trackerSet, trackerStartMyTurn, trackerNextRound,
-    trackerChainActions, trackerToggleAutoApply, trackerToggleCollapse,
+    trackerResetRound, trackerChainActions,
+    trackerToggleAutoApply, trackerToggleCollapse,
     // Afflictions tile (Conditions / Circumstances tracker on Overview tab)
     condOpenAdd:       conditionsSection.openAdd,
     condStartCustom:   conditionsSection.startCustom,
