@@ -2116,6 +2116,85 @@
     .ds-rollmod-panel .mod-name-input { min-width: 0; flex: 1 1 0; }
     .ds-rollmod-panel .mod-val-input { width: 48px; flex: 0 0 48px; }
     .ds-rollmod-panel .mod-delete { flex: 0 0 auto; }
+    /* Stat-edit panel section headers — separate Dice Modifiers /
+       Value Modifiers / Penalty Sources visually. First section
+       has no top border; later sections get a divider so the
+       sections feel grouped but distinct. */
+    .ds-edit-section-head {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #998e70;
+      padding: 8px 0 4px;
+      border-top: 1px solid #2a2418;
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      min-width: 0;
+    }
+    /* First section head has no top border — the panel's own top
+       border serves that role. */
+    .ds-rollmod-panel > .ds-edit-section-head:first-child,
+    .ds-rollmod-panel .ds-dicemod-summary + .ds-edit-section-head {
+      border-top: none;
+      padding-top: 0;
+    }
+    .ds-edit-section-total {
+      font-size: 9px;
+      font-weight: 500;
+      letter-spacing: 0;
+      text-transform: none;
+      color: #888;
+    }
+    .ds-edit-section-state {
+      font-size: 9px;
+      font-weight: 500;
+      letter-spacing: 0;
+      text-transform: none;
+      color: #666;
+      font-style: italic;
+    }
+    /* Penalty filter checkbox list — one row per source + optional
+       rows for each Other entry. Checked = "applies to this stat."
+       Compact so all four core sources fit without scrolling. */
+    .ds-edit-filter-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      margin-bottom: 6px;
+    }
+    .ds-edit-filter-row {
+      display: grid;
+      grid-template-columns: 16px 1fr auto;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 4px;
+      font-size: 11px;
+      color: #c8c8c8;
+      cursor: pointer;
+      border-radius: 3px;
+    }
+    .ds-edit-filter-row:hover { background: #151515; }
+    .ds-edit-filter-row input[type="checkbox"] { margin: 0; cursor: pointer; }
+    .ds-edit-filter-label { min-width: 0; }
+    .ds-edit-filter-hint {
+      font-size: 9px;
+      color: #666;
+      font-style: italic;
+      letter-spacing: .02em;
+    }
+    .ds-edit-filter-other {
+      padding-left: 14px;
+    }
+    .ds-edit-filter-other-head {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #666;
+      padding: 4px 4px 2px;
+    }
     .ds-rollmod-base {
       display: flex;
       align-items: center;
@@ -5468,6 +5547,14 @@
     addDiceMod:           (code) => combat.addDiceMod(code),
     updateDiceMod:        (code, idx, field, val) => combat.updateDiceMod(code, idx, field, val),
     deleteDiceMod:        (code, idx) => combat.deleteDiceMod(code, idx),
+    // Card value modifiers (flat bonuses on opted-in stats like SPD/SPR)
+    addValueMod:          (code) => combat.addValueMod(code),
+    updateValueMod:       (code, idx, field, val) => combat.updateValueMod(code, idx, field, val),
+    deleteValueMod:       (code, idx) => combat.deleteValueMod(code, idx),
+    // Per-stat penalty source filter
+    togglePenaltyFilterSource: (code, sourceKey, checked) => combat.togglePenaltyFilterSource(code, sourceKey, checked),
+    togglePenaltyFilterOther:  (code, otherId,   checked) => combat.togglePenaltyFilterOther(code, otherId, checked),
+    clearPenaltyFilter:        (code)                    => combat.clearPenaltyFilter(code),
     // Strain value-display toggle
     togglePenaltyValueDisplay: (code) => combat.togglePenaltyValueDisplay(code),
     toggleSpeedConversions:    (code) => combat.toggleSpeedConversions(code),
