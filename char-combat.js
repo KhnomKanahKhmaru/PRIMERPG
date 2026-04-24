@@ -1748,6 +1748,70 @@ export function createCombatSection(ctx) {
     renderAll();
   }
 
+  // Movement step interval — feet-based. Called by the ft dropdown
+  // and the custom ft input. Clamps to 0.1 minimum so users can't
+  // get stuck at 0. Setting this value also implicitly deselects any
+  // seconds preset since the conversion is one-way; the ft value is
+  // the source of truth.
+  async function trackerSetMovementIntervalFt(value) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const state = ensureTrackerState(charData);
+    const n = parseFloat(value);
+    if (!Number.isFinite(n) || n <= 0) return;
+    const next = Math.max(0.1, Math.round(n * 10) / 10);
+    if (next === state.movementIntervalFt) return;
+    state.movementIntervalFt = next;
+    await trackerPersist(charData);
+    renderAll();
+  }
+
+  // Movement step interval — seconds-based. Converts via current SPD.
+  // If SPD is 0 (incapacitated), no-op — the user should fix the
+  // underlying stat first, not pretend to move.
+  async function trackerSetMovementIntervalSec(value) {
+    if (!ctx.getCanEdit()) return;
+    if (value == null || value === '') return;
+    const sec = parseFloat(value);
+    if (!Number.isFinite(sec) || sec <= 0) return;
+    const charData = ctx.getCharData();
+    const ruleset  = ctx.getRuleset();
+    try {
+      const r = computeDerivedStats(charData, ruleset);
+      const spd = r && r.stats && r.stats.get && r.stats.get('SPD');
+      const spdVal = (spd && Number.isFinite(spd.value)) ? spd.value : 0;
+      if (spdVal <= 0) return;
+      const ft = Math.round(spdVal * sec * 10) / 10;
+      const state = ensureTrackerState(charData);
+      if (ft === state.movementIntervalFt) return;
+      state.movementIntervalFt = ft;
+      await trackerPersist(charData);
+      renderAll();
+    } catch (e) {
+      // computeDerivedStats failed — leave state alone
+    }
+  }
+
+  // Step movement by the current interval × direction. `direction` is
+  // +1 or -1. Uses the persisted movementIntervalFt (defaulting to 5
+  // if unset for backward-compat with characters saved before this
+  // feature). Clamps movementUsed at 0 minimum; no cap on the upper
+  // end — users may exceed budget intentionally to flag overextension.
+  async function trackerMovementStep(direction) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const state = ensureTrackerState(charData);
+    const interval = (state.movementIntervalFt != null && Number.isFinite(parseFloat(state.movementIntervalFt)))
+      ? parseFloat(state.movementIntervalFt)
+      : 5;
+    const delta = direction * interval;
+    const next = Math.max(0, (state.movementUsed || 0) + delta);
+    if (next === state.movementUsed) return;
+    state.movementUsed = Math.round(next * 10) / 10;
+    await trackerPersist(charData);
+    renderAll();
+  }
+
   // ─── COMBAT TRACKER (UI) ───
   //
   // Widget grid below Roll Calc. Seven tiles arranged in a responsive
@@ -1943,6 +2007,46 @@ export function createCombatSection(ctx) {
         </div>
       </div>`;
 
+    // Movement tile interval state — persisted per-character on the
+    // tracker so a player's preferred interval survives reloads.
+    // `movementIntervalFt` is the ACTIVE step value in feet; the
+    // dropdowns just pre-populate common values. Picking a seconds
+    // preset converts via SPD×seconds. Picking a ft preset sets the
+    // value directly. Custom input accepts any positive number.
+    //
+    // Default 5ft if unset — matches the original hardcoded behavior.
+    const intervalFt = (state.movementIntervalFt != null && Number.isFinite(parseFloat(state.movementIntervalFt)))
+      ? Math.max(0.1, parseFloat(state.movementIntervalFt))
+      : 5;
+    const intervalDisplay = Number.isInteger(intervalFt) ? String(intervalFt) : intervalFt.toFixed(1);
+    // Which ft presets appear in the dropdown. Include the active
+    // value even if it's not one of the defaults so the select shows
+    // a sensible current-value state.
+    const ftPresets = [1, 5, 10, 25];
+    if (!ftPresets.includes(intervalFt) && intervalFt > 0) ftPresets.push(intervalFt);
+    ftPresets.sort((a, b) => a - b);
+    const ftOptions = ftPresets
+      .map(v => `<option value="${v}"${v === intervalFt ? ' selected' : ''}>${v} ft</option>`)
+      .join('');
+    // Seconds dropdown — converts each option via the character's
+    // current SPD (ft/sec). Round to 1 decimal. Options: 1s, 2s, 3s,
+    // 6s (full round). spdBase may be 0 on a very wounded character;
+    // if so the seconds picker is effectively unusable but we still
+    // render it so the UI doesn't flicker.
+    const secondsPresets = [
+      { label: '1s', sec: 1 },
+      { label: '2s', sec: 2 },
+      { label: '3s', sec: 3 },
+      { label: '6s (full round)', sec: 6 }
+    ];
+    // "Selected" seconds option = any preset whose converted ft value
+    // matches the current intervalFt (within 0.05 ft tolerance).
+    const secondsOptions = secondsPresets.map(p => {
+      const ft = Math.round(spdBase * p.sec * 10) / 10;
+      const isActive = Math.abs(ft - intervalFt) < 0.05 && spdBase > 0;
+      return `<option value="${p.sec}"${isActive ? ' selected' : ''}>${p.label} (${ft} ft)</option>`;
+    }).join('');
+
     const movementTile = `
       <div class="ct-tile ct-tile-movement ct-tile-wide" title="Base SPD × 6s = ${Math.round(spdBase * 6 * 10) / 10} ft. Each SPR increment adds ${sprPerIncrementFt} ft (SPR ${sprBase} ft/sec × 6s).">
         <div class="ct-tile-label">Movement</div>
@@ -1952,11 +2056,25 @@ export function createCombatSection(ctx) {
           <span class="ct-tile-unit">ft</span>
         </div>
         <div class="ct-tile-controls">
-          <button class="ct-btn" onclick="trackerAdjust('movementUsed', -5)" type="button"${btn} title="−5 ft">−5</button>
-          <button class="ct-btn" onclick="trackerAdjust('movementUsed', 5)" type="button"${btn} title="+5 ft">+5</button>
+          <button class="ct-btn" onclick="trackerMovementStep(-1)" type="button"${btn} title="Subtract one interval of Movement (currently ${intervalDisplay} ft)">−${intervalDisplay}</button>
+          <button class="ct-btn" onclick="trackerMovementStep(1)" type="button"${btn} title="Add one interval of Movement (currently ${intervalDisplay} ft)">+${intervalDisplay}</button>
+        </div>
+        <div class="ct-tile-interval">
+          <span class="ct-interval-label">Step:</span>
+          <select class="ct-interval-select" onchange="trackerSetMovementIntervalFt(this.value)"${canEdit ? '' : ' disabled'} title="Set the interval in feet">
+            ${ftOptions}
+          </select>
+          <select class="ct-interval-select" onchange="trackerSetMovementIntervalSec(this.value)"${canEdit ? '' : ' disabled'} title="Set the interval in seconds (× current SPD ${spdBase} ft/sec)">
+            <option value="">or by seconds…</option>
+            ${secondsOptions}
+          </select>
+          <input type="number" class="ct-interval-custom" min="0.1" step="0.1" value="${intervalFt}"
+                 onchange="trackerSetMovementIntervalFt(this.value)"
+                 title="Custom ft interval"${canEdit ? '' : ' readonly'}>
+          <span class="ct-interval-unit">ft</span>
         </div>
         <div class="ct-tile-hint">
-          ${movementLeft > 0 ? `${movementLeft} ft remaining` : `at budget — tap SPR below to extend`}
+          ${movementLeft > 0 ? `${movementLeft} ft remaining` : `at budget — tap SPR to extend`}
           <button class="ct-btn ct-btn-tight" onclick="trackerAdjust('sprIncrements', 1)" type="button"${btn} title="Spend +1 SPR: extends budget by ${sprPerIncrementFt} ft and adds 25% Penalty.">+SPR</button>
         </div>
       </div>`;
@@ -3838,6 +3956,7 @@ export function createCombatSection(ctx) {
     trackerAdjust, trackerSet, trackerStartMyTurn, trackerNextRound,
     trackerResetRound, trackerChainActions,
     trackerToggleAutoApply, trackerToggleCollapse,
+    trackerSetMovementIntervalFt, trackerSetMovementIntervalSec, trackerMovementStep,
     // Afflictions tile (Conditions / Circumstances tracker on Overview tab)
     condOpenAdd:       conditionsSection.openAdd,
     condStartCustom:   conditionsSection.startCustom,
