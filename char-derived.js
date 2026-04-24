@@ -1078,6 +1078,100 @@ export function computeDerivedStats(character, ruleset) {
     };
   }
 
+  // ─── EXH (EXHAUSTION) ───
+  //
+  // Third pillar alongside HP/SAN. Structure MIRRORS SAN (pool with
+  // manual-damage + structured damages + max modifiers) because the
+  // UI/persistence story is well-trodden there. Differences from SAN:
+  //
+  //   - Formula is (HP/2)+(SAN/2) — derived from the other two pools.
+  //   - "Damages" array entries are called exhDamages on charData.
+  //   - Status bands differ: Ready / Tired / Exhausted / Unconscious.
+  //   - Terminal state at -2×max = Unconscious (not "Broken" — EXH
+  //     knockout is a recoverable loss-of-consciousness, not permanent).
+  //
+  // Effective EXH damage = exhDamage + sum(damage.currentLevel for each entry)
+  // Current = max − damage (can go negative; that's the point).
+  let exh = null;
+  const exhStatEntry = stats.get('EXH');
+  if (exhStatEntry && exhStatEntry.value !== null) {
+    const baseMax = Math.floor(exhStatEntry.value);
+    const exhMods = Array.isArray(character.exhModifiers) ? character.exhModifiers : [];
+    const exhModTotal = exhMods.reduce((acc, m) => acc + (parseInt(m.value) || 0), 0);
+    const exhMax = Math.max(0, baseMax + exhModTotal);
+
+    // Manual damage — untracked lump from +/- controls on the card.
+    const manualDamage = Math.max(0, Number.isFinite(character.exhDamage) ? character.exhDamage : 0);
+
+    // Structured damages — each tracks its own baseLevel and levelModifiers
+    // so players can author named entries ("12 hours awake: +3", "Stimulant:
+    // −2") with history.
+    const damagesIn = Array.isArray(character.exhDamages) ? character.exhDamages : [];
+    const damages = damagesIn
+      .filter(d => d && typeof d === 'object')
+      .map(d => {
+        const base = Number.isFinite(d.baseLevel) ? d.baseLevel : 0;
+        const mods = Array.isArray(d.levelModifiers) ? d.levelModifiers : [];
+        const modTotal = mods.reduce((a, m) => a + (parseInt(m.value) || 0), 0);
+        const currentLevel = Math.max(0, base + modTotal);
+        return {
+          id: d.id || ('exhdmg_' + Math.random().toString(36).slice(2, 9)),
+          name: typeof d.name === 'string' ? d.name : '',
+          description: typeof d.description === 'string' ? d.description : '',
+          baseLevel: base,
+          currentLevel,
+          levelModifiers: mods
+        };
+      });
+    const damagesContribution = damages.reduce((s, d) => s + d.currentLevel, 0);
+
+    const exhDamage = manualDamage + damagesContribution;
+    const exhCurrent = exhMax - exhDamage;
+
+    // Status bands — matches the HP/SAN tiering pattern, named for the
+    // exhaustion fiction. Passing -2×max means character is Unconscious
+    // (out until regen pulls them back above that threshold).
+    let exhStatus = 'ready';
+    if (exhMax > 0) {
+      if (exhCurrent <= -2 * exhMax)       exhStatus = 'unconscious';
+      else if (exhCurrent <= -exhMax)      exhStatus = 'exhausted';
+      else if (exhCurrent <= 0)            exhStatus = 'tired';
+    }
+
+    let exhStatusLabel, exhPenaltyText;
+    switch (exhStatus) {
+      case 'unconscious':
+        exhStatusLabel = 'Unconscious';
+        exhPenaltyText = 'You are unconscious. Cannot act. Regain EXH above −2× max to wake.';
+        break;
+      case 'exhausted':
+        exhStatusLabel = 'Exhausted';
+        exhPenaltyText = 'Severe Penalty scaling toward 100%. Rest to recover.';
+        break;
+      case 'tired':
+        exhStatusLabel = 'Tired';
+        exhPenaltyText = 'Scaling Penalty from missing EXH.';
+        break;
+      default:
+        exhStatusLabel = 'Ready';
+        exhPenaltyText = '';
+    }
+
+    exh = {
+      baseMax,
+      max: exhMax,
+      current: exhCurrent,
+      damage: exhDamage,
+      manualDamage,
+      damagesContribution,
+      damages,
+      modifiers: exhMods,
+      status: exhStatus,
+      statusLabel: exhStatusLabel,
+      penaltyText: exhPenaltyText
+    };
+  }
+
   // ─── INJURIES ───
   //
   // Injuries are free-floating wounds with their own base severity, location,
@@ -1392,7 +1486,7 @@ export function computeDerivedStats(character, ruleset) {
     entry.poolBeforePenalty = poolBeforePenalty;
   });
 
-  return { stats, locations, errors, vars, body, power, san, injuries, pain, stress, other, encumbrance, carry, penalty };
+  return { stats, locations, errors, vars, body, power, san, exh, injuries, pain, stress, other, encumbrance, carry, penalty };
 }
 
 // ─── DEGRADATION TABLE ───
