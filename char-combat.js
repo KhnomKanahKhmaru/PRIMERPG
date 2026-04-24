@@ -1325,8 +1325,10 @@ export function createCombatSection(ctx) {
       actionsUsed: 0,
       actionsGranted: 1,
       fastActions: 0,
+      fastReactions: 0,
       sprIncrements: 0,
       movementUsed: 0,
+      followFallbackMovement: 0,
       reactionsTaken: 0
     };
   }
@@ -1342,8 +1344,10 @@ export function createCombatSection(ctx) {
         actionsUsed: 0,
         actionsGranted: 1,
         fastActions: 0,
+        fastReactions: 0,
         sprIncrements: 0,
         movementUsed: 0,
+        followFallbackMovement: 0,
         reactionsTaken: 0
       };
     }
@@ -1377,13 +1381,18 @@ export function createCombatSection(ctx) {
   }
 
   // Compute the Penalty % that the tracker currently contributes, split
-  // into per-key values. Returns { fastActions, sprint }.
+  // into per-key values. Each action-economy source gets its OWN AGL
+  // "free" pool — so AGL 2 grants 2 free Fast Actions AND 2 free Fast
+  // Reactions AND 2 free Reactions (separate stacking), not 2 free
+  // across-the-board. Sprint doesn't interact with AGL.
   function computeTrackerPenalty(state, agility) {
     const fastFree = Math.max(0, agility);
     const fastBilled = Math.max(0, (state.fastActions || 0) - fastFree);
+    const fastReactBilled = Math.max(0, (state.fastReactions || 0) - fastFree);
     return {
-      fastActions: fastBilled * 25,
-      sprint:      (state.sprIncrements || 0) * 25
+      fastActions:   fastBilled * 25,
+      fastReactions: fastReactBilled * 25,
+      sprint:        (state.sprIncrements || 0) * 25
     };
   }
 
@@ -1404,8 +1413,9 @@ export function createCombatSection(ctx) {
     const pen = computeTrackerPenalty(state, agility);
     const desired = [];
     if (state.autoApplyPenalty !== false) {
-      if (pen.fastActions > 0) desired.push({ key: 'fastActions', name: 'Combat: Fast Actions', value: pen.fastActions });
-      if (pen.sprint > 0)      desired.push({ key: 'sprint',      name: 'Combat: Sprint',       value: pen.sprint });
+      if (pen.fastActions   > 0) desired.push({ key: 'fastActions',   name: 'Combat: Fast Actions',   value: pen.fastActions });
+      if (pen.fastReactions > 0) desired.push({ key: 'fastReactions', name: 'Combat: Fast Reactions', value: pen.fastReactions });
+      if (pen.sprint        > 0) desired.push({ key: 'sprint',        name: 'Combat: Sprint',         value: pen.sprint });
     }
 
     let changed = false;
@@ -1638,7 +1648,9 @@ export function createCombatSection(ctx) {
     const next = Math.max(0, (state[field] || 0) + delta);
     if (next === (state[field] || 0)) return;
     state[field] = next;
-    if (field === 'fastActions' || field === 'sprIncrements') {
+    // Fields that drive the Penalty injection — any change needs to
+    // re-sync the tracker-sourced Other Mod entries.
+    if (field === 'fastActions' || field === 'fastReactions' || field === 'sprIncrements') {
       syncTrackerOtherMods(charData);
     }
     await trackerPersist(charData);
@@ -1657,7 +1669,7 @@ export function createCombatSection(ctx) {
     const next = Number.isFinite(n) ? Math.max(minValue, n) : minValue;
     if (next === state[field]) return;
     state[field] = next;
-    if (field === 'fastActions' || field === 'sprIncrements') {
+    if (field === 'fastActions' || field === 'fastReactions' || field === 'sprIncrements') {
       syncTrackerOtherMods(charData);
     }
     await trackerPersist(charData);
@@ -1674,8 +1686,10 @@ export function createCombatSection(ctx) {
     state.actionsUsed = 0;
     state.actionsGranted = 1;
     state.fastActions = 0;
+    state.fastReactions = 0;
     state.sprIncrements = 0;
     state.movementUsed = 0;
+    state.followFallbackMovement = 0;
     state.reactionsTaken = 0;
     syncTrackerOtherMods(charData);
     await trackerPersist(charData);
@@ -1812,6 +1826,27 @@ export function createCombatSection(ctx) {
     renderAll();
   }
 
+  // Off-turn movement stepper — parallel to trackerMovementStep but
+  // writes to followFallbackMovement instead. Shares the same
+  // interval (movementIntervalFt) since the interval is a UI
+  // preference, not a resource distinction. Budget math elsewhere
+  // sums movementUsed + followFallbackMovement to check against the
+  // round's total budget.
+  async function trackerFollowFallbackStep(direction) {
+    if (!ctx.getCanEdit()) return;
+    const charData = ctx.getCharData();
+    const state = ensureTrackerState(charData);
+    const interval = (state.movementIntervalFt != null && Number.isFinite(parseFloat(state.movementIntervalFt)))
+      ? parseFloat(state.movementIntervalFt)
+      : 5;
+    const delta = direction * interval;
+    const next = Math.max(0, (state.followFallbackMovement || 0) + delta);
+    if (next === state.followFallbackMovement) return;
+    state.followFallbackMovement = Math.round(next * 10) / 10;
+    await trackerPersist(charData);
+    renderAll();
+  }
+
   // ─── COMBAT TRACKER (UI) ───
   //
   // Widget grid below Roll Calc. Seven tiles arranged in a responsive
@@ -1883,40 +1918,72 @@ export function createCombatSection(ctx) {
       ? 'Click to disable: tracker will stop injecting Fast-Action / Sprint entries into Penalty (display only).'
       : 'Click to enable: tracker will actively inject Fast-Action / Sprint Penalty entries.';
 
+    // Section header — caret + title on the left, round control cluster
+    // + Start My Turn + Penalty toggle on the right. Round and Turn
+    // are bookkeeping so they live in the header rather than
+    // consuming a tile each in the body grid.
+    const roundValHead = state.round || 1;
+    const showResetRoundHead = roundValHead > 1;
     let head = `<div class="combat-tracker-head">
       <button class="combat-tracker-caret" onclick="trackerToggleCollapse()" type="button" title="${collapsed ? 'Expand' : 'Collapse'} tracker">
         <span class="combat-tracker-caret-icon">${caret}</span>
         <span class="combat-tracker-title">Combat Tracker</span>
       </button>
-      ${canEdit ? `<button class="combat-tracker-autopen ${autoPenOn ? 'on' : 'off'}" onclick="trackerToggleAutoApply()" title="${escapeHtml(autoPenTip)}" type="button">${autoPenLabel}</button>` : ''}
+      <div class="combat-tracker-head-controls">
+        ${canEdit ? `
+          <div class="combat-tracker-head-round" title="Round number. Informational — purely a counter for table-wide sync.">
+            <span class="combat-tracker-head-round-label">Round</span>
+            <input type="number" class="combat-tracker-head-round-input" value="${roundValHead}" min="1" step="1"
+                   onchange="trackerSet('round', this.value)" onfocus="this.select()"
+                   title="Click to set round number directly">
+            <button class="combat-tracker-head-btn" onclick="trackerNextRound()" type="button" title="Advance round counter (doesn't reset per-turn counters).">+1</button>
+            ${showResetRoundHead ? `<button class="combat-tracker-head-btn" onclick="trackerResetRound()" type="button" title="Reset round counter to 1.">Reset</button>` : ''}
+          </div>
+          <button class="combat-tracker-head-turn" onclick="trackerStartMyTurn()" type="button" title="Resets Action, Fast Actions, Fast Reactions, SPR, Movement, Follow/Fall-back, Reactions. Clears tracker-injected Penalty.">Start My Turn</button>
+          <button class="combat-tracker-autopen ${autoPenOn ? 'on' : 'off'}" onclick="trackerToggleAutoApply()" title="${escapeHtml(autoPenTip)}" type="button">${autoPenLabel}</button>
+        ` : `
+          <div class="combat-tracker-head-round"><span class="combat-tracker-head-round-label">Round</span><span class="combat-tracker-head-round-readonly">${roundValHead}</span></div>
+        `}
+      </div>
     </div>`;
 
     if (collapsed) {
       // Collapsed form shows a compact summary line so the player can
-      // glance at the key numbers without expanding.
+      // glance at the key numbers without expanding. Only non-zero
+      // counters appear, to keep the line short in the common case.
       const summaryBits = [];
       summaryBits.push(`Round ${state.round || 1}`);
       if ((state.actionsUsed || 0) > 0 || (state.actionsGranted || 1) > 1) {
         summaryBits.push(`Action ${state.actionsUsed || 0}/${state.actionsGranted || 1}`);
       }
-      if ((state.fastActions || 0) > 0)   summaryBits.push(`${state.fastActions} FA`);
-      if ((state.sprIncrements || 0) > 0) summaryBits.push(`${state.sprIncrements} SPR`);
-      if (movementUsed > 0)                summaryBits.push(`${movementUsed}/${movementBudget}ft`);
-      if ((state.reactionsTaken || 0) > 0) summaryBits.push(`${state.reactionsTaken} react`);
+      if ((state.fastActions || 0) > 0)             summaryBits.push(`${state.fastActions} FA`);
+      if ((state.fastReactions || 0) > 0)           summaryBits.push(`${state.fastReactions} FR`);
+      if ((state.sprIncrements || 0) > 0)           summaryBits.push(`${state.sprIncrements} SPR`);
+      if (movementUsed > 0)                          summaryBits.push(`${movementUsed}ft on-turn`);
+      if ((state.followFallbackMovement || 0) > 0)  summaryBits.push(`${state.followFallbackMovement}ft follow/fall`);
+      if ((state.reactionsTaken || 0) > 0)          summaryBits.push(`${state.reactionsTaken} react`);
       return `<div class="combat-section combat-section-tracker">
         ${head}
         <div class="combat-tracker-summary">${summaryBits.join(' · ')}</div>
       </div>`;
     }
 
-    // ─ Expanded body — tile grid ─
+    // ─ Expanded body — grouped tile layout ─
+    //
+    // Three sections:
+    //   "On your turn"         — Action, Fast Actions, Movement
+    //   "Off your turn"        — Reactions, Fast Reactions, Follow/Fall-back
+    //   "On or off your turn"  — Sprint
+    //
+    // Round counter and Start My Turn button moved up into the header
+    // bar (they're bookkeeping, not really per-turn state). Each
+    // group gets its own row; tiles within a row use the same
+    // responsive grid.
     const btn = canEdit ? '' : ' disabled';
 
     // Editable big-number helper. Renders an <input> styled to look
     // like the big value display — click to focus, type to edit,
     // blur/Enter commits via trackerSet. Read-only when !canEdit.
-    // For each tile's main counter: click-to-edit instead of needing
-    // to hammer the ± buttons for big jumps.
     const editableBig = (field, value, extraClass) => {
       const roOnly = canEdit ? '' : ' readonly';
       return `<input type="number" class="ct-tile-value-edit${extraClass ? ' ' + extraClass : ''}"
@@ -1926,36 +1993,7 @@ export function createCombatSection(ctx) {
              title="Click to edit directly"${roOnly}>`;
     };
 
-    // Round tile — round number is also editable. +1 button and
-    // Reset-to-1 button flank the display. Reset is hidden when
-    // round is already 1 (nothing to reset).
-    const roundVal = state.round || 1;
-    const showResetRound = roundVal > 1;
-    const roundTile = `
-      <div class="ct-tile ct-tile-round" title="Round number is purely informational. Increments independently from Start My Turn.">
-        <div class="ct-tile-label">Round</div>
-        <div class="ct-tile-value">
-          <input type="number" class="ct-tile-value-edit" value="${roundVal}" min="1" step="1"
-                 onchange="trackerSet('round', this.value)" onfocus="this.select()"
-                 title="Click to set round number directly"${canEdit ? '' : ' readonly'}>
-        </div>
-        <div class="ct-tile-controls">
-          <button class="ct-btn ct-btn-secondary" onclick="trackerNextRound()" type="button"${btn} title="Advance the round counter (does not reset Penalty counters).">+1 Next</button>
-          ${showResetRound ? `<button class="ct-btn ct-btn-secondary" onclick="trackerResetRound()" type="button"${btn} title="Reset round counter to 1 (does not clear per-turn counters — use Start My Turn for that).">Reset</button>` : ''}
-        </div>
-      </div>`;
-
-    const turnTile = `
-      <div class="ct-tile ct-tile-turn" title="Resets action, Fast Actions, SPR increments, Movement, and Reactions. Clears tracker-injected Penalty.">
-        <div class="ct-tile-label">Turn</div>
-        <div class="ct-tile-controls ct-tile-controls-center">
-          <button class="ct-btn ct-btn-primary ct-btn-wide" onclick="trackerStartMyTurn()" type="button"${btn}>Start My Turn</button>
-        </div>
-        <div class="ct-tile-hint">Resets per-round counters</div>
-      </div>`;
-
-    // Action tile — used/granted. Used is editable via the big
-    // number; granted is read-only (managed by chain button).
+    // ── Action tile (On your turn) ──
     const actionTile = `
       <div class="ct-tile ct-tile-action" title="Main actions — attacks, abilities, big interactions. Chain 4 Fast Actions to earn an extra.">
         <div class="ct-tile-label">Action</div>
@@ -1970,6 +2008,7 @@ export function createCombatSection(ctx) {
         ${canChain ? `<div class="ct-tile-extra"><button class="ct-btn ct-btn-accent ct-btn-wide" onclick="trackerChainActions()" type="button"${btn} title="Spend 4 Fast Actions to grant +1 Action this turn.">Chain 4 FA → +1 Action</button></div>` : ''}
       </div>`;
 
+    // ── Fast Actions tile (On your turn) ──
     const fastTile = `
       <div class="ct-tile ct-tile-fastactions" title="Quick actions — draw a weapon, chamber a shell, open a door. First ${agility} are free (via AGL ${agility}). Each additional adds 25% Penalty until Start My Turn.">
         <div class="ct-tile-label">Fast Actions</div>
@@ -1991,65 +2030,48 @@ export function createCombatSection(ctx) {
         </div>
       </div>`;
 
+    // SPR helper (also used by movement tile for +SPR button)
     const sprPerIncrementFt = Math.round(sprBase * 6 * 10) / 10;
-    const sprTile = `
-      <div class="ct-tile ct-tile-spr" title="Each SPR increment adds ${sprPerIncrementFt} ft to your Movement budget this round (SPR ${sprBase} ft/sec × 6s) and 25% Penalty on physical actions (not Movement) until Start My Turn.">
-        <div class="ct-tile-label">SPR Increments</div>
-        <div class="ct-tile-value">
-          ${editableBig('sprIncrements', state.sprIncrements || 0)}
-        </div>
-        <div class="ct-tile-controls">
-          <button class="ct-btn" onclick="trackerAdjust('sprIncrements', -1)" type="button"${btn}>−</button>
-          <button class="ct-btn" onclick="trackerAdjust('sprIncrements', 1)" type="button"${btn}>+</button>
-        </div>
-        <div class="ct-tile-hint">
-          ${(state.sprIncrements || 0) > 0 ? `<span class="ct-tile-penalty">${trackerPen.sprint}% Penalty</span>` : `+${sprPerIncrementFt} ft/increment`}
-        </div>
-      </div>`;
 
-    // Movement tile interval state — persisted per-character on the
-    // tracker so a player's preferred interval survives reloads.
-    // `movementIntervalFt` is the ACTIVE step value in feet; the
-    // dropdowns just pre-populate common values. Picking a seconds
-    // preset converts via SPD×seconds. Picking a ft preset sets the
-    // value directly. Custom input accepts any positive number.
+    // ── Movement tile (On your turn) ──
     //
-    // Default 5ft if unset — matches the original hardcoded behavior.
+    // Combined budget math: movementUsed (on-turn) + followFallbackMovement
+    // (off-turn) both draw from the same round-long ft pool. Tile shows
+    // on-turn explicitly; "remaining" hint reflects the combined draw.
+    //
+    // Interval state — persisted per-character on the tracker so a
+    // player's preferred interval survives reloads. `movementIntervalFt`
+    // is the ACTIVE step value in feet; dropdowns pre-populate common
+    // values. Default 5ft if unset.
     const intervalFt = (state.movementIntervalFt != null && Number.isFinite(parseFloat(state.movementIntervalFt)))
       ? Math.max(0.1, parseFloat(state.movementIntervalFt))
       : 5;
     const intervalDisplay = Number.isInteger(intervalFt) ? String(intervalFt) : intervalFt.toFixed(1);
-    // Which ft presets appear in the dropdown. Include the active
-    // value even if it's not one of the defaults so the select shows
-    // a sensible current-value state.
     const ftPresets = [1, 5, 10, 25];
     if (!ftPresets.includes(intervalFt) && intervalFt > 0) ftPresets.push(intervalFt);
     ftPresets.sort((a, b) => a - b);
     const ftOptions = ftPresets
       .map(v => `<option value="${v}"${v === intervalFt ? ' selected' : ''}>${v} ft</option>`)
       .join('');
-    // Seconds dropdown — converts each option via the character's
-    // current SPD (ft/sec). Round to 1 decimal. Options: 1s, 2s, 3s,
-    // 6s (full round). spdBase may be 0 on a very wounded character;
-    // if so the seconds picker is effectively unusable but we still
-    // render it so the UI doesn't flicker.
     const secondsPresets = [
       { label: '1s', sec: 1 },
       { label: '2s', sec: 2 },
       { label: '3s', sec: 3 },
       { label: '6s (full round)', sec: 6 }
     ];
-    // "Selected" seconds option = any preset whose converted ft value
-    // matches the current intervalFt (within 0.05 ft tolerance).
     const secondsOptions = secondsPresets.map(p => {
       const ft = Math.round(spdBase * p.sec * 10) / 10;
       const isActive = Math.abs(ft - intervalFt) < 0.05 && spdBase > 0;
       return `<option value="${p.sec}"${isActive ? ' selected' : ''}>${p.label} (${ft} ft)</option>`;
     }).join('');
+    // Combined Movement spend across on-turn + off-turn sources.
+    const followFallback = state.followFallbackMovement || 0;
+    const combinedUsed = movementUsed + followFallback;
+    const combinedLeft = Math.max(0, movementBudget - combinedUsed);
 
     const movementTile = `
-      <div class="ct-tile ct-tile-movement ct-tile-wide" title="Base SPD × 6s = ${Math.round(spdBase * 6 * 10) / 10} ft. Each SPR increment adds ${sprPerIncrementFt} ft (SPR ${sprBase} ft/sec × 6s).">
-        <div class="ct-tile-label">Movement</div>
+      <div class="ct-tile ct-tile-movement ct-tile-wide" title="Base SPD × 6s = ${Math.round(spdBase * 6 * 10) / 10} ft. Each SPR increment adds ${sprPerIncrementFt} ft (SPR ${sprBase} ft/sec × 6s). Follow/Fall-back movement draws from the same pool.">
+        <div class="ct-tile-label">Movement <span class="ct-tile-label-sub">(on turn)</span></div>
         <div class="ct-tile-value">
           ${editableBig('movementUsed', movementUsed)}
           <span class="ct-tile-denom">/ ${movementBudget}</span>
@@ -2074,11 +2096,20 @@ export function createCombatSection(ctx) {
           <span class="ct-interval-unit">ft</span>
         </div>
         <div class="ct-tile-hint">
-          ${movementLeft > 0 ? `${movementLeft} ft remaining` : `at budget — tap SPR to extend`}
+          ${
+            followFallback > 0
+              ? `${combinedUsed} / ${movementBudget} ft total (${movementUsed} on-turn + ${followFallback} off-turn)`
+              : (combinedLeft > 0 ? `${combinedLeft} ft remaining` : `at budget — tap SPR to extend`)
+          }
           <button class="ct-btn ct-btn-tight" onclick="trackerAdjust('sprIncrements', 1)" type="button"${btn} title="Spend +1 SPR: extends budget by ${sprPerIncrementFt} ft and adds 25% Penalty.">+SPR</button>
         </div>
       </div>`;
 
+    // ── Reactions tile (Off your turn) ──
+    //
+    // Reactions (Dodge/Defend/Counter/Clash) have their own AGL free
+    // pool, separate from Fast Actions and Fast Reactions. Stacking
+    // Difficulty kicks in past AGL — NOT a Penalty source.
     const reactTile = `
       <div class="ct-tile ct-tile-reactions" title="Reactions taken since your last turn. First ${reactionsFree} are free (via AGL). Each beyond that adds +1 Difficulty to the NEXT Reaction you take.">
         <div class="ct-tile-label">Reactions</div>
@@ -2100,15 +2131,105 @@ export function createCombatSection(ctx) {
         </div>
       </div>`;
 
-    const body = `<div class="combat-tracker-grid">
-      ${roundTile}
-      ${turnTile}
-      ${actionTile}
-      ${fastTile}
-      ${sprTile}
-      ${movementTile}
-      ${reactTile}
-    </div>`;
+    // ── Fast Reactions tile (Off your turn) ──
+    //
+    // Fast Reactions = Fast Actions performed as Reactions (contesting,
+    // quick-draws out of turn, etc). Same 25% Penalty per use past the
+    // AGL free pool, but AGL is INDEPENDENT from Fast Actions and
+    // Reactions — AGL 2 means 2 free FA + 2 free FR + 2 free Reactions.
+    const fastReactFree = Math.max(0, agility - (state.fastReactions || 0));
+    const fastReactBilled = Math.max(0, (state.fastReactions || 0) - agility);
+    const fastReactTile = `
+      <div class="ct-tile ct-tile-fastreactions" title="Fast Actions performed as Reactions — contesting a door close, quick-drawing during someone else's turn, etc. First ${agility} are free (via AGL ${agility}, independent from Fast Actions). Each additional adds 25% Penalty until Start My Turn.">
+        <div class="ct-tile-label">Fast Reactions</div>
+        <div class="ct-tile-value">
+          ${editableBig('fastReactions', state.fastReactions || 0)}
+        </div>
+        <div class="ct-tile-controls">
+          <button class="ct-btn" onclick="trackerAdjust('fastReactions', -1)" type="button"${btn}>−</button>
+          <button class="ct-btn" onclick="trackerAdjust('fastReactions', 1)" type="button"${btn}>+</button>
+        </div>
+        <div class="ct-tile-hint">
+          ${
+            fastReactFree > 0
+              ? `${fastReactFree} free left (AGL)`
+              : fastReactBilled > 0
+                ? `<span class="ct-tile-penalty">${trackerPen.fastReactions}% Penalty</span>`
+                : `next is +25% Penalty`
+          }
+        </div>
+      </div>`;
+
+    // ── Follow / Fall-back tile (Off your turn) ──
+    //
+    // Off-turn movement — used to react to someone else's movement or
+    // positioning. Draws from the SAME Movement budget as on-turn
+    // movement (they share a pool). Display shows off-turn ft used
+    // separately so players know what they spent where; budget check
+    // lives on the Movement tile (combined total vs budget).
+    const followFallbackTile = `
+      <div class="ct-tile ct-tile-followfallback" title="Off-turn movement — follow someone or fall back from them. Draws from the SAME Movement budget as your on-turn movement; this counter just tracks what you spent off-turn for bookkeeping.">
+        <div class="ct-tile-label">Follow / Fall-back</div>
+        <div class="ct-tile-value">
+          ${editableBig('followFallbackMovement', followFallback)}
+          <span class="ct-tile-unit">ft</span>
+        </div>
+        <div class="ct-tile-controls">
+          <button class="ct-btn" onclick="trackerFollowFallbackStep(-1)" type="button"${btn} title="Subtract one interval (${intervalDisplay} ft)">−${intervalDisplay}</button>
+          <button class="ct-btn" onclick="trackerFollowFallbackStep(1)" type="button"${btn} title="Add one interval (${intervalDisplay} ft)">+${intervalDisplay}</button>
+        </div>
+        <div class="ct-tile-hint">
+          ${
+            combinedUsed >= movementBudget && movementBudget > 0
+              ? `<span class="ct-tile-penalty">at Movement budget</span>`
+              : `shares Movement budget`
+          }
+        </div>
+      </div>`;
+
+    // ── Sprint tile (On or off your turn) ──
+    const sprTile = `
+      <div class="ct-tile ct-tile-spr" title="Each SPR increment adds ${sprPerIncrementFt} ft to your Movement budget this round (SPR ${sprBase} ft/sec × 6s) and 25% Penalty on physical actions (not Movement itself) until Start My Turn. Can be tapped on or off your turn.">
+        <div class="ct-tile-label">Sprint</div>
+        <div class="ct-tile-value">
+          ${editableBig('sprIncrements', state.sprIncrements || 0)}
+        </div>
+        <div class="ct-tile-controls">
+          <button class="ct-btn" onclick="trackerAdjust('sprIncrements', -1)" type="button"${btn}>−</button>
+          <button class="ct-btn" onclick="trackerAdjust('sprIncrements', 1)" type="button"${btn}>+</button>
+        </div>
+        <div class="ct-tile-hint">
+          ${(state.sprIncrements || 0) > 0 ? `<span class="ct-tile-penalty">${trackerPen.sprint}% Penalty</span>` : `+${sprPerIncrementFt} ft/increment`}
+        </div>
+      </div>`;
+
+    // Assemble the three groups. Each group has its own subheader and
+    // its own grid so tiles within a group sit together but groups
+    // read as distinct phases of the round.
+    const body = `
+      <div class="combat-tracker-group">
+        <div class="combat-tracker-group-head">On your turn</div>
+        <div class="combat-tracker-grid">
+          ${actionTile}
+          ${fastTile}
+          ${movementTile}
+        </div>
+      </div>
+      <div class="combat-tracker-group">
+        <div class="combat-tracker-group-head">Off your turn</div>
+        <div class="combat-tracker-grid">
+          ${reactTile}
+          ${fastReactTile}
+          ${followFallbackTile}
+        </div>
+      </div>
+      <div class="combat-tracker-group">
+        <div class="combat-tracker-group-head">On or off your turn</div>
+        <div class="combat-tracker-grid">
+          ${sprTile}
+        </div>
+      </div>
+    `;
 
     return `<div class="combat-section combat-section-tracker">
       ${head}
@@ -3956,7 +4077,8 @@ export function createCombatSection(ctx) {
     trackerAdjust, trackerSet, trackerStartMyTurn, trackerNextRound,
     trackerResetRound, trackerChainActions,
     trackerToggleAutoApply, trackerToggleCollapse,
-    trackerSetMovementIntervalFt, trackerSetMovementIntervalSec, trackerMovementStep,
+    trackerSetMovementIntervalFt, trackerSetMovementIntervalSec,
+    trackerMovementStep, trackerFollowFallbackStep,
     // Afflictions tile (Conditions / Circumstances tracker on Overview tab)
     condOpenAdd:       conditionsSection.openAdd,
     condStartCustom:   conditionsSection.startCustom,
