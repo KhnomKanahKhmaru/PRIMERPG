@@ -703,6 +703,27 @@ export function createRollCalc(ctx) {
     const rcCollapsed = getCollapsed(collapseKey);
     const rcCaret = rcCollapsed ? '▸' : '▾';
 
+    // Pending Reaction Difficulty — read from the Combat Tracker's
+    // per-character state. Each Reaction past the free AGL allotment
+    // adds +1 Difficulty to the NEXT Reaction. The tracker is
+    // authoritative; Roll Calc just surfaces the number as a
+    // one-click apply pill next to the Difficulty input so the
+    // player doesn't have to do the math twice.
+    //
+    // The apply handler writes the stacking value into state.difficulty
+    // ADDITIVELY — it adds the stacking to whatever Difficulty is
+    // currently entered, so "6 base + Reaction stacking" works as
+    // a single tap. Players can still tweak the value manually
+    // afterward.
+    const tracker = (charData && charData.combatTracker && typeof charData.combatTracker === 'object')
+      ? charData.combatTracker : null;
+    const aglEntry = result && result.stats && result.stats.get && result.stats.get('AGL');
+    const trackerAgl = (aglEntry && Number.isFinite(aglEntry.value))
+      ? Math.max(0, Math.floor(aglEntry.value)) : 0;
+    const pendingReactionDiff = tracker
+      ? Math.max(0, (tracker.reactionsTaken || 0) - trackerAgl)
+      : 0;
+
     return `
       <div class="state-tile state-tile-wide state-tile-rollcalc${rcCollapsed ? ' collapsed' : ''}">
         <div class="state-tile-head state-tile-collapsible" role="button" tabindex="0"
@@ -735,6 +756,7 @@ export function createRollCalc(ctx) {
             <input type="number" class="rc-num" value="${r.diff}"
                    oninput="rollCalcSetDifficulty(this.value)"
                    title="Base difficulty (PRIME baseline is 6)">
+            ${pendingReactionDiff > 0 ? `<button type="button" class="rc-react-pill" onclick="rollCalcApplyReactionDifficulty()" title="Your Combat Tracker shows ${tracker.reactionsTaken} Reaction${tracker.reactionsTaken === 1 ? '' : 's'} taken (AGL ${trackerAgl} free). Next Reaction is at +${pendingReactionDiff} stacking Difficulty. Click to add to the Difficulty field.">+${pendingReactionDiff} React</button>` : ''}
           </div>
 
           <div class="rc-field">
@@ -1025,6 +1047,39 @@ export function createRollCalc(ctx) {
     state.difficulty = parseInt(v) || 0;
     repaintOutput();
   }
+
+  // Apply the pending Reaction Difficulty stacking to the current
+  // Difficulty value additively. Reads the tracker's reactionsTaken
+  // minus AGL fresh — so the value matches whatever's showing on the
+  // pill at click time. If the tracker state isn't present (character
+  // without combatTracker field), no-op. Caller is the "+N React"
+  // pill next to the Difficulty input.
+  function applyReactionDifficulty() {
+    const charData = ctx.getCharData();
+    const ruleset  = ctx.getRuleset();
+    if (!charData || !ruleset) return;
+    const tracker = charData.combatTracker;
+    if (!tracker || typeof tracker !== 'object') return;
+    // Compute AGL fresh. computeDerivedStats is cheap enough to call
+    // here — render cycles already call it multiple times.
+    let agl = 0;
+    try {
+      const r = ctx.computeDerivedStats
+        ? ctx.computeDerivedStats(charData, ruleset)
+        : null;
+      const aglEntry = r && r.stats && r.stats.get && r.stats.get('AGL');
+      if (aglEntry && Number.isFinite(aglEntry.value)) {
+        agl = Math.max(0, Math.floor(aglEntry.value));
+      }
+    } catch (e) { /* default 0 */ }
+    const stacking = Math.max(0, (tracker.reactionsTaken || 0) - agl);
+    if (stacking <= 0) return;
+    state.difficulty = (parseInt(state.difficulty) || 0) + stacking;
+    // Tile repaint — the pill itself doesn't vanish (reactionsTaken
+    // didn't change), but the Difficulty input value needs to update
+    // AND the dice distribution / expected rolls recompute.
+    repaintTile();
+  }
   function setMitigation(v) {
     state.mitigation = parseInt(v) || 0;
     repaintOutput();
@@ -1050,6 +1105,7 @@ export function createRollCalc(ctx) {
     setSlotKind, setSlotStat, setSlotSkill, setSlotDerived, setSlotValue,
     setStatmod,
     setDifficulty, setMitigation, setReduction,
+    applyReactionDifficulty,
     toggleShowRaw, setPassive,
     // Per-roll Penalty component toggles
     togglePenaltyComponent, togglePenaltyPanel, resetPenaltyToggles,
