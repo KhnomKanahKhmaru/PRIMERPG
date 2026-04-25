@@ -213,10 +213,11 @@ window.RULESET_DEFAULTS = {
   // 'penalty'. The resolver (resolveDescription in char-util.js) reads
   // from ruleset.tileDescriptions[id] when category === 'tiles'.
   tileDescriptions: {
-    body:    'Your physical integrity — HP tracks overall durability; hit locations take separate damage and can be disabled or destroyed even while you\'re still alive. The tile shows current / max HP plus your status (Alive, Dying, Dead).',
-    sanity:  'Your mental integrity, tracked with its own pool. SAN damage from trauma, horror, or supernatural exposure accumulates here. Low SAN contributes to Stress, which contributes to Penalty on all rolls.',
-    penalty: 'The sum of every modifier reducing your dice pools. Penalty = Pain + Stress + Encumbrance + Others. Applies to active rolls only — Passive rolls (resistances) ignore Penalty. Shown as a percentage; dice pool reduction is floor(pool × Penalty%).',
-    power:   'Your supernatural capacity pool — spend Power Points on paradigm abilities, refresh per the rules of your paradigm. The bar shows current / max PP. Color and formula for PP are configured in the ruleset\'s Power Pool settings.'
+    body:       'Your physical integrity — HP tracks overall durability; hit locations take separate damage and can be disabled or destroyed even while you\'re still alive. The tile shows current / max HP plus your status (Alive, Dying, Dead).',
+    sanity:     'Your mental integrity, tracked with its own pool. SAN damage from trauma, horror, or supernatural exposure accumulates here. Low SAN contributes to Stress, which contributes to Penalty on all rolls.',
+    exhaustion: 'Your stamina and endurance pool — drains from exertion, exposure to elements, and Exerting on rolls (spend EXH for −25% Penalty per point or +1 Difficulty Reduction once). Below 0 EXH you scale Penalty linearly; at −2× max you fall Unconscious until you regain EXH.',
+    penalty:    'The sum of every modifier reducing your dice pools. Penalty = Pain + Stress + Encumbrance + Others. Applies to active rolls only — Passive rolls (resistances) ignore Penalty. Shown as a percentage; dice pool reduction is floor(pool × Penalty%).',
+    power:      'Your supernatural capacity pool — spend Power Points on paradigm abilities, refresh per the rules of your paradigm. The bar shows current / max PP. Color and formula for PP are configured in the ruleset\'s Power Pool settings.'
   },
 
   derivedStats: [
