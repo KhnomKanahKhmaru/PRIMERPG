@@ -393,6 +393,12 @@ window.RULESET_DEFAULTS = {
       // the value but doesn't offer a roll affordance. Spending EXH
       // (Exert mechanic) writes to charData.exhDamage, not a roll.
       rollable: false,
+      // Allow flat max modifiers on the stat card — editor lets the
+      // player author named ± entries that shift the EXH MAX (e.g.
+      // "Iron Constitution: +2", "Sleep deprivation: −1"). These are
+      // distinct from `exhModifiers` damage entries (which shift current
+      // EXH, not max).
+      allowValueMods: true,
       trackDamage: false,
       keepDecimals: false,
       unit: ''
