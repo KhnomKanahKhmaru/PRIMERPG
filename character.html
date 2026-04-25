@@ -5447,8 +5447,8 @@
       <div class="sheet-tabs">
         <div class="sheet-tab active" id="sheet-tab-overview" onclick="switchSheetTab('overview')">Overview</div>
         <div class="sheet-tab"        id="sheet-tab-combat"   onclick="switchSheetTab('combat')">Combat</div>
-        <div class="sheet-tab"        id="sheet-tab-abilities" onclick="switchSheetTab('abilities')">Abilities</div>
         <div class="sheet-tab"        id="sheet-tab-inventory" onclick="switchSheetTab('inventory')">Inventory</div>
+        <div class="sheet-tab"        id="sheet-tab-abilities" onclick="switchSheetTab('abilities')">Abilities</div>
       </div>
 
       <div class="sheet-body">
@@ -5652,15 +5652,15 @@
           <div id="combat-content"></div>
         </div><!-- /panel-combat -->
 
-        <!-- ═══════════════ ABILITIES PANEL ═══════════════ -->
-        <div class="sheet-panel" id="panel-abilities">
-          <div id="abilities-content"></div>
-        </div><!-- /panel-abilities -->
-
         <!-- ═══════════════ INVENTORY PANEL ═══════════════ -->
         <div class="sheet-panel" id="panel-inventory">
           <div id="inventory-content"></div>
         </div><!-- /panel-inventory -->
+
+        <!-- ═══════════════ ABILITIES PANEL ═══════════════ -->
+        <div class="sheet-panel" id="panel-abilities">
+          <div id="abilities-content"></div>
+        </div><!-- /panel-abilities -->
 
       </div><!-- /sheet-body -->
     </div><!-- /sheet-wrap -->
@@ -7698,8 +7698,8 @@
     await safeRender('Advantages', () => advantages.renderAll());
     await safeRender('Situations', () => situations.renderAll());
     await safeRender('Combat',     () => combat.renderAll());
-    await safeRender('Abilities',  () => renderAbilitiesTab());
     await safeRender('Inventory',  () => inventory.renderAll());
+    await safeRender('Abilities',  () => renderAbilitiesTab());
 
     // Wire collapsible affordances onto the Overview tab sections. Runs
     // AFTER all renders so dynamic content (skills grids, mental-col
