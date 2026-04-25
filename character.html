@@ -5897,6 +5897,21 @@
   const charId = params.get('id');
   if (!charId) window.location.href = 'home.html';
 
+  // Inline escapeHtml — used throughout the inline renderers in this
+  // file (Abilities tab, builder UI, catalogue browser). Function
+  // declaration (not const) so it hoists for any forward-reference
+  // during initial render orchestration. Matches the implementation
+  // sectionCtx.escapeHtml uses for module-level renderers, so output
+  // is consistent across surfaces.
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   let charData = {}, canEdit = false, userPlaygroups = [], loaded = false;
   let availableRulesets = [], primarySkillDefs = [];
   let statsEditMode = false, skillsEditMode = false;
