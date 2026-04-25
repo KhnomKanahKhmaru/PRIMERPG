@@ -3392,9 +3392,10 @@
       .replace(/"/g, '&quot;');
   }
   // Alias for code paths (Ability catalogue editor) that follow the
-  // character-sheet convention of `escapeHtml`. Same implementation —
-  // covers both attribute and inner-HTML escaping for our purposes.
-  const escapeHtml = escapeHtmlAttr;
+  // character-sheet convention of `escapeHtml`. Declared as a function
+  // (not const) so it's hoisted — the catalogue editor's renderers
+  // run during initUI() which fires before this point in source order.
+  function escapeHtml(s) { return escapeHtmlAttr(s); }
 
   // ── IMPORT FROM BASIC ──
   window.importFromBasic = function() {
