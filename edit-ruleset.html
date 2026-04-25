@@ -40,6 +40,39 @@
     .field input:focus, .field select:focus, .field textarea:focus { border-color: #444; }
     .field select option { background: #111; }
 
+    /* Bare inputs/selects in the Abilities top-panel (Catalogue editor) —
+       the catalogue editor uses inline grids of inputs for category rows,
+       builder rows, parameter rows, etc., outside of `.field` wrappers.
+       This rule applies the same dark styling those wrappers provide so
+       the Catalogue editor doesn't render with browser-default white
+       inputs against the dark page background. */
+    #top-panel-abil input[type="text"],
+    #top-panel-abil input[type="number"],
+    #top-panel-abil select,
+    #top-panel-abil textarea {
+      background: #111;
+      border: 1px solid #222;
+      color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 13px;
+      padding: 6px 10px;
+      border-radius: 4px;
+      outline: none;
+    }
+    #top-panel-abil input[type="text"]:focus,
+    #top-panel-abil input[type="number"]:focus,
+    #top-panel-abil select:focus,
+    #top-panel-abil textarea:focus {
+      border-color: #444;
+    }
+    #top-panel-abil select option {
+      background: #111;
+    }
+    /* Inputs inside .field already styled above (full-width). The bare
+       inputs in catalogue rows often need to fit into a grid — let
+       individual inline styles control width so this rule doesn't
+       force 100%. */
+
     .row { display: flex; gap: 12px; flex-wrap: wrap; }
     .row .field { flex: 1; min-width: 120px; }
 
