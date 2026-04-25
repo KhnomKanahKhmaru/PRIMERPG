@@ -5710,6 +5710,11 @@
   import { createConditionsSection } from './char-conditions.js';
   import { createDescriptionsModule } from './char-descriptions.js';
   import { attachCollapsible, toggleCollapsed, ensureExpanded } from './char-util.js';
+  // Ability cost engine — pure functions for cost computation, builder
+  // lookup, and system-text rendering. Imported up here so the module
+  // loads alongside the rest; UI surfaces (Abilities tab, Builder
+  // modal, Ruleset Editor preview) consume from this in later turns.
+  import * as charAbilities from './char-abilities.js';
 
   // All imports resolved — module body executes from here.
   if (window.__logStep) window.__logStep('all modules imported');
