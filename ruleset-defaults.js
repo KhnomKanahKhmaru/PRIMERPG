@@ -559,6 +559,79 @@ window.RULESET_DEFAULTS = {
     ]
   },
 
+  // ─── ABILITY CATALOGUE ───────────────────────────────────────────
+  //
+  // Tree of ability templates that Players use to build their own
+  // Abilities (powers, techniques, traits). Structure:
+  //
+  //   abilityCatalogue
+  //   ├── name
+  //   ├── description
+  //   ├── enabled                   — kill switch for rulesets that don't use Abilities
+  //   ├── canonicalTiers            — central feature/flaw cost table (see below)
+  //   └── categories: [             — one level of organization (Offensive, STATs, etc)
+  //         ├── id
+  //         ├── name
+  //         ├── description
+  //         └── builders: [         — individual templates (FIREBOLT, SUPERSTR)
+  //               ├── id
+  //               ├── name
+  //               ├── description
+  //               ├── baseCost
+  //               ├── systemTextTemplate
+  //               ├── primaryParams: [...]
+  //               ├── secondaryParams: [...]
+  //               ├── features: [...]
+  //               └── flaws: [...]
+  //             ]
+  //       ]
+  //
+  // SNAPSHOT MODEL: when a Player builds an Ability from a Builder, the
+  // Builder's full structure is COPIED into the Ability instance on the
+  // Character. Future ruleset edits to the Builder don't auto-apply.
+  // The Player can hit "Update to current" to refresh the snapshot,
+  // which previews changes (cost delta, orphaned params, etc) before
+  // committing. This balances stability for the player (no surprise
+  // nerfs mid-campaign) with GM flexibility (can rebalance Builders
+  // and have players opt in to the update).
+  //
+  // canonicalTiers is the central tier->cost table for Features and
+  // Flaws. Builders reference tier names ('minor', 'moderate', etc)
+  // rather than baking in numeric costs, so changing this table once
+  // re-prices every Feature/Flaw across all Builders.
+  abilityCatalogue: {
+    enabled: true,
+    name: 'Standard Abilities',
+    description: 'The default Ability Catalogue for the Standard Set.',
+    canonicalTiers: {
+      // Feature tiers — Player PAYS this AP to take a Feature on their Ability.
+      featureCosts: {
+        minor:       1,
+        moderate:    2,
+        major:       3,
+        massive:     4,
+        monumental:  6,
+        mega:        8,
+        mythical:   10
+      },
+      // Flaw tiers — Player GAINS this AP back when taking a Flaw.
+      // Half of the Feature equivalent at each tier.
+      flawRefunds: {
+        minor:      0.5,
+        moderate:   1,
+        major:      1.5,
+        massive:    2,
+        monumental: 3,
+        mega:       4,
+        mythical:   5
+      }
+    },
+    // Categories start empty by default. Designers populate them via
+    // the Ruleset Editor. Keep this empty rather than seeding examples
+    // so a fresh ruleset is a blank canvas.
+    categories: []
+  },
+
   // ─── INVENTORY ──────────────────────────────────────────────────────
   //
   // The inventory system is informational only — dimensions, weight, and
@@ -1375,6 +1448,152 @@ window.normalizeRuleset = function(rs) {
           .map(([powmod, value]) => ({ powmod, value }));
       })()
     };
+  }
+
+  // ─── ABILITY CATALOGUE NORMALIZATION ─────────────────────────────
+  //
+  // Ensures the abilityCatalogue exists and has well-formed structure.
+  // Builds, parameters, features, and flaws all need stable `id` fields
+  // so character-side Ability snapshots can reference them safely
+  // across renames.
+  //
+  // Generates ids for entries missing them (common for newly-authored
+  // content where the editor didn't assign one). Uses a deterministic
+  // seed so the same input produces the same output across loads.
+
+  // Normalize a single Builder. Coerces all fields, generates missing
+  // ids, filters malformed entries. Used both by initial normalization
+  // and by character-side snapshot validation.
+  function normalizeBuilder(b, synthId) {
+    const builder = {
+      id:           (typeof b.id === 'string' && b.id.trim()) ? b.id : synthId('bld'),
+      name:         typeof b.name === 'string' ? b.name : 'Untitled Ability',
+      description:  typeof b.description === 'string' ? b.description : '',
+      baseCost:     Number.isFinite(b.baseCost) ? Math.max(0, b.baseCost) : 0,
+      systemTextTemplate: typeof b.systemTextTemplate === 'string' ? b.systemTextTemplate : '',
+      primaryParams:   Array.isArray(b.primaryParams)   ? b.primaryParams   : [],
+      secondaryParams: Array.isArray(b.secondaryParams) ? b.secondaryParams : [],
+      features:        Array.isArray(b.features)        ? b.features        : [],
+      flaws:           Array.isArray(b.flaws)           ? b.flaws           : []
+    };
+
+    // Primary parameters — flat AP cost per step. Each entry needs id,
+    // name, defaultValue, min/max bounds, stepCost, and a token for
+    // systemTextTemplate substitution.
+    builder.primaryParams = builder.primaryParams
+      .filter(p => p && typeof p === 'object')
+      .map(p => ({
+        id:           (typeof p.id === 'string' && p.id.trim()) ? p.id : synthId('param'),
+        name:         typeof p.name === 'string' ? p.name : 'Parameter',
+        defaultValue: Number.isFinite(p.defaultValue) ? p.defaultValue : 0,
+        minValue:     Number.isFinite(p.minValue) ? p.minValue : 0,
+        maxValue:     Number.isFinite(p.maxValue) ? p.maxValue : 100,
+        stepCost:     Number.isFinite(p.stepCost) ? p.stepCost : 1,
+        displayUnit:  typeof p.displayUnit === 'string' ? p.displayUnit : '',
+        token:        typeof p.token === 'string' ? p.token : '',
+        description:  typeof p.description === 'string' ? p.description : ''
+      }));
+
+    // Secondary parameters — percentile cost. Each has a `steps` array
+    // where one entry is marked default (multiplier = 1.0). Other steps
+    // multiply the base flat cost up or down.
+    builder.secondaryParams = builder.secondaryParams
+      .filter(p => p && typeof p === 'object')
+      .map(p => {
+        const steps = Array.isArray(p.steps) ? p.steps
+          .filter(s => s && typeof s === 'object' && Number.isFinite(s.multiplier))
+          .map(s => ({
+            value:      typeof s.value === 'string' || Number.isFinite(s.value) ? s.value : '',
+            label:      typeof s.label === 'string' ? s.label : '',
+            multiplier: Number.isFinite(s.multiplier) ? s.multiplier : 1.0
+          })) : [];
+        return {
+          id:           (typeof p.id === 'string' && p.id.trim()) ? p.id : synthId('param'),
+          name:         typeof p.name === 'string' ? p.name : 'Parameter',
+          defaultStepIndex: Number.isFinite(p.defaultStepIndex) ? p.defaultStepIndex : 0,
+          steps,
+          displayUnit:  typeof p.displayUnit === 'string' ? p.displayUnit : '',
+          token:        typeof p.token === 'string' ? p.token : '',
+          description:  typeof p.description === 'string' ? p.description : ''
+        };
+      });
+
+    // Features — paid-AP additions. Each references a tier from
+    // canonicalTiers.featureCosts (looked up at cost time, not stored
+    // as a number here, so tier table edits propagate).
+    const VALID_TIERS = ['minor','moderate','major','massive','monumental','mega','mythical'];
+    builder.features = builder.features
+      .filter(f => f && typeof f === 'object')
+      .map(f => ({
+        id:          (typeof f.id === 'string' && f.id.trim()) ? f.id : synthId('feat'),
+        name:        typeof f.name === 'string' ? f.name : 'Untitled Feature',
+        description: typeof f.description === 'string' ? f.description : '',
+        tier:        VALID_TIERS.includes(f.tier) ? f.tier : 'minor'
+      }));
+
+    // Flaws — refund-AP additions. Same shape as Features but priced
+    // from canonicalTiers.flawRefunds.
+    builder.flaws = builder.flaws
+      .filter(f => f && typeof f === 'object')
+      .map(f => ({
+        id:          (typeof f.id === 'string' && f.id.trim()) ? f.id : synthId('flaw'),
+        name:        typeof f.name === 'string' ? f.name : 'Untitled Flaw',
+        description: typeof f.description === 'string' ? f.description : '',
+        tier:        VALID_TIERS.includes(f.tier) ? f.tier : 'minor'
+      }));
+
+    return builder;
+  }
+
+  if (!out.abilityCatalogue || typeof out.abilityCatalogue !== 'object') {
+    out.abilityCatalogue = JSON.parse(JSON.stringify(d.abilityCatalogue));
+  } else {
+    const cat = out.abilityCatalogue;
+    // Top-level fields with sensible defaults
+    if (typeof cat.enabled !== 'boolean')      cat.enabled = true;
+    if (typeof cat.name !== 'string')          cat.name = 'Abilities';
+    if (typeof cat.description !== 'string')   cat.description = '';
+    // Canonical tiers — merged from defaults so newly-added tier
+    // entries (if we ever extend the table) flow through to existing
+    // rulesets without losing the user's overrides.
+    if (!cat.canonicalTiers || typeof cat.canonicalTiers !== 'object') {
+      cat.canonicalTiers = JSON.parse(JSON.stringify(d.abilityCatalogue.canonicalTiers));
+    } else {
+      cat.canonicalTiers.featureCosts = Object.assign(
+        {},
+        d.abilityCatalogue.canonicalTiers.featureCosts,
+        (cat.canonicalTiers.featureCosts && typeof cat.canonicalTiers.featureCosts === 'object')
+          ? cat.canonicalTiers.featureCosts : {}
+      );
+      cat.canonicalTiers.flawRefunds = Object.assign(
+        {},
+        d.abilityCatalogue.canonicalTiers.flawRefunds,
+        (cat.canonicalTiers.flawRefunds && typeof cat.canonicalTiers.flawRefunds === 'object')
+          ? cat.canonicalTiers.flawRefunds : {}
+      );
+    }
+    if (!Array.isArray(cat.categories)) cat.categories = [];
+
+    // Walk and clean each category + its builders. Strict shape
+    // enforcement: anything malformed gets reset; anything missing an
+    // id gets one assigned.
+    let synthCounter = 0;
+    const synthId = (prefix) => `${prefix}_${Date.now().toString(36)}_${(synthCounter++).toString(36)}`;
+
+    cat.categories = cat.categories
+      .filter(c => c && typeof c === 'object')
+      .map(c => {
+        const out = {
+          id:          (typeof c.id === 'string' && c.id.trim()) ? c.id : synthId('cat'),
+          name:        typeof c.name === 'string' ? c.name : 'Untitled Category',
+          description: typeof c.description === 'string' ? c.description : '',
+          builders:    Array.isArray(c.builders) ? c.builders : []
+        };
+        out.builders = out.builders
+          .filter(b => b && typeof b === 'object')
+          .map(b => normalizeBuilder(b, synthId));
+        return out;
+      });
   }
 
   // ─── INVENTORY NORMALIZATION ─────────────────────────────────────────
