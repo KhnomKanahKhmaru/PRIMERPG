@@ -868,6 +868,7 @@
       <div class="top-tab"        id="top-tab-ad"     onclick="switchTopTab('ad')">Advantages &amp; Disadvantages</div>
       <div class="top-tab"        id="top-tab-combat" onclick="switchTopTab('combat')">Derived Stats &amp; Combat</div>
       <div class="top-tab"        id="top-tab-inv"    onclick="switchTopTab('inv')">Inventory</div>
+      <div class="top-tab"        id="top-tab-abil"   onclick="switchTopTab('abil')">Abilities</div>
     </div>
 
     <!-- ═══════════════════════ CORE RULES TAB ═══════════════════════ -->
@@ -1447,6 +1448,73 @@
 
     </div><!-- /top-panel-inv -->
 
+    <!-- ═══════════════════════ ABILITIES TAB ═══════════════════════ -->
+    <div class="top-panel" id="top-panel-abil">
+
+      <!-- CATALOGUE OVERVIEW + ON/OFF -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Ability Catalogue</div>
+        </div>
+        <p class="hint">
+          The Catalogue is what Players choose from when authoring their Character's Abilities.
+          Organize Builders into Categories (Offensive, Defensive, STATs, etc.), and design each
+          Builder's Parameters / Features / Flaws so Players can tune within your design boundaries.
+        </p>
+        <div class="field" style="display:flex;align-items:center;gap:10px;">
+          <label style="margin:0;display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="checkbox" id="abil-enabled" onchange="abilToggleEnabled(this.checked)">
+            <span>Catalogue enabled</span>
+          </label>
+          <span class="hint" style="margin:0;">Disable to hide the Abilities tab on Character sheets.</span>
+        </div>
+        <div class="field">
+          <label>Catalogue Name</label>
+          <input type="text" id="abil-name" placeholder="e.g. Standard Abilities, Vampire Powers..." oninput="abilSetName(this.value)">
+        </div>
+        <div class="field">
+          <label>Description (shown to Players in the catalogue browser)</label>
+          <textarea id="abil-desc" rows="2" oninput="abilSetDesc(this.value)" placeholder="Optional flavor text describing the catalogue's scope, themes, etc."></textarea>
+        </div>
+      </div>
+
+      <!-- TIER COST TABLES -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Feature &amp; Flaw Tier Costs</div>
+        </div>
+        <p class="hint">
+          Centralized cost tables. Every Feature and Flaw in every Builder references a tier
+          name from these tables — change a tier's value here and every Feature/Flaw at that tier
+          re-prices automatically across the entire Catalogue.
+        </p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div>
+            <label style="display:block;font-weight:700;margin-bottom:6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#888;">Feature Tier Costs (AP)</label>
+            <div id="abil-tier-features"></div>
+          </div>
+          <div>
+            <label style="display:block;font-weight:700;margin-bottom:6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#888;">Flaw Tier Refunds (AP)</label>
+            <div id="abil-tier-flaws"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CATEGORIES + BUILDERS -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Categories &amp; Builders</div>
+          <button class="btn small" onclick="abilAddCategory()" type="button">+ Add Category</button>
+        </div>
+        <p class="hint">
+          Categories group related Builders for browsing. Each Category contains its own list of Builders.
+          Click a Builder name to open its full editor (Parameters, Features, Flaws, system text).
+        </p>
+        <div id="abil-categories"></div>
+      </div>
+
+    </div><!-- /top-panel-abil -->
+
     <div class="footer-actions">
       <button class="btn primary" id="submit-btn" onclick="saveRuleset()">Save</button>
       <button class="btn" onclick="window.location.href='my-rulesets.html'">Cancel</button>
@@ -1664,6 +1732,9 @@
     renderDimensionPresets();
     renderItemList();
     refreshCategorySelects();
+
+    // Abilities tab
+    renderAbilTab();
 
     renderScaleSummary();
 
@@ -3497,7 +3568,13 @@
       // Inventory
       bodySlots:         state.bodySlots,
       items:             sanitizeItemsForFirestore(state.items),
-      categories:        state.categories
+      categories:        state.categories,
+      // Ability Catalogue — Categories → Builders → (Parameters,
+      // Features, Flaws). Authored in the Abilities top-tab; consumed
+      // by Character sheets via live-reference (Player Abilities point
+      // to Builder by id, recomputed against current Builder shape on
+      // every render). Persisted as a structured object.
+      abilityCatalogue:  state.abilityCatalogue || null
     };
 
     try {
@@ -3522,6 +3599,266 @@
       btn.disabled = false; btn.textContent = originalBtnText;
     }
   }
+
+  // ── ABILITIES CATALOGUE EDITOR ───────────────────────────────────────
+  //
+  // GMs design the Catalogue here: top-level fields (name, description,
+  // enabled), centralized tier-cost tables (featureCosts / flawRefunds),
+  // and the Categories → Builders tree. This turn implements the SHELL
+  // only — Categories and Builders can be added/renamed/deleted, but
+  // clicking into a Builder's internals (Parameters, Features, Flaws,
+  // system text) shows a placeholder until Turn 3 lands the inner editor.
+  //
+  // Live-reference data model: the Catalogue is part of the ruleset doc
+  // and saves alongside everything else. Player Abilities reference
+  // Builders by id; if a Builder is renamed or has its parameter list
+  // tweaked here, existing Player Abilities update automatically on
+  // their next render via the cost-compute engine.
+
+  // Render the Abilities tab — entry point. Called from initUI() and
+  // any time state.abilityCatalogue changes structurally.
+  function renderAbilTab() {
+    const cat = state.abilityCatalogue || {};
+    // Top-level fields
+    const enabledBox = document.getElementById('abil-enabled');
+    if (enabledBox) enabledBox.checked = cat.enabled !== false;
+    const nameInp = document.getElementById('abil-name');
+    if (nameInp) nameInp.value = cat.name || '';
+    const descInp = document.getElementById('abil-desc');
+    if (descInp) descInp.value = cat.description || '';
+    renderAbilTierTables();
+    renderAbilCategories();
+  }
+
+  // Tier cost tables — two-column grid of tier name + numeric input.
+  // Editable; changes write directly into state. Tier names themselves
+  // are NOT editable here (they're a fixed canonical list); only the
+  // AP values per tier are tunable.
+  function renderAbilTierTables() {
+    const cat = state.abilityCatalogue || {};
+    const tiers = cat.canonicalTiers || {};
+    const featureCosts = tiers.featureCosts || {};
+    const flawRefunds  = tiers.flawRefunds  || {};
+    // Stable display order for tiers — matches design doc.
+    const tierOrder = ['minor', 'moderate', 'major', 'massive', 'monumental', 'mega', 'mythical'];
+
+    const renderTable = (containerId, table, fieldName) => {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      el.innerHTML = '';
+      tierOrder.forEach(tier => {
+        const value = Number.isFinite(table[tier]) ? table[tier] : 0;
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:4px;';
+        row.innerHTML = `
+          <span style="text-transform:capitalize;flex:1;font-size:13px;color:#bbb;">${escapeHtml(tier)}</span>
+          <input type="number" step="0.5" value="${value}" min="0"
+                 style="width:80px;text-align:right;"
+                 onchange="abilSetTier('${fieldName}','${tier}',this.value)">
+          <span style="color:#666;font-size:12px;">AP</span>
+        `;
+        el.appendChild(row);
+      });
+    };
+    renderTable('abil-tier-features', featureCosts, 'featureCosts');
+    renderTable('abil-tier-flaws',    flawRefunds,  'flawRefunds');
+  }
+
+  // Categories list — collapsible groups of Builders. Each category has
+  // its own header (rename / delete / add-builder) and an expandable
+  // body listing builders. Inline editing for category name; click
+  // "edit" on a builder to open its full editor (Turn 3).
+  function renderAbilCategories() {
+    const el = document.getElementById('abil-categories');
+    if (!el) return;
+    const cat = state.abilityCatalogue || {};
+    const cats = Array.isArray(cat.categories) ? cat.categories : [];
+    if (cats.length === 0) {
+      el.innerHTML = `<div class="hint" style="padding:12px;text-align:center;color:#666;">No categories yet. Click "+ Add Category" above to start.</div>`;
+      return;
+    }
+    el.innerHTML = '';
+    cats.forEach((category, ci) => {
+      const card = document.createElement('div');
+      card.style.cssText = 'border:1px solid #2a2a2a;border-radius:4px;margin-bottom:10px;background:#0d0d0d;';
+      const builderCount = Array.isArray(category.builders) ? category.builders.length : 0;
+      // Header: name input, delete, add builder
+      const head = document.createElement('div');
+      head.style.cssText = 'display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid #1a1a1a;';
+      head.innerHTML = `
+        <input type="text" value="${escapeHtml(category.name || '')}"
+               placeholder="Category name (e.g. Offensive)"
+               oninput="abilSetCategoryField(${ci},'name',this.value)"
+               style="flex:1;font-weight:600;">
+        <span style="color:#666;font-size:11px;">${builderCount} builder${builderCount === 1 ? '' : 's'}</span>
+        <button class="btn small" onclick="abilAddBuilder(${ci})" type="button">+ Builder</button>
+        <button class="btn small" onclick="abilDeleteCategory(${ci})" type="button" style="color:#c66;border-color:#4a2a2a;">Delete</button>
+      `;
+      card.appendChild(head);
+      // Optional description
+      const desc = document.createElement('div');
+      desc.style.cssText = 'padding:6px 12px;border-bottom:1px solid #1a1a1a;background:#0a0a0a;';
+      desc.innerHTML = `
+        <input type="text" value="${escapeHtml(category.description || '')}"
+               placeholder="Optional category description (one-line summary for the browser)"
+               oninput="abilSetCategoryField(${ci},'description',this.value)"
+               style="width:100%;font-size:12px;color:#aaa;">
+      `;
+      card.appendChild(desc);
+      // Builders list
+      const list = document.createElement('div');
+      list.style.cssText = 'padding:8px 12px;';
+      const builders = Array.isArray(category.builders) ? category.builders : [];
+      if (builders.length === 0) {
+        list.innerHTML = `<div class="hint" style="padding:6px;color:#666;font-size:12px;">No builders in this category yet.</div>`;
+      } else {
+        builders.forEach((builder, bi) => {
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #151515;';
+          const featureCount = Array.isArray(builder.features) ? builder.features.length : 0;
+          const flawCount    = Array.isArray(builder.flaws)    ? builder.flaws.length    : 0;
+          const ppCount      = Array.isArray(builder.primaryParams)   ? builder.primaryParams.length   : 0;
+          const spCount      = Array.isArray(builder.secondaryParams) ? builder.secondaryParams.length : 0;
+          row.innerHTML = `
+            <input type="text" value="${escapeHtml(builder.name || '')}"
+                   placeholder="Builder name (e.g. Fire Bolt)"
+                   oninput="abilSetBuilderField(${ci},${bi},'name',this.value)"
+                   style="flex:1;font-weight:500;">
+            <span style="color:#666;font-size:10px;letter-spacing:.04em;text-transform:uppercase;">
+              ${ppCount}P · ${spCount}S · ${featureCount}F · ${flawCount}f
+            </span>
+            <span style="color:#888;font-size:11px;">Base: ${Number.isFinite(builder.baseCost) ? builder.baseCost : 0} AP</span>
+            <button class="btn small" onclick="abilOpenBuilder(${ci},${bi})" type="button">Edit</button>
+            <button class="btn small" onclick="abilDeleteBuilder(${ci},${bi})" type="button" style="color:#c66;border-color:#4a2a2a;">×</button>
+          `;
+          list.appendChild(row);
+        });
+      }
+      card.appendChild(list);
+      el.appendChild(card);
+    });
+  }
+
+  // ── HANDLERS ──
+  // All mutate state.abilityCatalogue in place and re-render whatever
+  // surface they affect. State is persisted by the existing saveRuleset
+  // path (we just need to add abilityCatalogue to the payload — done
+  // separately).
+
+  function ensureAbilCat() {
+    if (!state.abilityCatalogue || typeof state.abilityCatalogue !== 'object') {
+      state.abilityCatalogue = window.normalizeRuleset({}).abilityCatalogue;
+    }
+    return state.abilityCatalogue;
+  }
+
+  window.abilToggleEnabled = function(checked) {
+    const cat = ensureAbilCat();
+    cat.enabled = !!checked;
+  };
+
+  window.abilSetName = function(value) {
+    const cat = ensureAbilCat();
+    cat.name = String(value || '');
+  };
+
+  window.abilSetDesc = function(value) {
+    const cat = ensureAbilCat();
+    cat.description = String(value || '');
+  };
+
+  window.abilSetTier = function(table, tier, value) {
+    const cat = ensureAbilCat();
+    if (!cat.canonicalTiers || typeof cat.canonicalTiers !== 'object') cat.canonicalTiers = { featureCosts: {}, flawRefunds: {} };
+    if (!cat.canonicalTiers[table] || typeof cat.canonicalTiers[table] !== 'object') cat.canonicalTiers[table] = {};
+    const n = parseFloat(value);
+    cat.canonicalTiers[table][tier] = Number.isFinite(n) ? Math.max(0, n) : 0;
+  };
+
+  window.abilAddCategory = function() {
+    const cat = ensureAbilCat();
+    if (!Array.isArray(cat.categories)) cat.categories = [];
+    cat.categories.push({
+      id: 'acat_' + Math.random().toString(36).slice(2, 10),
+      name: '',
+      description: '',
+      builders: []
+    });
+    renderAbilCategories();
+  };
+
+  window.abilDeleteCategory = function(ci) {
+    const cat = ensureAbilCat();
+    const cats = Array.isArray(cat.categories) ? cat.categories : [];
+    if (!cats[ci]) return;
+    const name = cats[ci].name || 'this category';
+    const builders = Array.isArray(cats[ci].builders) ? cats[ci].builders : [];
+    if (builders.length > 0) {
+      if (!confirm(`Delete "${name}" and all ${builders.length} builder(s) inside it? This cannot be undone.`)) return;
+    } else {
+      if (!confirm(`Delete "${name}"?`)) return;
+    }
+    cats.splice(ci, 1);
+    renderAbilCategories();
+  };
+
+  window.abilSetCategoryField = function(ci, field, value) {
+    const cat = ensureAbilCat();
+    const c = (cat.categories || [])[ci];
+    if (!c) return;
+    c[field] = String(value || '');
+    // Don't full-rerender (would lose focus). Just update the badge
+    // count if it changed (no-op for name/description; matters when
+    // builder count changes elsewhere).
+  };
+
+  window.abilAddBuilder = function(ci) {
+    const cat = ensureAbilCat();
+    const c = (cat.categories || [])[ci];
+    if (!c) return;
+    if (!Array.isArray(c.builders)) c.builders = [];
+    c.builders.push({
+      id: 'bld_' + Math.random().toString(36).slice(2, 10),
+      name: '',
+      description: '',
+      baseCost: 0,
+      systemTextTemplate: '',
+      primaryParams: [],
+      secondaryParams: [],
+      features: [],
+      flaws: []
+    });
+    renderAbilCategories();
+  };
+
+  window.abilDeleteBuilder = function(ci, bi) {
+    const cat = ensureAbilCat();
+    const c = (cat.categories || [])[ci];
+    if (!c || !Array.isArray(c.builders) || !c.builders[bi]) return;
+    const name = c.builders[bi].name || 'this builder';
+    if (!confirm(`Delete "${name}"? This will be reflected on every Character Ability that references it.`)) return;
+    c.builders.splice(bi, 1);
+    renderAbilCategories();
+  };
+
+  window.abilSetBuilderField = function(ci, bi, field, value) {
+    const cat = ensureAbilCat();
+    const c = (cat.categories || [])[ci];
+    if (!c || !Array.isArray(c.builders) || !c.builders[bi]) return;
+    c.builders[bi][field] = String(value || '');
+  };
+
+  // Placeholder for Turn 3 — opens the Builder's full editor (parameters,
+  // features, flaws, system text). For now just an alert so the
+  // affordance is visible without misleading the GM into thinking
+  // the editor's done.
+  window.abilOpenBuilder = function(ci, bi) {
+    const cat = ensureAbilCat();
+    const c = (cat.categories || [])[ci];
+    const b = c && Array.isArray(c.builders) ? c.builders[bi] : null;
+    if (!b) return;
+    alert(`Builder editor coming next turn.\n\nFor now, this Builder has:\n- ${(b.primaryParams || []).length} primary parameter(s)\n- ${(b.secondaryParams || []).length} secondary parameter(s)\n- ${(b.features || []).length} feature(s)\n- ${(b.flaws || []).length} flaw(s)`);
+  };
 
   // ── INVENTORY ────────────────────────────────────────────────────────
   //
