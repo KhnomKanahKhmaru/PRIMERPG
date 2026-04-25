@@ -388,8 +388,11 @@ window.RULESET_DEFAULTS = {
       description: 'Stamina and endurance pool. Average person has ~5. Drops from exertion, exposure, and pushing through rolls. Below 0 EXH you scale Penalty; at −2× max you fall Unconscious. Spend EXH before a roll to Exert — 1 Difficulty Reduction (max once) OR −25% Penalty per EXH spent.',
       group: 'health',
       formula: '(HP / 2) + (SAN / 2)',
-      rollModifier: 'STRMOD',
-      passiveRoll: true,
+      // EXH is a pool (current/max tracker) — never rolled as a dice
+      // pool. Matches FORT's static-value treatment: the card shows
+      // the value but doesn't offer a roll affordance. Spending EXH
+      // (Exert mechanic) writes to charData.exhDamage, not a roll.
+      rollable: false,
       trackDamage: false,
       keepDecimals: false,
       unit: ''
