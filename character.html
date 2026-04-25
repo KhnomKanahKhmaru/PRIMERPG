@@ -5447,6 +5447,7 @@
       <div class="sheet-tabs">
         <div class="sheet-tab active" id="sheet-tab-overview" onclick="switchSheetTab('overview')">Overview</div>
         <div class="sheet-tab"        id="sheet-tab-combat"   onclick="switchSheetTab('combat')">Combat</div>
+        <div class="sheet-tab"        id="sheet-tab-abilities" onclick="switchSheetTab('abilities')">Abilities</div>
         <div class="sheet-tab"        id="sheet-tab-inventory" onclick="switchSheetTab('inventory')">Inventory</div>
       </div>
 
@@ -5650,6 +5651,11 @@
         <div class="sheet-panel" id="panel-combat">
           <div id="combat-content"></div>
         </div><!-- /panel-combat -->
+
+        <!-- ═══════════════ ABILITIES PANEL ═══════════════ -->
+        <div class="sheet-panel" id="panel-abilities">
+          <div id="abilities-content"></div>
+        </div><!-- /panel-abilities -->
 
         <!-- ═══════════════ INVENTORY PANEL ═══════════════ -->
         <div class="sheet-panel" id="panel-inventory">
@@ -6616,6 +6622,696 @@
     }
   }
 
+  // ─── ABILITIES TAB ───
+  //
+  // Player-facing surface for character Abilities. Top-level
+  // responsibilities: list existing Abilities (Cards), provide an
+  // "Add Ability" entry that opens the catalogue browser, and (in
+  // Turn 5) host the Builder UI for tuning a chosen Ability.
+  //
+  // Hides itself if the active ruleset has no Catalogue or has it
+  // disabled — Catalogue.enabled === false means "this ruleset doesn't
+  // use Abilities at all" (mundane-only campaigns).
+  function renderAbilitiesTab() {
+    const container = document.getElementById('abilities-content');
+    if (!container) return;
+    const cat = activeRuleset && activeRuleset.abilityCatalogue;
+    const tab = document.getElementById('sheet-tab-abilities');
+    // Tab visibility — hide entire tab when catalogue is disabled.
+    // The panel still exists so switchSheetTab to it doesn't error,
+    // but the user can't click it from the tab strip.
+    if (!cat || cat.enabled === false) {
+      if (tab) tab.style.display = 'none';
+      container.innerHTML = `<div class="combat-empty">This ruleset doesn't use Abilities.</div>`;
+      return;
+    }
+    if (tab) tab.style.display = '';
+
+    const abilities = Array.isArray(charData.abilities) ? charData.abilities : [];
+    const catName = cat.name || 'Abilities';
+    const catDesc = cat.description || '';
+    const categoriesCount = Array.isArray(cat.categories) ? cat.categories.length : 0;
+
+    // Header — catalogue name + description + add button (owners only).
+    let html = `
+      <div class="combat-section">
+        <div class="combat-section-title">
+          <span class="combat-section-title-text">${escapeHtml(catName)}</span>
+        </div>
+        ${catDesc ? `<p class="combat-section-hint">${escapeHtml(catDesc)}</p>` : ''}
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;">
+          <span style="font-size:11px;color:#888;">
+            ${abilities.length} ability${abilities.length === 1 ? '' : 'ies'} on this character
+          </span>
+          ${canEdit ? `
+            <button class="ct-btn ct-btn-primary" type="button" onclick="abilitiesOpenBrowser()" ${categoriesCount === 0 ? 'disabled title="Catalogue has no Builders to choose from yet."' : ''}>+ Add Ability</button>
+          ` : ''}
+        </div>
+      </div>
+    `;
+
+    // Ability list — placeholder until Turn 6 implements Cards.
+    if (abilities.length === 0) {
+      html += `
+        <div class="combat-empty" style="margin-top:14px;">
+          ${canEdit
+            ? 'No Abilities yet. Click "+ Add Ability" to browse the catalogue and build one.'
+            : 'This character has no Abilities.'}
+        </div>
+      `;
+    } else {
+      // Stub — shows builder name + cost. Full Card UI is Turn 6.
+      html += '<div class="abil-list" style="margin-top:14px;display:flex;flex-direction:column;gap:8px;">';
+      abilities.forEach((abl, idx) => {
+        const ref = charAbilities.findBuilderById(activeRuleset, abl.builderId);
+        if (!ref) {
+          html += `
+            <div class="abil-card abil-card-orphan" style="border:1px solid #4a2a2a;background:#1a0d0d;border-radius:4px;padding:12px;">
+              <div style="font-weight:600;color:#e08080;">${escapeHtml(abl.name || '(unnamed)')}</div>
+              <div style="font-size:11px;color:#aa6060;">Builder no longer exists in the ruleset (id ${escapeHtml(abl.builderId || '?')}). Contact your GM.</div>
+            </div>
+          `;
+          return;
+        }
+        const tiers = (activeRuleset.abilityCatalogue && activeRuleset.abilityCatalogue.canonicalTiers) || {};
+        const cost = charAbilities.computeAbilityCost(ref.builder, abl, tiers);
+        const systemText = charAbilities.renderSystemText(ref.builder, abl);
+        html += `
+          <div class="abil-card" style="border:1px solid #2a2a2a;background:#0d0d0d;border-radius:4px;padding:12px;">
+            <div style="display:flex;align-items:center;gap:10px;justify-content:space-between;">
+              <div>
+                <div style="font-weight:600;color:#ddd;">${escapeHtml(abl.name || ref.builder.name || '(unnamed)')}</div>
+                <div style="font-size:10px;color:#666;letter-spacing:.04em;text-transform:uppercase;">
+                  ${escapeHtml(ref.category.name || '')} · ${escapeHtml(ref.builder.name || '')}
+                </div>
+              </div>
+              <span style="padding:3px 10px;background:#1a1a14;border:1px solid #2a2a20;border-radius:3px;font-size:11px;color:#d8c060;font-family:monospace;">${cost.computedCost} AP</span>
+            </div>
+            ${abl.tagline ? `<div style="font-size:11px;font-style:italic;color:#888;margin-top:4px;">"${escapeHtml(abl.tagline)}"</div>` : ''}
+            ${systemText ? `<div style="font-size:12px;color:#bbb;margin-top:6px;">${escapeHtml(systemText)}</div>` : ''}
+            ${canEdit ? `
+              <div style="display:flex;gap:6px;margin-top:8px;">
+                <button class="ct-btn" type="button" onclick="abilitiesEdit(${idx})" title="Edit this Ability">Edit</button>
+                <button class="ct-btn" type="button" onclick="abilitiesDelete(${idx})" style="color:#c66;border-color:#4a2a2a;">Delete</button>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      });
+      html += '</div>';
+    }
+
+    container.innerHTML = html;
+  }
+
+  // Catalogue browser — opens a modal listing every Builder available.
+  // Player picks a Category (left column) → Builder (right column) →
+  // hands off to the Builder UI for tuning. The Builder UI manages its
+  // own state and on save attaches the Ability instance to the
+  // character.
+  let abilitiesBrowserOpen = false;
+  let abilitiesBrowserSelectedCategoryId = null;
+
+  // Active Builder UI session — when non-null, the Builder UI modal is
+  // rendered. Session shape:
+  //   { mode: 'create'|'edit',
+  //     builderId,                  // which Builder we're tuning
+  //     editIndex (optional),       // index in charData.abilities for 'edit' mode
+  //     instance: { ... } }         // working copy of the Ability instance
+  // The `instance` is mutated by handlers below as the Player tunes.
+  // On save we either push (create) or replace (edit) and persist.
+  let abilitiesBuilderSession = null;
+
+  window.abilitiesOpenBrowser = function() {
+    if (!canEdit) return;
+    const cat = activeRuleset && activeRuleset.abilityCatalogue;
+    if (!cat || cat.enabled === false) return;
+    abilitiesBrowserOpen = true;
+    // Default selection: first category if any
+    const cats = Array.isArray(cat.categories) ? cat.categories : [];
+    abilitiesBrowserSelectedCategoryId = cats.length > 0 ? cats[0].id : null;
+    renderAbilitiesBrowser();
+  };
+
+  window.abilitiesCloseBrowser = function() {
+    abilitiesBrowserOpen = false;
+    renderAbilitiesBrowser();
+  };
+
+  window.abilitiesBrowserSelectCategory = function(categoryId) {
+    abilitiesBrowserSelectedCategoryId = categoryId;
+    renderAbilitiesBrowser();
+  };
+
+  // Pick a Builder from the catalogue browser → open the Builder UI in
+  // 'create' mode with a default-tuned instance ready for the Player to
+  // customize. They tune, then click Save → instance gets attached.
+  window.abilitiesBrowserPickBuilder = function(builderId) {
+    if (!canEdit) return;
+    const ref = charAbilities.findBuilderById(activeRuleset, builderId);
+    if (!ref) {
+      alert('Builder not found.');
+      return;
+    }
+    // Close browser; open Builder UI.
+    abilitiesBrowserOpen = false;
+    abilitiesBuilderSession = {
+      mode: 'create',
+      builderId,
+      instance: {
+        id: charAbilities.newAbilityId(),
+        builderId,
+        name: ref.builder.name || '',
+        tagline: '',
+        visual: '',
+        prose: '',
+        paramValues: {},
+        selectedFeatureIds: [],
+        selectedFlawIds: [],
+        systemTextOverride: ''
+      }
+    };
+    renderAbilitiesBrowser();
+    renderAbilitiesBuilderUI();
+  };
+
+  // Edit an existing Ability — open the Builder UI in 'edit' mode with
+  // the Player's current tuning preloaded. Save replaces the instance
+  // at editIndex.
+  window.abilitiesEdit = function(idx) {
+    if (!canEdit) return;
+    const arr = Array.isArray(charData.abilities) ? charData.abilities : [];
+    const abl = arr[idx];
+    if (!abl) return;
+    const ref = charAbilities.findBuilderById(activeRuleset, abl.builderId);
+    if (!ref) {
+      alert('Cannot edit — the Builder this Ability references no longer exists in the ruleset.');
+      return;
+    }
+    abilitiesBuilderSession = {
+      mode: 'edit',
+      builderId: abl.builderId,
+      editIndex: idx,
+      // Deep clone so cancel doesn't mutate the saved version.
+      instance: JSON.parse(JSON.stringify(abl))
+    };
+    renderAbilitiesBuilderUI();
+  };
+
+  window.abilitiesDelete = async function(idx) {
+    if (!canEdit) return;
+    const arr = Array.isArray(charData.abilities) ? charData.abilities : [];
+    const abl = arr[idx];
+    if (!abl) return;
+    if (!confirm(`Delete "${abl.name || 'this Ability'}"?`)) return;
+    arr.splice(idx, 1);
+    await saveCharacter(charId, { abilities: arr });
+    renderAbilitiesTab();
+  };
+
+  // ── BUILDER UI ──
+
+  // Close the Builder UI without saving. Discards the working instance.
+  window.abilitiesBuilderCancel = function() {
+    if (!abilitiesBuilderSession) return;
+    if (Object.keys(abilitiesBuilderSession.instance.paramValues || {}).length > 0
+      || (abilitiesBuilderSession.instance.selectedFeatureIds || []).length > 0
+      || (abilitiesBuilderSession.instance.selectedFlawIds || []).length > 0) {
+      // Only confirm if there's actual customization in flight.
+      if (!confirm('Discard your changes?')) return;
+    }
+    abilitiesBuilderSession = null;
+    renderAbilitiesBuilderUI();
+  };
+
+  // Save the in-progress Ability. Validates name, persists to charData,
+  // closes the modal, re-renders the tab.
+  window.abilitiesBuilderSave = async function() {
+    if (!abilitiesBuilderSession) return;
+    const inst = abilitiesBuilderSession.instance;
+    if (!inst.name || !inst.name.trim()) {
+      alert('Give your Ability a name.');
+      return;
+    }
+    charAbilities.ensureAbilities(charData);
+    if (abilitiesBuilderSession.mode === 'create') {
+      charData.abilities.push(inst);
+    } else {
+      const idx = abilitiesBuilderSession.editIndex;
+      if (Number.isFinite(idx) && charData.abilities[idx]) {
+        charData.abilities[idx] = inst;
+      } else {
+        // Index drifted (shouldn't happen but defensive) — push instead.
+        charData.abilities.push(inst);
+      }
+    }
+    await saveCharacter(charId, { abilities: charData.abilities });
+    abilitiesBuilderSession = null;
+    renderAbilitiesBuilderUI();
+    renderAbilitiesTab();
+  };
+
+  // ── BUILDER FIELD HANDLERS ──
+  // Each mutates abilitiesBuilderSession.instance and triggers a
+  // targeted re-render. For value tweaks (param values, name, etc) we
+  // re-render only the cost-preview portion to avoid losing input
+  // focus. For structural changes (feature/flaw checkboxes) we
+  // re-render the full UI.
+
+  window.abilitiesBuilderSetField = function(field, value) {
+    if (!abilitiesBuilderSession) return;
+    abilitiesBuilderSession.instance[field] = String(value == null ? '' : value);
+    if (field === 'systemTextOverride') {
+      // Override changes — re-render the system text panel.
+      renderAbilitiesBuilderSystemText();
+    }
+    // Name/tagline/visual/prose don't affect cost; no re-render needed.
+  };
+
+  window.abilitiesBuilderSetPrimaryParam = function(paramId, value) {
+    if (!abilitiesBuilderSession) return;
+    const inst = abilitiesBuilderSession.instance;
+    if (!inst.paramValues || typeof inst.paramValues !== 'object') inst.paramValues = {};
+    const n = parseFloat(value);
+    if (Number.isFinite(n)) inst.paramValues[paramId] = n;
+    else delete inst.paramValues[paramId];
+    renderAbilitiesBuilderCostPreview();
+    renderAbilitiesBuilderSystemText();
+  };
+
+  window.abilitiesBuilderSetSecondaryParam = function(paramId, stepIdx) {
+    if (!abilitiesBuilderSession) return;
+    const inst = abilitiesBuilderSession.instance;
+    if (!inst.paramValues || typeof inst.paramValues !== 'object') inst.paramValues = {};
+    const n = parseInt(stepIdx);
+    if (Number.isFinite(n)) inst.paramValues[paramId] = n;
+    renderAbilitiesBuilderCostPreview();
+    renderAbilitiesBuilderSystemText();
+  };
+
+  window.abilitiesBuilderToggleFeature = function(featureId) {
+    if (!abilitiesBuilderSession) return;
+    const inst = abilitiesBuilderSession.instance;
+    if (!Array.isArray(inst.selectedFeatureIds)) inst.selectedFeatureIds = [];
+    const i = inst.selectedFeatureIds.indexOf(featureId);
+    if (i >= 0) inst.selectedFeatureIds.splice(i, 1);
+    else inst.selectedFeatureIds.push(featureId);
+    renderAbilitiesBuilderUI();
+  };
+
+  window.abilitiesBuilderToggleFlaw = function(flawId) {
+    if (!abilitiesBuilderSession) return;
+    const inst = abilitiesBuilderSession.instance;
+    if (!Array.isArray(inst.selectedFlawIds)) inst.selectedFlawIds = [];
+    const i = inst.selectedFlawIds.indexOf(flawId);
+    if (i >= 0) inst.selectedFlawIds.splice(i, 1);
+    else inst.selectedFlawIds.push(flawId);
+    renderAbilitiesBuilderUI();
+  };
+
+  // Toggle the system-text-override checkbox. When ON, the player's
+  // textarea content replaces the generated text. When OFF, the
+  // generated text shows.
+  window.abilitiesBuilderToggleOverride = function() {
+    if (!abilitiesBuilderSession) return;
+    const inst = abilitiesBuilderSession.instance;
+    if (inst.systemTextOverride && inst.systemTextOverride.trim()) {
+      // Currently has override — turn it off (clear).
+      inst.systemTextOverride = '';
+    } else {
+      // Pre-fill override with the current generated text so the
+      // Player can edit instead of starting from scratch.
+      const ref = charAbilities.findBuilderById(activeRuleset, inst.builderId);
+      const generated = ref ? charAbilities.renderSystemText(ref.builder, inst) : '';
+      inst.systemTextOverride = generated || ' ';
+    }
+    renderAbilitiesBuilderSystemText();
+  };
+
+  // ── BUILDER UI RENDERER ──
+
+  function renderAbilitiesBuilderUI() {
+    let modal = document.getElementById('abilities-builder-modal');
+    if (!abilitiesBuilderSession) {
+      if (modal) modal.remove();
+      return;
+    }
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'abilities-builder-modal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+      document.body.appendChild(modal);
+    }
+    const inst = abilitiesBuilderSession.instance;
+    const ref = charAbilities.findBuilderById(activeRuleset, inst.builderId);
+    if (!ref) {
+      modal.innerHTML = `
+        <div style="background:#0a0a0a;border:1px solid #4a2a2a;border-radius:6px;padding:30px;max-width:500px;color:#e08080;">
+          <h3 style="margin:0 0 12px;color:#e08080;">Builder not found</h3>
+          <p style="color:#aa6060;font-size:13px;line-height:1.5;">The Builder this Ability references doesn't exist in the active ruleset. It may have been deleted by your GM.</p>
+          <button class="ct-btn" type="button" onclick="abilitiesBuilderCancel()" style="margin-top:14px;">Close</button>
+        </div>
+      `;
+      return;
+    }
+    const builder = ref.builder;
+    const category = ref.category;
+    const tiers = (activeRuleset.abilityCatalogue && activeRuleset.abilityCatalogue.canonicalTiers) || {};
+
+    modal.innerHTML = `
+      <div style="background:#0a0a0a;border:1px solid #2a2a2a;border-radius:6px;width:100%;max-width:1100px;max-height:90vh;display:flex;flex-direction:column;">
+        <!-- HEADER -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #1a1a1a;">
+          <div>
+            <div style="font-weight:700;color:#e6e0cc;font-size:14px;letter-spacing:.05em;text-transform:uppercase;">
+              ${abilitiesBuilderSession.mode === 'edit' ? 'Edit Ability' : 'Build Ability'}
+            </div>
+            <div style="font-size:11px;color:#888;margin-top:2px;">
+              ${escapeHtml(category.name || '')} · ${escapeHtml(builder.name || '')}
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span id="abil-builder-cost-pill" style="padding:4px 10px;background:#1a1a14;border:1px solid #2a2a20;border-radius:3px;font-size:11px;color:#d8c060;font-family:monospace;">… AP</span>
+            <button class="ct-btn" type="button" onclick="abilitiesBuilderCancel()">Cancel</button>
+            <button class="ct-btn ct-btn-primary" type="button" onclick="abilitiesBuilderSave()">${abilitiesBuilderSession.mode === 'edit' ? 'Save Changes' : 'Build'}</button>
+          </div>
+        </div>
+        <!-- BODY -->
+        <div style="overflow-y:auto;padding:14px 18px;display:flex;flex-direction:column;gap:14px;">
+          ${builder.description ? `<div style="font-size:12px;color:#888;font-style:italic;border-left:2px solid #2a2a2a;padding-left:10px;">${escapeHtml(builder.description)}</div>` : ''}
+          ${renderAbilitiesBuilderIdentitySection(inst)}
+          ${renderAbilitiesBuilderPrimarySection(builder, inst)}
+          ${renderAbilitiesBuilderSecondarySection(builder, inst)}
+          ${renderAbilitiesBuilderFeaturesSection(builder, inst, tiers)}
+          ${renderAbilitiesBuilderFlawsSection(builder, inst, tiers)}
+          ${renderAbilitiesBuilderSystemTextSection(builder, inst)}
+        </div>
+      </div>
+    `;
+    renderAbilitiesBuilderCostPreview();
+  }
+
+  function renderAbilitiesBuilderIdentitySection(inst) {
+    return `
+      <div style="border:1px solid #1f1f1f;border-radius:4px;padding:12px;background:#0d0d0d;">
+        <h4 style="margin:0 0 10px;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">Identity</h4>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="field">
+            <label>Name</label>
+            <input type="text" value="${escapeHtml(inst.name || '')}"
+                   placeholder="e.g. Sun-Kissed Lance"
+                   oninput="abilitiesBuilderSetField('name',this.value)">
+          </div>
+          <div class="field">
+            <label>Tagline (optional)</label>
+            <input type="text" value="${escapeHtml(inst.tagline || '')}"
+                   placeholder="A short quip or motto"
+                   oninput="abilitiesBuilderSetField('tagline',this.value)">
+          </div>
+        </div>
+        <div class="field" style="margin-top:8px;">
+          <label>Visual (optional)</label>
+          <textarea rows="2" placeholder="What does this Ability look like in play?"
+                    oninput="abilitiesBuilderSetField('visual',this.value)">${escapeHtml(inst.visual || '')}</textarea>
+        </div>
+        <div class="field" style="margin-top:8px;">
+          <label>Prose (optional, hidden by default on the Card)</label>
+          <textarea rows="2" placeholder="Inspiration, metapsychics, lore, anything"
+                    oninput="abilitiesBuilderSetField('prose',this.value)">${escapeHtml(inst.prose || '')}</textarea>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderAbilitiesBuilderPrimarySection(builder, inst) {
+    const params = Array.isArray(builder.primaryParams) ? builder.primaryParams : [];
+    if (params.length === 0) return '';
+    let html = `
+      <div style="border:1px solid #1f1f1f;border-radius:4px;padding:12px;background:#0d0d0d;">
+        <h4 style="margin:0 0 10px;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">Primary Parameters <span style="color:#666;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;">— flat AP cost per step from default</span></h4>
+    `;
+    params.forEach(p => {
+      const def = Number.isFinite(p.defaultValue) ? p.defaultValue : 0;
+      const min = Number.isFinite(p.minValue) ? p.minValue : 0;
+      const max = Number.isFinite(p.maxValue) ? p.maxValue : 100;
+      const stepCost = Number.isFinite(p.stepCost) ? p.stepCost : 1;
+      const cur = Number.isFinite(inst.paramValues && inst.paramValues[p.id]) ? inst.paramValues[p.id] : def;
+      const delta = (cur - def) * stepCost;
+      const deltaStr = delta === 0 ? 'baseline' : (delta > 0 ? `+${delta} AP` : `${delta} AP`);
+      const deltaColor = delta === 0 ? '#888' : (delta > 0 ? '#d8a060' : '#88c080');
+      html += `
+        <div style="display:grid;grid-template-columns:1fr 200px 100px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;">
+          <div>
+            <div style="font-weight:500;color:#ddd;font-size:13px;">${escapeHtml(p.name || 'Parameter')}${p.displayUnit ? ` <span style="color:#888;font-weight:400;">(${escapeHtml(p.displayUnit)})</span>` : ''}</div>
+            ${p.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(p.description)}</div>` : ''}
+            <div style="font-size:10px;color:#666;margin-top:2px;">Default: ${def}${p.displayUnit ? ' ' + escapeHtml(p.displayUnit) : ''} · ${stepCost} AP/step</div>
+          </div>
+          <input type="number" min="${min}" max="${max}" step="any" value="${cur}"
+                 oninput="abilitiesBuilderSetPrimaryParam('${escapeHtml(p.id)}',this.value)">
+          <span style="color:${deltaColor};font-family:monospace;font-size:12px;text-align:right;">${deltaStr}</span>
+        </div>
+      `;
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function renderAbilitiesBuilderSecondarySection(builder, inst) {
+    const params = Array.isArray(builder.secondaryParams) ? builder.secondaryParams : [];
+    if (params.length === 0) return '';
+    let html = `
+      <div style="border:1px solid #1f1f1f;border-radius:4px;padding:12px;background:#0d0d0d;">
+        <h4 style="margin:0 0 10px;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">Secondary Parameters <span style="color:#666;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;">— multiplier on total cost</span></h4>
+    `;
+    params.forEach(p => {
+      const steps = Array.isArray(p.steps) ? p.steps : [];
+      const defaultIdx = Number.isFinite(p.defaultStepIndex) ? p.defaultStepIndex : 0;
+      const curIdx = Number.isFinite(inst.paramValues && inst.paramValues[p.id]) ? inst.paramValues[p.id] : defaultIdx;
+      const curStep = (curIdx >= 0 && curIdx < steps.length) ? steps[curIdx] : null;
+      const curMult = curStep && Number.isFinite(curStep.multiplier) ? curStep.multiplier : 1;
+      const multStr = curMult === 1 ? 'baseline ×1.0' : `×${curMult.toFixed(2)}`;
+      const multColor = curMult === 1 ? '#888' : (curMult > 1 ? '#d8a060' : '#88c080');
+      const optsHtml = steps.map((s, si) => {
+        const sm = Number.isFinite(s.multiplier) ? s.multiplier : 1;
+        const display = s.label || (typeof s.value === 'string' ? s.value : `${s.value}${p.displayUnit ? ' ' + p.displayUnit : ''}`);
+        const tag = sm === 1 ? '×1.0' : `×${sm.toFixed(2)}`;
+        return `<option value="${si}"${si === curIdx ? ' selected' : ''}>${escapeHtml(display)} (${tag})</option>`;
+      }).join('');
+      html += `
+        <div style="display:grid;grid-template-columns:1fr 240px 100px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;">
+          <div>
+            <div style="font-weight:500;color:#ddd;font-size:13px;">${escapeHtml(p.name || 'Parameter')}${p.displayUnit ? ` <span style="color:#888;font-weight:400;">(${escapeHtml(p.displayUnit)})</span>` : ''}</div>
+            ${p.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(p.description)}</div>` : ''}
+          </div>
+          <select onchange="abilitiesBuilderSetSecondaryParam('${escapeHtml(p.id)}',this.value)">${optsHtml || '<option>(no steps configured)</option>'}</select>
+          <span style="color:${multColor};font-family:monospace;font-size:12px;text-align:right;">${multStr}</span>
+        </div>
+      `;
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function renderAbilitiesBuilderFeaturesSection(builder, inst, tiers) {
+    const features = Array.isArray(builder.features) ? builder.features : [];
+    if (features.length === 0) return '';
+    const featureCosts = (tiers && tiers.featureCosts) || {};
+    const selected = Array.isArray(inst.selectedFeatureIds) ? new Set(inst.selectedFeatureIds) : new Set();
+    let html = `
+      <div style="border:1px solid #1f1f1f;border-radius:4px;padding:12px;background:#0d0d0d;">
+        <h4 style="margin:0 0 10px;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">Features <span style="color:#666;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;">— pay AP to take</span></h4>
+    `;
+    features.forEach(f => {
+      const cost = Number.isFinite(featureCosts[f.tier]) ? featureCosts[f.tier] : 0;
+      const isOn = selected.has(f.id);
+      html += `
+        <label style="display:grid;grid-template-columns:24px 1fr 80px 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;cursor:pointer;">
+          <input type="checkbox" ${isOn ? 'checked' : ''} onchange="abilitiesBuilderToggleFeature('${escapeHtml(f.id)}')">
+          <div>
+            <div style="font-weight:500;color:#ddd;font-size:13px;">${escapeHtml(f.name || 'Feature')}</div>
+            ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
+          </div>
+          <span style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.05em;">${escapeHtml(f.tier || '')}</span>
+          <span style="color:${isOn ? '#d8a060' : '#666'};font-family:monospace;font-size:12px;text-align:right;">+${cost} AP</span>
+        </label>
+      `;
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function renderAbilitiesBuilderFlawsSection(builder, inst, tiers) {
+    const flaws = Array.isArray(builder.flaws) ? builder.flaws : [];
+    if (flaws.length === 0) return '';
+    const flawRefunds = (tiers && tiers.flawRefunds) || {};
+    const selected = Array.isArray(inst.selectedFlawIds) ? new Set(inst.selectedFlawIds) : new Set();
+    let html = `
+      <div style="border:1px solid #1f1f1f;border-radius:4px;padding:12px;background:#0d0d0d;">
+        <h4 style="margin:0 0 10px;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">Flaws <span style="color:#666;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;">— get AP back for taking</span></h4>
+    `;
+    flaws.forEach(f => {
+      const refund = Number.isFinite(flawRefunds[f.tier]) ? flawRefunds[f.tier] : 0;
+      const isOn = selected.has(f.id);
+      html += `
+        <label style="display:grid;grid-template-columns:24px 1fr 80px 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;cursor:pointer;">
+          <input type="checkbox" ${isOn ? 'checked' : ''} onchange="abilitiesBuilderToggleFlaw('${escapeHtml(f.id)}')">
+          <div>
+            <div style="font-weight:500;color:#ddd;font-size:13px;">${escapeHtml(f.name || 'Flaw')}</div>
+            ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
+          </div>
+          <span style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.05em;">${escapeHtml(f.tier || '')}</span>
+          <span style="color:${isOn ? '#88c080' : '#666'};font-family:monospace;font-size:12px;text-align:right;">−${refund} AP</span>
+        </label>
+      `;
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function renderAbilitiesBuilderSystemTextSection(builder, inst) {
+    const generated = charAbilities.renderSystemText(builder, { ...inst, systemTextOverride: '' });
+    const hasOverride = !!(inst.systemTextOverride && inst.systemTextOverride.trim());
+    return `
+      <div id="abil-builder-systemtext-section" style="border:1px solid #1f1f1f;border-radius:4px;padding:12px;background:#0d0d0d;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <h4 style="margin:0;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">System Text</h4>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;color:#888;">
+            <input type="checkbox" ${hasOverride ? 'checked' : ''} onchange="abilitiesBuilderToggleOverride()">
+            <span>Override generated text</span>
+          </label>
+        </div>
+        <div id="abil-builder-systemtext-body">
+          ${renderAbilitiesBuilderSystemTextBody(builder, inst)}
+        </div>
+      </div>
+    `;
+  }
+
+  function renderAbilitiesBuilderSystemTextBody(builder, inst) {
+    const hasOverride = !!(inst.systemTextOverride && inst.systemTextOverride.trim());
+    if (hasOverride) {
+      return `
+        <textarea rows="3" placeholder="Custom system text"
+                  oninput="abilitiesBuilderSetField('systemTextOverride',this.value)"
+                  style="width:100%;font-family:inherit;">${escapeHtml(inst.systemTextOverride || '')}</textarea>
+        <div style="font-size:10px;color:#666;margin-top:6px;">Override active — generated text from parameters is bypassed.</div>
+      `;
+    }
+    const generated = charAbilities.renderSystemText(builder, inst);
+    return `
+      <div style="padding:10px;background:#080808;border:1px solid #1a1a1a;border-radius:3px;font-size:13px;color:#bbb;font-style:${generated ? 'normal' : 'italic'};">
+        ${generated ? escapeHtml(generated) : '(no system text — Builder has no template, or no parameters)'}
+      </div>
+    `;
+  }
+
+  function renderAbilitiesBuilderSystemText() {
+    const body = document.getElementById('abil-builder-systemtext-body');
+    if (!body || !abilitiesBuilderSession) return;
+    const inst = abilitiesBuilderSession.instance;
+    const ref = charAbilities.findBuilderById(activeRuleset, inst.builderId);
+    if (!ref) return;
+    body.innerHTML = renderAbilitiesBuilderSystemTextBody(ref.builder, inst);
+  }
+
+  // Cost-preview pill update — called on every value change so the
+  // Player sees their AP cost live.
+  function renderAbilitiesBuilderCostPreview() {
+    const pill = document.getElementById('abil-builder-cost-pill');
+    if (!pill || !abilitiesBuilderSession) return;
+    const inst = abilitiesBuilderSession.instance;
+    const ref = charAbilities.findBuilderById(activeRuleset, inst.builderId);
+    if (!ref) return;
+    const tiers = (activeRuleset.abilityCatalogue && activeRuleset.abilityCatalogue.canonicalTiers) || {};
+    const result = charAbilities.computeAbilityCost(ref.builder, inst, tiers);
+    const cost = Number.isFinite(result.computedCost) ? result.computedCost : 0;
+    pill.textContent = `${cost} AP`;
+    let bg = '#1a1a14', border = '#2a2a20', color = '#d8c060';
+    if      (cost <= 5)   { bg = '#0d150d'; border = '#1f2f1f'; color = '#88c080'; }
+    else if (cost <= 20)  { bg = '#15150a'; border = '#2f2f1f'; color = '#d8c060'; }
+    else if (cost <= 50)  { bg = '#1a1408'; border = '#3a2810'; color = '#d8a060'; }
+    else if (cost <= 100) { bg = '#1a0d0d'; border = '#3a1f1f'; color = '#d88060'; }
+    else                  { bg = '#1a0d1a'; border = '#3a1f3a'; color = '#d860d8'; }
+    pill.style.background = bg;
+    pill.style.borderColor = border;
+    pill.style.color = color;
+  }
+
+  // ── MAIN LOAD FLOW ──
+
+  function renderAbilitiesBrowser() {
+    let modal = document.getElementById('abilities-browser-modal');
+    if (!abilitiesBrowserOpen) {
+      if (modal) modal.remove();
+      return;
+    }
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'abilities-browser-modal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+      modal.onclick = (e) => { if (e.target === modal) window.abilitiesCloseBrowser(); };
+      document.body.appendChild(modal);
+    }
+    const cat = activeRuleset.abilityCatalogue || {};
+    const cats = Array.isArray(cat.categories) ? cat.categories : [];
+    const selectedCat = cats.find(c => c.id === abilitiesBrowserSelectedCategoryId) || cats[0] || null;
+
+    // Pre-build category list
+    const catListHtml = cats.map(c => {
+      const isSel = selectedCat && c.id === selectedCat.id;
+      const builderCount = Array.isArray(c.builders) ? c.builders.length : 0;
+      return `
+        <div onclick="abilitiesBrowserSelectCategory('${escapeHtml(c.id)}')"
+             style="padding:10px 12px;cursor:pointer;border-bottom:1px solid #1a1a1a;${isSel ? 'background:#1a1a14;border-left:3px solid #d8c060;padding-left:9px;' : 'border-left:3px solid transparent;padding-left:9px;'}">
+          <div style="font-weight:600;color:${isSel ? '#e6e0cc' : '#bbb'};font-size:13px;">${escapeHtml(c.name || '(unnamed)')}</div>
+          <div style="font-size:10px;color:#666;">${builderCount} builder${builderCount === 1 ? '' : 's'}</div>
+        </div>
+      `;
+    }).join('') || `<div class="combat-empty" style="padding:20px;">No categories in this catalogue.</div>`;
+
+    // Selected category's builders
+    const builders = (selectedCat && Array.isArray(selectedCat.builders)) ? selectedCat.builders : [];
+    const tiers = cat.canonicalTiers || {};
+    const builderListHtml = builders.length === 0
+      ? `<div class="combat-empty" style="padding:20px;">No builders in this category.</div>`
+      : builders.map(b => {
+          const cost = charAbilities.computeAbilityCost(b, {}, tiers);
+          return `
+            <div style="padding:12px;border-bottom:1px solid #1a1a1a;display:flex;align-items:center;gap:12px;">
+              <div style="flex:1;min-width:0;">
+                <div style="font-weight:600;color:#e6e0cc;font-size:13px;">${escapeHtml(b.name || '(unnamed)')}</div>
+                ${b.description ? `<div style="font-size:11px;color:#888;margin-top:3px;">${escapeHtml(b.description)}</div>` : ''}
+                <div style="font-size:10px;color:#666;margin-top:4px;letter-spacing:.04em;text-transform:uppercase;">
+                  ${(b.primaryParams || []).length}P · ${(b.secondaryParams || []).length}S · ${(b.features || []).length}F · ${(b.flaws || []).length}f · Base ${b.baseCost || 0} AP
+                </div>
+              </div>
+              <span style="padding:4px 10px;background:#1a1a14;border:1px solid #2a2a20;border-radius:3px;font-size:11px;color:#d8c060;font-family:monospace;flex-shrink:0;">${cost.computedCost} AP default</span>
+              <button class="ct-btn ct-btn-primary" type="button" onclick="abilitiesBrowserPickBuilder('${escapeHtml(b.id)}')" style="flex-shrink:0;">Build</button>
+            </div>
+          `;
+        }).join('');
+
+    modal.innerHTML = `
+      <div style="background:#0a0a0a;border:1px solid #2a2a2a;border-radius:6px;width:100%;max-width:900px;max-height:80vh;display:flex;flex-direction:column;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #1a1a1a;">
+          <div>
+            <div style="font-weight:700;color:#e6e0cc;font-size:14px;letter-spacing:.05em;text-transform:uppercase;">Browse Catalogue</div>
+            <div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(cat.name || '')}</div>
+          </div>
+          <button class="ct-btn" type="button" onclick="abilitiesCloseBrowser()">Close</button>
+        </div>
+        <div style="display:grid;grid-template-columns:240px 1fr;flex:1;overflow:hidden;">
+          <div style="border-right:1px solid #1a1a1a;overflow-y:auto;background:#0d0d0d;">
+            ${catListHtml}
+          </div>
+          <div style="overflow-y:auto;">
+            ${builderListHtml}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   // ── MAIN LOAD FLOW ──
   // Called once Firebase auth resolves. Pulls the character, figures out
   // permissions, loads related playgroups and the Basic Set, then kicks
@@ -6738,6 +7434,7 @@
     await safeRender('Advantages', () => advantages.renderAll());
     await safeRender('Situations', () => situations.renderAll());
     await safeRender('Combat',     () => combat.renderAll());
+    await safeRender('Abilities',  () => renderAbilitiesTab());
     await safeRender('Inventory',  () => inventory.renderAll());
 
     // Wire collapsible affordances onto the Overview tab sections. Runs
