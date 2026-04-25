@@ -855,17 +855,23 @@ export function createCombatSection(ctx) {
       const otherMods = Array.isArray(charData && charData.otherModifiers) ? charData.otherModifiers : [];
       const srcRow = (key, label) => {
         const checked = hasFilter ? (thisFilter[key] === true) : true;
+        const hint = key === 'pain' ? 'from damage'
+                   : key === 'stress' ? 'from SAN loss'
+                   : key === 'encumbrance' ? 'from load'
+                   : key === 'exhaustion' ? 'from negative EXH'
+                   : '';
         return `<label class="ds-edit-filter-row">
           <input type="checkbox"${checked ? ' checked' : ''}
                  onchange="togglePenaltyFilterSource('${escapeHtml(code)}','${key}',this.checked)">
           <span class="ds-edit-filter-label">${escapeHtml(label)}</span>
-          <span class="ds-edit-filter-hint">${escapeHtml(key === 'pain' ? 'from damage' : key === 'stress' ? 'from SAN loss' : 'from load')}</span>
+          <span class="ds-edit-filter-hint">${escapeHtml(hint)}</span>
         </label>`;
       };
       html += '<div class="ds-edit-filter-list">';
       html += srcRow('pain', 'Pain');
       html += srcRow('stress', 'Stress');
       html += srcRow('encumbrance', 'Encumbrance');
+      html += srcRow('exhaustion', 'Exhaustion');
       // Individual Other entries — each gets its own checkbox so the
       // GM can say "only the Wounded Leg from Other affects SPD,
       // ignore the Drugged one."
@@ -1019,7 +1025,7 @@ export function createCombatSection(ctx) {
     const otherMods = Array.isArray(charData && charData.otherModifiers) ? charData.otherModifiers : [];
     const otherMap = {};
     otherMods.forEach(m => { if (m && m.id) otherMap[m.id] = true; });
-    return { pain: true, stress: true, encumbrance: true, other: otherMap };
+    return { pain: true, stress: true, encumbrance: true, exhaustion: true, other: otherMap };
   }
 
   // Backfill `id` on any legacy otherModifiers that predate the
@@ -2341,12 +2347,13 @@ export function createCombatSection(ctx) {
     // section as an overview strip. These are ALSO filtered OUT of the normal
     // derived stats grid (renderDerivedStatsSection) so they don't appear twice.
     //
-    // EXH is ALSO filtered out here — it has its own dedicated vertical-bar
-    // widget rendered inline with the Hit Locations list below, so showing
-    // it as a compact stat card at the top would be redundant.
+    // EXH IS included here as a card so its max value is editable via the
+    // standard stat-card editor (Modifier list + base value display, same
+    // affordance HP/FORT use). The vertical EXH BAR widget rendered below
+    // is for current-value tracking only — the max needs the card editor.
     const healthStats = [];
     result.stats.forEach(entry => {
-      if (entry.def.group === 'health' && entry.def.code !== 'EXH') healthStats.push(entry);
+      if (entry.def.group === 'health') healthStats.push(entry);
     });
     if (healthStats.length > 0) {
       body_html += '<div class="ds-grid health-cards">';
