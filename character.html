@@ -6632,6 +6632,101 @@
   // Hides itself if the active ruleset has no Catalogue or has it
   // disabled — Catalogue.enabled === false means "this ruleset doesn't
   // use Abilities at all" (mundane-only campaigns).
+  // ─── AP BUDGET ───
+  //
+  // A character's AP budget — earned (from charData.maxAp), spent on
+  // Abilities (sum of computed costs across charData.abilities), and
+  // remaining (earned − spent).
+  //
+  // "Spent" is computed live against the current ruleset Builders, not
+  // pulled from a stored field. This means ruleset edits that change
+  // Builder cost propagate automatically into the budget — same
+  // live-reference semantics as the cost pill on individual Cards.
+  //
+  // Note: charData.apSpent is a separate manual scalar from the power
+  // bar UI (the GM types it). For now we DON'T write back to it from
+  // here — that scalar might also represent AP spent on stat advancement
+  // past 6 (no UI for that yet). When that UI gets built we can decide
+  // whether to merge the two or keep them separate.
+  //
+  // Returns: { earned, spent, remaining, overBudget, hypotheticalSpend? }
+  // Pass `extraAbility` (an in-progress Builder UI instance) to compute
+  // a "what if I built this" preview where the Ability under
+  // construction is included in the spend.
+  function computeAbilityBudget(extraAbility) {
+    const earned = Number.isFinite(charData.maxAp) ? charData.maxAp : 0;
+    const abilities = Array.isArray(charData.abilities) ? charData.abilities : [];
+    const tiers = (activeRuleset && activeRuleset.abilityCatalogue && activeRuleset.abilityCatalogue.canonicalTiers) || {};
+    let spent = 0;
+    abilities.forEach(abl => {
+      // Skip the Ability that's being edited if `extraAbility` shadows
+      // it — otherwise we'd double-count (the saved version + the
+      // working draft). Match by id.
+      if (extraAbility && extraAbility.id === abl.id) return;
+      const ref = charAbilities.findBuilderById(activeRuleset, abl.builderId);
+      if (!ref) return; // Orphaned Abilities don't count toward spend.
+      const result = charAbilities.computeAbilityCost(ref.builder, abl, tiers);
+      if (result && Number.isFinite(result.computedCost)) spent += result.computedCost;
+    });
+    let hypothetical = null;
+    if (extraAbility) {
+      const ref = charAbilities.findBuilderById(activeRuleset, extraAbility.builderId);
+      if (ref) {
+        const result = charAbilities.computeAbilityCost(ref.builder, extraAbility, tiers);
+        hypothetical = (result && Number.isFinite(result.computedCost)) ? result.computedCost : 0;
+      }
+    }
+    const projectedSpend = spent + (hypothetical || 0);
+    return {
+      earned,
+      spent,
+      remaining: earned - spent,
+      overBudget: spent > earned,
+      hypotheticalSpend: hypothetical,
+      projectedSpend,
+      projectedRemaining: earned - projectedSpend,
+      projectedOverBudget: projectedSpend > earned
+    };
+  }
+
+  // Render the AP budget pill — used on the Abilities tab header AND
+  // inside the Builder UI. `mode` switches presentation:
+  //   'tab'      — full breakdown ("12 / 50 AP · 38 remaining")
+  //   'builder'  — adds a "+N if built" delta and goes red when it
+  //                would push the player overbudget
+  function renderAPBudgetPill(extraAbility, mode) {
+    const bg = computeAbilityBudget(extraAbility);
+    const isOverNow = bg.overBudget;
+    const isOverProjected = mode === 'builder' && bg.projectedOverBudget;
+    let bgColor = '#0d150d', borderColor = '#1f2f1f', textColor = '#88c080';
+    if (isOverProjected) {
+      // Builder mode + this Ability would tip player into overbudget
+      bgColor = '#1a0d0d'; borderColor = '#3a1f1f'; textColor = '#e08080';
+    } else if (isOverNow) {
+      // Already overbudget regardless of this Ability
+      bgColor = '#1a0d0d'; borderColor = '#3a1f1f'; textColor = '#e08080';
+    } else if (bg.remaining < (bg.earned * 0.1)) {
+      // Less than 10% remaining — warning yellow.
+      bgColor = '#15150a'; borderColor = '#2f2f1f'; textColor = '#d8c060';
+    }
+    if (mode === 'builder') {
+      const delta = (bg.hypotheticalSpend || 0);
+      const projectedRemainingStr = (bg.projectedRemaining >= 0 ? '+' : '') + bg.projectedRemaining;
+      return `
+        <span title="AP budget: ${bg.spent} spent + ${delta} for this Ability = ${bg.projectedSpend} of ${bg.earned} earned"
+              style="padding:4px 10px;background:${bgColor};border:1px solid ${borderColor};border-radius:3px;font-size:11px;color:${textColor};font-family:monospace;">
+          ${bg.projectedSpend} / ${bg.earned} AP · ${projectedRemainingStr} after
+        </span>
+      `;
+    }
+    return `
+      <span title="AP budget: ${bg.spent} spent on ${(charData.abilities || []).length} ability(ies) of ${bg.earned} earned"
+            style="padding:4px 10px;background:${bgColor};border:1px solid ${borderColor};border-radius:3px;font-size:11px;color:${textColor};font-family:monospace;">
+        ${bg.spent} / ${bg.earned} AP · ${bg.remaining} remaining
+      </span>
+    `;
+  }
+
   function renderAbilitiesTab() {
     const container = document.getElementById('abilities-content');
     if (!container) return;
@@ -6652,20 +6747,23 @@
     const catDesc = cat.description || '';
     const categoriesCount = Array.isArray(cat.categories) ? cat.categories.length : 0;
 
-    // Header — catalogue name + description + add button (owners only).
+    // Header — catalogue name + description + AP budget + add button.
     let html = `
       <div class="combat-section">
         <div class="combat-section-title">
           <span class="combat-section-title-text">${escapeHtml(catName)}</span>
         </div>
         ${catDesc ? `<p class="combat-section-hint">${escapeHtml(catDesc)}</p>` : ''}
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;flex-wrap:wrap;">
           <span style="font-size:11px;color:#888;">
             ${abilities.length} ability${abilities.length === 1 ? '' : 'ies'} on this character
           </span>
-          ${canEdit ? `
-            <button class="ct-btn ct-btn-primary" type="button" onclick="abilitiesOpenBrowser()" ${categoriesCount === 0 ? 'disabled title="Catalogue has no Builders to choose from yet."' : ''}>+ Add Ability</button>
-          ` : ''}
+          <div style="display:flex;align-items:center;gap:8px;">
+            ${renderAPBudgetPill(null, 'tab')}
+            ${canEdit ? `
+              <button class="ct-btn ct-btn-primary" type="button" onclick="abilitiesOpenBrowser()" ${categoriesCount === 0 ? 'disabled title="Catalogue has no Builders to choose from yet."' : ''}>+ Add Ability</button>
+            ` : ''}
+          </div>
         </div>
       </div>
     `;
@@ -6680,49 +6778,193 @@
         </div>
       `;
     } else {
-      // Stub — shows builder name + cost. Full Card UI is Turn 6.
-      html += '<div class="abil-list" style="margin-top:14px;display:flex;flex-direction:column;gap:8px;">';
+      html += '<div class="abil-list" style="margin-top:14px;display:flex;flex-direction:column;gap:10px;">';
       abilities.forEach((abl, idx) => {
-        const ref = charAbilities.findBuilderById(activeRuleset, abl.builderId);
-        if (!ref) {
-          html += `
-            <div class="abil-card abil-card-orphan" style="border:1px solid #4a2a2a;background:#1a0d0d;border-radius:4px;padding:12px;">
-              <div style="font-weight:600;color:#e08080;">${escapeHtml(abl.name || '(unnamed)')}</div>
-              <div style="font-size:11px;color:#aa6060;">Builder no longer exists in the ruleset (id ${escapeHtml(abl.builderId || '?')}). Contact your GM.</div>
-            </div>
-          `;
-          return;
-        }
-        const tiers = (activeRuleset.abilityCatalogue && activeRuleset.abilityCatalogue.canonicalTiers) || {};
-        const cost = charAbilities.computeAbilityCost(ref.builder, abl, tiers);
-        const systemText = charAbilities.renderSystemText(ref.builder, abl);
-        html += `
-          <div class="abil-card" style="border:1px solid #2a2a2a;background:#0d0d0d;border-radius:4px;padding:12px;">
-            <div style="display:flex;align-items:center;gap:10px;justify-content:space-between;">
-              <div>
-                <div style="font-weight:600;color:#ddd;">${escapeHtml(abl.name || ref.builder.name || '(unnamed)')}</div>
-                <div style="font-size:10px;color:#666;letter-spacing:.04em;text-transform:uppercase;">
-                  ${escapeHtml(ref.category.name || '')} · ${escapeHtml(ref.builder.name || '')}
-                </div>
-              </div>
-              <span style="padding:3px 10px;background:#1a1a14;border:1px solid #2a2a20;border-radius:3px;font-size:11px;color:#d8c060;font-family:monospace;">${cost.computedCost} AP</span>
-            </div>
-            ${abl.tagline ? `<div style="font-size:11px;font-style:italic;color:#888;margin-top:4px;">"${escapeHtml(abl.tagline)}"</div>` : ''}
-            ${systemText ? `<div style="font-size:12px;color:#bbb;margin-top:6px;">${escapeHtml(systemText)}</div>` : ''}
-            ${canEdit ? `
-              <div style="display:flex;gap:6px;margin-top:8px;">
-                <button class="ct-btn" type="button" onclick="abilitiesEdit(${idx})" title="Edit this Ability">Edit</button>
-                <button class="ct-btn" type="button" onclick="abilitiesDelete(${idx})" style="color:#c66;border-color:#4a2a2a;">Delete</button>
-              </div>
-            ` : ''}
-          </div>
-        `;
+        html += renderAbilityCard(abl, idx);
       });
       html += '</div>';
     }
 
     container.innerHTML = html;
   }
+
+  // ── ABILITY CARD ──
+  //
+  // Compact display unit on the Abilities tab. Has two modes:
+  //
+  //   Collapsed (default): name, tagline, category breadcrumb, cost
+  //                        pill, system text, feature/flaw tags. The
+  //                        "essentials" — what a Player needs to read
+  //                        the Ability at the table.
+  //
+  //   Expanded:            also shows Visual + Prose blocks. Toggled by
+  //                        clicking the card header. State stored in
+  //                        abilCardExpanded (Set of Ability ids) so it
+  //                        survives re-renders within a session, but
+  //                        is NOT persisted to Firestore (transient UI
+  //                        state, like other collapse state in the app).
+  //
+  // Orphan cards (Builder deleted from the ruleset since the Player
+  // built the Ability) get a distinct red treatment so the Player
+  // notices and can flag it to the GM. The Ability data is preserved
+  // even when orphaned so the GM can re-add the Builder and recover.
+  function renderAbilityCard(abl, idx) {
+    const ref = charAbilities.findBuilderById(activeRuleset, abl.builderId);
+
+    if (!ref) {
+      // Orphan — Builder gone from ruleset.
+      return `
+        <div class="abil-card abil-card-orphan" style="border:1px solid #4a2a2a;background:#1a0d0d;border-radius:4px;padding:12px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+            <div>
+              <div style="font-weight:600;color:#e08080;font-size:14px;">${escapeHtml(abl.name || '(unnamed)')}</div>
+              <div style="font-size:11px;color:#aa6060;margin-top:3px;">
+                The Builder this Ability was made from no longer exists in the ruleset.
+                The data is preserved — ask your GM to restore the Builder, or delete this Ability.
+              </div>
+              <div style="font-size:10px;color:#704040;margin-top:4px;font-family:monospace;">builderId: ${escapeHtml(abl.builderId || '?')}</div>
+            </div>
+            ${canEdit ? `
+              <button class="ct-btn" type="button" onclick="abilitiesDelete(${idx})" style="color:#c66;border-color:#4a2a2a;flex-shrink:0;">Delete</button>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    const builder = ref.builder;
+    const category = ref.category;
+    const tiers = (activeRuleset.abilityCatalogue && activeRuleset.abilityCatalogue.canonicalTiers) || {};
+    const costRes = charAbilities.computeAbilityCost(builder, abl, tiers);
+    const cost = costRes.computedCost;
+    const systemText = charAbilities.renderSystemText(builder, abl);
+    const isExpanded = abilCardExpanded.has(abl.id);
+
+    // Selected feature/flaw tags — pulled from the Builder so renames
+    // propagate. Selected ids that no longer match a current feature/
+    // flaw are silently filtered out (graceful degradation).
+    const selFeatures = (abl.selectedFeatureIds || [])
+      .map(fid => (builder.features || []).find(f => f && f.id === fid))
+      .filter(Boolean);
+    const selFlaws = (abl.selectedFlawIds || [])
+      .map(fid => (builder.flaws || []).find(f => f && f.id === fid))
+      .filter(Boolean);
+
+    const hasExpandable = (abl.visual && abl.visual.trim()) || (abl.prose && abl.prose.trim());
+
+    // Cost band color (matches editor & builder UI)
+    let costBg = '#1a1a14', costBorder = '#2a2a20', costColor = '#d8c060';
+    if      (cost <= 5)   { costBg = '#0d150d'; costBorder = '#1f2f1f'; costColor = '#88c080'; }
+    else if (cost <= 20)  { costBg = '#15150a'; costBorder = '#2f2f1f'; costColor = '#d8c060'; }
+    else if (cost <= 50)  { costBg = '#1a1408'; costBorder = '#3a2810'; costColor = '#d8a060'; }
+    else if (cost <= 100) { costBg = '#1a0d0d'; costBorder = '#3a1f1f'; costColor = '#d88060'; }
+    else                  { costBg = '#1a0d1a'; costBorder = '#3a1f3a'; costColor = '#d860d8'; }
+
+    // Header row — name + breadcrumb + cost pill. Click toggles expand
+    // when there's expandable content. Cursor styled accordingly.
+    const headerCursor = hasExpandable ? 'cursor:pointer;' : '';
+    const expandCaret = hasExpandable
+      ? `<span style="color:#666;font-size:10px;margin-right:4px;">${isExpanded ? '▾' : '▸'}</span>`
+      : '';
+    const headerOnclick = hasExpandable
+      ? `onclick="abilitiesToggleCard('${escapeHtml(abl.id)}')"`
+      : '';
+
+    let html = `
+      <div class="abil-card" style="border:1px solid #2a2a2a;background:#0d0d0d;border-radius:4px;overflow:hidden;">
+        <div ${headerOnclick} style="display:flex;align-items:flex-start;gap:10px;justify-content:space-between;padding:12px 14px;${headerCursor}">
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              ${expandCaret}
+              <span style="font-weight:600;color:#e6e0cc;font-size:14px;">${escapeHtml(abl.name || builder.name || '(unnamed)')}</span>
+            </div>
+            ${abl.tagline ? `<div style="font-size:12px;font-style:italic;color:#999;margin-top:3px;margin-left:${hasExpandable ? '14px' : '0'};">"${escapeHtml(abl.tagline)}"</div>` : ''}
+            <div style="font-size:10px;color:#666;letter-spacing:.05em;text-transform:uppercase;margin-top:4px;margin-left:${hasExpandable ? '14px' : '0'};">
+              ${escapeHtml(category.name || '')} · ${escapeHtml(builder.name || '')}
+            </div>
+          </div>
+          <span style="padding:4px 12px;background:${costBg};border:1px solid ${costBorder};border-radius:3px;font-size:11px;color:${costColor};font-family:monospace;flex-shrink:0;font-weight:600;">${cost} AP</span>
+        </div>
+    `;
+
+    // System text — always visible, prominent.
+    if (systemText) {
+      html += `
+        <div style="padding:0 14px 12px;">
+          <div style="padding:10px 12px;background:#080808;border:1px solid #1a1a1a;border-radius:3px;font-size:13px;color:#cfcfcf;line-height:1.5;">
+            ${escapeHtml(systemText)}
+          </div>
+        </div>
+      `;
+    }
+
+    // Feature / flaw tags — shown when there's anything to display.
+    if (selFeatures.length > 0 || selFlaws.length > 0) {
+      html += `<div style="padding:0 14px 10px;display:flex;flex-wrap:wrap;gap:6px;">`;
+      selFeatures.forEach(f => {
+        html += `
+          <span title="${escapeHtml(f.description || '')}" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:#1a1408;border:1px solid #3a2810;border-radius:3px;font-size:10px;color:#d8a060;">
+            <span style="font-size:8px;color:#806040;text-transform:uppercase;letter-spacing:.05em;">F</span>
+            ${escapeHtml(f.name || '')}
+          </span>
+        `;
+      });
+      selFlaws.forEach(f => {
+        html += `
+          <span title="${escapeHtml(f.description || '')}" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:#0d150d;border:1px solid #1f2f1f;border-radius:3px;font-size:10px;color:#88c080;">
+            <span style="font-size:8px;color:#608060;text-transform:uppercase;letter-spacing:.05em;">f</span>
+            ${escapeHtml(f.name || '')}
+          </span>
+        `;
+      });
+      html += '</div>';
+    }
+
+    // Expanded section — Visual + Prose. Hidden when collapsed.
+    if (isExpanded && hasExpandable) {
+      html += `<div style="padding:10px 14px;border-top:1px solid #1a1a1a;background:#080808;">`;
+      if (abl.visual && abl.visual.trim()) {
+        html += `
+          <div style="margin-bottom:10px;">
+            <div style="font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Visual</div>
+            <div style="font-size:12px;color:#bbb;line-height:1.5;">${escapeHtml(abl.visual)}</div>
+          </div>
+        `;
+      }
+      if (abl.prose && abl.prose.trim()) {
+        html += `
+          <div>
+            <div style="font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Prose</div>
+            <div style="font-size:12px;color:#bbb;line-height:1.5;font-style:italic;">${escapeHtml(abl.prose)}</div>
+          </div>
+        `;
+      }
+      html += '</div>';
+    }
+
+    // Edit / Delete actions — owners only.
+    if (canEdit) {
+      html += `
+        <div style="display:flex;gap:6px;padding:8px 14px;border-top:1px solid #1a1a1a;background:#0a0a0a;">
+          <button class="ct-btn" type="button" onclick="abilitiesEdit(${idx})">Edit</button>
+          <button class="ct-btn" type="button" onclick="abilitiesDelete(${idx})" style="color:#c66;border-color:#4a2a2a;">Delete</button>
+        </div>
+      `;
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  // Track which Ability cards are expanded. Stored as a Set of
+  // Ability ids — UI-only, NOT persisted.
+  const abilCardExpanded = new Set();
+
+  window.abilitiesToggleCard = function(abilityId) {
+    if (abilCardExpanded.has(abilityId)) abilCardExpanded.delete(abilityId);
+    else abilCardExpanded.add(abilityId);
+    renderAbilitiesTab();
+  };
 
   // Catalogue browser — opens a modal listing every Builder available.
   // Player picks a Category (left column) → Builder (right column) →
@@ -6990,8 +7232,9 @@
               ${escapeHtml(category.name || '')} · ${escapeHtml(builder.name || '')}
             </div>
           </div>
-          <div style="display:flex;align-items:center;gap:10px;">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
             <span id="abil-builder-cost-pill" style="padding:4px 10px;background:#1a1a14;border:1px solid #2a2a20;border-radius:3px;font-size:11px;color:#d8c060;font-family:monospace;">… AP</span>
+            <span id="abil-builder-budget-pill"></span>
             <button class="ct-btn" type="button" onclick="abilitiesBuilderCancel()">Cancel</button>
             <button class="ct-btn ct-btn-primary" type="button" onclick="abilitiesBuilderSave()">${abilitiesBuilderSession.mode === 'edit' ? 'Save Changes' : 'Build'}</button>
           </div>
@@ -7215,7 +7458,8 @@
   }
 
   // Cost-preview pill update — called on every value change so the
-  // Player sees their AP cost live.
+  // Player sees their AP cost live. Also refreshes the AP budget pill
+  // (next to it in the header) so affordability tracking stays in sync.
   function renderAbilitiesBuilderCostPreview() {
     const pill = document.getElementById('abil-builder-cost-pill');
     if (!pill || !abilitiesBuilderSession) return;
@@ -7235,6 +7479,11 @@
     pill.style.background = bg;
     pill.style.borderColor = border;
     pill.style.color = color;
+    // Sibling budget pill — projected spend if this Ability gets saved.
+    const budgetPill = document.getElementById('abil-builder-budget-pill');
+    if (budgetPill) {
+      budgetPill.outerHTML = `<span id="abil-builder-budget-pill">${renderAPBudgetPill(inst, 'builder')}</span>`;
+    }
   }
 
   // ── MAIN LOAD FLOW ──
