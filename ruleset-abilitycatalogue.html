@@ -819,6 +819,7 @@
   import * as charAbilities from './char-abilities.js';
   window.computeAbilityCost = charAbilities.computeAbilityCost;
   window.renderSystemTextForBuilder = charAbilities.renderSystemText;
+  window.renderSystemTextHtmlForBuilder = charAbilities.renderSystemTextHtml;
 
   const firebaseConfig = {
     apiKey: "AIzaSyCf94yLvAtJ9pLgJ3FsV7ir4Qh9XXm3nHg",
@@ -2142,19 +2143,45 @@
         .filter(({it}) => it && it.tier === tier);
       const tierCost = Number.isFinite(tierTable[tier]) ? tierTable[tier] : 0;
       const costLabel = kind === 'feature' ? `+${tierCost} AP` : `−${tierCost} AP`;
-      const rowHtml = rows.map(({it, idx}) => `
-        <div class="bldr-ff-row">
-          <textarea rows="1"
-                    placeholder="${kind === 'feature' ? 'Feature description' : 'Flaw description'}"
-                    oninput="bldrSetFFText('${kind}', ${idx}, this.value);autoGrow(this);">${escapeHtml(it.description || it.name || '')}</textarea>
-          <select class="ff-tier-move" title="Change tier"
-                  onchange="bldrSetFFTier('${kind}', ${idx}, this.value)">
-            ${TIER_ORDER.map(t => `<option value="${t}"${t === tier ? ' selected' : ''}>${TIER_LABELS[t]}</option>`).join('')}
-          </select>
-          <button class="row-x" type="button" title="Delete"
-                  onclick="bldrDeleteFF('${kind}', ${idx});">×</button>
-        </div>
-      `).join('');
+      const rowHtml = rows.map(({it, idx}) => {
+        // Defensive fallbacks — old data has only `name`/`description`,
+        // and customField may be missing entirely.
+        const cf = (it.customField && typeof it.customField === 'object') ? it.customField : { enabled: false, label: '' };
+        const labelInputHtml = cf.enabled
+          ? `<input type="text" placeholder="Custom field label (e.g. Conditional)"
+                    value="${escapeHtmlAttr(cf.label || '')}"
+                    oninput="bldrSetFFCustomField('${kind}', ${idx}, 'label', this.value)"
+                    style="flex:1;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:12px;padding:5px 8px;border-radius:3px;outline:none;">`
+          : '';
+        return `
+          <div class="bldr-ff-row" style="flex-direction:column;gap:5px;align-items:stretch;">
+            <div style="display:flex;gap:6px;align-items:center;">
+              <input type="text" placeholder="${kind === 'feature' ? 'Feature name (e.g. Conditional)' : 'Flaw name (e.g. Conditional)'}"
+                     value="${escapeHtmlAttr(it.name || '')}"
+                     oninput="bldrSetFFField('${kind}', ${idx}, 'name', this.value)"
+                     style="flex:1;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:13px;font-weight:600;padding:6px 10px;border-radius:3px;outline:none;">
+              <select class="ff-tier-move" title="Change tier"
+                      onchange="bldrSetFFTier('${kind}', ${idx}, this.value)">
+                ${TIER_ORDER.map(t => `<option value="${t}"${t === tier ? ' selected' : ''}>${TIER_LABELS[t]}</option>`).join('')}
+              </select>
+              <button class="row-x" type="button" title="Delete"
+                      onclick="bldrDeleteFF('${kind}', ${idx});">×</button>
+            </div>
+            <textarea rows="2"
+                      placeholder="Description (what this ${kind} does mechanically)"
+                      oninput="bldrSetFFField('${kind}', ${idx}, 'description', this.value);autoGrow(this);"
+                      style="width:100%;">${escapeHtml(it.description || '')}</textarea>
+            <div style="display:flex;gap:8px;align-items:center;font-size:11px;color:#888;">
+              <label style="display:flex;align-items:center;gap:5px;cursor:pointer;flex-shrink:0;">
+                <input type="checkbox" ${cf.enabled ? 'checked' : ''}
+                       onchange="bldrSetFFCustomField('${kind}', ${idx}, 'enabled', this.checked)">
+                <span>Custom field</span>
+              </label>
+              ${labelInputHtml}
+            </div>
+          </div>
+        `;
+      }).join('');
       return `
         <div class="bldr-tier-band">
           <div class="bldr-tier-band-head">
@@ -2421,7 +2448,7 @@
     // pays just by picking this Builder before any tuning of their own.
     const inst = { paramValues: {}, selectedFeatureIds: [], selectedFlawIds: [] };
 
-    let cost = null, systemText = '';
+    let cost = null, systemText = '', systemTextHtml = '';
     try {
       const result = window.computeAbilityCost
         ? window.computeAbilityCost(b, inst, tiers)
@@ -2433,6 +2460,15 @@
         ? window.renderSystemTextForBuilder(b, inst)
         : (b.systemTextTemplate || '');
     } catch (e) { systemText = b.systemTextTemplate || ''; }
+    try {
+      // HTML form bolds substituted tokens. No character context here
+      // (this is the GM's authoring preview), so token values resolve
+      // to text descriptions like "POW + STAT + STATMOD" — those still
+      // get bolded.
+      systemTextHtml = window.renderSystemTextHtmlForBuilder
+        ? window.renderSystemTextHtmlForBuilder(b, inst)
+        : escapeHtml(systemText || '');
+    } catch (e) { systemTextHtml = escapeHtml(systemText || ''); }
 
     // Cost pill in the editor header (separate from the card)
     if (pill) {
@@ -2487,7 +2523,7 @@
     const systemExpanded = !!window.bldrPreviewSystemOpen;
 
     const systemBodyHtml = (systemText && systemText.trim())
-      ? `<div class="bldr-card-section-body" style="background:transparent;border:none;padding:0;">${escapeHtml(systemText)}</div>`
+      ? `<div class="bldr-card-section-body" style="background:transparent;border:none;padding:0;">${systemTextHtml}</div>`
       : `<div class="bldr-card-section-body bldr-card-placeholder" style="background:transparent;border:none;padding:0;">(System text — fill in via the System textarea below using {token} placeholders)</div>`;
 
     // Helper: format a feature/flaw line as "(Tier · ±N AP) text".
@@ -2660,6 +2696,38 @@
       window.catBldrSetFlaw(idx, 'description', value);
       window.catBldrSetFlaw(idx, 'name', value.split('\n')[0].slice(0, 80));
     }
+  };
+
+  // New per-field handler used by the split Name/Description editor.
+  // Mutates the feature/flaw directly via the legacy catBldrSet*
+  // routes (which handle the cost-preview re-render).
+  window.bldrSetFFField = function(kind, idx, field, value) {
+    if (kind === 'feature') window.catBldrSetFeature(idx, field, value);
+    else                    window.catBldrSetFlaw(idx, field, value);
+  };
+
+  // Toggle/edit the per-feature/flaw customField config. When enabling,
+  // the row re-renders so the Label input appears. When disabling, we
+  // KEEP the label string on the data so re-enabling restores it (cheap
+  // undo). Renderer reads cf.enabled to decide whether to show it.
+  window.bldrSetFFCustomField = function(kind, idx, field, value) {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const arr = (kind === 'feature') ? b.features : b.flaws;
+    if (!Array.isArray(arr) || !arr[idx]) return;
+    const it = arr[idx];
+    if (!it.customField || typeof it.customField !== 'object') {
+      it.customField = { enabled: false, label: '' };
+    }
+    if (field === 'enabled') it.customField.enabled = !!value;
+    else                     it.customField.label   = String(value || '');
+    // Toggling enabled requires a re-render to show/hide the label
+    // input. Editing the label text doesn't (input is bound in place).
+    if (field === 'enabled') {
+      if (kind === 'feature') renderBldrFeaturesList();
+      else                    renderBldrFlawsList();
+    }
+    renderBuilderPreview();
   };
 
   window.bldrSetFFTier = function(kind, idx, newTier) {
