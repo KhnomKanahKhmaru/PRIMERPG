@@ -375,8 +375,8 @@ export function renderSystemText(builder, instance) {
   // Both Primary and Secondary now use step lists. The token resolves
   // to the picked step's label (preferred) or value, with no per-param
   // displayUnit suffix anymore — the label is authored verbatim by the
-  // GM and meant to read as-is.
-  const tokens = {};
+  // GM and meant to read as-is. (See normTokens below — built later;
+  // we no longer need a separate case-sensitive `tokens` object.)
   const resolveStep = (p) => {
     const steps = Array.isArray(p.steps) ? p.steps : [];
     const defaultIdx = Number.isFinite(p.defaultStep)
@@ -392,15 +392,31 @@ export function renderSystemText(builder, instance) {
     if (step.value !== undefined && step.value !== null && step.value !== '') return String(step.value);
     return null;
   };
+  // Build a normalized token table. Both parameter tokens and the
+  // built-in {ACTIVATION_ROLL} go in here. Normalization strips case
+  // and non-alphanumeric chars so the GM can write {ACTIVATION_ROLL},
+  // {activation_roll}, or {Activation Roll} interchangeably and they
+  // all resolve to the same token. Same for parameter tokens — a
+  // parameter with token "range" matches {Range}, {RANGE}, or {range}
+  // in System text. Tokens that don't match anything are left as-is.
+  const normTokens = {};
+  function normalizeTokenKey(s) {
+    return String(s == null ? '' : s).toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+  function setToken(name, val) {
+    const k = normalizeTokenKey(name);
+    if (k) normTokens[k] = val;
+  }
+
   (Array.isArray(builder.primaryParams) ? builder.primaryParams : []).forEach(p => {
     if (!p || !p.token) return;
     const disp = stepDisplay(resolveStep(p));
-    if (disp != null) tokens[p.token] = disp;
+    if (disp != null) setToken(p.token, disp);
   });
   (Array.isArray(builder.secondaryParams) ? builder.secondaryParams : []).forEach(p => {
     if (!p || !p.token) return;
     const disp = stepDisplay(resolveStep(p));
-    if (disp != null) tokens[p.token] = disp;
+    if (disp != null) setToken(p.token, disp);
   });
 
   // {ACTIVATION_ROLL} token — resolves to a description of the activation
@@ -435,12 +451,17 @@ export function renderSystemText(builder, instance) {
       else                                    s2 = 'STAT or SKILL';
       arDesc = `${s1} + ${s2} + STATMOD`;
     }
-    tokens.ACTIVATION_ROLL = arDesc;
+    setToken('ACTIVATION_ROLL', arDesc);
+    setToken('ACTIVATIONROLL',  arDesc);  // alias (both forms normalize to same key, but explicit registration is harmless)
   }
 
-  // Substitute. Match {tokenName} pattern. Leave unknown tokens visible.
-  return builder.systemTextTemplate.replace(/\{(\w+)\}/g, (match, key) => {
-    return Object.prototype.hasOwnProperty.call(tokens, key) ? tokens[key] : match;
+  // Substitute. Match anything-between-single-braces. The captured text
+  // is normalized the same way as token keys so {Foo Bar}, {foo_bar},
+  // and {FOOBAR} all map to the same lookup. Unknown tokens are left
+  // visible in the output so GMs can spot template typos.
+  return builder.systemTextTemplate.replace(/\{([^{}]+)\}/g, (match, key) => {
+    const norm = normalizeTokenKey(key);
+    return Object.prototype.hasOwnProperty.call(normTokens, norm) ? normTokens[norm] : match;
   });
 }
 
