@@ -1,0 +1,1388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PRIME RPG — Ability Catalogue</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="nav.js"></script>
+  <script src="ruleset-defaults.js"></script>
+  <style>
+    /* Page chrome — mirrors edit-ruleset.html so the visual jump between
+       the two feels native. The Catalogue page is wider than the Ruleset
+       Editor (max-width 1100px vs 900px) because the type-tile grid and
+       the builder editor both benefit from the extra horizontal real estate. */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0a0a0a; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 14px;
+      min-height: 100vh;
+    }
+    .page { padding: 104px 24px 80px; max-width: 1100px; margin: 0 auto; }
+    .page-title { font-size: 20px; font-weight: 600; margin-bottom: 4px; color: #e0e0e0; }
+    .page-sub   { font-size: 12px; color: #666; margin-bottom: 24px; }
+
+    /* Breadcrumb above the title — gives the user an "out" back to the
+       Ruleset Editor. Keep visually quiet so it doesn't compete with
+       the page title. */
+    .crumb { font-size: 12px; color: #888; margin-bottom: 6px; }
+    .crumb a { color: #888; text-decoration: none; cursor: pointer; }
+    .crumb a:hover { color: #d4a574; text-decoration: underline; }
+
+    /* Sections — match edit-ruleset.html. */
+    .section {
+      border: 1px solid #1a1a1a; border-radius: 6px;
+      padding: 18px 20px; margin-bottom: 14px; background: #0e0e0e;
+    }
+    .section-header {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid #1a1a1a;
+    }
+    .section-title {
+      font-size: 12px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #aaa; flex: 1;
+    }
+
+    /* Form fields — match edit-ruleset.html. */
+    .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+    .field label {
+      font-size: 10px; font-weight: 600; letter-spacing: .08em;
+      text-transform: uppercase; color: #888;
+    }
+    .field input, .field select, .field textarea {
+      background: #111; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 13px;
+      padding: 7px 10px; border-radius: 4px; outline: none; width: 100%;
+    }
+    .field input:focus, .field select:focus, .field textarea:focus { border-color: #444; }
+
+    /* Bare inputs in the catalogue body — for inline grids of inputs
+       in category rows, builder rows, parameter rows, etc., outside of
+       `.field` wrappers. */
+    #catalogue-body input[type="text"],
+    #catalogue-body input[type="number"],
+    #catalogue-body select,
+    #catalogue-body textarea {
+      background: #111; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 13px;
+      padding: 6px 10px; border-radius: 4px; outline: none;
+    }
+    #catalogue-body input[type="text"]:focus,
+    #catalogue-body input[type="number"]:focus,
+    #catalogue-body select:focus,
+    #catalogue-body textarea:focus { border-color: #444; }
+    #catalogue-body select option { background: #111; }
+
+    .hint { font-size: 12px; color: #666; line-height: 1.5; margin-bottom: 12px; }
+
+    /* Buttons — match edit-ruleset.html. */
+    .btn {
+      background: #1a1a1a; border: 1px solid #2a2a2a; color: #c8c8c8;
+      font-family: 'Open Sans', sans-serif; font-size: 13px;
+      padding: 7px 14px; border-radius: 4px; cursor: pointer;
+      transition: background 0.1s, border-color 0.1s;
+    }
+    .btn:hover:not(:disabled) { background: #222; border-color: #3a3a3a; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn.small { padding: 4px 10px; font-size: 12px; }
+    .btn.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+    .btn.primary:hover:not(:disabled) { background: #1d4ed8; border-color: #1d4ed8; }
+    .btn.danger { background: #1f0e0e; border-color: #4a2a2a; color: #c66; }
+    .btn.danger:hover:not(:disabled) { background: #2a1414; border-color: #5a3030; }
+
+    /* Type-tile home grid. */
+    .type-tile-grid {
+      display: grid; gap: 12px; margin-top: 8px;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    }
+    .type-tile {
+      background: #0d0d0d; border: 1px solid #2a2a2a;
+      border-radius: 4px; padding: 14px; cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .type-tile:hover { border-color: #3a3a3a; background: #111; }
+    .type-tile.in-design {
+      background: #0a0a0a; border-style: dashed; opacity: 0.5; cursor: not-allowed;
+    }
+    .type-tile.in-design:hover { border-color: #2a2a2a; background: #0a0a0a; }
+    .type-tile-name { font-size: 15px; font-weight: 600; color: #e8e8e8; }
+    .type-tile-desc { font-size: 12px; color: #999; margin-top: 4px; line-height: 1.4; }
+    .type-tile-meta { font-size: 11px; color: #888; margin-top: 6px; }
+    .type-tile-meta-design { letter-spacing: .04em; text-transform: uppercase; }
+
+    /* Footer — Save / Done / save msg. */
+    .footer-actions {
+      margin-top: 24px; padding-top: 18px;
+      border-top: 1px solid #1a1a1a;
+      display: flex; gap: 10px; align-items: center;
+    }
+    .save-msg { font-size: 12px; margin-left: auto; }
+
+    .tier-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+    }
+    .tier-grid label {
+      display: block; font-weight: 700; margin-bottom: 6px;
+      font-size: 11px; letter-spacing: .08em;
+      text-transform: uppercase; color: #888;
+    }
+
+    .empty {
+      padding: 12px; text-align: center; color: #666; font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+<script>injectNav();</script>
+
+<div class="page">
+  <div id="loading" style="color:#555;text-align:center;padding:40px">Loading…</div>
+  <div id="content" style="display:none">
+
+    <div class="crumb">
+      <a id="crumb-back" onclick="goBackToRuleset()">← Back to Ruleset Editor</a>
+    </div>
+    <div class="page-title" id="page-title">Ability Catalogue</div>
+    <div class="page-sub"  id="page-sub">
+      Author the Catalogue's types, categories, and builders for this ruleset.
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">Catalogue Settings</div>
+      </div>
+      <div class="field" style="display:flex;align-items:center;gap:10px;">
+        <label style="margin:0;display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;text-transform:none;letter-spacing:0;color:#ccc;font-weight:400;">
+          <input type="checkbox" id="cat-enabled" onchange="catToggleEnabled(this.checked)">
+          <span>Catalogue enabled</span>
+        </label>
+        <span class="hint" style="margin:0;">Disable to hide the Abilities tab on Character sheets.</span>
+      </div>
+      <div class="field">
+        <label>Catalogue Name</label>
+        <input type="text" id="cat-name"
+               placeholder="e.g. Standard Catalogue, Vampire Powers…"
+               oninput="catSetName(this.value)">
+      </div>
+      <div class="field">
+        <label>Description (shown to Players in the catalogue browser)</label>
+        <textarea id="cat-desc" rows="2"
+                  placeholder="Optional flavor text describing the catalogue's scope, themes, etc."
+                  oninput="catSetDesc(this.value)"></textarea>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">Feature &amp; Flaw Tier Costs</div>
+      </div>
+      <p class="hint">
+        Centralized cost tables. Every Feature and Flaw in every Builder references a tier
+        name from these tables — change a tier's value here and every Feature/Flaw at that tier
+        re-prices automatically across the entire Catalogue.
+      </p>
+      <div class="tier-grid">
+        <div>
+          <label>Feature Tier Costs (AP)</label>
+          <div id="cat-tier-features"></div>
+        </div>
+        <div>
+          <label>Flaw Tier Refunds (AP)</label>
+          <div id="cat-tier-flaws"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title" id="catalogue-body-title">Catalogue</div>
+        <div id="catalogue-body-actions"></div>
+      </div>
+      <div id="catalogue-body"></div>
+    </div>
+
+    <div class="footer-actions">
+      <button class="btn primary" id="save-btn" onclick="saveCatalogue()">Save</button>
+      <button class="btn" onclick="goBackToRuleset()">Done</button>
+      <span class="save-msg" id="save-msg"></span>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
+  import { getAuth, signOut } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
+  import { getFirestore, doc, getDoc, updateDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+
+  // Ability cost engine — used to render the live cost preview in the
+  // Builder editor. Exposed on window so the legacy ported handlers
+  // (which use inline onclick/oninput) can call it without re-importing.
+  import * as charAbilities from './char-abilities.js';
+  window.computeAbilityCost = charAbilities.computeAbilityCost;
+  window.renderSystemTextForBuilder = charAbilities.renderSystemText;
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCf94yLvAtJ9pLgJ3FsV7ir4Qh9XXm3nHg",
+    authDomain: "prime-rpg.firebaseapp.com",
+    projectId: "prime-rpg",
+    storageBucket: "prime-rpg.firebasestorage.app",
+    messagingSenderId: "177905987748",
+    appId: "1:177905987748:web:8856ab4fdb8f81f42eb631"
+  };
+
+  const app  = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db   = getFirestore(app);
+
+  // URL params drive view-state on initial load:
+  //   id      — required ruleset id; missing/invalid → bounce to my-rulesets
+  //   type    — 'ability' | 'artifact' | … — opens directly to type view
+  //   builder — builder id under that type — opens directly to builder editor
+  const params         = new URLSearchParams(window.location.search);
+  const rulesetId      = params.get('id');
+  const initialType    = params.get('type');
+  const initialBuilder = params.get('builder');
+
+  let myUid       = null;
+  let existingDoc = null;
+  let state       = null;
+
+  // Catalogue view state. Hoisted ABOVE the legacy ported handlers so
+  // they can read these without temporal dead-zone issues.
+  let catalogueView   = 'home';   // 'home' | 'type' | 'builder'
+  let currentTypeKey  = null;     // null when home
+  let openedBuilder   = null;     // { ci, bi, typeKey } when builder open
+
+  // ── ESCAPE HELPERS ──
+  // Used everywhere in the legacy ported render code. Both names point
+  // to the same five-char substitution; the distinction was conventional
+  // in the original.
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  const escapeHtmlAttr = escapeHtml;
+
+  // ── AUTH + RULESET LOAD + PERMISSION CHECK ──
+  await auth.authStateReady();
+  const user = auth.currentUser;
+  if (!user || !user.emailVerified) {
+    window.location.href = 'index.html';
+  } else if (!rulesetId) {
+    window.location.href = 'my-rulesets.html';
+  } else {
+    myUid = user.uid;
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    if (userDoc.exists()) setNavUsername(userDoc.data().username);
+    initAlerts(db, user.uid);
+
+    const rsDoc = await getDoc(doc(db, 'rulesets', rulesetId));
+    if (!rsDoc.exists()) {
+      window.location.href = 'my-rulesets.html';
+    } else {
+      existingDoc = rsDoc.data();
+      state = window.normalizeRuleset(existingDoc);
+
+      // Permission gate — same logic as edit-ruleset.html.
+      const isOwner     = existingDoc.createdBy === myUid;
+      const isBasic     = !!existingDoc.isBasicSet;
+      const isSiteAdmin = myUid === window.SITE_ADMIN_UID;
+      let canEdit = isOwner;
+      if (isBasic) canEdit = isSiteAdmin;
+      if (existingDoc.playgroupId) {
+        const memb = await getDoc(doc(db, 'memberships', myUid + '_' + existingDoc.playgroupId));
+        if (memb.exists()) {
+          const r = memb.data().role;
+          if (r === 'Leader' || r === 'Administrator') canEdit = true;
+        }
+      }
+      if (!canEdit) {
+        alert('You do not have permission to edit this catalogue.');
+        window.location.href = 'my-rulesets.html';
+      } else {
+        document.getElementById('page-title').textContent =
+          isBasic
+            ? 'Edit Basic Set Catalogue'
+            : 'Catalogue — ' + (existingDoc.name || 'Ruleset');
+        applyInitialUrlState();
+        initUI();
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+      }
+    }
+  }
+
+  // Translate URL params into view state. Defensive — if URL points at
+  // a missing/in-design type or unknown builder id, fall back silently
+  // to a saner view.
+  function applyInitialUrlState() {
+    if (!initialType) return;
+    const cat = state.abilityCatalogue || {};
+    const t   = cat.types && cat.types[initialType];
+    if (!t || t.inDesign) return;
+    currentTypeKey = initialType;
+    catalogueView  = 'type';
+    if (!initialBuilder) return;
+    const cats = Array.isArray(t.categories) ? t.categories : [];
+    let foundCi = -1, foundBi = -1;
+    cats.forEach((c, ci) => {
+      if (foundCi !== -1) return;
+      (c.builders || []).forEach((b, bi) => {
+        if (foundCi === -1 && b && b.id === initialBuilder) {
+          foundCi = ci; foundBi = bi;
+        }
+      });
+    });
+    if (foundCi !== -1) {
+      catalogueView = 'builder';
+      openedBuilder = { ci: foundCi, bi: foundBi, typeKey: initialType };
+    }
+  }
+
+  // Sync URL bar to current view state. Internal nav uses replaceState
+  // so we don't pollute history with one entry per click.
+  function syncUrl() {
+    const u = new URL(window.location.href);
+    u.searchParams.set('id', rulesetId);
+    if (catalogueView === 'home') {
+      u.searchParams.delete('type');
+      u.searchParams.delete('builder');
+    } else if (catalogueView === 'type') {
+      u.searchParams.set('type', currentTypeKey || '');
+      u.searchParams.delete('builder');
+    } else if (catalogueView === 'builder' && openedBuilder) {
+      u.searchParams.set('type', openedBuilder.typeKey || currentTypeKey || '');
+      const cat  = state.abilityCatalogue || {};
+      const tk   = openedBuilder.typeKey || currentTypeKey;
+      const cats = (cat.types && cat.types[tk] && cat.types[tk].categories) || [];
+      const c    = cats[openedBuilder.ci];
+      const b    = c && Array.isArray(c.builders) ? c.builders[openedBuilder.bi] : null;
+      if (b && b.id) u.searchParams.set('builder', b.id);
+      else u.searchParams.delete('builder');
+    }
+    history.replaceState(null, '', u.toString());
+  }
+
+  window.goBackToRuleset = function() {
+    window.location.href = 'edit-ruleset.html?id=' + encodeURIComponent(rulesetId);
+  };
+
+  function initUI() {
+    const cat = state.abilityCatalogue || {};
+    document.getElementById('cat-enabled').checked = cat.enabled !== false;
+    document.getElementById('cat-name').value      = cat.name || '';
+    document.getElementById('cat-desc').value      = cat.description || '';
+    renderCatTierTables();
+    renderCatalogueBodyArea();
+  }
+
+  // Top-level catalogue settings handlers — own (not from legacy port).
+  // ensureCat() is declared further down in the ported legacy block; it
+  // wraps state.abilityCatalogue with seeding fallback. JS hoists `function`
+  // declarations to the top of their module scope so it's safe to call
+  // ensureCat from these handlers even though it appears below in source
+  // order.
+
+  window.catToggleEnabled = function(v) { ensureCat().enabled = !!v; };
+  window.catSetName       = function(v) { ensureCat().name = String(v || ''); };
+  window.catSetDesc       = function(v) { ensureCat().description = String(v || ''); };
+  window.catSetTier = function(table, tier, value) {
+    const cat = ensureCat();
+    if (!cat.canonicalTiers || typeof cat.canonicalTiers !== 'object') cat.canonicalTiers = { featureCosts: {}, flawRefunds: {} };
+    if (!cat.canonicalTiers[table] || typeof cat.canonicalTiers[table] !== 'object') cat.canonicalTiers[table] = {};
+    const n = parseFloat(value);
+    cat.canonicalTiers[table][tier] = Number.isFinite(n) ? Math.max(0, n) : 0;
+  };
+
+  function renderCatTierTables() {
+    const cat = state.abilityCatalogue || {};
+    const tiers = cat.canonicalTiers || {};
+    const featureCosts = tiers.featureCosts || {};
+    const flawRefunds  = tiers.flawRefunds  || {};
+    const tierOrder = ['minor', 'moderate', 'major', 'massive', 'monumental', 'mega', 'mythical'];
+    const renderTable = (containerId, table, fieldName) => {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      el.innerHTML = '';
+      tierOrder.forEach(tier => {
+        const value = Number.isFinite(table[tier]) ? table[tier] : 0;
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:4px;';
+        row.innerHTML = `
+          <span style="text-transform:capitalize;flex:1;font-size:13px;color:#bbb;">${escapeHtml(tier)}</span>
+          <input type="number" step="0.5" value="${value}" min="0"
+                 style="width:80px;text-align:right;background:#111;border:1px solid #222;color:#e0e0e0;font-family:'Open Sans',sans-serif;font-size:13px;padding:6px 10px;border-radius:4px;outline:none;"
+                 onchange="catSetTier('${fieldName}','${tier}',this.value)">
+          <span style="color:#666;font-size:12px;">AP</span>
+        `;
+        el.appendChild(row);
+      });
+    };
+    renderTable('cat-tier-features', featureCosts, 'featureCosts');
+    renderTable('cat-tier-flaws',    flawRefunds,  'flawRefunds');
+  }
+
+  // Helper — every legacy mutation handler reads cat.categories. We
+  // route through this so they automatically scope to the active type.
+  function getActiveCategories(cat) {
+    if (!cat || !currentTypeKey) return [];
+    if (!cat.types || !cat.types[currentTypeKey]) return [];
+    if (!Array.isArray(cat.types[currentTypeKey].categories)) {
+      cat.types[currentTypeKey].categories = [];
+    }
+    return cat.types[currentTypeKey].categories;
+  }
+
+  // View dispatcher.
+  function renderCatalogueBodyArea() {
+    syncUrl();
+    const titleEl   = document.getElementById('catalogue-body-title');
+    const actionsEl = document.getElementById('catalogue-body-actions');
+    if (titleEl)   titleEl.innerHTML = '';
+    if (actionsEl) actionsEl.innerHTML = '';
+
+    if (catalogueView === 'home') {
+      if (titleEl) titleEl.textContent = 'Catalogue';
+      renderHomeView();
+      return;
+    }
+    if (catalogueView === 'type') {
+      if (openedBuilder) { renderBuilderView(); return; }
+      renderTypeView();
+      return;
+    }
+    if (catalogueView === 'builder') {
+      renderBuilderView();
+      return;
+    }
+  }
+
+  function renderHomeView() {
+    const body = document.getElementById('catalogue-body');
+    if (!body) return;
+    const cat = state.abilityCatalogue || {};
+    const types = (cat.types && typeof cat.types === 'object') ? cat.types : {};
+    const order = ['ability', 'artifact', 'artifactAssembly', 'consumableAssembly'];
+    body.innerHTML = `
+      <p class="hint" style="margin-top:0;">
+        Choose a type to author Categories and Builders. Each type is its own world —
+        Categories and Builders inside Ability don't appear inside Artifact, and vice versa.
+      </p>
+      <div class="type-tile-grid">
+        ${order.map(tk => {
+          const t = types[tk];
+          if (!t) return '';
+          const isReady       = !t.inDesign;
+          const builderCount  = (t.categories || []).reduce((a, c) => a + ((c.builders || []).length), 0);
+          const categoryCount = (t.categories || []).length;
+          const click = isReady ? `onclick="catOpenType('${tk}')"` : '';
+          const meta  = isReady
+            ? `<div class="type-tile-meta">${categoryCount} categor${categoryCount === 1 ? 'y' : 'ies'} · ${builderCount} builder${builderCount === 1 ? '' : 's'}</div>`
+            : `<div class="type-tile-meta type-tile-meta-design">In design — coming soon</div>`;
+          return `
+            <div class="type-tile${isReady ? '' : ' in-design'}" ${click}>
+              <div class="type-tile-name">${escapeHtml(t.label || tk)}</div>
+              <div class="type-tile-desc">${escapeHtml(t.description || '')}</div>
+              ${meta}
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
+  function renderTypeView() {
+    const body      = document.getElementById('catalogue-body');
+    const titleEl   = document.getElementById('catalogue-body-title');
+    const actionsEl = document.getElementById('catalogue-body-actions');
+    if (!body) return;
+    const cat = state.abilityCatalogue || {};
+    const t   = cat.types && cat.types[currentTypeKey];
+    if (!t) {
+      catalogueView = 'home'; currentTypeKey = null;
+      renderCatalogueBodyArea();
+      return;
+    }
+    if (titleEl) {
+      titleEl.innerHTML = `
+        <span style="cursor:pointer;color:#888;font-weight:400;font-size:13px;text-transform:none;letter-spacing:0;" onclick="catGoHome()">← Catalogue</span>
+        <span style="margin:0 6px;color:#444;">/</span>
+        <span>${escapeHtml(t.label || currentTypeKey)}</span>
+      `;
+    }
+    if (actionsEl) {
+      actionsEl.innerHTML = `<button class="btn small" onclick="catAddCategory()" type="button">+ Add Category</button>`;
+    }
+    body.innerHTML = `<div id="cat-categories"></div>`;
+    renderCategoryList();
+  }
+
+  function renderBuilderView() {
+    const body      = document.getElementById('catalogue-body');
+    const titleEl   = document.getElementById('catalogue-body-title');
+    if (body) body.innerHTML = `<div id="cat-categories"></div>`;
+    const cat = state.abilityCatalogue || {};
+    const tk  = (openedBuilder && openedBuilder.typeKey) || currentTypeKey;
+    const t   = cat.types && tk && cat.types[tk];
+    if (titleEl && t) {
+      titleEl.innerHTML = `
+        <span style="cursor:pointer;color:#888;font-weight:400;font-size:13px;text-transform:none;letter-spacing:0;" onclick="catGoHome()">← Catalogue</span>
+        <span style="margin:0 6px;color:#444;">/</span>
+        <span style="cursor:pointer;color:#888;font-weight:400;font-size:13px;text-transform:none;letter-spacing:0;" onclick="catOpenType('${tk}')">${escapeHtml(t.label || tk)}</span>
+        <span style="margin:0 6px;color:#444;">/</span>
+        <span>Builder</span>
+      `;
+    }
+    renderBuilderEditor();
+  }
+
+  window.catOpenType = function(typeKey) {
+    const cat = ensureCat();
+    if (!cat.types || !cat.types[typeKey]) return;
+    if (cat.types[typeKey].inDesign) return;
+    currentTypeKey = typeKey;
+    catalogueView  = 'type';
+    openedBuilder  = null;
+    renderCatalogueBodyArea();
+  };
+
+  window.catGoHome = function() {
+    currentTypeKey = null;
+    catalogueView  = 'home';
+    openedBuilder  = null;
+    renderCatalogueBodyArea();
+  };
+
+  // Save — partial update of just the abilityCatalogue field.
+  // This is intentional: the Catalogue page should never overwrite
+  // other ruleset fields (stats, skills, weapons), so a stale state
+  // here can't clobber something the Ruleset Editor is editing.
+  window.saveCatalogue = async function() {
+    const btn = document.getElementById('save-btn');
+    const msg = document.getElementById('save-msg');
+    if (!btn || !state) return;
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    msg.textContent = '';
+    try {
+      await updateDoc(doc(db, 'rulesets', rulesetId), {
+        abilityCatalogue: state.abilityCatalogue || null
+      });
+      msg.style.color = '#66ff99';
+      msg.textContent = 'Saved!';
+      setTimeout(() => { msg.textContent = ''; }, 1500);
+    } catch (e) {
+      console.error(e);
+      msg.style.color = '#ff6666';
+      msg.textContent = 'Save failed: ' + (e && e.message ? e.message : 'unknown error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  };
+
+  // ═══════════════ LEGACY CATALOGUE EDITOR — PORTED ═══════════════
+  //
+  // The category-list renderer, builder editor, and all mutation
+  // handlers from the legacy in-page editor live below. They were
+  // ~847 lines in edit-ruleset.html; we've ported them with these
+  // adjustments:
+  //   • Function names: cat* instead of abil*
+  //   • cat.categories reads → getActiveCategories(cat)
+  //   • Render targets: #cat-categories
+  //   • catOpenBuilder sets view='builder', dispatches via renderCatalogueBodyArea
+  //   • catCloseBuilder sets view='type', dispatches via renderCatalogueBodyArea
+  // Cost engine reused unchanged via window.computeAbilityCost.
+
+  // ── ABILITIES CATALOGUE EDITOR ───────────────────────────────────────
+  //
+  // GMs design the Catalogue here: top-level fields (name, description,
+  // enabled), centralized tier-cost tables (featureCosts / flawRefunds),
+  // and the Categories → Builders tree. This turn implements the SHELL
+  // only — Categories and Builders can be added/renamed/deleted, but
+  // clicking into a Builder's internals (Parameters, Features, Flaws,
+  // system text) shows a placeholder until Turn 3 lands the inner editor.
+  //
+  // Live-reference data model: the Catalogue is part of the ruleset doc
+  // and saves alongside everything else. Player Abilities reference
+  // Builders by id; if a Builder is renamed or has its parameter list
+  // tweaked here, existing Player Abilities update automatically on
+  // their next render via the cost-compute engine.
+
+  // Render the Abilities tab — entry point. Called from initUI() and
+  // any time state.abilityCatalogue changes structurally.
+  // Tier cost tables — two-column grid of tier name + numeric input.
+  // Editable; changes write directly into state. Tier names themselves
+  // are NOT editable here (they're a fixed canonical list); only the
+  // AP values per tier are tunable.
+  // Categories list — collapsible groups of Builders. Each category has
+  // its own header (rename / delete / add-builder) and an expandable
+  // body listing builders. Inline editing for category name; click
+  // "edit" on a builder to open its full editor.
+  //
+  // When a Builder is opened (openedBuilder set), this function
+  // delegates to renderBuilderEditor instead — same DOM target,
+  // different content. This way the editor takes over the "Categories
+  // & Builders" section visually rather than overlaying as a modal.
+  function renderCategoryList() {
+    const el = document.getElementById('cat-categories');
+    if (!el) return;
+    const cat = state.abilityCatalogue || {};
+    const cats = getActiveCategories(cat);
+    if (cats.length === 0) {
+      el.innerHTML = `<div class="hint" style="padding:12px;text-align:center;color:#666;">No categories yet. Click "+ Add Category" above to start.</div>`;
+      return;
+    }
+    el.innerHTML = '';
+    cats.forEach((category, ci) => {
+      const card = document.createElement('div');
+      card.style.cssText = 'border:1px solid #2a2a2a;border-radius:4px;margin-bottom:10px;background:#0d0d0d;';
+      const builderCount = Array.isArray(category.builders) ? category.builders.length : 0;
+      // Header: name input, delete, add builder
+      const head = document.createElement('div');
+      head.style.cssText = 'display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid #1a1a1a;';
+      head.innerHTML = `
+        <input type="text" value="${escapeHtml(category.name || '')}"
+               placeholder="Category name (e.g. Offensive)"
+               oninput="catSetCategoryField(${ci},'name',this.value)"
+               style="flex:1;font-weight:600;">
+        <span style="color:#666;font-size:11px;">${builderCount} builder${builderCount === 1 ? '' : 's'}</span>
+        <button class="btn small" onclick="catAddBuilder(${ci})" type="button">+ Builder</button>
+        <button class="btn small" onclick="catDeleteCategory(${ci})" type="button" style="color:#c66;border-color:#4a2a2a;">Delete</button>
+      `;
+      card.appendChild(head);
+      // Optional description
+      const desc = document.createElement('div');
+      desc.style.cssText = 'padding:6px 12px;border-bottom:1px solid #1a1a1a;background:#0a0a0a;';
+      desc.innerHTML = `
+        <input type="text" value="${escapeHtml(category.description || '')}"
+               placeholder="Optional category description (one-line summary for the browser)"
+               oninput="catSetCategoryField(${ci},'description',this.value)"
+               style="width:100%;font-size:12px;color:#aaa;">
+      `;
+      card.appendChild(desc);
+      // Builders list
+      const list = document.createElement('div');
+      list.style.cssText = 'padding:8px 12px;';
+      const builders = Array.isArray(category.builders) ? category.builders : [];
+      if (builders.length === 0) {
+        list.innerHTML = `<div class="hint" style="padding:6px;color:#666;font-size:12px;">No builders in this category yet.</div>`;
+      } else {
+        builders.forEach((builder, bi) => {
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #151515;';
+          const featureCount = Array.isArray(builder.features) ? builder.features.length : 0;
+          const flawCount    = Array.isArray(builder.flaws)    ? builder.flaws.length    : 0;
+          const ppCount      = Array.isArray(builder.primaryParams)   ? builder.primaryParams.length   : 0;
+          const spCount      = Array.isArray(builder.secondaryParams) ? builder.secondaryParams.length : 0;
+          row.innerHTML = `
+            <input type="text" value="${escapeHtml(builder.name || '')}"
+                   placeholder="Builder name (e.g. Fire Bolt)"
+                   oninput="catSetBuilderField(${ci},${bi},'name',this.value)"
+                   style="flex:1;font-weight:500;">
+            <span style="color:#666;font-size:10px;letter-spacing:.04em;text-transform:uppercase;">
+              ${ppCount}P · ${spCount}S · ${featureCount}F · ${flawCount}f
+            </span>
+            <span style="color:#888;font-size:11px;">Base: ${Number.isFinite(builder.baseCost) ? builder.baseCost : 0} AP</span>
+            <button class="btn small" onclick="catOpenBuilder(${ci},${bi})" type="button">Edit</button>
+            <button class="btn small" onclick="catDeleteBuilder(${ci},${bi})" type="button" style="color:#c66;border-color:#4a2a2a;">×</button>
+          `;
+          list.appendChild(row);
+        });
+      }
+      card.appendChild(list);
+      el.appendChild(card);
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // Builder editor — replaces the Categories list when a Builder is
+  // opened. Renders into the same #cat-categories container so the
+  // surrounding chrome (Catalogue header, tier tables) stays visible
+  // for context.
+  //
+  // Layout:
+  //   [ Header: Back, Builder name, Cost preview pill ]
+  //   [ Basics: name, description, baseCost, systemTextTemplate ]
+  //   [ Primary Parameters list — flat-cost ]
+  //   [ Secondary Parameters list — multiplier-cost with steps ]
+  //   [ Features list — paid-AP options ]
+  //   [ Flaws list — refund-AP options ]
+  //
+  // Each section has its own add button at the section header; rows
+  // include a delete button. Saves happen via the global save button
+  // at the bottom of the page (state mutations only here).
+  function renderBuilderEditor() {
+    const el = document.getElementById('cat-categories');
+    if (!el) return;
+    const b = getOpenedBuilder();
+    if (!b) {
+      // Builder went away — return to the type's category list.
+      openedBuilder = null;
+      catalogueView = 'type';
+      renderCatalogueBodyArea();
+      return;
+    }
+
+    el.innerHTML = '';
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'border:1px solid #2a2a2a;border-radius:4px;background:#0a0a0a;';
+
+    // Header — back button + name preview + live cost pill
+    const head = document.createElement('div');
+    head.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #1a1a1a;background:#0d0d0d;';
+    head.innerHTML = `
+      <button class="btn small" onclick="catCloseBuilder()" type="button" style="flex:0 0 auto;">← Back</button>
+      <span style="flex:1;font-weight:600;color:#ddd;font-size:13px;">${escapeHtml(b.name || '(unnamed Builder)')}</span>
+      <span id="abil-bldr-cost-preview" style="flex:0 0 auto;padding:4px 10px;background:#1a1a14;border:1px solid #2a2a20;border-radius:3px;font-size:11px;color:#d8c060;font-family:monospace;">… AP</span>
+    `;
+    wrap.appendChild(head);
+
+    // Basics — name, description, baseCost, systemTextTemplate
+    const basics = document.createElement('div');
+    basics.style.cssText = 'padding:12px 14px;border-bottom:1px solid #1a1a1a;';
+    basics.innerHTML = `
+      <div class="field">
+        <label>Builder Name</label>
+        <input type="text" value="${escapeHtml(b.name || '')}"
+               placeholder="e.g. Fire Bolt, Healing Touch, Quick Reflexes"
+               oninput="catBldrSetField('name',this.value);document.querySelector('#cat-categories .builder-head-name').textContent=this.value||'(unnamed Builder)';">
+      </div>
+      <div class="field">
+        <label>Description (shown to Players selecting this Builder)</label>
+        <textarea rows="2" oninput="catBldrSetField('description',this.value)"
+                  placeholder="Short description of what the Ability does. The Player picks this Builder by browsing the catalogue, so make it clear.">${escapeHtml(b.description || '')}</textarea>
+      </div>
+      <div style="display:grid;grid-template-columns:160px 1fr;gap:14px;">
+        <div class="field">
+          <label>Base Cost (AP)</label>
+          <input type="number" min="0" step="1" value="${Number.isFinite(b.baseCost) ? b.baseCost : 0}"
+                 oninput="catBldrSetField('baseCost',this.value)">
+        </div>
+        <div class="field">
+          <label>System Text Template <span class="hint" style="margin-left:6px;">Use {token} placeholders to substitute parameter values.</span></label>
+          <textarea rows="2" oninput="catBldrSetField('systemTextTemplate',this.value)"
+                    placeholder="e.g. Deals {damage}d10 fire damage to a target within {range}.">${escapeHtml(b.systemTextTemplate || '')}</textarea>
+        </div>
+      </div>
+    `;
+    wrap.appendChild(basics);
+
+    // Primary parameters
+    wrap.appendChild(buildPrimaryParamsSection(b));
+    // Secondary parameters
+    wrap.appendChild(buildSecondaryParamsSection(b));
+    // Features
+    wrap.appendChild(buildFeaturesSection(b));
+    // Flaws
+    wrap.appendChild(buildFlawsSection(b));
+
+    el.appendChild(wrap);
+
+    // Initial cost preview
+    renderBuilderPreview();
+  }
+
+  // Update only the cost preview pill — called from field handlers
+  // that don't restructure the editor (just tweak values).
+  function renderBuilderPreview() {
+    const pill = document.getElementById('abil-bldr-cost-preview');
+    if (!pill) return;
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const cat = state.abilityCatalogue || {};
+    const tiers = cat.canonicalTiers || {};
+    // Compute against an empty instance (no Player tuning) — this
+    // shows the "default" cost of the Builder before any Player
+    // customization. Helpful for the GM to gauge whether their
+    // Builder lands in the intended cost tier.
+    let cost;
+    try {
+      const result = window.computeAbilityCost
+        ? window.computeAbilityCost(b, {}, tiers)
+        : null;
+      cost = result && Number.isFinite(result.computedCost) ? result.computedCost : null;
+    } catch (e) {
+      cost = null;
+    }
+    pill.textContent = (cost === null ? '— AP' : `${cost} AP default`);
+    // Tier-rough indicator — color the pill to match the cost tier
+    // band from the design doc.
+    let bg = '#1a1a14', border = '#2a2a20', color = '#d8c060';
+    if (cost !== null) {
+      if      (cost <= 5)   { bg = '#0d150d'; border = '#1f2f1f'; color = '#88c080'; }   // Minute / Minor
+      else if (cost <= 20)  { bg = '#15150a'; border = '#2f2f1f'; color = '#d8c060'; }   // Moderate
+      else if (cost <= 50)  { bg = '#1a1408'; border = '#3a2810'; color = '#d8a060'; }   // Major / Massive
+      else if (cost <= 100) { bg = '#1a0d0d'; border = '#3a1f1f'; color = '#d88060'; }   // Monumental / Mega
+      else                  { bg = '#1a0d1a'; border = '#3a1f3a'; color = '#d860d8'; }   // Mythical+
+    }
+    pill.style.background = bg;
+    pill.style.borderColor = border;
+    pill.style.color = color;
+  }
+
+  // ── Builder editor section builders ──
+  // Each returns a DOM element; called from renderBuilderEditor.
+
+  function buildPrimaryParamsSection(b) {
+    const sec = document.createElement('div');
+    sec.style.cssText = 'padding:12px 14px;border-bottom:1px solid #1a1a1a;';
+    const params = Array.isArray(b.primaryParams) ? b.primaryParams : [];
+    sec.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <h4 style="margin:0;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">Primary Parameters <span style="color:#666;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;">— flat AP cost per step</span></h4>
+        <button class="btn small" onclick="catBldrAddPrimary()" type="button">+ Primary Param</button>
+      </div>
+    `;
+    if (params.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'hint';
+      empty.style.cssText = 'padding:8px;color:#666;font-size:12px;text-align:center;';
+      empty.textContent = 'No primary parameters yet. Add one to make this Builder tunable (Damage Dice, STAT Bonus, Healing, etc).';
+      sec.appendChild(empty);
+    } else {
+      params.forEach((p, idx) => {
+        const row = document.createElement('div');
+        row.style.cssText = 'border:1px solid #1f1f1f;border-radius:3px;padding:8px 10px;margin-bottom:6px;background:#0d0d0d;';
+        row.innerHTML = `
+          <div style="display:grid;grid-template-columns:1fr 100px 100px 100px 100px 100px 1fr 30px;gap:6px;align-items:center;">
+            <input type="text" placeholder="Name (e.g. Damage Dice)" value="${escapeHtml(p.name || '')}"
+                   oninput="catBldrSetPrimary(${idx},'name',this.value)" title="Display name">
+            <input type="number" placeholder="Default" value="${Number.isFinite(p.defaultValue) ? p.defaultValue : 0}" step="0.1"
+                   oninput="catBldrSetPrimary(${idx},'defaultValue',this.value)" title="Default value (0 cost at this point)">
+            <input type="number" placeholder="Min" value="${Number.isFinite(p.minValue) ? p.minValue : 0}" step="0.1"
+                   oninput="catBldrSetPrimary(${idx},'minValue',this.value)" title="Minimum allowed">
+            <input type="number" placeholder="Max" value="${Number.isFinite(p.maxValue) ? p.maxValue : 100}" step="0.1"
+                   oninput="catBldrSetPrimary(${idx},'maxValue',this.value)" title="Maximum allowed">
+            <input type="number" placeholder="AP/step" value="${Number.isFinite(p.stepCost) ? p.stepCost : 1}" step="0.1"
+                   oninput="catBldrSetPrimary(${idx},'stepCost',this.value)" title="AP cost per +1 above default (or refund per −1 below)">
+            <input type="text" placeholder="Unit" value="${escapeHtml(p.displayUnit || '')}"
+                   oninput="catBldrSetPrimary(${idx},'displayUnit',this.value)" title="Display unit (d10, ft, %)">
+            <input type="text" placeholder="Token (for systemText)" value="${escapeHtml(p.token || '')}"
+                   oninput="catBldrSetPrimary(${idx},'token',this.value)" title="Token name for {token} substitution in system text">
+            <button class="btn small" onclick="catBldrDeletePrimary(${idx})" type="button" style="color:#c66;border-color:#4a2a2a;">×</button>
+          </div>
+          <input type="text" placeholder="Description (optional, shown to Player when tuning)" value="${escapeHtml(p.description || '')}"
+                 oninput="catBldrSetPrimary(${idx},'description',this.value)"
+                 style="width:100%;margin-top:6px;font-size:12px;color:#aaa;">
+        `;
+        sec.appendChild(row);
+      });
+    }
+    return sec;
+  }
+
+  function buildSecondaryParamsSection(b) {
+    const sec = document.createElement('div');
+    sec.style.cssText = 'padding:12px 14px;border-bottom:1px solid #1a1a1a;';
+    const params = Array.isArray(b.secondaryParams) ? b.secondaryParams : [];
+    sec.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <h4 style="margin:0;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">Secondary Parameters <span style="color:#666;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;">— multiply total cost by step's multiplier</span></h4>
+        <button class="btn small" onclick="catBldrAddSecondary()" type="button">+ Secondary Param</button>
+      </div>
+    `;
+    if (params.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'hint';
+      empty.style.cssText = 'padding:8px;color:#666;font-size:12px;text-align:center;';
+      empty.textContent = 'No secondary parameters yet. Use these for Range, Activation Cost, Duration, etc — Player picks a step, multiplier applies to total Ability cost.';
+      sec.appendChild(empty);
+    } else {
+      params.forEach((p, idx) => {
+        const card = document.createElement('div');
+        card.style.cssText = 'border:1px solid #1f1f1f;border-radius:3px;padding:8px 10px;margin-bottom:8px;background:#0d0d0d;';
+        const steps = Array.isArray(p.steps) ? p.steps : [];
+        const defaultIdx = Number.isFinite(p.defaultStepIndex) ? p.defaultStepIndex : 0;
+        // Param header row — name, unit, token, default step picker, delete
+        const paramHead = `
+          <div style="display:grid;grid-template-columns:1fr 100px 1fr 100px 30px;gap:6px;align-items:center;margin-bottom:6px;">
+            <input type="text" placeholder="Name (e.g. Range)" value="${escapeHtml(p.name || '')}"
+                   oninput="catBldrSetSecondary(${idx},'name',this.value)" title="Display name">
+            <input type="text" placeholder="Unit" value="${escapeHtml(p.displayUnit || '')}"
+                   oninput="catBldrSetSecondary(${idx},'displayUnit',this.value)" title="Display unit (ft, sec, etc)">
+            <input type="text" placeholder="Token (for systemText)" value="${escapeHtml(p.token || '')}"
+                   oninput="catBldrSetSecondary(${idx},'token',this.value)" title="Token name for {token} substitution in system text">
+            <input type="number" min="0" max="${Math.max(0, steps.length - 1)}" value="${defaultIdx}"
+                   oninput="catBldrSetSecondary(${idx},'defaultStepIndex',this.value)" title="Default step index (0-based)">
+            <button class="btn small" onclick="catBldrDeleteSecondary(${idx})" type="button" style="color:#c66;border-color:#4a2a2a;">×</button>
+          </div>
+        `;
+        const paramDesc = `
+          <input type="text" placeholder="Description (optional)" value="${escapeHtml(p.description || '')}"
+                 oninput="catBldrSetSecondary(${idx},'description',this.value)"
+                 style="width:100%;margin-bottom:8px;font-size:12px;color:#aaa;">
+        `;
+        // Steps editor
+        let stepsHtml = '';
+        if (steps.length === 0) {
+          stepsHtml = `<div class="hint" style="padding:6px;color:#666;font-size:11px;text-align:center;">No steps. Add at least one (the default step) for the parameter to work.</div>`;
+        } else {
+          stepsHtml = `
+            <div style="display:grid;grid-template-columns:60px 1fr 1fr 100px 30px;gap:6px;font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.05em;padding:0 4px;margin-bottom:4px;">
+              <span>Idx</span>
+              <span>Value</span>
+              <span>Label (optional)</span>
+              <span>Multiplier</span>
+              <span></span>
+            </div>
+          `;
+          steps.forEach((s, si) => {
+            const isDefault = si === defaultIdx;
+            stepsHtml += `
+              <div style="display:grid;grid-template-columns:60px 1fr 1fr 100px 30px;gap:6px;align-items:center;margin-bottom:3px;${isDefault ? 'background:#0a1a0a;' : ''}padding:2px 4px;border-radius:2px;">
+                <span style="font-family:monospace;font-size:11px;color:${isDefault ? '#88c080' : '#888'};">${si}${isDefault ? ' ★' : ''}</span>
+                <input type="text" value="${escapeHtml(String(s.value === null || s.value === undefined ? '' : s.value))}"
+                       oninput="catBldrSetStep(${idx},${si},'value',this.value)" title="Numeric value, or label like 'Touch'/'Self'">
+                <input type="text" value="${escapeHtml(s.label || '')}"
+                       oninput="catBldrSetStep(${idx},${si},'label',this.value)" title="Display override (preferred over value)">
+                <input type="number" step="0.05" value="${Number.isFinite(s.multiplier) ? s.multiplier : 1}"
+                       oninput="catBldrSetStep(${idx},${si},'multiplier',this.value)" title="Cost multiplier (1.0 = neutral, 1.5 = +50%)">
+                <button class="btn small" onclick="catBldrDeleteStep(${idx},${si})" type="button" style="color:#c66;border-color:#4a2a2a;font-size:10px;padding:2px 6px;">×</button>
+              </div>
+            `;
+          });
+        }
+        const stepsActions = `
+          <div style="display:flex;justify-content:flex-end;margin-top:6px;">
+            <button class="btn small" onclick="catBldrAddStep(${idx})" type="button" style="font-size:10px;padding:2px 8px;">+ Step</button>
+          </div>
+        `;
+        card.innerHTML = paramHead + paramDesc + `<div style="background:#080808;padding:8px;border-radius:2px;border:1px solid #151515;">${stepsHtml}${stepsActions}</div>`;
+        sec.appendChild(card);
+      });
+    }
+    return sec;
+  }
+
+  // Tier dropdown options — used for both features and flaws.
+  const ABIL_TIER_ORDER = ['minor', 'moderate', 'major', 'massive', 'monumental', 'mega', 'mythical'];
+
+  function buildFeaturesSection(b) {
+    const sec = document.createElement('div');
+    sec.style.cssText = 'padding:12px 14px;border-bottom:1px solid #1a1a1a;';
+    const cat = state.abilityCatalogue || {};
+    const tiers = (cat.canonicalTiers && cat.canonicalTiers.featureCosts) || {};
+    const features = Array.isArray(b.features) ? b.features : [];
+    sec.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <h4 style="margin:0;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">Features <span style="color:#666;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;">— Player pays AP to take</span></h4>
+        <button class="btn small" onclick="catBldrAddFeature()" type="button">+ Feature</button>
+      </div>
+    `;
+    if (features.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'hint';
+      empty.style.cssText = 'padding:8px;color:#666;font-size:12px;text-align:center;';
+      empty.textContent = 'No features yet. Features expand or strengthen the Ability — Player pays AP at the feature\'s tier to take it.';
+      sec.appendChild(empty);
+    } else {
+      features.forEach((f, idx) => {
+        const tierCost = Number.isFinite(tiers[f.tier]) ? tiers[f.tier] : '?';
+        const row = document.createElement('div');
+        row.style.cssText = 'border:1px solid #1f1f1f;border-radius:3px;padding:8px 10px;margin-bottom:6px;background:#0d0d0d;';
+        const tierOpts = ABIL_TIER_ORDER.map(t => {
+          const cost = Number.isFinite(tiers[t]) ? tiers[t] : '?';
+          return `<option value="${t}"${t === f.tier ? ' selected' : ''}>${t} (${cost} AP)</option>`;
+        }).join('');
+        row.innerHTML = `
+          <div style="display:grid;grid-template-columns:1fr 180px 80px 30px;gap:6px;align-items:center;">
+            <input type="text" placeholder="Feature name" value="${escapeHtml(f.name || '')}"
+                   oninput="catBldrSetFeature(${idx},'name',this.value)">
+            <select onchange="catBldrSetFeature(${idx},'tier',this.value)">${tierOpts}</select>
+            <span style="text-align:center;color:#d8c060;font-family:monospace;font-size:12px;">+${tierCost} AP</span>
+            <button class="btn small" onclick="catBldrDeleteFeature(${idx})" type="button" style="color:#c66;border-color:#4a2a2a;">×</button>
+          </div>
+          <input type="text" placeholder="Description (optional)" value="${escapeHtml(f.description || '')}"
+                 oninput="catBldrSetFeature(${idx},'description',this.value)"
+                 style="width:100%;margin-top:6px;font-size:12px;color:#aaa;">
+        `;
+        sec.appendChild(row);
+      });
+    }
+    return sec;
+  }
+
+  function buildFlawsSection(b) {
+    const sec = document.createElement('div');
+    sec.style.cssText = 'padding:12px 14px;';
+    const cat = state.abilityCatalogue || {};
+    const refunds = (cat.canonicalTiers && cat.canonicalTiers.flawRefunds) || {};
+    const flaws = Array.isArray(b.flaws) ? b.flaws : [];
+    sec.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <h4 style="margin:0;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">Flaws <span style="color:#666;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;">— Player gets AP refunded for taking</span></h4>
+        <button class="btn small" onclick="catBldrAddFlaw()" type="button">+ Flaw</button>
+      </div>
+    `;
+    if (flaws.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'hint';
+      empty.style.cssText = 'padding:8px;color:#666;font-size:12px;text-align:center;';
+      empty.textContent = 'No flaws yet. Flaws narrow or restrict the Ability — Player gets AP back at the flaw\'s tier to take it.';
+      sec.appendChild(empty);
+    } else {
+      flaws.forEach((f, idx) => {
+        const refund = Number.isFinite(refunds[f.tier]) ? refunds[f.tier] : '?';
+        const row = document.createElement('div');
+        row.style.cssText = 'border:1px solid #1f1f1f;border-radius:3px;padding:8px 10px;margin-bottom:6px;background:#0d0d0d;';
+        const tierOpts = ABIL_TIER_ORDER.map(t => {
+          const r = Number.isFinite(refunds[t]) ? refunds[t] : '?';
+          return `<option value="${t}"${t === f.tier ? ' selected' : ''}>${t} (−${r} AP)</option>`;
+        }).join('');
+        row.innerHTML = `
+          <div style="display:grid;grid-template-columns:1fr 180px 80px 30px;gap:6px;align-items:center;">
+            <input type="text" placeholder="Flaw name" value="${escapeHtml(f.name || '')}"
+                   oninput="catBldrSetFlaw(${idx},'name',this.value)">
+            <select onchange="catBldrSetFlaw(${idx},'tier',this.value)">${tierOpts}</select>
+            <span style="text-align:center;color:#88c080;font-family:monospace;font-size:12px;">−${refund} AP</span>
+            <button class="btn small" onclick="catBldrDeleteFlaw(${idx})" type="button" style="color:#c66;border-color:#4a2a2a;">×</button>
+          </div>
+          <input type="text" placeholder="Description (optional)" value="${escapeHtml(f.description || '')}"
+                 oninput="catBldrSetFlaw(${idx},'description',this.value)"
+                 style="width:100%;margin-top:6px;font-size:12px;color:#aaa;">
+        `;
+        sec.appendChild(row);
+      });
+    }
+    return sec;
+  }
+
+  // ── HANDLERS ──
+  // All mutate state.abilityCatalogue in place and re-render whatever
+  // surface they affect. State is persisted by the existing saveRuleset
+  // path (we just need to add abilityCatalogue to the payload — done
+  // separately).
+
+  function ensureCat() {
+    if (!state.abilityCatalogue || typeof state.abilityCatalogue !== 'object') {
+      state.abilityCatalogue = window.normalizeRuleset({}).abilityCatalogue;
+    }
+    return state.abilityCatalogue;
+  }
+
+  window.catAddCategory = function() {
+    const cat = ensureCat();
+    if (!Array.isArray(getActiveCategories(cat))) if (cat.types && cat.types[currentTypeKey]) cat.types[currentTypeKey].categories = [];
+    getActiveCategories(cat).push({
+      id: 'acat_' + Math.random().toString(36).slice(2, 10),
+      name: '',
+      description: '',
+      builders: []
+    });
+    renderCategoryList();
+  };
+
+  window.catDeleteCategory = function(ci) {
+    const cat = ensureCat();
+    const cats = getActiveCategories(cat);
+    if (!cats[ci]) return;
+    const name = cats[ci].name || 'this category';
+    const builders = Array.isArray(cats[ci].builders) ? cats[ci].builders : [];
+    if (builders.length > 0) {
+      if (!confirm(`Delete "${name}" and all ${builders.length} builder(s) inside it? This cannot be undone.`)) return;
+    } else {
+      if (!confirm(`Delete "${name}"?`)) return;
+    }
+    cats.splice(ci, 1);
+    renderCategoryList();
+  };
+
+  window.catSetCategoryField = function(ci, field, value) {
+    const cat = ensureCat();
+    const c = (getActiveCategories(cat))[ci];
+    if (!c) return;
+    c[field] = String(value || '');
+    // Don't full-rerender (would lose focus). Just update the badge
+    // count if it changed (no-op for name/description; matters when
+    // builder count changes elsewhere).
+  };
+
+  window.catAddBuilder = function(ci) {
+    const cat = ensureCat();
+    const c = (getActiveCategories(cat))[ci];
+    if (!c) return;
+    if (!Array.isArray(c.builders)) c.builders = [];
+    c.builders.push({
+      id: 'bld_' + Math.random().toString(36).slice(2, 10),
+      name: '',
+      description: '',
+      baseCost: 0,
+      systemTextTemplate: '',
+      primaryParams: [],
+      secondaryParams: [],
+      features: [],
+      flaws: []
+    });
+    renderCategoryList();
+  };
+
+  window.catDeleteBuilder = function(ci, bi) {
+    const cat = ensureCat();
+    const c = (getActiveCategories(cat))[ci];
+    if (!c || !Array.isArray(c.builders) || !c.builders[bi]) return;
+    const name = c.builders[bi].name || 'this builder';
+    if (!confirm(`Delete "${name}"? This will be reflected on every Character Ability that references it.`)) return;
+    c.builders.splice(bi, 1);
+    renderCategoryList();
+  };
+
+  window.catSetBuilderField = function(ci, bi, field, value) {
+    const cat = ensureCat();
+    const c = (getActiveCategories(cat))[ci];
+    if (!c || !Array.isArray(c.builders) || !c.builders[bi]) return;
+    c.builders[bi][field] = String(value || '');
+  };
+
+  // Open the full Builder editor. Stores the path on `openedBuilder`
+  // and re-renders the Categories panel — when openedBuilder is set,
+  // renderCategoryList switches to renderBuilderEditor instead.
+  // Path-based addressing (ci/bi) means we always look up the live
+  // Builder; mutations stay in sync with state.
+  window.catOpenBuilder = function(ci, bi) {
+    const cat = ensureCat();
+    const c = getActiveCategories(cat)[ci];
+    if (!c || !Array.isArray(c.builders) || !c.builders[bi]) return;
+    openedBuilder = { ci, bi, typeKey: currentTypeKey };
+    catalogueView = 'builder';
+    renderCatalogueBodyArea();
+    const body = document.getElementById('catalogue-body');
+    if (body && body.scrollIntoView) body.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  };
+
+  // Close Builder editor — return to category list.
+  window.catCloseBuilder = function() {
+    openedBuilder = null;
+    catalogueView = 'type';
+    renderCatalogueBodyArea();
+  };
+
+  // ── BUILDER FIELD HANDLERS ──
+  // These edit the OPENED builder via openedBuilder.{ci,bi} so the UI
+  // doesn't have to thread indices into every input. Always re-renders
+  // either the modal as a whole (for structural changes — adding
+  // params, features, flaws) or just the cost preview (for value
+  // changes — names, defaults, etc).
+  function getOpenedBuilder() {
+    if (!openedBuilder) return null;
+    const cat = ensureCat();
+    // Resolve against openedBuilder.typeKey first — covers the case
+    // where a future code path sets openedBuilder without first
+    // setting currentTypeKey. Falls back to currentTypeKey for the
+    // normal nav flow (where they're always set together).
+    const tk = openedBuilder.typeKey || currentTypeKey;
+    if (!tk || !cat.types || !cat.types[tk]) return null;
+    const cats = Array.isArray(cat.types[tk].categories) ? cat.types[tk].categories : [];
+    const c = cats[openedBuilder.ci];
+    if (!c || !Array.isArray(c.builders)) return null;
+    const b = c.builders[openedBuilder.bi];
+    return b || null;
+  }
+
+  window.catBldrSetField = function(field, value) {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    if (field === 'baseCost') {
+      const n = parseFloat(value);
+      b.baseCost = Number.isFinite(n) ? Math.max(0, n) : 0;
+    } else {
+      b[field] = String(value || '');
+    }
+    // Field changes don't restructure the editor — only update the
+    // cost preview at the top of the editor.
+    renderBuilderPreview();
+  };
+
+  // ── PRIMARY PARAMS ──
+
+  window.catBldrAddPrimary = function() {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    if (!Array.isArray(b.primaryParams)) b.primaryParams = [];
+    b.primaryParams.push({
+      id: 'pp_' + Math.random().toString(36).slice(2, 10),
+      name: '',
+      description: '',
+      defaultValue: 0,
+      minValue: 0,
+      maxValue: 100,
+      stepCost: 1,
+      displayUnit: '',
+      token: ''
+    });
+    renderBuilderEditor();
+  };
+
+  window.catBldrDeletePrimary = function(idx) {
+    const b = getOpenedBuilder();
+    if (!b || !Array.isArray(b.primaryParams) || !b.primaryParams[idx]) return;
+    const name = b.primaryParams[idx].name || 'this parameter';
+    if (!confirm(`Delete primary parameter "${name}"? Player Abilities referencing it will fall back to default.`)) return;
+    b.primaryParams.splice(idx, 1);
+    renderBuilderEditor();
+  };
+
+  window.catBldrSetPrimary = function(idx, field, value) {
+    const b = getOpenedBuilder();
+    if (!b || !Array.isArray(b.primaryParams) || !b.primaryParams[idx]) return;
+    const p = b.primaryParams[idx];
+    if (field === 'defaultValue' || field === 'minValue' || field === 'maxValue' || field === 'stepCost') {
+      const n = parseFloat(value);
+      p[field] = Number.isFinite(n) ? n : 0;
+    } else {
+      p[field] = String(value || '');
+    }
+    renderBuilderPreview();
+  };
+
+  // ── SECONDARY PARAMS ──
+
+  window.catBldrAddSecondary = function() {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    if (!Array.isArray(b.secondaryParams)) b.secondaryParams = [];
+    b.secondaryParams.push({
+      id: 'sp_' + Math.random().toString(36).slice(2, 10),
+      name: '',
+      description: '',
+      defaultStepIndex: 0,
+      steps: [{ value: 0, label: 'Default', multiplier: 1.0 }],
+      displayUnit: '',
+      token: ''
+    });
+    renderBuilderEditor();
+  };
+
+  window.catBldrDeleteSecondary = function(idx) {
+    const b = getOpenedBuilder();
+    if (!b || !Array.isArray(b.secondaryParams) || !b.secondaryParams[idx]) return;
+    const name = b.secondaryParams[idx].name || 'this parameter';
+    if (!confirm(`Delete secondary parameter "${name}"? Player Abilities referencing it will fall back to default step.`)) return;
+    b.secondaryParams.splice(idx, 1);
+    renderBuilderEditor();
+  };
+
+  window.catBldrSetSecondary = function(idx, field, value) {
+    const b = getOpenedBuilder();
+    if (!b || !Array.isArray(b.secondaryParams) || !b.secondaryParams[idx]) return;
+    const p = b.secondaryParams[idx];
+    if (field === 'defaultStepIndex') {
+      const n = parseInt(value);
+      p.defaultStepIndex = Number.isFinite(n) ? Math.max(0, n) : 0;
+    } else {
+      p[field] = String(value || '');
+    }
+    renderBuilderPreview();
+  };
+
+  window.catBldrAddStep = function(paramIdx) {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const p = b.secondaryParams && b.secondaryParams[paramIdx];
+    if (!p) return;
+    if (!Array.isArray(p.steps)) p.steps = [];
+    // Default new step to 1.0 multiplier — neutral. Designer tunes.
+    p.steps.push({ value: '', label: '', multiplier: 1.0 });
+    renderBuilderEditor();
+  };
+
+  window.catBldrDeleteStep = function(paramIdx, stepIdx) {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const p = b.secondaryParams && b.secondaryParams[paramIdx];
+    if (!p || !Array.isArray(p.steps) || !p.steps[stepIdx]) return;
+    p.steps.splice(stepIdx, 1);
+    // If we removed the default step, reset to 0.
+    if (p.defaultStepIndex >= p.steps.length) p.defaultStepIndex = 0;
+    renderBuilderEditor();
+  };
+
+  window.catBldrSetStep = function(paramIdx, stepIdx, field, value) {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const p = b.secondaryParams && b.secondaryParams[paramIdx];
+    if (!p || !Array.isArray(p.steps) || !p.steps[stepIdx]) return;
+    const s = p.steps[stepIdx];
+    if (field === 'multiplier') {
+      const n = parseFloat(value);
+      // Floor at 0.1x — anything lower combines pathologically. The
+      // 0.25 floor in the normalizer is for safety; this 0.1 is a
+      // softer guideline so designers can still set very-low steps
+      // like "Touch range only — 0.5×" without being clamped.
+      s.multiplier = Number.isFinite(n) ? Math.max(0.1, n) : 1.0;
+    } else if (field === 'value') {
+      // Try to parse as number; if not, keep as string (for labels
+      // like "Touch", "Self").
+      const n = parseFloat(value);
+      s.value = Number.isFinite(n) && String(value).trim() !== '' && !isNaN(value) ? n : value;
+    } else {
+      s[field] = String(value || '');
+    }
+    renderBuilderPreview();
+  };
+
+  // ── FEATURES & FLAWS ──
+
+  window.catBldrAddFeature = function() {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    if (!Array.isArray(b.features)) b.features = [];
+    b.features.push({
+      id: 'feat_' + Math.random().toString(36).slice(2, 10),
+      name: '',
+      description: '',
+      tier: 'minor'
+    });
+    renderBuilderEditor();
+  };
+
+  window.catBldrDeleteFeature = function(idx) {
+    const b = getOpenedBuilder();
+    if (!b || !Array.isArray(b.features) || !b.features[idx]) return;
+    const name = b.features[idx].name || 'this feature';
+    if (!confirm(`Delete feature "${name}"? Player Abilities that selected it will lose the selection.`)) return;
+    b.features.splice(idx, 1);
+    renderBuilderEditor();
+  };
+
+  window.catBldrSetFeature = function(idx, field, value) {
+    const b = getOpenedBuilder();
+    if (!b || !Array.isArray(b.features) || !b.features[idx]) return;
+    b.features[idx][field] = String(value || '');
+    renderBuilderPreview();
+  };
+
+  window.catBldrAddFlaw = function() {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    if (!Array.isArray(b.flaws)) b.flaws = [];
+    b.flaws.push({
+      id: 'flaw_' + Math.random().toString(36).slice(2, 10),
+      name: '',
+      description: '',
+      tier: 'minor'
+    });
+    renderBuilderEditor();
+  };
+
+  window.catBldrDeleteFlaw = function(idx) {
+    const b = getOpenedBuilder();
+    if (!b || !Array.isArray(b.flaws) || !b.flaws[idx]) return;
+    const name = b.flaws[idx].name || 'this flaw';
+    if (!confirm(`Delete flaw "${name}"? Player Abilities that selected it will lose the selection.`)) return;
+    b.flaws.splice(idx, 1);
+    renderBuilderEditor();
+  };
+
+  window.catBldrSetFlaw = function(idx, field, value) {
+    const b = getOpenedBuilder();
+    if (!b || !Array.isArray(b.flaws) || !b.flaws[idx]) return;
+    b.flaws[idx][field] = String(value || '');
+    renderBuilderPreview();
+  };
+</script>
+
+</body>
+</html>
