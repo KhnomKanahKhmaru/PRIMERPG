@@ -278,7 +278,11 @@ async function initAlerts(db, uid) {
   }
 }
 
-async function createAlert(db, uid, text, link) {
+async function createAlert(db, uid, text, link, playgroupId) {
+  // playgroupId is required for cross-user alerts — Firestore rules verify
+  // that writer and recipient share the playgroup, or that the writer is
+  // its Leader (covers kick/ban alerts after the recipient is removed).
+  // Self-alerts (recipient uid == writer uid) can pass null or omit it.
   const mod = await import('https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js');
   try {
     await mod.addDoc(mod.collection(db, 'alerts'), {
@@ -286,6 +290,7 @@ async function createAlert(db, uid, text, link) {
       text,
       read: false,
       link: link || null,
+      playgroupId: playgroupId || null,
       createdAt: mod.serverTimestamp()
     });
   } catch (e) {
