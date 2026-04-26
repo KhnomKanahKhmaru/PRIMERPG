@@ -6884,7 +6884,18 @@
     const extraOpen       = abilExtraOpen.has(abl.id);
 
     // Display name — Player's custom name takes priority over Builder's.
-    const displayName = abl.name || builder.name || '(unnamed)';
+    // If the Player set a custom name (different from the Builder's), the
+    // header shows "(Builder) PlayerName" so a GM scanning a list can see
+    // both the canonical Ability type and the player's flavor name. If
+    // no custom name is set (or they happen to match), we just show the
+    // Builder name once.
+    const builderName = builder.name || '';
+    const customName  = (abl.name && abl.name.trim()) ? abl.name : '';
+    const showBuilderPrefix = customName && customName !== builderName && builderName;
+    const displayName = customName || builderName || '(unnamed)';
+    const builderPrefixHtml = showBuilderPrefix
+      ? `<span style="font-weight:600;color:#888;font-size:13px;">(${escapeHtml(builderName)})</span>`
+      : '';
 
     // Cost band color (matches editor & builder UI)
     let costBg = '#1a1a14', costBorder = '#2a2a20', costColor = '#d8c060';
@@ -6934,6 +6945,7 @@
         ${iconImgHtml}
         <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;">
           <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
+            ${builderPrefixHtml}
             <span style="font-weight:700;color:#e6e0cc;font-size:16px;">${escapeHtml(displayName)}</span>
             ${abl.tagline ? `<span style="font-size:13px;font-style:italic;color:#999;">${escapeHtml(abl.tagline)}</span>` : ''}
           </div>
