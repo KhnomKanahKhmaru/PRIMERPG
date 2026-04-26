@@ -6826,19 +6826,23 @@
 
   // ── ABILITY CARD ──
   //
-  // Compact display unit on the Abilities tab. Has two modes:
+  // The Card is the player's view of one of their Abilities. Three
+  // independent state toggles drive its display:
   //
-  //   Collapsed (default): name, tagline, category breadcrumb, cost
-  //                        pill, system text, feature/flaw tags. The
-  //                        "essentials" — what a Player needs to read
-  //                        the Ability at the table.
+  //   1. CARD-LEVEL collapse → when collapsed, only the header strip
+  //      shows (Name + AP Cost + Tagline). Click anywhere on the
+  //      header to toggle.
   //
-  //   Expanded:            also shows Visual + Prose blocks. Toggled by
-  //                        clicking the card header. State stored in
-  //                        abilCardExpanded (Set of Ability ids) so it
-  //                        survives re-renders within a session, but
-  //                        is NOT persisted to Firestore (transient UI
-  //                        state, like other collapse state in the app).
+  //   2. SYSTEM box expand → when System is expanded, it shows the
+  //      Features and Flaws list under the rules text. Click on the
+  //      System box to toggle.
+  //
+  //   3. EXTRA tab open → small tab at the bottom of the card. Click
+  //      to toggle the Extra section visibility.
+  //
+  // Visual is read-only — it shows the player's authored visual
+  // description (or the GM's guideline if the player hasn't written
+  // theirs yet, in italic placeholder style). Not interactive.
   //
   // Orphan cards (Builder deleted from the ruleset since the Player
   // built the Ability) get a distinct red treatment so the Player
@@ -6850,15 +6854,15 @@
     if (!ref) {
       // Orphan — Builder gone from ruleset.
       return `
-        <div class="abil-card abil-card-orphan" style="border:1px solid #4a2a2a;background:#1a0d0d;border-radius:4px;padding:12px;">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <div class="abil-card abil-card-orphan" style="border:1px solid #4a2a2a;background:#1a0d0d;border-radius:6px;padding:14px;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
             <div>
-              <div style="font-weight:600;color:#e08080;font-size:14px;">${escapeHtml(abl.name || '(unnamed)')}</div>
-              <div style="font-size:11px;color:#aa6060;margin-top:3px;">
+              <div style="font-weight:700;color:#e08080;font-size:15px;">${escapeHtml(abl.name || '(unnamed)')}</div>
+              <div style="font-size:12px;color:#aa6060;margin-top:4px;line-height:1.5;">
                 The Builder this Ability was made from no longer exists in the ruleset.
                 The data is preserved — ask your GM to restore the Builder, or delete this Ability.
               </div>
-              <div style="font-size:10px;color:#704040;margin-top:4px;font-family:monospace;">builderId: ${escapeHtml(abl.builderId || '?')}</div>
+              <div style="font-size:10px;color:#704040;margin-top:6px;font-family:monospace;">builderId: ${escapeHtml(abl.builderId || '?')}</div>
             </div>
             ${canEdit ? `
               <button class="ct-btn" type="button" onclick="abilitiesDelete(${idx})" style="color:#c66;border-color:#4a2a2a;flex-shrink:0;">Delete</button>
@@ -6869,24 +6873,18 @@
     }
 
     const builder = ref.builder;
-    const category = ref.category;
     const tiers = (activeRuleset.abilityCatalogue && activeRuleset.abilityCatalogue.canonicalTiers) || {};
     const costRes = charAbilities.computeAbilityCost(builder, abl, tiers);
     const cost = costRes.computedCost;
     const systemText = charAbilities.renderSystemText(builder, abl);
-    const isExpanded = abilCardExpanded.has(abl.id);
 
-    // Selected feature/flaw tags — pulled from the Builder so renames
-    // propagate. Selected ids that no longer match a current feature/
-    // flaw are silently filtered out (graceful degradation).
-    const selFeatures = (abl.selectedFeatureIds || [])
-      .map(fid => (builder.features || []).find(f => f && f.id === fid))
-      .filter(Boolean);
-    const selFlaws = (abl.selectedFlawIds || [])
-      .map(fid => (builder.flaws || []).find(f => f && f.id === fid))
-      .filter(Boolean);
+    // Three independent state checks
+    const cardCollapsed   = abilCardCollapsed.has(abl.id);
+    const systemExpanded  = abilSystemExpanded.has(abl.id);
+    const extraOpen       = abilExtraOpen.has(abl.id);
 
-    const hasExpandable = (abl.visual && abl.visual.trim()) || (abl.prose && abl.prose.trim());
+    // Display name — Player's custom name takes priority over Builder's.
+    const displayName = abl.name || builder.name || '(unnamed)';
 
     // Cost band color (matches editor & builder UI)
     let costBg = '#1a1a14', costBorder = '#2a2a20', costColor = '#d8c060';
@@ -6896,110 +6894,214 @@
     else if (cost <= 100) { costBg = '#1a0d0d'; costBorder = '#3a1f1f'; costColor = '#d88060'; }
     else                  { costBg = '#1a0d1a'; costBorder = '#3a1f3a'; costColor = '#d860d8'; }
 
-    // Header row — name + breadcrumb + cost pill. Click toggles expand
-    // when there's expandable content. Cursor styled accordingly.
-    const headerCursor = hasExpandable ? 'cursor:pointer;' : '';
-    const expandCaret = hasExpandable
-      ? `<span style="color:#666;font-size:10px;margin-right:4px;">${isExpanded ? '▾' : '▸'}</span>`
-      : '';
-    const headerOnclick = hasExpandable
-      ? `onclick="abilitiesToggleCard('${escapeHtml(abl.id)}')"`
-      : '';
-
-    let html = `
-      <div class="abil-card" style="border:1px solid #2a2a2a;background:#0d0d0d;border-radius:4px;overflow:hidden;">
-        <div ${headerOnclick} style="display:flex;align-items:flex-start;gap:10px;justify-content:space-between;padding:12px 14px;${headerCursor}">
-          <div style="flex:1;min-width:0;">
-            <div style="display:flex;align-items:center;gap:6px;">
-              ${expandCaret}
-              <span style="font-weight:600;color:#e6e0cc;font-size:14px;">${escapeHtml(abl.name || builder.name || '(unnamed)')}</span>
-            </div>
-            ${abl.tagline ? `<div style="font-size:12px;font-style:italic;color:#999;margin-top:3px;margin-left:${hasExpandable ? '14px' : '0'};">"${escapeHtml(abl.tagline)}"</div>` : ''}
-            <div style="font-size:10px;color:#666;letter-spacing:.05em;text-transform:uppercase;margin-top:4px;margin-left:${hasExpandable ? '14px' : '0'};">
-              ${escapeHtml(category.name || '')} · ${escapeHtml(builder.name || '')}
-            </div>
+    // ─── HEADER STRIP ───
+    // Always visible. Click toggles card collapse. Shows Name +
+    // (Tagline if any) + AP Cost pill. Caret on the right indicates
+    // collapse state.
+    const caretChar = cardCollapsed ? '▸' : '▾';
+    const headerHtml = `
+      <div class="abil-card-header" onclick="abilitiesToggleCardCollapse('${escapeHtml(abl.id)}')"
+           style="display:flex;align-items:center;gap:14px;padding:14px 16px;cursor:pointer;${cardCollapsed ? '' : 'border-bottom:1px solid #1a1a1a;'}">
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
+            <span style="font-weight:700;color:#e6e0cc;font-size:16px;">${escapeHtml(displayName)}</span>
+            ${abl.tagline ? `<span style="font-size:13px;font-style:italic;color:#999;">${escapeHtml(abl.tagline)}</span>` : ''}
           </div>
-          <span style="padding:4px 12px;background:${costBg};border:1px solid ${costBorder};border-radius:3px;font-size:11px;color:${costColor};font-family:monospace;flex-shrink:0;font-weight:600;">${cost} AP</span>
         </div>
+        <span style="padding:5px 12px;background:${costBg};border:1px solid ${costBorder};border-radius:4px;font-size:12px;color:${costColor};font-family:monospace;flex-shrink:0;font-weight:700;">${cost} AP</span>
+        <span style="color:#666;font-size:11px;width:12px;text-align:center;flex-shrink:0;">${caretChar}</span>
+      </div>
     `;
 
-    // System text — always visible, prominent.
-    if (systemText) {
-      html += `
-        <div style="padding:0 14px 12px;">
-          <div style="padding:10px 12px;background:#080808;border:1px solid #1a1a1a;border-radius:3px;font-size:13px;color:#cfcfcf;line-height:1.5;">
-            ${escapeHtml(systemText)}
-          </div>
+    // If collapsed, return only the header.
+    if (cardCollapsed) {
+      return `
+        <div class="abil-card" style="border:1px solid #2a2a2a;background:#0d0d0d;border-radius:6px;overflow:hidden;">
+          ${headerHtml}
         </div>
       `;
     }
 
-    // Feature / flaw tags — shown when there's anything to display.
-    if (selFeatures.length > 0 || selFlaws.length > 0) {
-      html += `<div style="padding:0 14px 10px;display:flex;flex-wrap:wrap;gap:6px;">`;
-      selFeatures.forEach(f => {
-        html += `
-          <span title="${escapeHtml(f.description || '')}" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:#1a1408;border:1px solid #3a2810;border-radius:3px;font-size:10px;color:#d8a060;">
-            <span style="font-size:8px;color:#806040;text-transform:uppercase;letter-spacing:.05em;">F</span>
-            ${escapeHtml(f.name || '')}
-          </span>
-        `;
-      });
-      selFlaws.forEach(f => {
-        html += `
-          <span title="${escapeHtml(f.description || '')}" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:#0d150d;border:1px solid #1f2f1f;border-radius:3px;font-size:10px;color:#88c080;">
-            <span style="font-size:8px;color:#608060;text-transform:uppercase;letter-spacing:.05em;">f</span>
-            ${escapeHtml(f.name || '')}
-          </span>
-        `;
-      });
-      html += '</div>';
+    // ─── DESCRIPTION ───
+    // GM-authored Builder.description — sits between header and System.
+    const descHtml = builder.description
+      ? `<div style="padding:12px 16px 0;font-size:13px;color:#a0a0a0;line-height:1.55;">${escapeHtml(builder.description)}</div>`
+      : '';
+
+    // ─── SYSTEM BOX ───
+    // Always shows the System rules text. Clicking the box toggles
+    // the Features/Flaws list visibility below. Cursor + caret reflect
+    // toggle state.
+    const selFeatures = (abl.selectedFeatureIds || [])
+      .map(fid => (builder.features || []).find(f => f && f.id === fid))
+      .filter(Boolean);
+    const selFlaws = (abl.selectedFlawIds || [])
+      .map(fid => (builder.flaws || []).find(f => f && f.id === fid))
+      .filter(Boolean);
+    const hasFFContent = selFeatures.length > 0 || selFlaws.length > 0;
+
+    let systemBodyHtml = systemText
+      ? `<div style="font-size:13px;color:#cfcfcf;line-height:1.55;white-space:pre-wrap;">${escapeHtml(systemText)}</div>`
+      : `<div style="font-size:13px;color:#555;line-height:1.55;font-style:italic;">(No system text — ask your GM to fill in the System template on the Builder.)</div>`;
+
+    // Features/Flaws list — only when System is expanded AND there's content to show.
+    let ffListHtml = '';
+    if (systemExpanded && hasFFContent) {
+      ffListHtml += `<div style="margin-top:12px;padding-top:10px;border-top:1px solid #2a2a20;display:flex;flex-direction:column;gap:8px;">`;
+      if (selFeatures.length > 0) {
+        ffListHtml += `<div style="font-size:10px;color:#806040;letter-spacing:.08em;text-transform:uppercase;font-weight:700;">Features</div>`;
+        selFeatures.forEach(f => {
+          const tierLabel = (f.tier ? f.tier[0].toUpperCase() + f.tier.slice(1) : 'Minor');
+          ffListHtml += `
+            <div style="font-size:12px;color:#d8a060;line-height:1.5;">
+              <span style="font-weight:700;">${escapeHtml(f.name || tierLabel + ' Feature')}</span>
+              <span style="color:#806040;font-size:10px;text-transform:uppercase;letter-spacing:.06em;margin-left:6px;">${escapeHtml(tierLabel)}</span>
+              ${f.description && f.description !== f.name ? `<div style="color:#aa8050;font-size:12px;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
+            </div>
+          `;
+        });
+      }
+      if (selFlaws.length > 0) {
+        ffListHtml += `<div style="font-size:10px;color:#608060;letter-spacing:.08em;text-transform:uppercase;font-weight:700;${selFeatures.length > 0 ? 'margin-top:6px;' : ''}">Flaws</div>`;
+        selFlaws.forEach(f => {
+          const tierLabel = (f.tier ? f.tier[0].toUpperCase() + f.tier.slice(1) : 'Minor');
+          ffListHtml += `
+            <div style="font-size:12px;color:#88c080;line-height:1.5;">
+              <span style="font-weight:700;">${escapeHtml(f.name || tierLabel + ' Flaw')}</span>
+              <span style="color:#608060;font-size:10px;text-transform:uppercase;letter-spacing:.06em;margin-left:6px;">${escapeHtml(tierLabel)}</span>
+              ${f.description && f.description !== f.name ? `<div style="color:#7aa67a;font-size:12px;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
+            </div>
+          `;
+        });
+      }
+      ffListHtml += '</div>';
+    } else if (systemExpanded && !hasFFContent) {
+      ffListHtml = `<div style="margin-top:10px;padding-top:8px;border-top:1px solid #2a2a20;font-size:11px;color:#555;font-style:italic;">No Features or Flaws selected on this Ability.</div>`;
     }
 
-    // Expanded section — Visual + Prose. Hidden when collapsed.
-    if (isExpanded && hasExpandable) {
-      html += `<div style="padding:10px 14px;border-top:1px solid #1a1a1a;background:#080808;">`;
-      if (abl.visual && abl.visual.trim()) {
-        html += `
-          <div style="margin-bottom:10px;">
-            <div style="font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Visual</div>
-            <div style="font-size:12px;color:#bbb;line-height:1.5;">${escapeHtml(abl.visual)}</div>
-          </div>
-        `;
-      }
-      if (abl.prose && abl.prose.trim()) {
-        html += `
-          <div>
-            <div style="font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Prose</div>
-            <div style="font-size:12px;color:#bbb;line-height:1.5;font-style:italic;">${escapeHtml(abl.prose)}</div>
-          </div>
-        `;
-      }
-      html += '</div>';
-    }
+    // Caret + click affordance only when there's something to expand.
+    const sysCaret = hasFFContent
+      ? `<span style="color:#666;font-size:10px;margin-left:auto;">${systemExpanded ? '▾' : '▸'}</span>`
+      : '';
+    const sysCursor = hasFFContent ? 'cursor:pointer;' : '';
+    const sysOnclick = hasFFContent ? `onclick="abilitiesToggleSystem('${escapeHtml(abl.id)}')"` : '';
 
-    // Edit / Delete actions — owners only.
-    if (canEdit) {
-      html += `
-        <div style="display:flex;gap:6px;padding:8px 14px;border-top:1px solid #1a1a1a;background:#0a0a0a;">
-          <button class="ct-btn" type="button" onclick="abilitiesEdit(${idx})">Edit</button>
-          <button class="ct-btn" type="button" onclick="abilitiesDelete(${idx})" style="color:#c66;border-color:#4a2a2a;">Delete</button>
+    const systemBoxHtml = `
+      <div ${sysOnclick}
+           style="margin:14px 16px 0;padding:12px 14px;background:#080808;border:1px solid #1a1a1a;border-radius:4px;${sysCursor}">
+        <div style="display:flex;align-items:center;gap:8px;font-size:10px;color:#888;letter-spacing:.1em;text-transform:uppercase;font-weight:700;margin-bottom:8px;">
+          <span>System</span>
+          ${sysCaret}
         </div>
-      `;
+        ${systemBodyHtml}
+        ${ffListHtml}
+      </div>
+    `;
+
+    // ─── VISUAL BOX ───
+    // Always visible. Player-authored content; falls back to GM
+    // guideline (italicized) if player hasn't written one. Not
+    // interactive — clicking does nothing.
+    const visualGuide = builder.visualGuideline || builder.visualPrompt || '';
+    let visualBody;
+    if (abl.visual && abl.visual.trim()) {
+      visualBody = `<div style="font-size:13px;color:#cfcfcf;line-height:1.55;white-space:pre-wrap;">${escapeHtml(abl.visual)}</div>`;
+    } else if (visualGuide) {
+      visualBody = `<div style="font-size:13px;color:#666;line-height:1.55;font-style:italic;">${escapeHtml(visualGuide)}</div>`;
+    } else {
+      visualBody = `<div style="font-size:13px;color:#555;line-height:1.55;font-style:italic;">(No visual described.)</div>`;
     }
 
-    html += '</div>';
-    return html;
+    const visualBoxHtml = `
+      <div style="margin:10px 16px 0;padding:12px 14px;background:#080808;border:1px solid #1a1a1a;border-radius:4px;">
+        <div style="font-size:10px;color:#888;letter-spacing:.1em;text-transform:uppercase;font-weight:700;margin-bottom:8px;">Visual</div>
+        ${visualBody}
+      </div>
+    `;
+
+    // ─── EXTRA TAB + EXPANDED SECTION ───
+    // Small clickable tab at the bottom. Click toggles. Player
+    // content with GM guideline as fallback (same pattern as Visual).
+    const extraGuide = builder.extraGuideline || builder.extra || '';
+    let extraBody;
+    if (abl.prose && abl.prose.trim()) {
+      extraBody = `<div style="font-size:13px;color:#cfcfcf;line-height:1.55;white-space:pre-wrap;">${escapeHtml(abl.prose)}</div>`;
+    } else if (extraGuide) {
+      extraBody = `<div style="font-size:13px;color:#666;line-height:1.55;font-style:italic;">${escapeHtml(extraGuide)}</div>`;
+    } else {
+      extraBody = `<div style="font-size:13px;color:#555;line-height:1.55;font-style:italic;">(Nothing extra.)</div>`;
+    }
+
+    const extraSectionHtml = extraOpen ? `
+      <div style="margin:10px 16px 0;padding:12px 14px;background:#080808;border:1px solid #1a1a1a;border-radius:4px;">
+        <div style="font-size:10px;color:#888;letter-spacing:.1em;text-transform:uppercase;font-weight:700;margin-bottom:8px;">Extra</div>
+        ${extraBody}
+      </div>
+    ` : '';
+
+    const extraTabHtml = `
+      <div style="display:flex;justify-content:center;margin:14px 16px 14px;">
+        <button type="button" onclick="abilitiesToggleExtra('${escapeHtml(abl.id)}')"
+                style="background:${extraOpen ? '#2a2a18' : '#1a1a14'};border:1px solid ${extraOpen ? '#3a3a20' : '#2a2a20'};color:${extraOpen ? '#d8c060' : '#aaa'};font-family:inherit;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:5px 14px;border-radius:14px;cursor:pointer;">
+          ${extraOpen ? 'Hide Extra' : 'Extra?'}
+        </button>
+      </div>
+    `;
+
+    // ─── EDIT / DELETE ACTIONS ───
+    const actionsHtml = canEdit ? `
+      <div style="display:flex;gap:6px;padding:10px 16px;border-top:1px solid #1a1a1a;background:#0a0a0a;">
+        <button class="ct-btn" type="button" onclick="abilitiesEdit(${idx})">Edit</button>
+        <button class="ct-btn" type="button" onclick="abilitiesDelete(${idx})" style="color:#c66;border-color:#4a2a2a;">Delete</button>
+      </div>
+    ` : '';
+
+    return `
+      <div class="abil-card" style="border:1px solid #2a2a2a;background:#0d0d0d;border-radius:6px;overflow:hidden;">
+        ${headerHtml}
+        ${descHtml}
+        ${systemBoxHtml}
+        ${visualBoxHtml}
+        ${extraSectionHtml}
+        ${extraTabHtml}
+        ${actionsHtml}
+      </div>
+    `;
   }
 
-  // Track which Ability cards are expanded. Stored as a Set of
-  // Ability ids — UI-only, NOT persisted.
+  // Three independent UI-state Sets driving the Card's three toggles.
+  // All transient — never persisted. Default state for any Ability is
+  // "not in any of these sets" (card expanded, system collapsed, extra closed).
+  const abilCardCollapsed  = new Set();   // when in: card shows header only
+  const abilSystemExpanded = new Set();   // when in: System box reveals features/flaws
+  const abilExtraOpen      = new Set();   // when in: Extra section is visible
+  // Legacy Set used by older code paths — kept around to avoid breakage
+  // but the new render functions don't read from it.
   const abilCardExpanded = new Set();
 
-  window.abilitiesToggleCard = function(abilityId) {
-    if (abilCardExpanded.has(abilityId)) abilCardExpanded.delete(abilityId);
-    else abilCardExpanded.add(abilityId);
+  window.abilitiesToggleCardCollapse = function(abilityId) {
+    if (abilCardCollapsed.has(abilityId)) abilCardCollapsed.delete(abilityId);
+    else abilCardCollapsed.add(abilityId);
     renderAbilitiesTab();
+  };
+
+  window.abilitiesToggleSystem = function(abilityId) {
+    if (abilSystemExpanded.has(abilityId)) abilSystemExpanded.delete(abilityId);
+    else abilSystemExpanded.add(abilityId);
+    renderAbilitiesTab();
+  };
+
+  window.abilitiesToggleExtra = function(abilityId) {
+    if (abilExtraOpen.has(abilityId)) abilExtraOpen.delete(abilityId);
+    else abilExtraOpen.add(abilityId);
+    renderAbilitiesTab();
+  };
+
+  // Legacy handler kept for any inline onclick handlers still referencing
+  // the old collapse-everything-into-one toggle. Now routes to the new
+  // card-level collapse so old links still work.
+  window.abilitiesToggleCard = function(abilityId) {
+    window.abilitiesToggleCardCollapse(abilityId);
   };
 
   // Catalogue browser — opens a modal listing every Builder available.
