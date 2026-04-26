@@ -403,6 +403,41 @@ export function renderSystemText(builder, instance) {
     if (disp != null) tokens[p.token] = disp;
   });
 
+  // {ACTIVATION_ROLL} token — resolves to a description of the activation
+  // dice pool (e.g. "POW + Athletics + STATMOD"). Uses the player's
+  // chosen stat/skill if set on the instance, otherwise the GM-configured
+  // pool description with placeholder words like "STAT" or "SKILL".
+  // Only filled when the Builder actually has activationRoll.enabled.
+  // The describer lives in ruleset-abilitycatalogue.html (so the editor
+  // and the runtime share one implementation) and exposes itself via
+  // window.describeActivationRoll. If it's not loaded, we fall back to
+  // a simple inline resolver so character.html still renders correctly
+  // when the catalogue page hasn't been opened in this session.
+  const ar = builder.activationRoll;
+  if (ar && ar.enabled) {
+    let arDesc = '';
+    if (typeof window !== 'undefined' && typeof window.describeActivationRoll === 'function') {
+      arDesc = window.describeActivationRoll(builder, inst) || '';
+    } else {
+      // Inline fallback. Mirrors the logic in describeActivationRoll.
+      const choice = (inst && inst.activationRollChoice) || {};
+      const slot1 = ar.slot1 || {};
+      const slot2 = ar.slot2 || {};
+      let s1 = (slot1.mode === 'fixed-stat')
+        ? (slot1.fixedStat || 'STAT')
+        : (choice.slot1 || 'STAT');
+      let s2;
+      if (slot2.mode === 'fixed-stat')        s2 = slot2.fixedStat  || 'STAT';
+      else if (slot2.mode === 'fixed-skill')  s2 = slot2.fixedSkill || 'SKILL';
+      else if (choice.slot2)                  s2 = choice.slot2;
+      else if (slot2.mode === 'any-stat')     s2 = 'STAT';
+      else if (slot2.mode === 'any-skill')    s2 = 'SKILL';
+      else                                    s2 = 'STAT or SKILL';
+      arDesc = `${s1} + ${s2} + STATMOD`;
+    }
+    tokens.ACTIVATION_ROLL = arDesc;
+  }
+
   // Substitute. Match {tokenName} pattern. Leave unknown tokens visible.
   return builder.systemTextTemplate.replace(/\{(\w+)\}/g, (match, key) => {
     return Object.prototype.hasOwnProperty.call(tokens, key) ? tokens[key] : match;
