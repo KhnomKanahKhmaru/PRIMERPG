@@ -1522,44 +1522,66 @@ window.normalizeRuleset = function(rs) {
       flaws:           Array.isArray(b.flaws)           ? b.flaws           : []
     };
 
-    // Primary parameters — flat AP cost per step. Each entry needs id,
-    // name, defaultValue, min/max bounds, stepCost, and a token for
-    // systemTextTemplate substitution.
+    // Primary + Secondary parameters share the same step-list shape:
+    //   { id, name, token, description, steps: [{label, value, cost}], defaultStep }
+    // The difference is INTERPRETATION at cost-engine time:
+    //   • Primary's cost adds flat AP to the Builder's cost.
+    //   • Secondary's cost is a multiplier on the Builder's running total.
+    //
+    // Old Primary shape (defaultValue / minValue / maxValue / stepCost) is
+    // wiped on read — per design call, primaryParams test data was burned
+    // when this redesign landed, so any GM authoring under the old shape
+    // re-authors. The wipe is silent: malformed primary entries (missing
+    // steps array) simply get an empty steps list, GM fills in via the
+    // editor.
+    const normalizeStep = (s) => {
+      if (!s || typeof s !== 'object') return null;
+      // `cost` is the canonical field; legacy secondary used `multiplier`.
+      // Read both, prefer cost if present.
+      let cost = (s.cost !== undefined && s.cost !== null && s.cost !== '')
+        ? parseFloat(s.cost)
+        : parseFloat(s.multiplier);
+      if (!Number.isFinite(cost)) cost = 0;
+      return {
+        label: typeof s.label === 'string' ? s.label : '',
+        value: (typeof s.value === 'string' || Number.isFinite(s.value)) ? s.value : '',
+        cost
+      };
+    };
+
     builder.primaryParams = builder.primaryParams
       .filter(p => p && typeof p === 'object')
-      .map(p => ({
-        id:           (typeof p.id === 'string' && p.id.trim()) ? p.id : synthId('param'),
-        name:         typeof p.name === 'string' ? p.name : 'Parameter',
-        defaultValue: Number.isFinite(p.defaultValue) ? p.defaultValue : 0,
-        minValue:     Number.isFinite(p.minValue) ? p.minValue : 0,
-        maxValue:     Number.isFinite(p.maxValue) ? p.maxValue : 100,
-        stepCost:     Number.isFinite(p.stepCost) ? p.stepCost : 1,
-        displayUnit:  typeof p.displayUnit === 'string' ? p.displayUnit : '',
-        token:        typeof p.token === 'string' ? p.token : '',
-        description:  typeof p.description === 'string' ? p.description : ''
-      }));
+      .map(p => {
+        const steps = Array.isArray(p.steps)
+          ? p.steps.map(normalizeStep).filter(Boolean)
+          : [];
+        return {
+          id:          (typeof p.id === 'string' && p.id.trim()) ? p.id : synthId('param'),
+          name:        typeof p.name === 'string' ? p.name : 'Parameter',
+          token:       typeof p.token === 'string' ? p.token : '',
+          description: typeof p.description === 'string' ? p.description : '',
+          steps,
+          defaultStep: Number.isFinite(p.defaultStep) ? p.defaultStep : 0
+        };
+      });
 
-    // Secondary parameters — percentile cost. Each has a `steps` array
-    // where one entry is marked default (multiplier = 1.0). Other steps
-    // multiply the base flat cost up or down.
     builder.secondaryParams = builder.secondaryParams
       .filter(p => p && typeof p === 'object')
       .map(p => {
-        const steps = Array.isArray(p.steps) ? p.steps
-          .filter(s => s && typeof s === 'object' && Number.isFinite(s.multiplier))
-          .map(s => ({
-            value:      typeof s.value === 'string' || Number.isFinite(s.value) ? s.value : '',
-            label:      typeof s.label === 'string' ? s.label : '',
-            multiplier: Number.isFinite(s.multiplier) ? s.multiplier : 1.0
-          })) : [];
+        const steps = Array.isArray(p.steps)
+          ? p.steps.map(normalizeStep).filter(Boolean)
+          : [];
+        // Migrate legacy defaultStepIndex → defaultStep.
+        const def = Number.isFinite(p.defaultStep) ? p.defaultStep
+                  : Number.isFinite(p.defaultStepIndex) ? p.defaultStepIndex
+                  : 0;
         return {
-          id:           (typeof p.id === 'string' && p.id.trim()) ? p.id : synthId('param'),
-          name:         typeof p.name === 'string' ? p.name : 'Parameter',
-          defaultStepIndex: Number.isFinite(p.defaultStepIndex) ? p.defaultStepIndex : 0,
+          id:          (typeof p.id === 'string' && p.id.trim()) ? p.id : synthId('param'),
+          name:        typeof p.name === 'string' ? p.name : 'Parameter',
+          token:       typeof p.token === 'string' ? p.token : '',
+          description: typeof p.description === 'string' ? p.description : '',
           steps,
-          displayUnit:  typeof p.displayUnit === 'string' ? p.displayUnit : '',
-          token:        typeof p.token === 'string' ? p.token : '',
-          description:  typeof p.description === 'string' ? p.description : ''
+          defaultStep: def
         };
       });
 
