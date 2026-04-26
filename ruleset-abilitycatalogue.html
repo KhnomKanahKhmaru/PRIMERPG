@@ -607,6 +607,30 @@
       border-radius: 6px; padding: 18px;
       margin-bottom: 20px;
     }
+
+    /* Top-level tab strip — separates the player-facing browse view
+       from GM-only configuration (enable toggle, tier cost tables).
+       Click switches panes. The active tab gets a brighter border
+       and slightly elevated background. */
+    .main-tabs {
+      display: flex; gap: 4px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .main-tab {
+      background: transparent; border: none;
+      color: #888; font-family: inherit;
+      font-size: 13px; font-weight: 600;
+      letter-spacing: .04em;
+      padding: 10px 16px; cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+    }
+    .main-tab:hover { color: #ccc; }
+    .main-tab.is-active {
+      color: #e8e8e8;
+      border-bottom-color: #d4a574;
+    }
   </style>
 </head>
 <body>
@@ -624,58 +648,77 @@
       Author the Catalogue's types, categories, and builders for this ruleset.
     </div>
 
-    <div class="section">
-      <div class="section-header">
-        <div class="section-title">Catalogue Settings</div>
+    <!-- Top-level tab strip — switches between the player-facing browse
+         view ("Catalogue") and GM-only configuration ("Settings"). The
+         settings tab holds the enable toggle, catalogue name/description,
+         and the per-tier AP cost tables for Features / Flaws — stuff that
+         is jarring while authoring an ability and shouldn't be visible
+         in the same screen as the live card preview. -->
+    <div class="main-tabs">
+      <button type="button" class="main-tab is-active" id="main-tab-catalogue"
+              onclick="catSwitchMainTab('catalogue')">Catalogue</button>
+      <button type="button" class="main-tab" id="main-tab-settings"
+              onclick="catSwitchMainTab('settings')">Settings</button>
+    </div>
+
+    <!-- ── Settings tab ── (hidden by default; switch via tab strip) -->
+    <div id="main-pane-settings" style="display:none;">
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Catalogue Settings</div>
+        </div>
+        <div class="field" style="display:flex;align-items:center;gap:10px;">
+          <label style="margin:0;display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;text-transform:none;letter-spacing:0;color:#ccc;font-weight:400;">
+            <input type="checkbox" id="cat-enabled" onchange="catToggleEnabled(this.checked)">
+            <span>Catalogue enabled</span>
+          </label>
+          <span class="hint" style="margin:0;">Disable to hide the Abilities tab on Character sheets.</span>
+        </div>
+        <div class="field">
+          <label>Catalogue Name</label>
+          <input type="text" id="cat-name"
+                 placeholder="e.g. Standard Catalogue, Vampire Powers…"
+                 oninput="catSetName(this.value)">
+        </div>
+        <div class="field">
+          <label>Description (shown to Players in the catalogue browser)</label>
+          <textarea id="cat-desc" rows="2"
+                    placeholder="Optional flavor text describing the catalogue's scope, themes, etc."
+                    oninput="catSetDesc(this.value)"></textarea>
+        </div>
       </div>
-      <div class="field" style="display:flex;align-items:center;gap:10px;">
-        <label style="margin:0;display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;text-transform:none;letter-spacing:0;color:#ccc;font-weight:400;">
-          <input type="checkbox" id="cat-enabled" onchange="catToggleEnabled(this.checked)">
-          <span>Catalogue enabled</span>
-        </label>
-        <span class="hint" style="margin:0;">Disable to hide the Abilities tab on Character sheets.</span>
-      </div>
-      <div class="field">
-        <label>Catalogue Name</label>
-        <input type="text" id="cat-name"
-               placeholder="e.g. Standard Catalogue, Vampire Powers…"
-               oninput="catSetName(this.value)">
-      </div>
-      <div class="field">
-        <label>Description (shown to Players in the catalogue browser)</label>
-        <textarea id="cat-desc" rows="2"
-                  placeholder="Optional flavor text describing the catalogue's scope, themes, etc."
-                  oninput="catSetDesc(this.value)"></textarea>
+
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Feature &amp; Flaw Tier Costs</div>
+        </div>
+        <p class="hint">
+          Centralized cost tables. Every Feature and Flaw in every Builder references a tier
+          name from these tables — change a tier's value here and every Feature/Flaw at that tier
+          re-prices automatically across the entire Catalogue.
+        </p>
+        <div class="tier-grid">
+          <div>
+            <label>Feature Tier Costs (AP)</label>
+            <div id="cat-tier-features"></div>
+          </div>
+          <div>
+            <label>Flaw Tier Refunds (AP)</label>
+            <div id="cat-tier-flaws"></div>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div class="section">
-      <div class="section-header">
-        <div class="section-title">Feature &amp; Flaw Tier Costs</div>
-      </div>
-      <p class="hint">
-        Centralized cost tables. Every Feature and Flaw in every Builder references a tier
-        name from these tables — change a tier's value here and every Feature/Flaw at that tier
-        re-prices automatically across the entire Catalogue.
-      </p>
-      <div class="tier-grid">
-        <div>
-          <label>Feature Tier Costs (AP)</label>
-          <div id="cat-tier-features"></div>
+    <!-- ── Catalogue tab ── (visible by default — the player-mirror view) -->
+    <div id="main-pane-catalogue">
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title" id="catalogue-body-title">Catalogue</div>
+          <div id="catalogue-body-actions"></div>
         </div>
-        <div>
-          <label>Flaw Tier Refunds (AP)</label>
-          <div id="cat-tier-flaws"></div>
-        </div>
+        <div id="catalogue-body"></div>
       </div>
-    </div>
-
-    <div class="section">
-      <div class="section-header">
-        <div class="section-title" id="catalogue-body-title">Catalogue</div>
-        <div id="catalogue-body-actions"></div>
-      </div>
-      <div id="catalogue-body"></div>
     </div>
 
     <div class="footer-actions">
@@ -922,6 +965,24 @@
     if (!cat.canonicalTiers[table] || typeof cat.canonicalTiers[table] !== 'object') cat.canonicalTiers[table] = {};
     const n = parseFloat(value);
     cat.canonicalTiers[table][tier] = Number.isFinite(n) ? Math.max(0, n) : 0;
+  };
+
+  // Top-level tab switch — flips between the player-mirror Catalogue
+  // view and the GM-only Settings pane (enable toggle, name, description,
+  // tier cost tables). Stored on window for the same TDZ-immunity
+  // reasons as bldrPreviewExtraOpen.
+  if (typeof window.catMainTab !== 'string') window.catMainTab = 'catalogue';
+  window.catSwitchMainTab = function(which) {
+    if (which !== 'catalogue' && which !== 'settings') return;
+    window.catMainTab = which;
+    const paneCat  = document.getElementById('main-pane-catalogue');
+    const paneSet  = document.getElementById('main-pane-settings');
+    const tabCat   = document.getElementById('main-tab-catalogue');
+    const tabSet   = document.getElementById('main-tab-settings');
+    if (paneCat)  paneCat.style.display  = (which === 'catalogue') ? '' : 'none';
+    if (paneSet)  paneSet.style.display  = (which === 'settings')  ? '' : 'none';
+    if (tabCat)   tabCat.classList.toggle('is-active', which === 'catalogue');
+    if (tabSet)   tabSet.classList.toggle('is-active', which === 'settings');
   };
 
   function renderCatTierTables() {
