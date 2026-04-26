@@ -1,2915 +1,2456 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PRIME RPG — Ability Catalogue</title>
-  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <script src="nav.js"></script>
-  <script src="ruleset-defaults.js"></script>
-  <style>
-    /* ═════════════════════════════════════════════════════════════════
-       PRIME RPG — Catalogue editor stylesheet (Phase B v3)
+// ruleset-defaults.js
+// Default values for the Basic Set, and the schema any ruleset should conform to.
+// Included as a non-module script so edit-ruleset.html can use it directly.
 
-       Design direction: dark, full-width, restrained typography.
-       Card-based throughout. The same screens render for GM and Player —
-       only edit affordances differ. No animations. Bold weight reserved
-       for things that matter (titles, ability names, AP costs).
+window.RULESET_DEFAULTS = {
+  tagline: '',
+  startingXp: 100,
 
-       Layout architecture:
-         body
-         └ .page (full-width below the navbar, 24px gutters)
-            ├ .crumb (small breadcrumb)
-            ├ .screen-title (large, bold, screen header)
-            ├ .screen-sub (muted descriptor)
-            └ .screen-body (the screen-specific content)
-       ═════════════════════════════════════════════════════════════════ */
+  // Stat caps / costs.
+  statXp: [null, -10, 0, 10, 30, 60, 100],  // index 0 = not takable
+  statMaxPurchasable: 6,                     // max level a player can START at
+  statMax: 20,                               // absolute ceiling a stat can reach
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background: #0a0a0a; color: #e0e0e0;
-      font-family: 'Open Sans', sans-serif; font-size: 14px;
-      min-height: 100vh;
-    }
+  // Regular stats (SIZE is handled separately below).
+  stats: [
+    { code:'STR', name:'Strength',   description:'Physical power, raw force.' },
+    { code:'DEX', name:'Dexterity',  description:'Fine motor control, reflexes, agility.' },
+    { code:'PER', name:'Perception', description:'Awareness of surroundings, sensory acuity.' },
+    { code:'INT', name:'Intellect',  description:'Reasoning, memory, learning capacity.' },
+    { code:'CHA', name:'Charisma',   description:'Social presence, force of personality.' },
+    { code:'POW', name:'Power',      description:'Willpower, mental fortitude, resolve.' }
+  ],
 
-    /* The page fills the viewport below the 64px navbar (injected by
-       nav.js). 40px top padding so screen titles don't slam into the
-       nav, generous bottom padding so the footer-actions row breathes. */
-    .page {
-      padding: 104px 24px 80px;
-      max-width: none;
-      margin: 0;
-    }
+  // STATMOD per level (index = level, 0..statMax).
+  statMods: [-1,-1,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,9,10],
 
-    /* Breadcrumb above titles. Small, muted, click-able. */
-    .crumb {
-      font-size: 12px; color: #888; margin-bottom: 8px;
-    }
-    .crumb a {
-      color: #888; text-decoration: none; cursor: pointer;
-    }
-    .crumb a:hover { color: #d4a574; text-decoration: underline; }
+  // Stat flavor labels (index = level, 0..statMax).
+  statLabels: [
+    'Far Below Average','Below Average','Average','Above Average','Gifted','Exceptional','Peak Human',
+    'Superhuman','Extraordinary','Legendary','Heroic','Titanic','Mythic','Godly','Divine',
+    'Transcendent','Ascendant','Empyrean','Omnipotent','Absolute','Cosmic'
+  ],
 
-    /* Screen titles — the big top-of-page header. NOT all-caps; just a
-       proper page title in size 22, weight 600. The screen-sub below
-       is the hint/subtitle line. */
-    .screen-title {
-      font-size: 22px; font-weight: 600; color: #e8e8e8;
-      margin-bottom: 4px;
-    }
-    .screen-sub {
-      font-size: 13px; color: #888; margin-bottom: 28px;
-      line-height: 1.5; max-width: 720px;
-    }
+  // SIZE: its own scale, XP costs, and tier labels. Has no STATMOD.
+  // size.tiers is an array of { level, label, xpCost } objects.
+  // Tier levels are NOT dense — they jump (e.g. Small=3, Medium=4, Large=6,
+  // skipping 5). The `level` field is the actual SIZE value; the array
+  // index is NOT the SIZE value. Character data stores the SIZE level, not
+  // the index. The `default` field below is the SIZE level for new
+  // characters (Medium = 4).
+  size: {
+    default: 4,  // Medium — default starting size for new characters
+    tiers: [
+      { level: 0,  label: 'Nano',        xpCost: 0 },  // Ants, fleas, grains of rice
+      { level: 1,  label: 'Micro',       xpCost: 0 },  // Scorpions, rat pups, small bats
+      { level: 2,  label: 'Tiny',        xpCost: 0 },  // Rats, cats, human infants
+      { level: 3,  label: 'Small',       xpCost: 0 },  // Wolves, children, kobolds
+      { level: 4,  label: 'Medium',      xpCost: 0 },  // Adult humans, chimps, leopards
+      { level: 6,  label: 'Large',       xpCost: 0 },  // Tigers, bears, werewolves
+      { level: 8,  label: 'Huge',        xpCost: 0 },  // Moose, polar bears, horses, sedans
+      { level: 10, label: 'Massive',     xpCost: 0 },  // Rhinos, hippos, ogres, dinosaurs
+      { level: 12, label: 'Giant',       xpCost: 0 },  // Elephants, T-Rex, young dragons
+      { level: 16, label: 'Colossal',    xpCost: 0 },  // Krakens, adult dragons, sauropods
+      { level: 20, label: 'Titanic',     xpCost: 0 },  // Kaiju, mecha, elder dragons
+      { level: 24, label: 'Behemoth',    xpCost: 0 },  // Large kaiju, worldserpents
+      { level: 30, label: 'Cataclysmic', xpCost: 0 }   // World-tree ents, megakaiju, cthulhu
+    ]
+  },
 
-    /* Section divider — used between major regions on the Builder
-       editor. A small all-caps label sitting on a thin top border. */
-    .section-rule {
-      margin-top: 24px; padding-top: 14px;
-      border-top: 1px solid #1a1a1a;
-    }
-    .section-label {
-      font-size: 11px; font-weight: 700; letter-spacing: .12em;
-      text-transform: uppercase; color: #888;
-      margin-bottom: 12px;
-      display: flex; align-items: center; gap: 12px;
-    }
-    .section-label .section-actions {
-      margin-left: auto; display: flex; gap: 6px;
-    }
+  // Skills: arrays of XP costs, index = level (0..10)
+  primarySkillXp:   [0, 2, 4, 8, 14, 22, 30, 40, 52, 66, 80],
+  secondarySkillXp: [0, 1, 2, 4,  7, 11, 15, 20, 26, 33, 40],
+  specialtySkillXp: [0, 1, 1, 2,  3,  5,  7, 10, 13, 16, 20],
+  skillMax: 10,
 
-    /* ───── Form fields (used across all screens for editable inputs) ───── */
-    .field {
-      display: flex; flex-direction: column; gap: 6px;
-      margin-bottom: 12px;
-    }
-    .field label {
-      font-size: 10px; font-weight: 600; letter-spacing: .08em;
-      text-transform: uppercase; color: #888;
-    }
-    .field input, .field select, .field textarea {
-      background: #111; border: 1px solid #222; color: #e0e0e0;
-      font-family: inherit; font-size: 13px;
-      padding: 8px 10px; border-radius: 4px; outline: none; width: 100%;
-    }
-    .field input:focus, .field select:focus, .field textarea:focus {
-      border-color: #555;
-    }
+  // Power Levels — ordered list
+  powerLevels: [
+    { value: 'powerless', label: 'Powerless',        xpPerAp: 10 },
+    { value: 'low',       label: 'Low Power',        xpPerAp: 8  },
+    { value: 'mid',       label: 'Mid Power',        xpPerAp: 6  },
+    { value: 'high',      label: 'High Power',       xpPerAp: 4  },
+    { value: 'very_high', label: 'Very High Power',  xpPerAp: 2  },
+    { value: 'highest',   label: 'Highest Power',    xpPerAp: 1  }
+  ],
+  defaultPowerLevel: 'powerless',
 
-    /* Bare inputs in any catalogue body (without .field wrapper) get
-       the same dark styling. Avoids browser-default white inputs. */
-    #catalogue-body input[type="text"],
-    #catalogue-body input[type="number"],
-    #catalogue-body select,
-    #catalogue-body textarea {
-      background: #111; border: 1px solid #222; color: #e0e0e0;
-      font-family: inherit; font-size: 13px;
-      padding: 7px 10px; border-radius: 4px; outline: none;
-    }
-    #catalogue-body input:focus,
-    #catalogue-body select:focus,
-    #catalogue-body textarea:focus { border-color: #555; }
-    #catalogue-body select option { background: #111; }
+  // Primary skills (name + description)
+  primarySkills: [
+    { name:'Academics',    description:'Learned subjects such as History or Political Science.' },
+    { name:'Athletics',    description:'Physical activities like running, swimming, jumping, climbing, etc.' },
+    { name:'Awareness',    description:'To be aware of one\'s surroundings utilizing one\'s senses.' },
+    { name:'Crafts',       description:'A particular trade, tool, art, or practice.' },
+    { name:'Drive',        description:'Operating vehicles.' },
+    { name:'Investigation',description:'Uncovering, understanding, reasoning, and making deductions with information.' },
+    { name:'Medical',      description:'Skill in medical treatment, and knowledge of the medical sciences.' },
+    { name:'Melee',        description:'Melee combat, and melee weaponry.' },
+    { name:'Occult',       description:'The esoteric; be it rituals, the supernatural, mythology, and so-on so-forth.' },
+    { name:'Ranged',       description:'Ranged combat, and ranged weaponry.' },
+    { name:'Science',      description:'Knowledge of the sciences.' },
+    { name:'Social',       description:'Sociability, communication skills, people skills, etc.' },
+    { name:'Society',      description:'Knowledge of society, institutions, laws, etiquette, etc.' },
+    { name:'Stealth',      description:'Being stealthy, hiding, sneaking.' },
+    { name:'Survival',     description:'Wilderness skills, foraging, identifying animal footprints, natural knowledge and skills.' },
+    { name:'Technology',   description:'Knowledge, and operation, of technology.' }
+  ],
 
-    /* Hint text — small muted instructional copy. */
-    .hint {
-      font-size: 12px; color: #666; line-height: 1.5;
-    }
-
-    /* ───── Buttons ───── */
-    .btn {
-      background: #1a1a1a; border: 1px solid #2a2a2a; color: #c8c8c8;
-      font-family: inherit; font-size: 13px;
-      padding: 8px 16px; border-radius: 4px; cursor: pointer;
-      transition: background 0.1s, border-color 0.1s, color 0.1s;
-    }
-    .btn:hover:not(:disabled) {
-      background: #222; border-color: #3a3a3a;
-    }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn.small { padding: 5px 12px; font-size: 12px; }
-    .btn.primary {
-      background: #2563eb; border-color: #2563eb; color: #fff;
-    }
-    .btn.primary:hover:not(:disabled) {
-      background: #1d4ed8; border-color: #1d4ed8;
-    }
-    .btn.danger {
-      background: #1f0e0e; border-color: #4a2a2a; color: #c66;
-    }
-    .btn.danger:hover:not(:disabled) {
-      background: #2a1414; border-color: #5a3030; color: #d88;
-    }
-    .btn.ghost {
-      background: transparent; border: 1px dashed #2a2a2a; color: #888;
-      width: 100%;
-      padding: 12px 16px;
-    }
-    .btn.ghost:hover:not(:disabled) {
-      background: #111; border-color: #444; color: #c8c8c8;
-    }
-
-    /* ═════════════════════════════════════════════════════════════════
-       SCREEN 1 — Type picker
-
-       Four large tiles in a row (or wrapping on narrow viewports).
-       Each tile has presence: tall enough to feel like a real choice,
-       not a button. Title in size 18 / weight 700. Description below
-       in muted size 13. Stat counts at the bottom (categories / builders).
-       ═════════════════════════════════════════════════════════════════ */
-    .type-tile-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 16px;
-    }
-    @media (max-width: 1100px) {
-      .type-tile-grid { grid-template-columns: repeat(2, 1fr); }
-    }
-    @media (max-width: 600px) {
-      .type-tile-grid { grid-template-columns: 1fr; }
-    }
-    .type-tile {
-      background: #0d0d0d; border: 1px solid #2a2a2a;
-      border-radius: 6px; padding: 24px;
-      cursor: pointer;
-      display: flex; flex-direction: column;
-      min-height: 180px;
-      transition: border-color 0.15s, background 0.15s;
-    }
-    .type-tile:hover {
-      border-color: #4a4a4a; background: #111;
-    }
-    .type-tile.in-design {
-      background: #0a0a0a; border-style: dashed; opacity: 0.55;
-      cursor: not-allowed;
-    }
-    .type-tile.in-design:hover {
-      border-color: #2a2a2a; background: #0a0a0a;
-    }
-    .type-tile-name {
-      font-size: 18px; font-weight: 700; color: #e8e8e8;
-      margin-bottom: 6px;
-    }
-    .type-tile-desc {
-      font-size: 13px; color: #999; line-height: 1.5;
-      flex: 1;
-    }
-    .type-tile-meta {
-      font-size: 11px; color: #888; margin-top: 14px;
-      padding-top: 12px; border-top: 1px solid #1a1a1a;
-    }
-    .type-tile-meta-design {
-      letter-spacing: .06em; text-transform: uppercase;
-      color: #666;
-    }
-
-    /* ═════════════════════════════════════════════════════════════════
-       SCREEN 2 — Category screen
-
-       Vertical stack of category bands. Each band has a header strip
-       (name + edit + delete + add-builder) and a wrap grid of Ability
-       tiles inside. Categories visually separate via spacing, not
-       heavy borders.
-       ═════════════════════════════════════════════════════════════════ */
-    .cat-band {
-      margin-bottom: 24px;
-    }
-    .cat-band-head {
-      display: flex; align-items: center; gap: 10px;
-      padding: 10px 0; margin-bottom: 12px;
-      border-bottom: 1px solid #1f1f1f;
-    }
-    .cat-band-name-input {
-      flex: 1; min-width: 0;
-      background: transparent; border: none;
-      font-family: inherit; color: #e8e8e8;
-      font-size: 16px; font-weight: 600;
-      padding: 4px 0; outline: none;
-    }
-    .cat-band-name-input::placeholder { color: #555; }
-    .cat-band-name-input:focus { border-bottom: 1px solid #444; }
-    .cat-band-actions {
-      display: flex; gap: 6px; flex: 0 0 auto;
-    }
-    .cat-band-tiles {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: 12px;
-    }
-    .cat-band-empty {
-      padding: 20px; text-align: center;
-      color: #555; font-style: italic; font-size: 13px;
-      border: 1px dashed #1f1f1f; border-radius: 4px;
-    }
-
-    /* Ability tile — the per-Builder card on the category screen.
-       Layout: a single horizontal row at the top with the icon on
-       the left and a vertical stack (name above, description below)
-       on the right. Delete × is an absolutely-positioned overlay
-       in the top-right corner that fades in on hover. */
-    .ability-tile {
-      background: #0d0d0d; border: 1px solid #1f1f1f;
-      border-radius: 6px; padding: 14px;
-      cursor: pointer;
-      display: flex; flex-direction: column;
-      min-height: 100px;
-      transition: border-color 0.15s, background 0.15s;
-      position: relative;
-    }
-    .ability-tile:hover {
-      border-color: #4a4a4a; background: #111;
-    }
-    /* Top-of-tile flex row: icon on the left, name+description stacked
-       to the right of it. When there's no icon, the headtext column
-       expands to fill the tile. */
-    .ability-tile-head {
-      display: flex; align-items: flex-start; gap: 10px;
-    }
-    .ability-tile-icon {
-      flex: 0 0 auto;
-      width: 36px; height: 36px;
-      object-fit: contain;
-      background: #0a0a06;
-      border: 1px solid #1a1a14;
-      border-radius: 4px;
-    }
-    .ability-tile-headtext {
-      flex: 1; min-width: 0;
-      display: flex; flex-direction: column; gap: 4px;
-    }
-    .ability-tile-name {
-      font-size: 14px; font-weight: 700; color: #e8e8e8;
-      overflow: hidden; text-overflow: ellipsis;
-      display: -webkit-box; -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      line-height: 1.3;
-    }
-    .ability-tile-name-empty { color: #555; font-style: italic; font-weight: 500; }
-    .ability-tile-desc {
-      font-size: 12px; color: #888; line-height: 1.45;
-      overflow: hidden;
-      display: -webkit-box; -webkit-line-clamp: 3;
-      -webkit-box-orient: vertical;
-    }
-    /* Delete × — absolute overlay in the top-right of the tile.
-       Hidden by default; fades in when the tile is hovered. */
-    .ability-tile-x {
-      position: absolute; top: 6px; right: 6px;
-      background: rgba(0,0,0,0.6); border: 1px solid #2a2a2a;
-      color: #c66; font-size: 13px; cursor: pointer;
-      padding: 1px 7px; border-radius: 3px;
-      opacity: 0; transition: opacity 0.1s, border-color 0.1s, color 0.1s;
-      line-height: 1;
-    }
-    .ability-tile:hover .ability-tile-x { opacity: 1; }
-    .ability-tile-x:hover { border-color: #4a2a2a; color: #f88; background: #1a0a0a; }
-
-    /* ═════════════════════════════════════════════════════════════════
-       SCREEN 3 — Builder editor
-
-       Full-width, generous spacing. Header takes the top with title +
-       AP cost. Then a two-column top region (Card preview + Parameters),
-       a two-column middle (Features + Flaws), a stack of three full-
-       width sections (Description, System, Visual, Extra). Doesn't
-       look like a form — looks like a creation interface.
-       ═════════════════════════════════════════════════════════════════ */
-
-    /* Top header strip: back link + name (editable) + AP cost pill. */
-    .bldr-head {
-      display: flex; align-items: center; gap: 16px;
-      margin-bottom: 24px;
-    }
-    /* Icon slot in the Builder editor head — clickable upload zone.
-       Empty state shows a dashed "+" placeholder; populated state
-       shows the image with a small × overlay to clear. */
-    .bldr-head-icon {
-      flex: 0 0 auto; width: 56px; height: 56px;
-      background: #0d0d0d; border: 1px dashed #2a2a2a;
-      border-radius: 6px; cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      position: relative; overflow: hidden;
-      transition: border-color 0.1s, background 0.1s;
-    }
-    .bldr-head-icon:hover {
-      border-color: #4a4a4a; background: #111;
-    }
-    .bldr-head-icon.has-icon {
-      border-style: solid; border-color: #2a2a20;
-      background: #0a0a06;
-    }
-    .bldr-head-icon img {
-      width: 100%; height: 100%;
-      object-fit: contain;
-      display: block;
-    }
-    .bldr-head-icon-empty {
-      font-size: 24px; color: #555; font-weight: 300;
-      line-height: 1;
-    }
-    .bldr-head-icon-clear {
-      position: absolute; top: 2px; right: 2px;
-      width: 18px; height: 18px;
-      background: rgba(0,0,0,0.7); border: 1px solid #4a2a2a;
-      color: #c66; font-family: inherit; font-size: 12px;
-      border-radius: 3px; cursor: pointer;
-      padding: 0; line-height: 1;
-      opacity: 0; transition: opacity 0.1s;
-    }
-    .bldr-head-icon:hover .bldr-head-icon-clear { opacity: 1; }
-    .bldr-head-icon-clear:hover {
-      background: #1f0e0e; color: #f88;
-    }
-    .bldr-head-icon.uploading {
-      opacity: 0.6; pointer-events: none;
-    }
-    .bldr-head-name {
-      flex: 1; min-width: 0;
-      background: transparent; border: none;
-      font-family: inherit; color: #e8e8e8;
-      font-size: 26px; font-weight: 700;
-      padding: 4px 0; outline: none;
-    }
-    .bldr-head-name::placeholder { color: #555; font-style: italic; }
-    .bldr-head-name:focus { border-bottom: 1px solid #444; }
-    .bldr-head-cost {
-      flex: 0 0 auto; padding: 8px 16px;
-      background: #1a1a14; border: 1px solid #2a2a20;
-      border-radius: 4px;
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-size: 14px; font-weight: 600; color: #d8c060;
-    }
-
-    /* Two-column grids for top region (preview + params) and mid
-       region (features + flaws). 5fr/4fr ratio puts a bit more weight
-       on the preview/features side. */
-    .bldr-grid-top, .bldr-grid-mid {
-      display: grid;
-      grid-template-columns: minmax(0, 5fr) minmax(0, 4fr);
-      gap: 24px;
-    }
-    @media (max-width: 900px) {
-      .bldr-grid-top, .bldr-grid-mid { grid-template-columns: 1fr; }
-    }
-
-    /* Region panel — wraps a single quadrant of the builder layout.
-       Each panel has its own subtle border + small label header. */
-    .bldr-panel {
-      background: #0d0d0d; border: 1px solid #1a1a1a;
-      border-radius: 6px; padding: 18px;
-      min-width: 0;
-    }
-    .bldr-panel-title {
-      font-size: 11px; font-weight: 700; letter-spacing: .12em;
-      text-transform: uppercase; color: #888;
-      margin-bottom: 14px;
-      display: flex; align-items: center; gap: 12px;
-    }
-    .bldr-panel-title .panel-actions {
-      margin-left: auto;
-    }
-
-    /* ───── Live Ability Card preview ─────
-       This is the core artefact — the player-facing card the GM is
-       authoring. Bigger and more presence than before. Uses the same
-       gradient + border treatment as the actual player card will use
-       on the character sheet. */
-    .bldr-card-preview {
-      background: linear-gradient(180deg, #14140e 0%, #0e0e08 100%);
-      border: 1px solid #2a2a20;
-      border-radius: 6px; padding: 20px;
-      min-height: 240px;
-      position: relative;
-    }
-    .bldr-card-name {
-      font-size: 20px; font-weight: 700; color: #e6e0cc;
-      margin-bottom: 4px;
-      line-height: 1.2;
-    }
-    /* Icon + name row at the top of the preview card. The icon is
-       small (~48px), object-fit contain so freeform shapes don't
-       get warped. Name flows beside it on the same line. */
-    .bldr-card-head-row {
-      display: flex; align-items: center; gap: 12px;
-      margin-bottom: 4px;
-    }
-    .bldr-card-head-row .bldr-card-name { margin-bottom: 0; flex: 1; min-width: 0; }
-    .bldr-card-icon {
-      flex: 0 0 auto;
-      width: 48px; height: 48px;
-      object-fit: contain;
-      background: #0a0a06;
-      border: 1px solid #1a1a14;
-      border-radius: 5px;
-    }
-    .bldr-card-tagline {
-      font-size: 13px; font-style: italic; color: #aaa;
-      margin-bottom: 10px;
-    }
-    .bldr-card-cost {
-      display: inline-block; padding: 4px 10px;
-      background: #1a1a14; border: 1px solid #2a2a20;
-      border-radius: 3px; font-size: 12px; color: #d8c060;
-      font-family: 'Consolas', 'Courier New', monospace;
-      margin-bottom: 14px;
-    }
-    .bldr-card-desc {
-      font-size: 13px; color: #b0b0b0; line-height: 1.55;
-      margin-bottom: 14px;
-    }
-    .bldr-card-section {
-      margin-top: 12px;
-    }
-    .bldr-card-section-label {
-      font-size: 10px; font-weight: 700; letter-spacing: .12em;
-      text-transform: uppercase; color: #888;
-      margin-bottom: 5px;
-    }
-    .bldr-card-section-body {
-      font-size: 13px; color: #c8c8c8; line-height: 1.55;
-      padding: 10px 12px; background: #0a0a06;
-      border: 1px solid #1a1a14; border-radius: 4px;
-      white-space: pre-wrap;
-    }
-    .bldr-card-placeholder {
-      color: #555; font-style: italic;
-    }
-    .bldr-card-empty {
-      color: #555; font-style: italic;
-    }
-    .bldr-card-extra-tab-wrap {
-      margin-top: 14px; display: flex; justify-content: center;
-    }
-    .bldr-card-extra-tab {
-      background: #1a1a14; border: 1px solid #2a2a20; color: #aaa;
-      font-family: inherit; font-size: 11px; font-weight: 600;
-      letter-spacing: .08em; text-transform: uppercase;
-      padding: 5px 14px; border-radius: 14px; cursor: pointer;
-      transition: background 0.1s, border-color 0.1s, color 0.1s;
-    }
-    .bldr-card-extra-tab:hover {
-      background: #222218; border-color: #3a3a30; color: #d8c060;
-    }
-    .bldr-card-extra-tab.is-open {
-      background: #2a2a18; border-color: #3a3a20; color: #d8c060;
-    }
-
-    /* ───── Parameters panel ─────
-       Each parameter is a collapsible card. Click head → expand inline. */
-    .bldr-param-card {
-      background: #111; border: 1px solid #1f1f1f;
-      border-radius: 4px; margin-bottom: 8px;
-      overflow: hidden;
-      transition: border-color 0.1s;
-    }
-    .bldr-param-card:hover { border-color: #2f2f2f; }
-    .bldr-param-card.expanded { border-color: #4a4a4a; }
-    .bldr-param-head {
-      display: flex; align-items: center; gap: 10px;
-      padding: 10px 12px; cursor: pointer; user-select: none;
-    }
-    .bldr-param-caret {
-      flex: 0 0 auto; width: 12px; color: #666;
-      font-size: 10px; text-align: center;
-      transition: transform 0.1s;
-    }
-    .bldr-param-card.expanded .bldr-param-caret {
-      transform: rotate(90deg);
-    }
-    .bldr-param-name {
-      font-size: 14px; font-weight: 600; color: #ddd;
-      flex: 1; min-width: 0;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    .bldr-param-name-empty { color: #555; font-style: italic; font-weight: 500; }
-    .bldr-param-summary {
-      font-size: 11px; color: #888;
-      font-family: 'Consolas', 'Courier New', monospace;
-      flex: 0 0 auto;
-    }
-    .bldr-param-head .row-x {
-      flex: 0 0 auto;
-      background: transparent; border: none; color: #c66;
-      font-size: 14px; cursor: pointer; padding: 0 4px;
-    }
-    .bldr-param-head .row-x:hover { color: #f88; }
-
-    .bldr-param-body {
-      padding: 12px 14px 14px 32px;
-      border-top: 1px solid #1a1a1a;
-      background: #0a0a0a;
-    }
-    .bldr-param-body .field { margin-bottom: 10px; }
-
-    /* Step row inside the param body. Compact horizontal layout. */
-    .bldr-step-row, .bldr-step-row-head {
-      display: grid;
-      grid-template-columns: 24px 1fr 1fr 90px 32px;
-      gap: 8px; align-items: center; margin-bottom: 5px;
-    }
-    .bldr-step-row-head {
-      font-size: 10px; color: #666;
-      text-transform: uppercase; letter-spacing: .08em;
-      margin-bottom: 6px;
-    }
-    .bldr-step-row .step-default-radio {
-      display: flex; align-items: center; justify-content: center;
-    }
-    .bldr-step-row input[type="text"],
-    .bldr-step-row input[type="number"] {
-      background: #111; border: 1px solid #222; color: #e0e0e0;
-      font-family: inherit; font-size: 13px;
-      padding: 6px 8px; border-radius: 3px; outline: none;
-      width: 100%;
-    }
-    .bldr-step-row input:focus { border-color: #555; }
-    .bldr-step-row .row-x {
-      background: transparent; border: 1px solid #2a2a2a;
-      color: #c66; font-size: 14px; cursor: pointer;
-      border-radius: 3px;
-    }
-    .bldr-step-row .row-x:hover { border-color: #4a2a2a; color: #f88; }
-
-    /* ───── Features / Flaws panels ─────
-       Tier-banded structure. Each tier band has a small header (tier
-       name + per-tier AP cost), then rows of textareas, then "+ Add"
-       at the bottom. */
-    .bldr-tier-band {
-      margin-bottom: 14px;
-    }
-    .bldr-tier-band-head {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 4px 0 6px 0; margin-bottom: 6px;
-      border-bottom: 1px solid #1a1a1a;
-    }
-    .bldr-tier-band-name {
-      font-size: 11px; font-weight: 700; letter-spacing: .1em;
-      text-transform: uppercase; color: #aaa;
-    }
-    .bldr-tier-band-cost {
-      font-size: 10px; color: #666;
-      font-family: 'Consolas', 'Courier New', monospace;
-    }
-    .bldr-ff-row {
-      display: flex; align-items: stretch; gap: 6px;
-      margin-bottom: 5px;
-    }
-    .bldr-ff-row textarea {
-      flex: 1; resize: vertical; min-height: 36px;
-      background: #111; border: 1px solid #222; color: #e0e0e0;
-      font-family: inherit; font-size: 13px;
-      padding: 8px 10px; border-radius: 3px; outline: none;
-    }
-    .bldr-ff-row textarea:focus { border-color: #555; }
-    .bldr-ff-row .ff-tier-move {
-      flex: 0 0 auto; background: #111;
-      border: 1px solid #222; color: #aaa;
-      font-family: inherit; font-size: 11px;
-      padding: 0 6px; border-radius: 3px; outline: none;
-    }
-    .bldr-ff-row .ff-tier-move:focus { border-color: #555; }
-    .bldr-ff-row .row-x {
-      flex: 0 0 auto; background: transparent;
-      border: 1px solid #2a2a2a; color: #c66;
-      font-size: 14px; cursor: pointer; padding: 0 10px;
-      border-radius: 3px;
-    }
-    .bldr-ff-row .row-x:hover { border-color: #4a2a2a; color: #f88; }
-    .bldr-tier-add {
-      width: 100%; margin-top: 4px;
-      padding: 6px; font-size: 11px;
-      background: transparent; border: 1px dashed #2a2a2a;
-      color: #666; cursor: pointer; border-radius: 3px;
-      font-family: inherit;
-    }
-    .bldr-tier-add:hover {
-      border-color: #444; color: #aaa; background: #0d0d0d;
-    }
-
-    /* ───── Bottom textarea sections (Description, System, Visual, Extra) ─────
-       Stacked, full-width below the param/features region. Each is its
-       own panel with a label and a generously-sized textarea. */
-    .bldr-textarea-section {
-      background: #0d0d0d; border: 1px solid #1a1a1a;
-      border-radius: 6px; padding: 18px;
-      margin-bottom: 14px;
-    }
-    .bldr-textarea-section .bldr-panel-title {
-      margin-bottom: 10px;
-    }
-    .bldr-textarea-section textarea {
-      width: 100%; min-height: 80px; resize: vertical;
-      background: #111; border: 1px solid #222; color: #e0e0e0;
-      font-family: inherit; font-size: 13px;
-      padding: 10px 12px; border-radius: 4px; outline: none;
-    }
-    .bldr-textarea-section textarea:focus { border-color: #555; }
-
-    /* Footer — Save / Done / status. Wide row. */
-    .footer-actions {
-      margin-top: 32px; padding-top: 20px;
-      border-top: 1px solid #1a1a1a;
-      display: flex; gap: 12px; align-items: center;
-    }
-    .save-msg { font-size: 12px; margin-left: auto; }
-
-    /* Tier cost tables — used in Catalogue Settings. */
-    .tier-grid {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
-    }
-    @media (max-width: 700px) {
-      .tier-grid { grid-template-columns: 1fr; }
-    }
-    .tier-grid-label {
-      display: block; font-weight: 700; margin-bottom: 14px;
-      font-size: 11px; letter-spacing: .1em;
-      text-transform: uppercase; color: #888;
-    }
-    /* "Feature Tier Costs (AP)" / "Flaw Tier Refunds (AP)" headers in
-       the Settings pane sit right above their row stack — give them
-       breathing room instead of letting the first row crowd them. */
-    .tier-grid > div > label {
-      display: block; margin-bottom: 14px;
-      font-size: 13px;
-    }
-
-    /* Empty-state copy. */
-    .empty {
-      padding: 24px; text-align: center; color: #666;
-      font-size: 13px; font-style: italic;
-    }
-
-    /* Settings strip — top-of-page strip with catalogue-level fields
-       (enabled toggle, name, description, tier costs). Compact, sits
-       below the screen title & sub. Not a heavy panel — just a thin
-       row of controls. */
-    .settings-strip {
-      background: #0d0d0d; border: 1px solid #1a1a1a;
-      border-radius: 6px; padding: 18px;
-      margin-bottom: 20px;
-    }
-
-    /* Top-level tab strip — separates the player-facing browse view
-       from GM-only configuration (enable toggle, tier cost tables).
-       Click switches panes. The active tab gets a brighter border
-       and slightly elevated background. */
-    .main-tabs {
-      display: flex; gap: 4px;
-      margin-bottom: 20px;
-      border-bottom: 1px solid #1a1a1a;
-    }
-    .main-tab {
-      background: transparent; border: none;
-      color: #888; font-family: inherit;
-      font-size: 13px; font-weight: 600;
-      letter-spacing: .04em;
-      padding: 10px 16px; cursor: pointer;
-      border-bottom: 2px solid transparent;
-      margin-bottom: -1px;
-    }
-    .main-tab:hover { color: #ccc; }
-    .main-tab.is-active {
-      color: #e8e8e8;
-      border-bottom-color: #d4a574;
-    }
-  </style>
-</head>
-<body>
-<script>injectNav();</script>
-
-<div class="page">
-  <div id="loading" style="color:#555;text-align:center;padding:40px">Loading…</div>
-  <div id="content" style="display:none">
-
-    <div class="crumb">
-      <a id="crumb-back" onclick="goBackToRuleset()">← Back to Ruleset Editor</a>
-    </div>
-
-    <!-- Top-level tab strip — switches between the player-facing browse
-         view ("Catalogue") and GM-only configuration ("Settings"). The
-         settings tab holds the enable toggle, catalogue name/description,
-         and the per-tier AP cost tables for Features / Flaws — stuff that
-         is jarring while authoring an ability and shouldn't be visible
-         in the same screen as the live card preview. -->
-    <div class="main-tabs">
-      <button type="button" class="main-tab is-active" id="main-tab-catalogue"
-              onclick="catSwitchMainTab('catalogue')">Catalogue</button>
-      <button type="button" class="main-tab" id="main-tab-settings"
-              onclick="catSwitchMainTab('settings')">Settings</button>
-    </div>
-
-    <!-- ── Settings tab ── (hidden by default; switch via tab strip) -->
-    <div id="main-pane-settings" style="display:none;">
-      <div class="section">
-        <div class="section-header">
-          <div class="section-title">Catalogue Settings</div>
-        </div>
-        <div class="field" style="display:flex;align-items:center;gap:10px;">
-          <label style="margin:0;display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;text-transform:none;letter-spacing:0;color:#ccc;font-weight:400;">
-            <input type="checkbox" id="cat-enabled" onchange="catToggleEnabled(this.checked)">
-            <span>Catalogue enabled</span>
-          </label>
-          <span class="hint" style="margin:0;">Disable to hide the Abilities tab on Character sheets.</span>
-        </div>
-        <div class="field">
-          <label>Catalogue Name</label>
-          <input type="text" id="cat-name"
-                 placeholder="e.g. Standard Catalogue, Vampire Powers…"
-                 oninput="catSetName(this.value)">
-        </div>
-        <div class="field">
-          <label>Description (shown to Players in the catalogue browser)</label>
-          <textarea id="cat-desc" rows="2"
-                    placeholder="Optional flavor text describing the catalogue's scope, themes, etc."
-                    oninput="catSetDesc(this.value)"></textarea>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-header">
-          <div class="section-title">Feature &amp; Flaw Tier Costs</div>
-        </div>
-        <p class="hint">
-          Centralized cost tables. Every Feature and Flaw in every Builder references a tier
-          name from these tables — change a tier's value here and every Feature/Flaw at that tier
-          re-prices automatically across the entire Catalogue.
-        </p>
-        <div class="tier-grid">
-          <div>
-            <label>Feature Tier Costs (AP)</label>
-            <div id="cat-tier-features"></div>
-          </div>
-          <div>
-            <label>Flaw Tier Refunds (AP)</label>
-            <div id="cat-tier-flaws"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── Catalogue tab ── (visible by default — the player-mirror view) -->
-    <div id="main-pane-catalogue">
-      <div class="section">
-        <div class="section-header">
-          <div class="section-title" id="catalogue-body-title">Catalogue</div>
-          <div id="catalogue-body-actions"></div>
-        </div>
-        <div id="catalogue-body"></div>
-      </div>
-    </div>
-
-    <div class="footer-actions">
-      <button class="btn primary" id="save-btn" onclick="saveCatalogue()">Save</button>
-      <button class="btn" onclick="goBackToRuleset()">Done</button>
-      <span class="save-msg" id="save-msg"></span>
-    </div>
-  </div>
-</div>
-
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
-  import { getAuth, signOut } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
-  import { getFirestore, doc, getDoc, updateDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
-  // Storage SDK — for Builder icon uploads. Aliased ref→storageRef so
-  // the function's "ref" doesn't collide with anything common.
-  import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-storage.js";
-
-  // Ability cost engine — used to render the live cost preview in the
-  // Builder editor. Exposed on window so the legacy ported handlers
-  // (which use inline onclick/oninput) can call it without re-importing.
-  import * as charAbilities from './char-abilities.js';
-  window.computeAbilityCost = charAbilities.computeAbilityCost;
-  window.renderSystemTextForBuilder = charAbilities.renderSystemText;
-  window.renderSystemTextHtmlForBuilder = charAbilities.renderSystemTextHtml;
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyCf94yLvAtJ9pLgJ3FsV7ir4Qh9XXm3nHg",
-    authDomain: "prime-rpg.firebaseapp.com",
-    projectId: "prime-rpg",
-    storageBucket: "prime-rpg.firebasestorage.app",
-    messagingSenderId: "177905987748",
-    appId: "1:177905987748:web:8856ab4fdb8f81f42eb631"
-  };
-
-  const app     = initializeApp(firebaseConfig);
-  const auth    = getAuth(app);
-  const db      = getFirestore(app);
-  const storage = getStorage(app);
-
-  // URL params drive view-state on initial load:
-  //   id      — required ruleset id; missing/invalid → bounce to my-rulesets
-  //   type    — 'ability' | 'artifact' | … — opens directly to type view
-  //   builder — builder id under that type — opens directly to builder editor
-  const params         = new URLSearchParams(window.location.search);
-  const rulesetId      = params.get('id');
-  const initialType    = params.get('type');
-  const initialBuilder = params.get('builder');
-
-  let myUid       = null;
-  let existingDoc = null;
-  let state       = null;
-
-  // ═════════ HOISTED MODULE STATE — ALL `let`/`const` THAT ANY ═════════
-  // ═════════ RENDERER MIGHT READ MUST GO HERE                  ═════════
+  // ── AFFLICTIONS (Conditions & Circumstances) ──
+  // Two preset libraries:
+  //   conditions   — ongoing states OF the character (traumas, diseases,
+  //                  disorders, injuries). "You have X."
+  //   circumstances — ongoing external / situational effects (weather,
+  //                  lighting, being hunted). "You are in X."
   //
-  // Module scripts evaluate top-to-bottom. The very last thing this
-  // module does (after auth + load) is call initUI() synchronously,
-  // which dispatches into renderBuilderEditor, renderBuilderPreview,
-  // and a chain of helpers — ALL OF WHICH RUN BEFORE any later
-  // `let`/`const` in this module is initialized. A bare `let foo`
-  // declared mid-file but read from initUI's render chain throws
-  // a temporal-dead-zone ReferenceError.
+  // Both use the same entry shape and render the same way; the split is
+  // semantic only, so players can categorize their afflictions clearly.
   //
-  // **NEVER add a new `let`/`const` for runtime state mid-file.**
-  // Add it here, with a comment explaining what it tracks. The only
-  // exception is `function` declarations — those hoist properly, so
-  // helper functions can live anywhere.
+  // Preset entry shape:
+  //   { id: 'cond_xxx', name, description, system }
+  // `id` is the stable reference characters use via their entry's defId;
+  // `name` / `description` / `system` are the authored content. Default
+  // library is empty — GMs add entries via the ruleset editor, or
+  // characters promote their own one-offs into their personal catalogue.
   //
-  // (If you see "Cannot access 'X' before initialization" in console,
-  // X is somewhere down in the file and needs to move up here.)
+  // NOTE: The outer key is still called `conditions` for storage-
+  // compatibility with data saved before the Conditions/Circumstances
+  // rename; the sub-keys were `physical`/`mental` in v1 and are now
+  // `conditions`/`circumstances`. The normalizer migrates old data
+  // transparently on load.
+  conditions: {
+    conditions:    [],
+    circumstances: []
+  },
 
-  // — Catalogue view-state —
-  let catalogueView   = 'home';   // 'home' | 'type' | 'builder'
-  let currentTypeKey  = null;     // null when home, else 'ability' | 'artifact' | …
-  let openedBuilder   = null;     // { ci, bi, typeKey } when builder open
+  // Morals — plain string list. "" (blank) = Custom wildcard entry.
+  morals: [],
 
-  // — Builder editor (Phase B) UI state —
-  // Which Parameter cards are expanded (inline step editor showing).
-  // Keys are "primary:idx" / "secondary:idx" — see paramKey() below.
-  const expandedParamKeys = new Set();
-  // Whether the Card Preview's "Extra" tab is currently open.
-  // Stored on window rather than as a `let` to make the file robust
-  // against any module-evaluation ordering surprises (TDZ-free).
-  if (typeof window.bldrPreviewExtraOpen !== 'boolean') window.bldrPreviewExtraOpen = false;
+  // ── ADVANTAGES & DISADVANTAGES ──
+  // Both sides share the same shape: a tier scale + a catalog of entries.
+  //
+  // Tiers: 7 named rungs. Each has a label, a free-text description
+  // (what "Minor" means at the table), and an XP cost/grant. Tier labels
+  // and XP values are editable per ruleset so homebrew can re-balance.
+  //
+  // Entries reference a tier by *index* (0..6) rather than by label, so
+  // renaming a tier in the ruleset doesn't orphan existing entries.
+  //
+  // Categories are a fixed list — Physical, Mental, Social, Background,
+  // Special. Stored as a lowercase code so the display label can evolve
+  // without touching saved data.
 
-  // — Constants used by Phase B renderers —
-  // Tier names + display labels for Features and Flaws.
-  const TIER_ORDER = ['minor', 'moderate', 'major', 'massive', 'monumental', 'mega', 'mythical'];
-  const TIER_LABELS = {
-    minor: 'Minor', moderate: 'Moderate', major: 'Major',
-    massive: 'Massive', monumental: 'Monumental', mega: 'Mega', mythical: 'Mythical'
-  };
+  advantageTiers: [
+    { label: 'Minor',      description: '', xp: 0 },
+    { label: 'Moderate',   description: '', xp: 0 },
+    { label: 'Major',      description: '', xp: 0 },
+    { label: 'Massive',    description: '', xp: 0 },
+    { label: 'Monumental', description: '', xp: 0 },
+    { label: 'Mega',       description: '', xp: 0 },
+    { label: 'Mythical',   description: '', xp: 0 }
+  ],
+  disadvantageTiers: [
+    { label: 'Minor',      description: '', xp: 0 },
+    { label: 'Moderate',   description: '', xp: 0 },
+    { label: 'Major',      description: '', xp: 0 },
+    { label: 'Massive',    description: '', xp: 0 },
+    { label: 'Monumental', description: '', xp: 0 },
+    { label: 'Mega',       description: '', xp: 0 },
+    { label: 'Mythical',   description: '', xp: 0 }
+  ],
 
-  // ── ESCAPE HELPERS ──
-  // Used everywhere in the legacy ported render code. Both names point
-  // to the same five-char substitution; the distinction was conventional
-  // in the original.
-  function escapeHtml(s) {
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  }
-  const escapeHtmlAttr = escapeHtml;
+  // Catalog entries. tier = index into advantageTiers / disadvantageTiers.
+  // category is one of: physical, mental, social, background, special.
+  advantages: [],
+  disadvantages: [],
 
-  // ── AUTH + RULESET LOAD + PERMISSION CHECK ──
-  await auth.authStateReady();
-  const user = auth.currentUser;
-  if (!user || !user.emailVerified) {
-    window.location.href = 'index.html';
-  } else if (!rulesetId) {
-    window.location.href = 'my-rulesets.html';
-  } else {
-    myUid = user.uid;
-    const userDoc = await getDoc(doc(db, 'users', user.uid));
-    if (userDoc.exists()) setNavUsername(userDoc.data().username);
-    initAlerts(db, user.uid);
+  // ── DERIVED STATS SYSTEM ──
+  //
+  // Derived stats are values computed from base stats via formulas. The ruleset
+  // defines them and their formulas; the character sheet evaluates them on the
+  // fly. Formulas are strings like "(STR + SIZEMOD) / 2 + 1" — see char-derived.js
+  // for the evaluator.
+  //
+  // Formula variables available:
+  //   - Base stats by code: STR, DEX, PER, INT, CHA, POW, SIZE
+  //   - STATMODs by code:   STRMOD, DEXMOD, PERMOD, INTMOD, CHAMOD, POWMOD, SIZEMOD
+  //   - Derived stats by code: HP, AGL, etc. (evaluated in dependency order)
+  //   - Purchased resources: POWERPOOL (value of power pool purchase)
+  //   - Per-location context inside hit location formulas: maxHP, currentDamage
+  //
+  // Results are floored by default (Math.floor), unless the stat is flagged
+  // `keepDecimals: true` (used by things like Reflex which are genuinely fractional).
 
-    const rsDoc = await getDoc(doc(db, 'rulesets', rulesetId));
-    if (!rsDoc.exists()) {
-      window.location.href = 'my-rulesets.html';
-    } else {
-      existingDoc = rsDoc.data();
-      state = window.normalizeRuleset(existingDoc);
+  // Groups for organizing derived stats on the Combat tab. GM-customizable.
+  // Every group has a code (stable ID) and a label (display name).
+  // Codes stay stable because many files filter on them ('health',
+  // 'movement', 'mental'); the label is what the player sees on the
+  // sheet and is freely editable. Shipped labels:
+  //   health   → "Physical"   (Physical durability & body stats)
+  //   movement → "Combat"     (INIT, Speed, Sprint, Agility, Reflex)
+  //   mental   → "Mental"     (Sanity and mental stats)
+  //   power    → "Power"      (supernatural capacity)
+  //   carry    → "Carry"      (encumbrance + lift)
+  derivedStatGroups: [
+    { code: 'health',   label: 'Physical' },
+    // 'movement' group code stays for back-compat (many files filter on
+    // it). The DISPLAY label is "Combat" — the group now holds INIT
+    // alongside the movement stats since initiative belongs with the
+    // combat-tempo cards conceptually.
+    { code: 'movement', label: 'Combat' },
+    { code: 'mental',   label: 'Mental'   },
+    { code: 'power',    label: 'Power'    },
+    { code: 'carry',    label: 'Carry'    }
+  ],
 
-      // Permission gate — same logic as edit-ruleset.html.
-      const isOwner     = existingDoc.createdBy === myUid;
-      const isBasic     = !!existingDoc.isBasicSet;
-      const isSiteAdmin = myUid === window.SITE_ADMIN_UID;
-      let canEdit = isOwner;
-      if (isBasic) canEdit = isSiteAdmin;
-      if (existingDoc.playgroupId) {
-        const memb = await getDoc(doc(db, 'memberships', myUid + '_' + existingDoc.playgroupId));
-        if (memb.exists()) {
-          const r = memb.data().role;
-          if (r === 'Leader' || r === 'Administrator') canEdit = true;
+  // Descriptions for the three computed summary tiles on the Overview
+  // tab — Body, Sanity, Penalty. These tiles are calculated from other
+  // stats (HP, SAN, Pain+Stress+Encumbrance+Others) so they don't have a
+  // single source stat we could hang a description on. Instead we give
+  // the GM a dedicated field in the ruleset for each, and let players
+  // override per-character via the descriptions module like any other
+  // game-content description.
+  //
+  // Keys match the descriptions module's tile IDs: 'body', 'sanity',
+  // 'penalty'. The resolver (resolveDescription in char-util.js) reads
+  // from ruleset.tileDescriptions[id] when category === 'tiles'.
+  tileDescriptions: {
+    body:       'Your physical integrity — HP tracks overall durability; hit locations take separate damage and can be disabled or destroyed even while you\'re still alive. The tile shows current / max HP plus your status (Alive, Dying, Dead).',
+    sanity:     'Your mental integrity, tracked with its own pool. SAN damage from trauma, horror, or supernatural exposure accumulates here. Low SAN contributes to Stress, which contributes to Penalty on all rolls.',
+    exhaustion: 'Your stamina and endurance pool — drains from exertion, exposure to elements, and Exerting on rolls (spend EXH for −25% Penalty per point or +1 Difficulty Reduction once). Below 0 EXH you scale Penalty linearly; at −2× max you fall Unconscious until you regain EXH.',
+    penalty:    'The sum of every modifier reducing your dice pools. Penalty = Pain + Stress + Encumbrance + Others. Applies to active rolls only — Passive rolls (resistances) ignore Penalty. Shown as a percentage; dice pool reduction is floor(pool × Penalty%).',
+    power:      'Your supernatural capacity pool — spend Power Points on paradigm abilities, refresh per the rules of your paradigm. The bar shows current / max PP. Color and formula for PP are configured in the ruleset\'s Power Pool settings.'
+  },
+
+  derivedStats: [
+    // HEALTH
+    {
+      code: 'HP',
+      name: 'Health',
+      description: 'Physical durability. Roll for physical resistances.',
+      group: 'health',
+      formula: 'STR + SIZE',
+      // Stat modifier you roll with when the GM calls for a Health check —
+      // e.g. resisting poison, disease, or other bodily trauma. Shown in the
+      // card's top-right corner as a signed badge (+2, −1).
+      rollModifier: 'STRMOD',
+      // Passive rolls are immune to Strain (Pain + Stress). Characters don't
+      // suffer dice penalties when resisting bodily trauma just because they're
+      // in pain — the whole point of the roll is to see if they can endure.
+      passiveRoll: true,
+      trackDamage: false,
+      keepDecimals: false,
+      unit: ''
+    },
+    {
+      code: 'FORT',
+      name: 'Fortitude',
+      description: 'Damage-stacking resilience. Biggest wound hits you in full; additional wounds stack through Fortitude at reduced efficiency. Higher FORT → multiple small hits bite you less.',
+      group: 'health',
+      // FORT is pre-computed in the symbol table from STRMOD via the
+      // fortitudeTable lookup; the formula here just reads that value.
+      formula: 'FORT',
+      // Pure static value used as a damage-stacking divisor. Never rolled
+      // as a dice pool — the card shouldn't show dice-roll affordances.
+      rollable: false,
+      trackDamage: false,
+      keepDecimals: true,
+      unit: ''
+    },
+    // MOVEMENT (displayed as "Combat" — see derivedStatGroups label)
+    {
+      code: 'INIT',
+      name: 'Initiative',
+      description: 'Used to determine turn order in combat. Higher INIT acts first. Ties are resolved by whoever has the higher DEX, then PER, then at the GM\'s discretion.',
+      group: 'movement',
+      // Dice pool = DEX + PER, rolled when a scene transitions to combat
+      // and turn order matters. Mod uses whichever of DEXMOD/PERMOD is
+      // greater — mirrors how SAN's resistance roll uses max(INTMOD, CHAMOD).
+      // A character who's quick reflexes OR sharp perception gets the
+      // better modifier; being strong in both doesn't stack.
+      formula: 'DEX + PER',
+      rollModifier: 'max(DEXMOD, PERMOD)',
+      // Penalty reduces the value directly — same treatment as SPD/SPDUP.
+      // Initiative represents mental-physical tempo in a moment of crisis,
+      // so pain/stress/encumbrance bleed into it the same way they slow
+      // movement. A character at 25% Penalty initiates at 75% of their
+      // base Initiative.
+      penaltyReducesValue: true,
+      trackDamage: false,
+      keepDecimals: false,
+      unit: ''
+    },
+    {
+      code: 'SPD',
+      name: 'Speed',
+      description: 'How fast you can move in feet per second.',
+      group: 'movement',
+      formula: 'DEX * 2.5',
+      // Static derived value — you don't roll Speed, you just move at it.
+      rollable: false,
+      trackDamage: false,
+      keepDecimals: true,     // 2.5 * DEX naturally fractional
+      unit: 'ft/sec',
+      // Penalty reduces movement values linearly — a character at 25%
+      // Penalty moves at 75% of their base speed. Shown inline as
+      // "10 − 2.5 ft/sec".
+      penaltyReducesValue: true,
+      // Expandable conversions panel on the card — 3s/6s/min/hr/mph/etc.
+      showSpeedConversions: true,
+      // Opt-in to per-character value modifiers (flat ft/sec bonuses
+      // with names, e.g. "Running Shoes: +2"). Editable on the card.
+      allowValueMods: true,
+      // Opt-in to the per-stat penalty source filter. When a character
+      // creates a filter object for this stat, only whitelisted Strain
+      // sources contribute to its Penalty %. Missing filter = legacy
+      // behavior (all sources apply).
+      allowPenaltyFilter: true
+    },
+    {
+      code: 'SPR',
+      name: 'Sprint',
+      description: 'You may add increments equal to this amount to your Speed; every time you do so, you gain +1 Dice Penalty towards all physical actions for the rest of the Round.',
+      group: 'movement',
+      formula: 'STR * 1',
+      rollable: false,
+      trackDamage: false,
+      keepDecimals: false,
+      unit: 'ft',
+      penaltyReducesValue: true,
+      showSpeedConversions: true,
+      // Same opt-ins as SPD — flat bonus list and per-source
+      // penalty filter are surfaced on the SPR card.
+      allowValueMods: true,
+      allowPenaltyFilter: true
+    },
+    {
+      code: 'AGL',
+      name: 'Agility',
+      description: 'You may make a number of "free" (without normal penalties for spamming) Fast Actions, Fast Reactions, and Reactions per Round, equal to this. This applies independently to each.',
+      group: 'movement',
+      formula: '(DEX + PER) / 2 - 1',
+      rollable: false,
+      trackDamage: false,
+      keepDecimals: false,
+      unit: ''
+    },
+    {
+      code: 'RFX',
+      name: 'Reflex',
+      description: 'Reaction time in seconds; used mostly for flavor, but also to determine whether you can participate in high-speed combat, or whether you get speedblitz\'d.',
+      group: 'movement',
+      // Tuned curve: each 4 points of combined DEXMOD+PERMOD halves the
+      // reaction time. At 0/0 this is 0.20s (average human); at 2/2 it's
+      // 0.10s (gifted); at 4/4 it's 0.05s (exceptional). Negative stats
+      // push it above 0.20s (slow reactions).
+      formula: '0.2 / (2 ^ ((DEXMOD + PERMOD) / 4))',
+      rollable: false,
+      trackDamage: false,
+      keepDecimals: true,
+      unit: 's'
+    },
+    // MENTAL
+    {
+      code: 'SAN',
+      name: 'Sanity',
+      description: 'Mental durability. Roll for mental resistances.',
+      group: 'mental',
+      formula: 'CHA + INT',
+      // For mental resistance rolls, character uses whichever of INT or CHA
+      // gives the better modifier — reflects that sharp minds AND strong
+      // willpower both help resist mental pressure, and the stronger trait
+      // carries you through.
+      rollModifier: 'max(INTMOD, CHAMOD)',
+      // Passive roll — Sanity resistance rolls are not reduced by Strain.
+      passiveRoll: true,
+      trackDamage: false,
+      keepDecimals: false,
+      unit: ''
+    },
+    // EXHAUSTION — third pillar alongside HP/SAN.
+    //
+    // Tracks stamina and fatigue: distinct from bodily wounds (HP) and
+    // mental wounds (SAN). The average person has EXH 5 — enough reserve
+    // for a few moments of real exertion before needing rest. Drops
+    // from physical/mental exertion, exposure to extreme environments,
+    // and Exert-spending to push rolls.
+    //
+    // Behaves like HP/SAN structurally: has current+max, can go negative,
+    // reaches a terminal state at −2× max. Three-tier status:
+    //   current >  0            → Ready
+    //   0 ≥ current > -EXH      → Tired       (scaling Penalty kicks in)
+    //   -EXH ≥ current > -2*EXH → Exhausted   (Penalty approaches 100%)
+    //   current ≤ -2*EXH        → Unconscious (out until regen)
+    //
+    // Penalty contribution is LINEAR when current < 0: percentage of the
+    // range you've descended into the negative, where range is 2× max.
+    // At exhCurrent = -2×max, Penalty = 100% AND character is KO'd.
+    {
+      code: 'EXH',
+      name: 'Exhaustion',
+      description: 'Stamina and endurance pool. Average person has ~5. Drops from exertion, exposure, and pushing through rolls. Below 0 EXH you scale Penalty; at −2× max you fall Unconscious. Spend EXH before a roll to Exert — 1 Difficulty Reduction (max once) OR −25% Penalty per EXH spent.',
+      group: 'health',
+      formula: '(HP / 2) + (SAN / 2)',
+      // EXH is a pool (current/max tracker) — never rolled as a dice
+      // pool. Matches FORT's static-value treatment: the card shows
+      // the value but doesn't offer a roll affordance. Spending EXH
+      // (Exert mechanic) writes to charData.exhDamage, not a roll.
+      rollable: false,
+      // Allow flat max modifiers on the stat card — editor lets the
+      // player author named ± entries that shift the EXH MAX (e.g.
+      // "Iron Constitution: +2", "Sleep deprivation: −1"). These are
+      // distinct from `exhModifiers` damage entries (which shift current
+      // EXH, not max).
+      allowValueMods: true,
+      trackDamage: false,
+      keepDecimals: false,
+      unit: ''
+    },
+    // POWER
+    {
+      code: 'POWER',
+      name: 'Power Reserve',
+      description: 'Total power energy available. Scales with your Power Pool and POW.',
+      group: 'power',
+      formula: 'POWERPOOL * POW_MULTIPLIER',
+      trackDamage: false,
+      keepDecimals: true,
+      unit: ''
+    },
+    // CARRY
+    // CAP, ENC, LIFT are the three carry stats. All three are passive
+    // (they don't contribute to dice pools themselves) and render as
+    // their own cards at the top of the Inventory tab — NOT in the
+    // Combat tab's derived-stats section. The 'carry' group flag is
+    // read by the inventory renderer to know which stats to display.
+    {
+      code: 'CAP',
+      name: 'Carrying Capacity',
+      description: 'The weight in pounds you can carry without any Encumbrance. Baseline: STR × 10.',
+      group: 'carry',
+      formula: 'STR * 10',
+      passiveRoll: true,
+      trackDamage: false,
+      keepDecimals: false,
+      unit: 'lbs'
+    },
+    {
+      code: 'LIFT',
+      name: 'Maximum Lift',
+      description: 'Absolute maximum you can ever carry without a roll. At this weight, ENC is 100% and you cannot move without rolling to "lift". Equal to CAP × 11.',
+      group: 'carry',
+      formula: 'CAP * 11',
+      passiveRoll: true,
+      trackDamage: false,
+      keepDecimals: false,
+      unit: 'lbs'
+    },
+    {
+      code: 'ENC',
+      name: 'Encumbrance',
+      description: 'Penalty from carrying more than your CAP. Accumulates at 10% per CAP-increment over CAP; reaches 100% at LIFT. Auto-calculated from your inventory (groups tagged "count for encumbrance").',
+      group: 'carry',
+      // CARRIED is injected into the symbol table by computeDerivedStats
+      // before formula evaluation (see the inventory weight sum there).
+      // Formula: fraction of the over-CAP range, expressed as 0–100%.
+      // max/min clamp handles carrying ≤ CAP (0%) and > LIFT (100%).
+      formula: 'max(0, min(100, (CARRIED - CAP) / CAP * 10))',
+      passiveRoll: true,
+      trackDamage: false,
+      keepDecimals: true,
+      unit: '%'
+    }
+  ],
+
+  // ── HIT LOCATIONS ──
+  //
+  // Structural body parts. Each has its own HP formula (with maxHP being the
+  // base HP derived stat) and a count (e.g. 2 arms). The character sheet creates
+  // a damage tracker per location × count; a character with count=2 arms gets
+  // "arm-1" and "arm-2" tracked separately.
+  //
+  // Damage thresholds below are applied to each location's max HP to determine
+  // Disabled / Destroyed / Definitively Destroyed states.
+  hitLocations: [
+    { code: 'head',  name: 'Head',  count: 1, hpFormula: '(HP / 2) + (SIZE / 2) - 1' },
+    { code: 'torso', name: 'Torso', count: 1, hpFormula: 'HP' },
+    { code: 'arm',   name: 'Arm',   count: 2, hpFormula: '(HP / 2) + (SIZE / 2)' },
+    { code: 'leg',   name: 'Leg',   count: 2, hpFormula: '(HP / 2) + (SIZE / 2)' }
+  ],
+
+  // Damage thresholds — formulas evaluated with a `maxHP` variable bound to the
+  // location's max. `currentDamage` is also available if you need fancier rules.
+  // Default is: 0 = Disabled, -maxHP = Destroyed, -2*maxHP = Definitively Destroyed.
+  damageThresholds: {
+    disabled:            { label: 'Disabled',              formula: '0' },
+    destroyed:           { label: 'Destroyed',             formula: '-maxHP' },
+    definitelyDestroyed: { label: 'Definitively Destroyed', formula: '-2 * maxHP' }
+  },
+
+  // ── FORTITUDE TABLE ──
+  //
+  // Looks up FORT (Fortitude) by STRMOD. Flat per-STRMOD entries, one row per
+  // value — characters with STRMOD outside the declared range clamp to the
+  // nearest endpoint.
+  //
+  // FORT is used in the per-location damage calculation:
+  //   effective damage = highest instance + (sum of other instances) / FORT
+  // So FORT=1 means damage stacks linearly; FORT=2 halves the impact of every
+  // secondary wound; FORT=10 means the biggest hit matters, everything else
+  // barely registers.
+  //
+  // Default curve: STRMOD −1 → 1, 0 → 1, 1 → 1.5, 2 → 2, linear past that.
+  // Same shape as POW_MULTIPLIER — feel free to retune per ruleset.
+  fortitudeTable: [
+    { strmod: -1, value: 1   },
+    { strmod: 0,  value: 1   },
+    { strmod: 1,  value: 1.5 },
+    { strmod: 2,  value: 2   },
+    { strmod: 3,  value: 3   },
+    { strmod: 4,  value: 4   },
+    { strmod: 5,  value: 5   },
+    { strmod: 6,  value: 6   },
+    { strmod: 7,  value: 7   },
+    { strmod: 8,  value: 8   },
+    { strmod: 9,  value: 9   },
+    { strmod: 10, value: 10  }
+  ],
+
+  // ── POWER POOL ──
+  //
+  // A resource purchased with XP. Separate from the POW stat. Used by power
+  // reserve / energy systems. Ruleset can disable entirely. powMultiplier table
+  // maps POWMOD (the stat modifier from POW) ranges to multiplier values used
+  // by the POWER formula (e.g. POWER = POWERPOOL * POW_MULTIPLIER).
+  //
+  // Cost mode:
+  //   'perPoint' — flat rate: cost = costPerPoint * level
+  //   'perLevel' — per-level table: cost = sum of xpPerPoint[0..level]
+  //
+  // Basic Set defaults to perPoint at 2 XP/point — simple and flat.
+  // Rulesets with curved progression (expensive higher tiers) should switch to
+  // perLevel and fill out xpPerPoint.
+  powerPool: {
+    enabled: true,
+    name: 'Power Pool',
+    description: 'A reserve of power energy you pay XP to cultivate. Scales the POWER formula.',
+    costMode: 'perPoint',
+    costPerPoint: 2,
+    xpPerPoint: [0, 5, 10, 15, 25, 40, 60, 90, 130, 180, 240],
+    maxPurchasable: 20,
+
+    // Flat lookup: one entry per POWMOD value. The POW_MULTIPLIER variable
+    // is set from the entry whose `powmod` matches. If the character's POWMOD
+    // falls outside the table's range, char-derived.js clamps to the nearest
+    // endpoint (so impossibly high POWMOD still gets the highest multiplier).
+    //
+    // Default curve: POWMOD -1 → ×0.5, 0 → ×1, 1 → ×1.5, then linear from 2.
+    powMultiplier: [
+      { powmod: -1, value: 0.5 },
+      { powmod:  0, value: 1   },
+      { powmod:  1, value: 1.5 },
+      { powmod:  2, value: 2   },
+      { powmod:  3, value: 3   },
+      { powmod:  4, value: 4   },
+      { powmod:  5, value: 5   },
+      { powmod:  6, value: 6   },
+      { powmod:  7, value: 7   },
+      { powmod:  8, value: 8   },
+      { powmod:  9, value: 9   },
+      { powmod: 10, value: 10  }
+    ]
+  },
+
+  // ─── ABILITY CATALOGUE ───────────────────────────────────────────
+  //
+  // Tree of ability templates that Players use to build their own
+  // Abilities (powers, techniques, traits). Structure:
+  //
+  //   abilityCatalogue
+  //   ├── name
+  //   ├── description
+  //   ├── enabled                   — kill switch for rulesets that don't use Abilities
+  //   ├── canonicalTiers            — central feature/flaw cost table (see below)
+  //   └── categories: [             — one level of organization (Offensive, STATs, etc)
+  //         ├── id
+  //         ├── name
+  //         ├── description
+  //         └── builders: [         — individual templates (FIREBOLT, SUPERSTR)
+  //               ├── id
+  //               ├── name
+  //               ├── description
+  //               ├── baseCost
+  //               ├── systemTextTemplate
+  //               ├── primaryParams: [...]
+  //               ├── secondaryParams: [...]
+  //               ├── features: [...]
+  //               └── flaws: [...]
+  //             ]
+  //       ]
+  //
+  // SNAPSHOT MODEL: when a Player builds an Ability from a Builder, the
+  // Builder's full structure is COPIED into the Ability instance on the
+  // Character. Future ruleset edits to the Builder don't auto-apply.
+  // The Player can hit "Update to current" to refresh the snapshot,
+  // which previews changes (cost delta, orphaned params, etc) before
+  // committing. This balances stability for the player (no surprise
+  // nerfs mid-campaign) with GM flexibility (can rebalance Builders
+  // and have players opt in to the update).
+  //
+  // canonicalTiers is the central tier->cost table for Features and
+  // Flaws. Builders reference tier names ('minor', 'moderate', etc)
+  // rather than baking in numeric costs, so changing this table once
+  // re-prices every Feature/Flaw across all Builders.
+  // ─── ABILITY CATALOGUE ──────────────────────────────────────────────
+  //
+  // Catalogue ─→ Types ─→ Categories ─→ Builders
+  //   (top-level)   (4 worlds, parallel)   (organization)   (the unit Players pick)
+  //
+  // Top-level `types` houses four parallel hierarchies — Ability, Artifact,
+  // Artifact Assembly, Consumable Assembly — each with its own categories
+  // and builders. Only `ability` is fully designed today; the other three
+  // are scaffolded with `inDesign: true` so the UI can render them as
+  // "coming soon" tiles without code branches per type.
+  //
+  // canonicalTiers (Feature/Flaw cost tables) live at the catalogue level,
+  // not per-type. All Builders across all types reference the same tier
+  // names — change a tier here and every Feature/Flaw at that tier
+  // re-prices automatically across the entire Catalogue.
+  abilityCatalogue: {
+    enabled: true,
+    name: 'Standard Catalogue',
+    description: 'The default Catalogue for the Standard Set.',
+    canonicalTiers: {
+      // Feature tiers — Player PAYS this AP to take a Feature on their Ability.
+      featureCosts: {
+        minor:       1,
+        moderate:    2,
+        major:       3,
+        massive:     4,
+        monumental:  6,
+        mega:        8,
+        mythical:   10
+      },
+      // Flaw tiers — Player GAINS this AP back when taking a Flaw.
+      // Half of the Feature equivalent at each tier.
+      flawRefunds: {
+        minor:      0.5,
+        moderate:   1,
+        major:      1.5,
+        massive:    2,
+        monumental: 3,
+        mega:       4,
+        mythical:   5
+      }
+    },
+    // Four parallel type-worlds. Categories+Builders for each are
+    // identical in shape; mechanics may diverge later (Artifacts get
+    // durability, Consumables get charges, etc.) — at which point we
+    // extend the Builder schema per type without restructuring this.
+    //
+    // `inDesign: true` flags a type as not-yet-ready for authoring.
+    // The UI shows it as a non-clickable tile labeled "In design."
+    // Flip to false (or remove) when its mechanics are designed.
+    types: {
+      ability: {
+        label: 'Ability',
+        description: 'Active or passive Abilities a Character uses.',
+        inDesign: false,
+        categories: []
+      },
+      artifact: {
+        label: 'Artifact',
+        description: 'Persistent magical/technological items.',
+        inDesign: true,
+        categories: []
+      },
+      artifactAssembly: {
+        label: 'Artifact Assembly',
+        description: 'Combined artifact constructs and configurations.',
+        inDesign: true,
+        categories: []
+      },
+      consumableAssembly: {
+        label: 'Consumable Assembly',
+        description: 'Single-use or limited-charge constructs.',
+        inDesign: true,
+        categories: []
+      }
+    }
+  },
+
+  // ─── INVENTORY ──────────────────────────────────────────────────────
+  //
+  // The inventory system is informational only — dimensions, weight, and
+  // overflow are computed and displayed but don't enforce anything at the
+  // data layer. The GM adjudicates: "yes you can strap five rifles to that
+  // backpack, it's just ridiculous and the dice penalty is on you."
+  //
+  // Three catalogs make up the ruleset side:
+  //
+  //   bodySlots   — named positions on the character where worn containers
+  //                 go. Purely labels; no per-slot capacity enforced.
+  //                 Rulesets can add/rename/remove to taste (mech hardpoints,
+  //                 cloak slots, etc.).
+  //
+  //   containers  — storage items with L×W×H dimensions and a weight. Items
+  //                 go inside them. Containers can themselves go inside
+  //                 other containers (recursive; no depth limit). A
+  //                 character's top-level containers attach to a bodySlot
+  //                 or live in a synthetic "Stowed" bucket.
+  //
+  //   equipment   — anything non-container a character can carry. Has
+  //                 dimensions and weight for packing math. Optionally
+  //                 links back to the weapon catalog (when added later) via
+  //                 weaponId so inventory items can surface combat stats.
+  //
+  // Dimensions are inches (L×W×H), weight is pounds. These match what the
+  // sheet displays; we don't convert to metric.
+  //
+  // packingEfficiency lets a messy-packed container waste some of its
+  // volume. A duffel bag at 0.75 means 75% of its cubic volume can actually
+  // be used for items — the rest is lost to lumps, odd shapes, and the
+  // bag's own material. The longest-dimension check (item longest ≤
+  // container longest) runs independently of this.
+
+  // bodySlots are legacy — the current data model organizes everything
+  // into groups (top-level: On-Person, plus any player-created groups
+  // like Vehicle / Stash). The bodySlots field is kept as an empty array
+  // for backward compatibility with older rulesets that still reference
+  // it, but no new code reads from it. Players create their own
+  // subgroups inside On-Person (e.g. "Back", "Belt", "Holster") as
+  // purely organizational buckets.
+  bodySlots: [],
+
+  // ── UNIFIED ITEM CATALOG ──
+  //
+  // Every carryable thing — weapon, tool, armor, container — is a single
+  // kind of record: an Item. An item becomes a container when its
+  // `containerOf` block is populated (inner dims + packing efficiency).
+  // This collapses the old "containers vs equipment" split into one
+  // catalog that's easier to browse and categorize.
+  //
+  // Items are organized into a tree of categories via `categoryId` +
+  // `categories` (a flat array with `parentId` pointers, allowing
+  // arbitrary nesting depth). Uncategorized items fall into the
+  // auto-created "Miscellaneous" category on display.
+
+  items: [],
+  categories: [
+    // "Miscellaneous" is a built-in category that always exists. It's
+    // the bucket for items whose categoryId is null or points to a
+    // deleted category. Can be renamed/described but not deleted.
+    {
+      id: 'cat_misc', name: 'Miscellaneous', description: '',
+      parentId: null, builtIn: true,
+      defaultDimensions: { l: 0, w: 0, h: 0 }, defaultWeight: 0
+    }
+  ],
+
+  // Dimension Presets — named L×W×H shapes (optionally with a matching
+  // weight) that authors can pick when creating items. Picking a preset
+  // autofills the item's dimensions (and weight, when non-zero) without
+  // having to type them in. The Standard Set ships ~12 common shapes
+  // covering pistols, rifles, shells, bandages, packs, and other
+  // everyday sizes. Custom rulesets can add their own or edit these
+  // built-ins (built-in presets CAN be renamed/sized but not deleted
+  // so the shape dropdown always has a baseline to click).
+  //
+  // Shape: { id, name, dimensions: {l, w, h}, weight, builtIn? }
+  dimensionPresets: [
+    { id: 'dp_pistol',    name: 'Pistol',           dimensions: { l: 8,   w: 1.5, h: 5.5 }, weight: 1.5,   builtIn: true },
+    { id: 'dp_rifle',     name: 'Rifle',            dimensions: { l: 40,  w: 3,   h: 8   }, weight: 8,     builtIn: true },
+    { id: 'dp_shotgun',   name: 'Shotgun',          dimensions: { l: 42,  w: 3,   h: 8   }, weight: 7.5,   builtIn: true },
+    { id: 'dp_smg',       name: 'SMG / Carbine',    dimensions: { l: 22,  w: 2.5, h: 7   }, weight: 5,     builtIn: true },
+    { id: 'dp_dagger',    name: 'Dagger / Knife',   dimensions: { l: 10,  w: 1,   h: 1   }, weight: 0.5,   builtIn: true },
+    { id: 'dp_sword',     name: 'Sword',            dimensions: { l: 38,  w: 1.5, h: 4   }, weight: 3,     builtIn: true },
+    { id: 'dp_grenade',   name: 'Grenade',          dimensions: { l: 4,   w: 2.5, h: 2.5 }, weight: 1,     builtIn: true },
+    { id: 'dp_shell',     name: 'Shotgun Shell',    dimensions: { l: 3,   w: 0.7, h: 0.7 }, weight: 0.08,  builtIn: true },
+    { id: 'dp_bullet',    name: 'Pistol Cartridge', dimensions: { l: 1.2, w: 0.4, h: 0.4 }, weight: 0.02,  builtIn: true },
+    { id: 'dp_magazine',  name: 'Magazine',         dimensions: { l: 5,   w: 1,   h: 3.5 }, weight: 0.75,  builtIn: true },
+    { id: 'dp_bandage',   name: 'Bandage / Small Medical', dimensions: { l: 3, w: 2, h: 1 }, weight: 0.15, builtIn: true },
+    { id: 'dp_pill',      name: 'Pill Bottle / Vial', dimensions: { l: 2, w: 1, h: 3 },     weight: 0.1,   builtIn: true },
+    { id: 'dp_book',      name: 'Book',             dimensions: { l: 9,   w: 2,   h: 6   }, weight: 2,     builtIn: true },
+    { id: 'dp_coin',      name: 'Coin / Token',     dimensions: { l: 1,   w: 0.1, h: 1   }, weight: 0.02,  builtIn: true },
+    { id: 'dp_daypack',   name: 'Daypack',          dimensions: { l: 18,  w: 10,  h: 22  }, weight: 2,     builtIn: true },
+    { id: 'dp_duffel',    name: 'Duffel Bag',       dimensions: { l: 28,  w: 14,  h: 14  }, weight: 2.5,   builtIn: true },
+    { id: 'dp_pouch',     name: 'Belt Pouch',       dimensions: { l: 6,   w: 3,   h: 5   }, weight: 0.3,   builtIn: true },
+    { id: 'dp_holster',   name: 'Holster',          dimensions: { l: 9,   w: 2,   h: 7   }, weight: 0.5,   builtIn: true }
+  ],
+
+  // ═══ WEAPONS ═══
+  //
+  // Weapon integration is ruleset-level. A ruleset defines:
+  //   1. The four roll formulas (melee/ranged × attack/damage) — these
+  //      use the same formula engine char-derived.js uses for derived
+  //      stats, so expressions can reference stats (DEX, STR),
+  //      stat mods (DEXMOD, STRMOD), skills (Melee, Ranged),
+  //      weapon constants (DMG = dice count, ATK = attack roll result,
+  //      DMGMOD = ranged damage bonus), and operators.
+  //   2. A shared tag catalogue — short labels players can apply to
+  //      their weapons (Silenced, Two-Handed, Bleeding, etc.). Tags
+  //      are descriptive for now; later passes may add auto-computed
+  //      effects but the base schema is just {id, name, description}.
+  //
+  // Individual weapons live on catalogue ITEMS (item.weapon = {...}),
+  // not in the ruleset itself. This keeps the ruleset lean and lets
+  // players define custom weapons in their personal catalogue.
+  // ═══ ITEM DURABILITY ═══
+  //
+  // Items have a derived Durability pool analogous to hit-location HP.
+  // Each item's MAX durability is computed from its SIZE and Armor via
+  // the formula below. Damage thresholds reuse `damageThresholds`
+  // above (same 0 / -maxHP / -2×maxHP pattern), with `maxHP` bound to
+  // the item's max durability at eval time.
+  //
+  // The Standard Set formula — `SIZE + Armor` — matches the example:
+  // a Small (SIZE 3) AR-15 with 6 Armor has 9 Durability. Authors
+  // can override this formula per-ruleset for grittier or more forgiving
+  // flavors (e.g. `(SIZE * 2) + Armor` for beefier items).
+  //
+  // Construction (used in the multi-instance damage reduction formula)
+  // is NOT stored here — it's derived at eval time by treating Armor
+  // as STR and looking up the existing FORT table, matching how PRIME
+  // uses FORT for hit-location HP damage reduction.
+  itemDurability: {
+    maxFormula: 'SIZE + Armor'
+  },
+
+  weapons: {
+    meleeAttackFormula:  'DEX + Melee + DEXMOD',
+    meleeDamageFormula:  'STR + DMG + ATK + STRMOD',
+    rangedAttackFormula: 'DEX + Ranged + DEXMOD',
+    rangedDamageFormula: 'DEX + DMG + ATK + DMGMOD'
+  },
+
+  // Tag catalogue. Order matters for display but not behavior. Each
+  // entry is { id, name, description }. IDs follow the `t_` prefix
+  // convention to avoid collisions with item ids elsewhere.
+  //
+  // The Standard Set ships with seven mechanically-active tags. The
+  // resolver and card UI key off these by NAME (case-insensitive)
+  // rather than id, so tags renamed/copied into custom rulesets still
+  // behave correctly as long as the name matches. IDs are stable for
+  // cross-reference.
+  // Tag categories — nested tree for grouping weapon tags so large
+  // tag catalogues stay manageable in the editor and on weapon cards.
+  // Shape: {id, name, parentId|null, builtIn?}. Like item categories
+  // (see categories[] elsewhere) but scoped ONLY to weapon tags. The
+  // built-in "Uncategorized" category is the default home for tags
+  // that don't specify a categoryId — deleting it is tolerated, but
+  // the normalizer re-seeds it so at least one home always exists.
+  tagCategories: [
+    { id: 'tcat_uncategorized', name: 'Uncategorized', parentId: null, builtIn: true }
+  ],
+
+  weaponTags: [
+    {
+      id: 't_shotgun',
+      name: 'Shotgun',
+      description: 'Mag-fed Shotguns reload as normal, while tube-shell shotguns reload 1 AMMO per Fast Action spent. A Shotgun deals +1 Damage within half of it\'s first band of Range, +2 within a quarter, and +3 at touch range. Shotguns capable of sweeping have their effective "Sweep AOE" doubled.'
+    },
+    {
+      id: 't_firearm',
+      name: 'Firearm',
+      description: 'Firearm attacks are +3 Difficulty to Dodge without cover; +2 within half of one\'s dodge distance from cover, +1 within a quarter, +0 closer than that. Firearm attacks are +6 Difficulty to Defend against without a valid deflection, redirection (e.g. shield), or being in melee range.'
+    },
+    {
+      id: 't_rapidfire_sweep',
+      name: 'Rapidfire Sweep',
+      description: 'Ranged weapons with ROF ≥ 2 can perform a Rapidfire Sweep against an area and all targets within it, one Attack roll and one Damage roll. For each AMMO spent past the first (minimum 2 AMMO) the covered volume grows by 2.5×ROF feet on every side of a cube — volume may be shaped any way you like (line, cone, zig-zag, dome, irregular). AMMO spent on a sweep does NOT also grant the Rapidfire damage bonus — choose to spread the AMMO across area OR concentrate it into damage, or split between the two. Example: ROF 2, 3 AMMO → 10×10×10 cube. ROF 2, 6 AMMO → 25×25×25 cube.'
+    },
+    {
+      id: 't_scoped',
+      name: 'Scoped',
+      description: 'When the Aim action is taken, effective range is multiplied by the scope\'s magnification value.',
+      params: [
+        {
+          key: 'magnification',
+          type: 'number',
+          label: 'Magnification',
+          default: 4,
+          min: 1,
+          max: 50
         }
-      }
-      if (!canEdit) {
-        alert('You do not have permission to edit this catalogue.');
-        window.location.href = 'my-rulesets.html';
-      } else {
-        // page-title element removed from markup; set the browser tab
-        // title instead so users still know which catalogue they're in.
-        document.title = isBasic
-          ? 'Edit Basic Set Catalogue'
-          : 'Catalogue — ' + (existingDoc.name || 'Ruleset');
-        applyInitialUrlState();
-        initUI();
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('content').style.display = 'block';
-      }
+      ]
+    },
+    {
+      id: 't_rate_of_fire',
+      name: 'Rate of Fire',
+      description: 'The weapon\'s rate of fire. ROF determines how many projectiles fire per AMMO spent and how much difficulty mitigation the weapon provides against rapidfire recoil. Higher ROF = better recoil control = more bullets in the air per trigger pull. ROF-1 (single-fire, e.g. bolt action) is penalized rather than mitigated — trying to rapidfire a bolt action is harder than normal.',
+      params: [
+        {
+          key: 'level',
+          type: 'number',
+          label: 'ROF Level',
+          default: 0
+          // No min/max — rulesets are free to define levels like
+          // ROF 5 (Chain-Automatic), ROF 10 (experimental gatling),
+          // or ROF -3 (siege weapon requiring multi-turn prep).
+          // Clamping happened in early drafts and caused surprises
+          // when homebrew tables exceeded the hardcoded bounds.
+        }
+      ],
+      // ROF table — maps level to display label, ammo-per-shot multiplier,
+      // and difficulty mitigation (DM) against rapidfire. GMs can edit
+      // these values in the tag settings to tune the system for their
+      // ruleset. `level` is the numeric tag param; `perAmmo` is how many
+      // projectiles fire per AMMO spent; `dm` is the difficulty
+      // mitigation applied to rapidfire attempts (negative values
+      // penalize instead of mitigating, which is why single-fire
+      // weapons are hard to rapidfire).
+      rofTable: [
+        { level: -1, label: 'Single-Fire',     perAmmo: 1,   dm: -1 },
+        { level:  0, label: 'Action Fire',     perAmmo: 1,   dm:  0 },
+        { level:  1, label: 'Semi-Automatic',  perAmmo: 5,   dm:  1 },
+        { level:  2, label: 'Automatic',       perAmmo: 6,   dm:  2 },
+        { level:  3, label: 'Fully Automatic', perAmmo: 10,  dm:  3 },
+        { level:  4, label: 'Super Automatic', perAmmo: 25,  dm:  4 },
+        { level:  5, label: 'Mega Automatic',  perAmmo: 100, dm:  5 }
+      ]
+    },
+    {
+      id: 't_major_stabilization',
+      name: 'Major Stabilization',
+      description: 'Stabilized by a major fixture (tripod, vehicle mount, structural mount). Recoil is decreased by 3.'
+    },
+    {
+      id: 't_stabilization',
+      name: 'Stabilization',
+      description: 'Stabilized by a standard fixture (bipod or similar). Recoil is decreased by 2.'
+    },
+    {
+      id: 't_minor_stabilization',
+      name: 'Minor Stabilization',
+      description: 'Stabilized by a minor method (stationary prone, terrain, improvised stabilization, a specialized shooting stance). Recoil is decreased by 1.'
     }
+  ]
+};
+
+// Normalize any ruleset doc by filling in missing fields from defaults.
+// Useful for rulesets created before the schema existed.
+window.normalizeRuleset = function(rs) {
+  const d = window.RULESET_DEFAULTS;
+  const out = Object.assign({}, rs);
+  if (typeof out.tagline !== 'string') out.tagline = '';
+  if (out.startingXp == null) out.startingXp = d.startingXp;
+  if (!Array.isArray(out.statXp)) out.statXp = d.statXp.slice();
+  if (out.statMaxPurchasable == null) out.statMaxPurchasable = d.statMaxPurchasable;
+  if (out.statMax == null) out.statMax = d.statMax;
+  if (out.statMax < out.statMaxPurchasable) out.statMax = out.statMaxPurchasable;
+  if (!Array.isArray(out.stats) || out.stats.length === 0) out.stats = JSON.parse(JSON.stringify(d.stats));
+  if (!Array.isArray(out.statMods) || out.statMods.length === 0) out.statMods = d.statMods.slice();
+  if (!Array.isArray(out.statLabels) || out.statLabels.length === 0) out.statLabels = d.statLabels.slice();
+  while (out.statMods.length < out.statMax + 1) out.statMods.push(out.statMods[out.statMods.length-1] ?? 0);
+  while (out.statLabels.length < out.statMax + 1) out.statLabels.push('Level ' + out.statLabels.length);
+  // SIZE block
+  if (!out.size || typeof out.size !== 'object') out.size = JSON.parse(JSON.stringify(d.size));
+  if (!Array.isArray(out.size.tiers) || out.size.tiers.length === 0) out.size.tiers = JSON.parse(JSON.stringify(d.size.tiers));
+  if (out.size.default == null) out.size.default = d.size.default;
+  if (!Array.isArray(out.primarySkillXp)) out.primarySkillXp = d.primarySkillXp.slice();
+  if (!Array.isArray(out.secondarySkillXp)) out.secondarySkillXp = d.secondarySkillXp.slice();
+  if (!Array.isArray(out.specialtySkillXp)) out.specialtySkillXp = d.specialtySkillXp.slice();
+  if (out.skillMax == null) out.skillMax = d.skillMax;
+  if (!Array.isArray(out.powerLevels) || out.powerLevels.length === 0) out.powerLevels = JSON.parse(JSON.stringify(d.powerLevels));
+  if (!out.defaultPowerLevel) out.defaultPowerLevel = d.defaultPowerLevel;
+  if (!Array.isArray(out.primarySkills) || out.primarySkills.length === 0) out.primarySkills = JSON.parse(JSON.stringify(d.primarySkills));
+  if (!Array.isArray(out.morals)) out.morals = [];
+
+  // ── TILE DESCRIPTIONS ──
+  // Per-ruleset author-editable text for the three computed summary
+  // tiles (Body, Sanity, Penalty) that don't correspond to a single
+  // stat. Normalizer coerces the shape to ensure the three string
+  // fields exist, falling back to defaults when missing. Extra keys
+  // are preserved (a homebrew ruleset might author a description for a
+  // custom tile we haven't shipped yet — keeping unknown keys avoids
+  // silently destroying authored content).
+  const rawTileDescs = (out.tileDescriptions && typeof out.tileDescriptions === 'object')
+    ? out.tileDescriptions
+    : {};
+  out.tileDescriptions = Object.assign(
+    {},
+    d.tileDescriptions,       // defaults first
+    rawTileDescs               // then override with whatever was saved
+  );
+  // Coerce any non-string values to empty string; the resolver treats
+  // empty as "fall through to default", so this keeps the resolution
+  // order intact (override > ruleset > empty).
+  Object.keys(out.tileDescriptions).forEach(k => {
+    if (typeof out.tileDescriptions[k] !== 'string') {
+      out.tileDescriptions[k] = '';
+    }
+  });
+
+  // ── CONDITIONS ──
+  // Two preset lists (physical, mental). Each preset entry is {id,
+  // name, description, system}. The normalizer coerces missing arrays
+  // into empty ones and drops any malformed entries silently.
+  const normalizeConditionList = (arr) => {
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .map(c => {
+        if (!c || typeof c !== 'object') return null;
+        const id = (typeof c.id === 'string' && c.id) ? c.id : null;
+        if (!id) return null;
+        return {
+          id,
+          name:        (typeof c.name === 'string')        ? c.name        : '',
+          description: (typeof c.description === 'string') ? c.description : '',
+          system:      (typeof c.system === 'string')      ? c.system      : ''
+        };
+      })
+      .filter(Boolean);
+  };
+  if (!out.conditions || typeof out.conditions !== 'object') {
+    out.conditions = { conditions: [], circumstances: [] };
+  } else {
+    // Migrate legacy keys: physical → conditions, mental → circumstances.
+    // Prefer new keys if both somehow exist (shouldn't happen in practice).
+    const legacyPhysical = Array.isArray(out.conditions.physical) ? out.conditions.physical : [];
+    const legacyMental   = Array.isArray(out.conditions.mental)   ? out.conditions.mental   : [];
+    const newConditions    = Array.isArray(out.conditions.conditions)    ? out.conditions.conditions    : null;
+    const newCircumstances = Array.isArray(out.conditions.circumstances) ? out.conditions.circumstances : null;
+    out.conditions = {
+      conditions:    normalizeConditionList(newConditions    != null ? newConditions    : legacyPhysical),
+      circumstances: normalizeConditionList(newCircumstances != null ? newCircumstances : legacyMental)
+    };
   }
 
-  // Translate URL params into view state. Defensive — if URL points at
-  // a missing/in-design type or unknown builder id, fall back silently
-  // to a saner view.
-  function applyInitialUrlState() {
-    if (!initialType) return;
-    const cat = state.abilityCatalogue || {};
-    const t   = cat.types && cat.types[initialType];
-    if (!t || t.inDesign) return;
-    currentTypeKey = initialType;
-    catalogueView  = 'type';
-    if (!initialBuilder) return;
-    const cats = Array.isArray(t.categories) ? t.categories : [];
-    let foundCi = -1, foundBi = -1;
-    cats.forEach((c, ci) => {
-      if (foundCi !== -1) return;
-      (c.builders || []).forEach((b, bi) => {
-        if (foundCi === -1 && b && b.id === initialBuilder) {
-          foundCi = ci; foundBi = bi;
+  // ── A/D TIERS ──
+  // Keep 7 entries; fill any missing slots with defaults. Any existing
+  // label/description/xp values are preserved.
+  const normalizeTierArray = (arr, defaults) => {
+    const result = [];
+    for (let i = 0; i < 7; i++) {
+      const src = (Array.isArray(arr) && arr[i]) ? arr[i] : {};
+      result.push({
+        label: typeof src.label === 'string' && src.label ? src.label : defaults[i].label,
+        description: typeof src.description === 'string' ? src.description : '',
+        xp: Number.isFinite(src.xp) ? src.xp : 0
+      });
+    }
+    return result;
+  };
+  out.advantageTiers    = normalizeTierArray(out.advantageTiers,    d.advantageTiers);
+  out.disadvantageTiers = normalizeTierArray(out.disadvantageTiers, d.disadvantageTiers);
+
+  // ── A/D ENTRIES ──
+  // Each entry normalized to { name, category, tier, description, system, repeatable }.
+  // Drop entries with no name (treat as corrupt/empty).
+  //
+  //   description = flavor text ("You've always been great at throwing.")
+  //   system      = mechanical effect ("You benefit from 2 Difficulty Mitigation…")
+  //   repeatable  = whether a character can take this entry multiple times
+  const validCategories = ['physical','mental','social','background','special'];
+  const normalizeEntry = (e) => {
+    if (!e || typeof e !== 'object') return null;
+    const name = (typeof e.name === 'string') ? e.name.trim() : '';
+    if (!name) return null;
+    const cat = validCategories.includes(e.category) ? e.category : 'physical';
+    const tier = Number.isInteger(e.tier) ? Math.max(0, Math.min(6, e.tier)) : 0;
+    const desc = (typeof e.description === 'string') ? e.description : '';
+    const sys  = (typeof e.system === 'string') ? e.system : '';
+    const rep  = e.repeatable === true;  // defaults to false unless explicitly true
+    return { name, category: cat, tier, description: desc, system: sys, repeatable: rep };
+  };
+  out.advantages    = Array.isArray(out.advantages)    ? out.advantages.map(normalizeEntry).filter(Boolean)    : [];
+  out.disadvantages = Array.isArray(out.disadvantages) ? out.disadvantages.map(normalizeEntry).filter(Boolean) : [];
+
+  // ── DERIVED STAT GROUPS ──
+  // Each group needs a code (stable ID) and label. Silently drop any that
+  // are missing a code. Duplicate codes are filtered to the first occurrence.
+  if (!Array.isArray(out.derivedStatGroups) || out.derivedStatGroups.length === 0) {
+    out.derivedStatGroups = JSON.parse(JSON.stringify(d.derivedStatGroups));
+  } else {
+    const seenGroups = new Set();
+    out.derivedStatGroups = out.derivedStatGroups
+      .map(g => {
+        if (!g || typeof g !== 'object') return null;
+        const code = (typeof g.code === 'string') ? g.code.trim().toLowerCase() : '';
+        if (!code || seenGroups.has(code)) return null;
+        seenGroups.add(code);
+        return {
+          code,
+          label: (typeof g.label === 'string' && g.label.trim()) ? g.label.trim() : code
+        };
+      })
+      .filter(Boolean);
+    if (out.derivedStatGroups.length === 0) {
+      out.derivedStatGroups = JSON.parse(JSON.stringify(d.derivedStatGroups));
+    } else {
+      // Ensure every default group exists — missing groups would cause
+      // their stats to orphan into an "Other" bucket in the Combat tab.
+      // Older saved rulesets pre-date the 'carry' group, so without this
+      // back-fill, CAP / LIFT / ENC stats were rendering under a stray
+      // "Other" section on the Combat tab. New rulesets are unaffected.
+      d.derivedStatGroups.forEach(defaultGroup => {
+        if (!seenGroups.has(defaultGroup.code)) {
+          out.derivedStatGroups.push({
+            code: defaultGroup.code,
+            label: defaultGroup.label
+          });
+          seenGroups.add(defaultGroup.code);
         }
       });
+      // One-shot label upgrades — when a group's stored label still
+      // matches a known previous default, bump it to the current
+      // default. Conservative: we ONLY change labels that exactly
+      // match an old shipped value, preserving any author rename
+      // (someone who renamed 'Health' to 'Vitality' keeps Vitality).
+      //
+      // This is how we propagate label renames to already-saved
+      // rulesets. A new label simply added to defaults wouldn't reach
+      // existing saves without this — the normalizer only seeds
+      // groups that are missing entirely, not ones whose labels
+      // drifted.
+      const LABEL_UPGRADES = {
+        health:   { oldLabels: ['Health'],   newLabel: 'Physical' },
+        movement: { oldLabels: ['Movement'], newLabel: 'Combat'   },
+        mental:   { oldLabels: ['Sanity'],   newLabel: 'Mental'   }
+      };
+      out.derivedStatGroups.forEach(g => {
+        const u = LABEL_UPGRADES[g.code];
+        if (u && u.oldLabels.includes(g.label)) g.label = u.newLabel;
+      });
+    }
+  }
+
+  // ── DERIVED STATS ──
+  // Each entry: { code, name, description, group, formula, trackDamage, keepDecimals, unit }
+  // `code` is required and must be uppercase; formulas refer to other derived stats by code.
+  // `group` must match a group code (silently fallback to first group if orphaned).
+  const validGroupCodes = new Set(out.derivedStatGroups.map(g => g.code));
+  const fallbackGroup = out.derivedStatGroups[0].code;
+  if (!Array.isArray(out.derivedStats)) {
+    out.derivedStats = JSON.parse(JSON.stringify(d.derivedStats));
+  } else {
+    const seenCodes = new Set();
+    out.derivedStats = out.derivedStats
+      .map(s => {
+        if (!s || typeof s !== 'object') return null;
+        const code = (typeof s.code === 'string') ? s.code.trim().toUpperCase() : '';
+        if (!code || seenCodes.has(code)) return null;
+        seenCodes.add(code);
+        const rawGroup = (typeof s.group === 'string') ? s.group.trim().toLowerCase() : '';
+        return {
+          code,
+          name: (typeof s.name === 'string' && s.name.trim()) ? s.name.trim() : code,
+          description: (typeof s.description === 'string') ? s.description : '',
+          group: validGroupCodes.has(rawGroup) ? rawGroup : fallbackGroup,
+          formula: (typeof s.formula === 'string') ? s.formula : '0',
+          // Optional expression — displayed in the top-right of the card as
+          // a signed badge indicating which stat modifier the player rolls
+          // with when making resistance checks for this stat.
+          rollModifier: (typeof s.rollModifier === 'string') ? s.rollModifier : '',
+          // Passive rolls are exempt from Penalty dice reductions.
+          // Defaults to false so new stats are treated as active (Penalty
+          // applies) — only explicitly-marked passive stats skip it.
+          passiveRoll: s.passiveRoll === true,
+          // Penalty reduces the displayed VALUE of this stat instead of
+          // the dice pool — used for movement-style stats where the value
+          // isn't rolled but still suffers when the character is hurt/stressed.
+          // Mutually coherent with passiveRoll: a stat with passiveRoll=true
+          // is Penalty-immune, so penaltyReducesValue has no effect on it.
+          // Legacy field `strainReducesValue` still read as a fallback so
+          // saved rulesets from before the rename auto-migrate.
+          penaltyReducesValue: s.penaltyReducesValue === true || s.strainReducesValue === true,
+          // Rollable — default TRUE (stat is rolled as a dice pool and
+          // shows dice-affordance UI on the card). Set explicitly to
+          // false for derived values that aren't rolled: SPD, SPDUP,
+          // AGL, RFX, FORT. Undefined coerces to true (matches the
+          // renderDsCard check `def.rollable !== false`).
+          rollable: s.rollable !== false,
+          // Expandable conversion panel on the stat card — 3s/6s/min/hr/mph.
+          // Useful for speed stats (SPD, SPDUP, future burrow/swim/etc.).
+          // The card's value is treated as ft/sec for the math.
+          showSpeedConversions: s.showSpeedConversions === true,
+          // Opt-in flags for the SPD/SPR-style editable panels.
+          // `allowValueMods` surfaces a named flat-bonus editor on
+          // the card (stored in charData.valueMods[code]). Missing/
+          // false → the card treats the stat as read-only value.
+          // `allowPenaltyFilter` surfaces a per-source Penalty
+          // whitelist editor (stored in charData.penaltyFilters[code]).
+          // Missing filter object on a character → legacy behavior
+          // (all sources apply). Both preserve backward compatibility.
+          allowValueMods:      s.allowValueMods === true,
+          allowPenaltyFilter:  s.allowPenaltyFilter === true,
+          trackDamage: s.trackDamage === true,
+          keepDecimals: s.keepDecimals === true,
+          unit: (typeof s.unit === 'string') ? s.unit : ''
+        };
+      })
+      .filter(Boolean);
+
+    // One-shot migration: mark the five default static stats as
+    // non-rollable if they're still using default formulas. The
+    // 'rollable' field was added late — saved rulesets pre-date it,
+    // and without this nudge they'd keep showing dice pills on SPD,
+    // SPR (formerly SPDUP), AGL, RFX, and FORT. We only flip stats
+    // that look like the original defaults (code + formula match) so
+    // homebrew rulesets that renamed/repurposed these codes are
+    // untouched.
+    //
+    // SPR is checked under both its current code and its legacy code
+    // SPDUP — saved rulesets from before the rename still have SPDUP,
+    // and the code-rename migration runs elsewhere in normalize, so
+    // this table needs to accept either.
+    const staticDefaults = [
+      { code: 'SPD',   formula: 'DEX * 2.5' },
+      { code: 'SPR',   formula: 'STR * 1' },
+      { code: 'SPDUP', formula: 'STR * 1' },  // legacy pre-rename
+      { code: 'AGL',   formula: '(DEX + PER) / 2 - 1' },
+      { code: 'RFX',   formula: '0.2 / (2 ^ ((DEXMOD + PERMOD) / 4))' },
+      { code: 'FORT',  formula: 'FORT' }
+    ];
+    staticDefaults.forEach(sd => {
+      const match = out.derivedStats.find(s =>
+        s.code === sd.code &&
+        typeof s.formula === 'string' &&
+        s.formula.replace(/\s+/g, '') === sd.formula.replace(/\s+/g, '')
+      );
+      if (match) match.rollable = false;
     });
-    if (foundCi !== -1) {
-      catalogueView = 'builder';
-      openedBuilder = { ci: foundCi, bi: foundBi, typeKey: initialType };
-    }
+
+    // ── CODE RENAMES ──
+    // When a default stat's code changes, saved rulesets still carry
+    // the old code. This block migrates those to the new code IF the
+    // stat looks like the original default — same formula, not a
+    // homebrew reuse of the old code.
+    //
+    // SPDUP → SPR (Sprint): part of the combat-section rework that
+    // clarified Speed Boost's role. Only migrates when formula matches
+    // 'STR * 1', preserving any homebrew that redefined SPDUP.
+    const codeRenames = [
+      { oldCode: 'SPDUP', newCode: 'SPR', expectedFormula: 'STR * 1' }
+    ];
+    codeRenames.forEach(r => {
+      const old = out.derivedStats.find(s => s.code === r.oldCode);
+      if (!old) return;
+      // Skip if the user's version has a different formula (homebrew).
+      const normFormula = typeof old.formula === 'string'
+        ? old.formula.replace(/\s+/g, '')
+        : '';
+      if (normFormula !== r.expectedFormula.replace(/\s+/g, '')) return;
+      // Skip if the new code is already taken (don't clobber).
+      if (out.derivedStats.some(s => s.code === r.newCode)) return;
+      old.code = r.newCode;
+      seenCodes.delete(r.oldCode);
+      seenCodes.add(r.newCode);
+    });
+
+    // Auto-inject any NEW default stats that aren't in the user's list yet.
+    // Rationale: when we add a core mechanic like FORT to the defaults, we
+    // want existing rulesets to inherit it automatically — otherwise every
+    // saved ruleset would need manual editing.
+    //
+    // Conservative: we only add stats that are TOTALLY ABSENT from the user's
+    // list. If a stat is present with any config (even modified), we leave it
+    // alone — the user's version wins. If a user explicitly DELETES a default
+    // stat, it'll re-appear on next normalize; that's acceptable given the
+    // low cost of re-deleting vs. the high cost of "I added FORT to defaults
+    // but my characters don't see it".
+    d.derivedStats.forEach(defaultStat => {
+      const code = (defaultStat.code || '').toUpperCase();
+      if (!code || seenCodes.has(code)) return;
+      out.derivedStats.push(JSON.parse(JSON.stringify(defaultStat)));
+      seenCodes.add(code);
+    });
+
+    // One-time sync for a small set of core stats where a prior default name
+    // or description didn't reflect current UX wording. We only overwrite
+    // when the stored value EXACTLY matches a known old default — that way,
+    // anyone who intentionally renamed HP to "Hitpoints" keeps their version.
+    const OLD_CORE_DEFAULTS = {
+      HP: {
+        oldNames: ['HP'],
+        oldDescs: ['Hit Points — overall durability of the body.'],
+        newName: 'Health',
+        newDesc: 'Physical durability. Roll for physical resistances.'
+      },
+      // Movement stats — descriptions refined to reflect the actual rules
+      // wording. Old stock phrasings were flavor-only; new versions tell
+      // the player what the number DOES at the table.
+      SPD: {
+        oldNames: ['Speed'],
+        oldDescs: ['Movement speed, in feet per second.'],
+        newName: 'Speed',
+        newDesc: 'How fast you can move in feet per second.'
+      },
+      SPR: {
+        // SPR also accepts the old 'Speed Boost' name (from before the
+        // code rename from SPDUP to SPR). The oldNames/oldDescs arrays
+        // are the match criteria — any stored value in here gets
+        // upgraded to newName/newDesc. The code rename itself happens
+        // earlier; this block handles the remaining name/desc refresh.
+        oldNames: ['Speed Boost'],
+        oldDescs: ['Bonus feet of movement from raw strength.'],
+        newName: 'Sprint',
+        newDesc: 'You may add increments equal to this amount to your Speed; every time you do so, you gain +1 Dice Penalty towards all physical actions for the rest of the Round.'
+      },
+      AGL: {
+        oldNames: ['Agility'],
+        oldDescs: ['General agility: dodging, tumbling, quick footwork.'],
+        newName: 'Agility',
+        newDesc: 'You may make a number of "free" (without normal penalties for spamming) Fast Actions, Fast Reactions, and Reactions per Round, equal to this. This applies independently to each.'
+      },
+      RFX: {
+        oldNames: ['Reflex'],
+        oldDescs: ['Reaction time in seconds. Lower is faster.'],
+        newName: 'Reflex',
+        newDesc: 'Reaction time in seconds; used mostly for flavor, but also to determine whether you can participate in high-speed combat, or whether you get speedblitz\'d.'
+      }
+    };
+    out.derivedStats.forEach(s => {
+      const match = OLD_CORE_DEFAULTS[s.code];
+      if (match) {
+        if (match.oldNames.includes(s.name)) s.name = match.newName;
+        if (match.oldDescs.includes(s.description)) s.description = match.newDesc;
+      }
+      // Backfill rollModifier from defaults for any core stat whose roll
+      // modifier wasn't set yet. Non-destructive: we only fill when empty.
+      if (!s.rollModifier) {
+        const defaultStat = d.derivedStats.find(ds => ds.code === s.code);
+        if (defaultStat && defaultStat.rollModifier) {
+          s.rollModifier = defaultStat.rollModifier;
+        }
+      }
+      // Backfill passiveRoll for HP/SAN (or any default stat) if the saved
+      // value still matches the pre-flag default of false. Safe: we only
+      // flip false → true for stats that are DEFAULT passive; stats the user
+      // actively set non-passive aren't touched.
+      if (s.passiveRoll !== true) {
+        const defaultStat = d.derivedStats.find(ds => ds.code === s.code);
+        if (defaultStat && defaultStat.passiveRoll === true) {
+          s.passiveRoll = true;
+        }
+      }
+      // Same one-way backfill for penaltyReducesValue — if the default
+      // says true but the saved stat is still unset/false, inherit it.
+      if (s.penaltyReducesValue !== true) {
+        const defaultStat = d.derivedStats.find(ds => ds.code === s.code);
+        if (defaultStat && defaultStat.penaltyReducesValue === true) {
+          s.penaltyReducesValue = true;
+        }
+      }
+      // Same for showSpeedConversions — if the default says true but the
+      // saved stat is still unset/false, inherit it.
+      if (s.showSpeedConversions !== true) {
+        const defaultStat = d.derivedStats.find(ds => ds.code === s.code);
+        if (defaultStat && defaultStat.showSpeedConversions === true) {
+          s.showSpeedConversions = true;
+        }
+      }
+      // Backfill allowValueMods and allowPenaltyFilter the same way.
+      // These were added later than SPD/SPR themselves, so existing
+      // saved rulesets have the stats but lack the flags. Safe to
+      // flip on without user action — the features default to
+      // empty/absent on the character side, so there's no behavioral
+      // change until the player actually uses the new editors.
+      if (s.allowValueMods !== true) {
+        const defaultStat = d.derivedStats.find(ds => ds.code === s.code);
+        if (defaultStat && defaultStat.allowValueMods === true) {
+          s.allowValueMods = true;
+        }
+      }
+      if (s.allowPenaltyFilter !== true) {
+        const defaultStat = d.derivedStats.find(ds => ds.code === s.code);
+        if (defaultStat && defaultStat.allowPenaltyFilter === true) {
+          s.allowPenaltyFilter = true;
+        }
+      }
+    });
   }
 
-  // Sync URL bar to current view state. Internal nav uses replaceState
-  // so we don't pollute history with one entry per click.
-  function syncUrl() {
-    const u = new URL(window.location.href);
-    u.searchParams.set('id', rulesetId);
-    if (catalogueView === 'home') {
-      u.searchParams.delete('type');
-      u.searchParams.delete('builder');
-    } else if (catalogueView === 'type') {
-      u.searchParams.set('type', currentTypeKey || '');
-      u.searchParams.delete('builder');
-    } else if (catalogueView === 'builder' && openedBuilder) {
-      u.searchParams.set('type', openedBuilder.typeKey || currentTypeKey || '');
-      const cat  = state.abilityCatalogue || {};
-      const tk   = openedBuilder.typeKey || currentTypeKey;
-      const cats = (cat.types && cat.types[tk] && cat.types[tk].categories) || [];
-      const c    = cats[openedBuilder.ci];
-      const b    = c && Array.isArray(c.builders) ? c.builders[openedBuilder.bi] : null;
-      if (b && b.id) u.searchParams.set('builder', b.id);
-      else u.searchParams.delete('builder');
-    }
-    history.replaceState(null, '', u.toString());
+  // ── HIT LOCATIONS ──
+  // Each entry: { code, name, count, hpFormula }. `count` is how many copies
+  // of this location exist (e.g. 2 arms). Codes must be unique and non-empty.
+  if (!Array.isArray(out.hitLocations)) {
+    out.hitLocations = JSON.parse(JSON.stringify(d.hitLocations));
+  } else {
+    const seenLocs = new Set();
+    out.hitLocations = out.hitLocations
+      .map(l => {
+        if (!l || typeof l !== 'object') return null;
+        const code = (typeof l.code === 'string') ? l.code.trim().toLowerCase() : '';
+        if (!code || seenLocs.has(code)) return null;
+        seenLocs.add(code);
+        const count = Number.isInteger(l.count) && l.count > 0 ? l.count : 1;
+        return {
+          code,
+          name: (typeof l.name === 'string' && l.name.trim()) ? l.name.trim() : code,
+          count,
+          hpFormula: (typeof l.hpFormula === 'string' && l.hpFormula.trim()) ? l.hpFormula : 'HP'
+        };
+      })
+      .filter(Boolean);
   }
 
-  window.goBackToRuleset = function() {
-    window.location.href = 'edit-ruleset.html?id=' + encodeURIComponent(rulesetId);
-  };
-
-  function initUI() {
-    const cat = state.abilityCatalogue || {};
-    document.getElementById('cat-enabled').checked = cat.enabled !== false;
-    document.getElementById('cat-name').value      = cat.name || '';
-    document.getElementById('cat-desc').value      = cat.description || '';
-    renderCatTierTables();
-    renderCatalogueBodyArea();
-  }
-
-  // Top-level catalogue settings handlers — own (not from legacy port).
-  // ensureCat() seeds state.abilityCatalogue with a default skeleton if
-  // it's somehow missing or malformed. Defensive — the normalizer should
-  // always create this on load, but if a legacy ruleset slipped through
-  // empty, this prevents crash-on-first-mutation.
-  function ensureCat() {
-    if (!state.abilityCatalogue || typeof state.abilityCatalogue !== 'object') {
-      // Prefer normalizeRuleset for the seeded defaults — it produces
-      // the same shape the rest of the page expects (types wrapper,
-      // canonicalTiers, etc). Fallback to a minimal skeleton if the
-      // normalizer somehow isn't loaded.
-      if (typeof window.normalizeRuleset === 'function') {
-        state.abilityCatalogue = window.normalizeRuleset({}).abilityCatalogue;
+  // ── DAMAGE THRESHOLDS ──
+  // Three thresholds: disabled, destroyed, definitelyDestroyed. Always present
+  // in the output object even if missing from input.
+  if (!out.damageThresholds || typeof out.damageThresholds !== 'object') {
+    out.damageThresholds = JSON.parse(JSON.stringify(d.damageThresholds));
+  } else {
+    ['disabled', 'destroyed', 'definitelyDestroyed'].forEach(key => {
+      const defaultEntry = d.damageThresholds[key];
+      const src = out.damageThresholds[key];
+      if (!src || typeof src !== 'object') {
+        out.damageThresholds[key] = JSON.parse(JSON.stringify(defaultEntry));
       } else {
-        state.abilityCatalogue = {
-          enabled: true, name: 'Catalogue', description: '',
-          canonicalTiers: { featureCosts: {}, flawRefunds: {} },
-          types: {}
+        out.damageThresholds[key] = {
+          label: (typeof src.label === 'string' && src.label.trim()) ? src.label.trim() : defaultEntry.label,
+          formula: (typeof src.formula === 'string' && src.formula.trim()) ? src.formula : defaultEntry.formula
         };
       }
-    }
-    return state.abilityCatalogue;
+    });
   }
 
-  window.catToggleEnabled = function(v) { ensureCat().enabled = !!v; };
-  window.catSetName       = function(v) { ensureCat().name = String(v || ''); };
-  window.catSetDesc       = function(v) { ensureCat().description = String(v || ''); };
-  window.catSetTier = function(table, tier, value) {
-    const cat = ensureCat();
-    if (!cat.canonicalTiers || typeof cat.canonicalTiers !== 'object') cat.canonicalTiers = { featureCosts: {}, flawRefunds: {} };
-    if (!cat.canonicalTiers[table] || typeof cat.canonicalTiers[table] !== 'object') cat.canonicalTiers[table] = {};
-    const n = parseFloat(value);
-    cat.canonicalTiers[table][tier] = Number.isFinite(n) ? Math.max(0, n) : 0;
-  };
+  // ── FORTITUDE TABLE ──
+  // Flat per-STRMOD lookup → FORT value. Defaults to the Basic Set curve if
+  // missing. When user-supplied, each entry is validated and missing STRMOD
+  // values fall back to defaults so partial tables don't break the lookup.
+  {
+    const defaultRows = JSON.parse(JSON.stringify(d.fortitudeTable));
+    const byStrmod = new Map();
+    defaultRows.forEach(r => byStrmod.set(r.strmod, r.value));
 
-  // Top-level tab switch — flips between the player-mirror Catalogue
-  // view and the GM-only Settings pane (enable toggle, name, description,
-  // tier cost tables). Stored on window for the same TDZ-immunity
-  // reasons as bldrPreviewExtraOpen.
-  if (typeof window.catMainTab !== 'string') window.catMainTab = 'catalogue';
-  window.catSwitchMainTab = function(which) {
-    if (which !== 'catalogue' && which !== 'settings') return;
-    window.catMainTab = which;
-    const paneCat  = document.getElementById('main-pane-catalogue');
-    const paneSet  = document.getElementById('main-pane-settings');
-    const tabCat   = document.getElementById('main-tab-catalogue');
-    const tabSet   = document.getElementById('main-tab-settings');
-    if (paneCat)  paneCat.style.display  = (which === 'catalogue') ? '' : 'none';
-    if (paneSet)  paneSet.style.display  = (which === 'settings')  ? '' : 'none';
-    if (tabCat)   tabCat.classList.toggle('is-active', which === 'catalogue');
-    if (tabSet)   tabSet.classList.toggle('is-active', which === 'settings');
-  };
-
-  // ── ICON UPLOAD ──
-  // Builder icons live in Firebase Storage at:
-  //     rulesets/{rulesetId}/builderIcons/{builderId}
-  // (no extension — content-type is set in upload metadata). The
-  // resulting download URL gets stored on the Builder as iconUrl and
-  // is used by the Card preview, Ability tiles, and player-facing
-  // Card on the character sheet.
-  //
-  // Uploads validate client-side (≤500KB; PNG/JPG/WebP/SVG only) before
-  // hitting Storage. Storage rules enforce the same constraints as a
-  // backstop in case the client validation is bypassed. Failure to
-  // upload (auth issue, rule violation, network) shows an alert and
-  // leaves the existing icon (if any) untouched.
-  window.bldrUploadIcon = async function(input) {
-    const file = input && input.files && input.files[0];
-    if (!file) return;
-    // Client-side validation — match the storage rules so we fail fast
-    // with a nicer error message before hitting the network.
-    if (file.size > 500 * 1024) {
-      alert('Icon must be 500KB or less. This file is ' + Math.round(file.size / 1024) + 'KB.');
-      input.value = '';
-      return;
-    }
-    const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/svg+xml'];
-    if (!allowedTypes.includes(file.type)) {
-      alert('Icon must be PNG, JPG, WebP, or SVG. Got: ' + (file.type || 'unknown type'));
-      input.value = '';
-      return;
-    }
-    const b = getOpenedBuilder();
-    if (!b) { input.value = ''; return; }
-
-    // Visual feedback during the upload — slot dims so the user knows
-    // we're working. Cleared in the finally block.
-    const slot = document.getElementById('bldr-head-icon');
-    if (slot) slot.classList.add('uploading');
-
-    try {
-      const path = `rulesets/${rulesetId}/builderIcons/${b.id}`;
-      const sref = storageRef(storage, path);
-      // Cache-control hint for the CDN — icons rarely change so a
-      // day's cache is reasonable. Browsers will revalidate after.
-      await uploadBytes(sref, file, {
-        contentType: file.type,
-        cacheControl: 'public, max-age=86400'
+    if (Array.isArray(out.fortitudeTable)) {
+      out.fortitudeTable.forEach(e => {
+        if (!e || typeof e !== 'object') return;
+        const value = Number.isFinite(e.value) ? e.value : null;
+        if (value === null) return;
+        if (Number.isFinite(e.strmod)) byStrmod.set(e.strmod, value);
       });
-      const url = await getDownloadURL(sref);
-      b.iconUrl = url;
-      // Re-render the editor (head shows the icon) and the preview card.
-      renderBuilderEditor();
-    } catch (e) {
-      console.error('Icon upload failed:', e);
-      const msg = (e && e.code === 'storage/unauthorized')
-        ? 'You do not have permission to upload icons for this ruleset. (Storage rules: only the ruleset owner or site admin can upload.)'
-        : 'Icon upload failed: ' + (e && e.message ? e.message : 'unknown error');
-      alert(msg);
-    } finally {
-      input.value = '';
-      if (slot) slot.classList.remove('uploading');
     }
-  };
 
-  window.bldrClearIcon = async function() {
-    const b = getOpenedBuilder();
-    if (!b) return;
-    if (!b.iconUrl) {
-      // Already cleared client-side — just re-render to be safe.
-      renderBuilderEditor();
-      return;
-    }
-    if (!confirm('Remove this icon? The image file in Storage will also be deleted.')) return;
-    // Best-effort delete from Storage. If the file is already gone,
-    // ignore the error — the Builder.iconUrl is what matters.
-    try {
-      const path = `rulesets/${rulesetId}/builderIcons/${b.id}`;
-      await deleteObject(storageRef(storage, path));
-    } catch (e) {
-      console.warn('Storage delete failed (file may already be gone, or permission denied):', e);
-    }
-    b.iconUrl = '';
-    renderBuilderEditor();
-  };
+    out.fortitudeTable = Array.from(byStrmod.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([strmod, value]) => ({ strmod, value }));
+  }
 
-  function renderCatTierTables() {
-    const cat = state.abilityCatalogue || {};
-    const tiers = cat.canonicalTiers || {};
-    const featureCosts = tiers.featureCosts || {};
-    const flawRefunds  = tiers.flawRefunds  || {};
-    const tierOrder = ['minor', 'moderate', 'major', 'massive', 'monumental', 'mega', 'mythical'];
-    const renderTable = (containerId, table, fieldName) => {
-      const el = document.getElementById(containerId);
-      if (!el) return;
-      el.innerHTML = '';
-      tierOrder.forEach(tier => {
-        const value = Number.isFinite(table[tier]) ? table[tier] : 0;
-        const row = document.createElement('div');
-        row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:4px;';
-        row.innerHTML = `
-          <span style="text-transform:capitalize;flex:1;font-size:13px;color:#bbb;">${escapeHtml(tier)}</span>
-          <input type="number" step="0.5" value="${value}" min="0"
-                 style="width:80px;text-align:right;background:#111;border:1px solid #222;color:#e0e0e0;font-family:'Open Sans',sans-serif;font-size:13px;padding:6px 10px;border-radius:4px;outline:none;"
-                 onchange="catSetTier('${fieldName}','${tier}',this.value)">
-          <span style="color:#666;font-size:12px;">AP</span>
-        `;
-        el.appendChild(row);
-      });
+  // ── POWER POOL ──
+  // Ruleset-level on/off, XP cost table, and POW range → multiplier lookup.
+  if (!out.powerPool || typeof out.powerPool !== 'object') {
+    out.powerPool = JSON.parse(JSON.stringify(d.powerPool));
+  } else {
+    const src = out.powerPool;
+    out.powerPool = {
+      enabled: src.enabled !== false,  // default on unless explicitly false
+      name: (typeof src.name === 'string' && src.name.trim()) ? src.name.trim() : d.powerPool.name,
+      description: (typeof src.description === 'string') ? src.description : d.powerPool.description,
+      // costMode: 'perPoint' (flat) or 'perLevel' (table). Anything else falls back to default.
+      costMode: (src.costMode === 'perPoint' || src.costMode === 'perLevel')
+        ? src.costMode : d.powerPool.costMode,
+      // Flat cost-per-point. Used only when costMode === 'perPoint'. Must be non-negative.
+      costPerPoint: Number.isFinite(src.costPerPoint) && src.costPerPoint >= 0
+        ? src.costPerPoint : d.powerPool.costPerPoint,
+      xpPerPoint: (Array.isArray(src.xpPerPoint) && src.xpPerPoint.length > 0)
+        ? src.xpPerPoint.map(v => Number.isFinite(v) ? v : 0)
+        : d.powerPool.xpPerPoint.slice(),
+      maxPurchasable: Number.isInteger(src.maxPurchasable) && src.maxPurchasable >= 0
+        ? src.maxPurchasable : d.powerPool.maxPurchasable,
+      powMultiplier: (() => {
+        // Target shape: flat list, one entry per POWMOD value. Expand any
+        // legacy range-based entries into per-POWMOD rows.
+        //
+        // Accepts three input shapes:
+        //   1. Current: { powmod, value }
+        //   2. Previous range-based: { powmodMin, powmodMax, value }
+        //   3. Legacy (pre-POWMOD): { powMin, powMax, value } — treated as
+        //      POWMOD values (numbers may need reinterpretation by the GM)
+        //
+        // The default table (POWMOD -1..10) is always merged in to fill any
+        // gaps; user-supplied entries win on conflict.
+        const defaultRows = JSON.parse(JSON.stringify(d.powerPool.powMultiplier));
+        const byPowmod = new Map();
+        defaultRows.forEach(r => byPowmod.set(r.powmod, r.value));
+
+        if (Array.isArray(src.powMultiplier)) {
+          src.powMultiplier.forEach(e => {
+            if (!e || typeof e !== 'object') return;
+            const value = Number.isFinite(e.value) ? e.value : null;
+            if (value === null) return;
+
+            // Flat format takes precedence.
+            if (Number.isFinite(e.powmod)) {
+              byPowmod.set(e.powmod, value);
+              return;
+            }
+
+            // Range format — expand to one entry per integer in [min..max].
+            const minRaw = Number.isFinite(e.powmodMin) ? e.powmodMin
+                         : Number.isFinite(e.powMin)    ? e.powMin    : null;
+            const maxRaw = Number.isFinite(e.powmodMax) ? e.powmodMax
+                         : Number.isFinite(e.powMax)    ? e.powMax    : minRaw;
+            if (minRaw === null) return;
+            const lo = Math.floor(minRaw);
+            const hi = Math.floor(maxRaw === null ? minRaw : maxRaw);
+            for (let k = lo; k <= hi; k++) byPowmod.set(k, value);
+          });
+        }
+
+        // Emit sorted by POWMOD for a stable, predictable table order.
+        return Array.from(byPowmod.entries())
+          .sort((a, b) => a[0] - b[0])
+          .map(([powmod, value]) => ({ powmod, value }));
+      })()
     };
-    renderTable('cat-tier-features', featureCosts, 'featureCosts');
-    renderTable('cat-tier-flaws',    flawRefunds,  'flawRefunds');
   }
 
-  // Helper — every legacy mutation handler reads cat.categories. We
-  // route through this so they automatically scope to the active type.
-  function getActiveCategories(cat) {
-    if (!cat || !currentTypeKey) return [];
-    if (!cat.types || !cat.types[currentTypeKey]) return [];
-    if (!Array.isArray(cat.types[currentTypeKey].categories)) {
-      cat.types[currentTypeKey].categories = [];
-    }
-    return cat.types[currentTypeKey].categories;
+  // ─── ABILITY CATALOGUE NORMALIZATION ─────────────────────────────
+  //
+  // Ensures the abilityCatalogue exists and has well-formed structure.
+  // Builds, parameters, features, and flaws all need stable `id` fields
+  // so character-side Ability snapshots can reference them safely
+  // across renames.
+  //
+  // Generates ids for entries missing them (common for newly-authored
+  // content where the editor didn't assign one). Uses a deterministic
+  // seed so the same input produces the same output across loads.
+
+  // Normalize a Builder's activationRoll config. Strict whitelisting of
+  // mode strings so a typo in saved data doesn't break the resolver.
+  // Slot 1 is always a STAT; slot 2 can be a STAT or SKILL.
+  //
+  // Slot modes:
+  //   slot 1: 'fixed-stat' | 'any-stat'
+  //   slot 2: 'fixed-stat' | 'fixed-skill' | 'any-stat' | 'any-skill' | 'any'
+  function normalizeActivationRoll(ar) {
+    ar = (ar && typeof ar === 'object') ? ar : {};
+    const s1 = (ar.slot1 && typeof ar.slot1 === 'object') ? ar.slot1 : {};
+    const s2 = (ar.slot2 && typeof ar.slot2 === 'object') ? ar.slot2 : {};
+    const slot1Modes = ['fixed-stat', 'any-stat'];
+    const slot2Modes = ['fixed-stat', 'fixed-skill', 'any-stat', 'any-skill', 'any'];
+    return {
+      enabled: !!ar.enabled,
+      slot1: {
+        mode: slot1Modes.includes(s1.mode) ? s1.mode : 'any-stat',
+        fixedStat: typeof s1.fixedStat === 'string' ? s1.fixedStat : ''
+      },
+      slot2: {
+        mode: slot2Modes.includes(s2.mode) ? s2.mode : 'any',
+        fixedStat:  typeof s2.fixedStat  === 'string' ? s2.fixedStat  : '',
+        fixedSkill: typeof s2.fixedSkill === 'string' ? s2.fixedSkill : ''
+      }
+    };
   }
 
-  // View dispatcher.
-  function renderCatalogueBodyArea() {
-    syncUrl();
-    const titleEl   = document.getElementById('catalogue-body-title');
-    const actionsEl = document.getElementById('catalogue-body-actions');
-    if (titleEl)   titleEl.innerHTML = '';
-    if (actionsEl) actionsEl.innerHTML = '';
+  // Normalize a single Builder. Coerces all fields, generates missing
+  // ids, filters malformed entries. Used both by initial normalization
+  // and by character-side snapshot validation.
+  function normalizeBuilder(b, synthId) {
+    // visualGuideline + extraGuideline are GM-authored hints that
+    // tell the Player what to write in the Player-authored Visual /
+    // Extra sections of their Ability instance card. Legacy field
+    // names (visualPrompt / extra) are migrated on read so old data
+    // doesn't disappear.
+    //
+    // iconUrl is the public download URL of the Builder's icon image
+    // stored in Firebase Storage at rulesets/{rulesetId}/builderIcons/
+    // {builderId}. Empty string when no icon is set.
+    //
+    // activationRoll: when enabled, this Ability is rolled to activate.
+    // Slot 1 is always a STAT, Slot 2 is a STAT or SKILL. Each slot
+    // can be FIXED to a specific value (GM-locked) or PLAYER-CHOSEN
+    // from a kind (any-stat / any-skill / any). The {ACTIVATION_ROLL}
+    // token in the System template renders to the resolved pool name.
+    const builder = {
+      id:           (typeof b.id === 'string' && b.id.trim()) ? b.id : synthId('bld'),
+      name:         typeof b.name === 'string' ? b.name : 'Untitled Ability',
+      description:  typeof b.description === 'string' ? b.description : '',
+      baseCost:     Number.isFinite(b.baseCost) ? Math.max(0, b.baseCost) : 0,
+      iconUrl:      typeof b.iconUrl === 'string' ? b.iconUrl : '',
+      systemTextTemplate: typeof b.systemTextTemplate === 'string' ? b.systemTextTemplate : '',
+      visualGuideline: typeof b.visualGuideline === 'string' ? b.visualGuideline
+                     : typeof b.visualPrompt === 'string'    ? b.visualPrompt
+                     : '',
+      extraGuideline:  typeof b.extraGuideline === 'string' ? b.extraGuideline
+                     : typeof b.extra === 'string'           ? b.extra
+                     : '',
+      activationRoll:  normalizeActivationRoll(b.activationRoll),
+      primaryParams:   Array.isArray(b.primaryParams)   ? b.primaryParams   : [],
+      secondaryParams: Array.isArray(b.secondaryParams) ? b.secondaryParams : [],
+      features:        Array.isArray(b.features)        ? b.features        : [],
+      flaws:           Array.isArray(b.flaws)           ? b.flaws           : []
+    };
 
-    if (catalogueView === 'home') {
-      if (titleEl) titleEl.textContent = 'Catalogue';
-      renderHomeView();
-      return;
-    }
-    if (catalogueView === 'type') {
-      if (openedBuilder) { renderBuilderView(); return; }
-      renderTypeView();
-      return;
-    }
-    if (catalogueView === 'builder') {
-      renderBuilderView();
-      return;
-    }
-  }
+    // Primary + Secondary parameters share the same step-list shape:
+    //   { id, name, token, description, steps: [{label, value, cost}], defaultStep }
+    // The difference is INTERPRETATION at cost-engine time:
+    //   • Primary's cost adds flat AP to the Builder's cost.
+    //   • Secondary's cost is a multiplier on the Builder's running total.
+    //
+    // Old Primary shape (defaultValue / minValue / maxValue / stepCost) is
+    // wiped on read — per design call, primaryParams test data was burned
+    // when this redesign landed, so any GM authoring under the old shape
+    // re-authors. The wipe is silent: malformed primary entries (missing
+    // steps array) simply get an empty steps list, GM fills in via the
+    // editor.
+    const normalizeStep = (s) => {
+      if (!s || typeof s !== 'object') return null;
+      // `cost` is the canonical field; legacy secondary used `multiplier`.
+      // Read both, prefer cost if present.
+      let cost = (s.cost !== undefined && s.cost !== null && s.cost !== '')
+        ? parseFloat(s.cost)
+        : parseFloat(s.multiplier);
+      if (!Number.isFinite(cost)) cost = 0;
+      return {
+        label: typeof s.label === 'string' ? s.label : '',
+        value: (typeof s.value === 'string' || Number.isFinite(s.value)) ? s.value : '',
+        cost
+      };
+    };
 
-  function renderHomeView() {
-    const body = document.getElementById('catalogue-body');
-    if (!body) return;
-    const cat = state.abilityCatalogue || {};
-    const types = (cat.types && typeof cat.types === 'object') ? cat.types : {};
-    const order = ['ability', 'artifact', 'artifactAssembly', 'consumableAssembly'];
-    body.innerHTML = `
-      <p class="hint" style="margin-top:0;">
-        Choose a type to author Categories and Builders. Each type is its own world —
-        Categories and Builders inside Ability don't appear inside Artifact, and vice versa.
-      </p>
-      <div class="type-tile-grid">
-        ${order.map(tk => {
-          const t = types[tk];
-          if (!t) return '';
-          const isReady       = !t.inDesign;
-          const builderCount  = (t.categories || []).reduce((a, c) => a + ((c.builders || []).length), 0);
-          const categoryCount = (t.categories || []).length;
-          const click = isReady ? `onclick="catOpenType('${tk}')"` : '';
-          const meta  = isReady
-            ? `<div class="type-tile-meta">${categoryCount} categor${categoryCount === 1 ? 'y' : 'ies'} · ${builderCount} builder${builderCount === 1 ? '' : 's'}</div>`
-            : `<div class="type-tile-meta type-tile-meta-design">In design — coming soon</div>`;
-          return `
-            <div class="type-tile${isReady ? '' : ' in-design'}" ${click}>
-              <div class="type-tile-name">${escapeHtml(t.label || tk)}</div>
-              <div class="type-tile-desc">${escapeHtml(t.description || '')}</div>
-              ${meta}
-            </div>
-          `;
-        }).join('')}
-      </div>
-    `;
-  }
-
-  function renderTypeView() {
-    const body      = document.getElementById('catalogue-body');
-    const titleEl   = document.getElementById('catalogue-body-title');
-    const actionsEl = document.getElementById('catalogue-body-actions');
-    if (!body) return;
-    const cat = state.abilityCatalogue || {};
-    const t   = cat.types && cat.types[currentTypeKey];
-    if (!t) {
-      catalogueView = 'home'; currentTypeKey = null;
-      renderCatalogueBodyArea();
-      return;
-    }
-    if (titleEl) {
-      titleEl.innerHTML = `
-        <span style="cursor:pointer;color:#888;font-weight:400;font-size:13px;text-transform:none;letter-spacing:0;" onclick="catGoHome()">← Catalogue</span>
-        <span style="margin:0 6px;color:#444;">/</span>
-        <span>${escapeHtml(t.label || currentTypeKey)}</span>
-      `;
-    }
-    if (actionsEl) {
-      actionsEl.innerHTML = `<button class="btn small" onclick="catAddCategory()" type="button">+ Add Category</button>`;
-    }
-    body.innerHTML = `<div id="cat-categories"></div>`;
-    renderCategoryList();
-  }
-
-  function renderBuilderView() {
-    const body      = document.getElementById('catalogue-body');
-    const titleEl   = document.getElementById('catalogue-body-title');
-    if (body) body.innerHTML = `<div id="cat-categories"></div>`;
-    const cat = state.abilityCatalogue || {};
-    const tk  = (openedBuilder && openedBuilder.typeKey) || currentTypeKey;
-    const t   = cat.types && tk && cat.types[tk];
-    if (titleEl && t) {
-      titleEl.innerHTML = `
-        <span style="cursor:pointer;color:#888;font-weight:400;font-size:13px;text-transform:none;letter-spacing:0;" onclick="catGoHome()">← Catalogue</span>
-        <span style="margin:0 6px;color:#444;">/</span>
-        <span style="cursor:pointer;color:#888;font-weight:400;font-size:13px;text-transform:none;letter-spacing:0;" onclick="catOpenType('${tk}')">${escapeHtml(t.label || tk)}</span>
-        <span style="margin:0 6px;color:#444;">/</span>
-        <span>Builder</span>
-      `;
-    }
-    renderBuilderEditor();
-  }
-
-  window.catOpenType = function(typeKey) {
-    const cat = ensureCat();
-    if (!cat.types || !cat.types[typeKey]) return;
-    if (cat.types[typeKey].inDesign) return;
-    currentTypeKey = typeKey;
-    catalogueView  = 'type';
-    openedBuilder  = null;
-    renderCatalogueBodyArea();
-  };
-
-  window.catGoHome = function() {
-    currentTypeKey = null;
-    catalogueView  = 'home';
-    openedBuilder  = null;
-    renderCatalogueBodyArea();
-  };
-
-  // ── CATEGORY-LEVEL MUTATION HANDLERS ──
-  // These were lost during the Phase B builder-editor replacement.
-  // They mutate state.abilityCatalogue.types[currentTypeKey].categories
-  // (via getActiveCategories) and re-render the category list.
-
-  window.catAddCategory = function() {
-    const cat = ensureCat();
-    const cats = getActiveCategories(cat);
-    cats.push({
-      id: 'acat_' + Math.random().toString(36).slice(2, 10),
-      name: '',
-      description: '',
-      builders: []
-    });
-    renderCategoryList();
-  };
-
-  window.catDeleteCategory = function(ci) {
-    const cat = ensureCat();
-    const cats = getActiveCategories(cat);
-    if (!cats[ci]) return;
-    const name = cats[ci].name || 'this category';
-    const builders = Array.isArray(cats[ci].builders) ? cats[ci].builders : [];
-    if (builders.length > 0) {
-      if (!confirm(`Delete "${name}" and all ${builders.length} builder(s) inside it? This cannot be undone.`)) return;
-    } else {
-      if (!confirm(`Delete "${name}"?`)) return;
-    }
-    cats.splice(ci, 1);
-    renderCategoryList();
-  };
-
-  window.catSetCategoryField = function(ci, field, value) {
-    const cat = ensureCat();
-    const c = getActiveCategories(cat)[ci];
-    if (!c) return;
-    c[field] = String(value || '');
-    // Don't full-rerender (would lose focus). Inline-edit handles its
-    // own visible value via the input element.
-  };
-
-  window.catAddBuilder = function(ci) {
-    const cat = ensureCat();
-    const c = getActiveCategories(cat)[ci];
-    if (!c) return;
-    if (!Array.isArray(c.builders)) c.builders = [];
-    c.builders.push({
-      id: 'bld_' + Math.random().toString(36).slice(2, 10),
-      name: '',
-      description: '',
-      baseCost: 0,
-      systemTextTemplate: '',
-      visualGuideline: '',
-      extraGuideline: '',
-      primaryParams: [],
-      secondaryParams: [],
-      features: [],
-      flaws: []
-    });
-    renderCategoryList();
-  };
-
-  window.catDeleteBuilder = function(ci, bi) {
-    const cat = ensureCat();
-    const c = getActiveCategories(cat)[ci];
-    if (!c || !Array.isArray(c.builders) || !c.builders[bi]) return;
-    const name = c.builders[bi].name || 'this builder';
-    if (!confirm(`Delete "${name}"? This will be reflected on every Character Ability that references it.`)) return;
-    c.builders.splice(bi, 1);
-    renderCategoryList();
-  };
-
-  window.catSetBuilderField = function(ci, bi, field, value) {
-    const cat = ensureCat();
-    const c = getActiveCategories(cat)[ci];
-    if (!c || !Array.isArray(c.builders) || !c.builders[bi]) return;
-    c.builders[bi][field] = String(value || '');
-  };
-
-  // Open the full Builder editor — switches view to 'builder' and the
-  // dispatcher routes to renderBuilderEditor (Phase B layout).
-  window.catOpenBuilder = function(ci, bi) {
-    const cat = ensureCat();
-    const c = getActiveCategories(cat)[ci];
-    if (!c || !Array.isArray(c.builders) || !c.builders[bi]) return;
-    openedBuilder = { ci, bi, typeKey: currentTypeKey };
-    catalogueView = 'builder';
-    renderCatalogueBodyArea();
-    const body = document.getElementById('catalogue-body');
-    if (body && body.scrollIntoView) body.scrollIntoView({ block: 'start', behavior: 'smooth' });
-  };
-
-  // Close Builder editor — return to the type's category list.
-  window.catCloseBuilder = function() {
-    openedBuilder = null;
-    catalogueView = 'type';
-    renderCatalogueBodyArea();
-  };
-
-  // Save — partial update of just the abilityCatalogue field.
-  // This is intentional: the Catalogue page should never overwrite
-  // other ruleset fields (stats, skills, weapons), so a stale state
-  // here can't clobber something the Ruleset Editor is editing.
-  window.saveCatalogue = async function() {
-    const btn = document.getElementById('save-btn');
-    const msg = document.getElementById('save-msg');
-    if (!btn || !state) return;
-    const original = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = 'Saving…';
-    msg.textContent = '';
-    try {
-      await updateDoc(doc(db, 'rulesets', rulesetId), {
-        abilityCatalogue: state.abilityCatalogue || null
+    builder.primaryParams = builder.primaryParams
+      .filter(p => p && typeof p === 'object')
+      .map(p => {
+        const steps = Array.isArray(p.steps)
+          ? p.steps.map(normalizeStep).filter(Boolean)
+          : [];
+        return {
+          id:          (typeof p.id === 'string' && p.id.trim()) ? p.id : synthId('param'),
+          name:        typeof p.name === 'string' ? p.name : 'Parameter',
+          token:       typeof p.token === 'string' ? p.token : '',
+          description: typeof p.description === 'string' ? p.description : '',
+          steps,
+          defaultStep: Number.isFinite(p.defaultStep) ? p.defaultStep : 0
+        };
       });
-      msg.style.color = '#66ff99';
-      msg.textContent = 'Saved!';
-      setTimeout(() => { msg.textContent = ''; }, 1500);
-    } catch (e) {
-      console.error(e);
-      msg.style.color = '#ff6666';
-      msg.textContent = 'Save failed: ' + (e && e.message ? e.message : 'unknown error');
-    } finally {
-      btn.disabled = false;
-      btn.textContent = original;
+
+    builder.secondaryParams = builder.secondaryParams
+      .filter(p => p && typeof p === 'object')
+      .map(p => {
+        const steps = Array.isArray(p.steps)
+          ? p.steps.map(normalizeStep).filter(Boolean)
+          : [];
+        // Migrate legacy defaultStepIndex → defaultStep.
+        const def = Number.isFinite(p.defaultStep) ? p.defaultStep
+                  : Number.isFinite(p.defaultStepIndex) ? p.defaultStepIndex
+                  : 0;
+        return {
+          id:          (typeof p.id === 'string' && p.id.trim()) ? p.id : synthId('param'),
+          name:        typeof p.name === 'string' ? p.name : 'Parameter',
+          token:       typeof p.token === 'string' ? p.token : '',
+          description: typeof p.description === 'string' ? p.description : '',
+          steps,
+          defaultStep: def
+        };
+      });
+
+    // Features — paid-AP additions. Each references a tier from
+    // canonicalTiers.featureCosts (looked up at cost time, not stored
+    // as a number here, so tier table edits propagate).
+    const VALID_TIERS = ['minor','moderate','major','massive','monumental','mega','mythical'];
+    builder.features = builder.features
+      .filter(f => f && typeof f === 'object')
+      .map(f => ({
+        id:          (typeof f.id === 'string' && f.id.trim()) ? f.id : synthId('feat'),
+        name:        typeof f.name === 'string' ? f.name : 'Untitled Feature',
+        description: typeof f.description === 'string' ? f.description : '',
+        tier:        VALID_TIERS.includes(f.tier) ? f.tier : 'minor'
+      }));
+
+    // Flaws — refund-AP additions. Same shape as Features but priced
+    // from canonicalTiers.flawRefunds.
+    builder.flaws = builder.flaws
+      .filter(f => f && typeof f === 'object')
+      .map(f => ({
+        id:          (typeof f.id === 'string' && f.id.trim()) ? f.id : synthId('flaw'),
+        name:        typeof f.name === 'string' ? f.name : 'Untitled Flaw',
+        description: typeof f.description === 'string' ? f.description : '',
+        tier:        VALID_TIERS.includes(f.tier) ? f.tier : 'minor'
+      }));
+
+    return builder;
+  }
+
+  if (!out.abilityCatalogue || typeof out.abilityCatalogue !== 'object') {
+    out.abilityCatalogue = JSON.parse(JSON.stringify(d.abilityCatalogue));
+  } else {
+    const cat = out.abilityCatalogue;
+    // Top-level fields with sensible defaults
+    if (typeof cat.enabled !== 'boolean')      cat.enabled = true;
+    if (typeof cat.name !== 'string')          cat.name = 'Catalogue';
+    if (typeof cat.description !== 'string')   cat.description = '';
+    // Canonical tiers — merged from defaults so newly-added tier
+    // entries (if we ever extend the table) flow through to existing
+    // rulesets without losing the user's overrides.
+    if (!cat.canonicalTiers || typeof cat.canonicalTiers !== 'object') {
+      cat.canonicalTiers = JSON.parse(JSON.stringify(d.abilityCatalogue.canonicalTiers));
+    } else {
+      cat.canonicalTiers.featureCosts = Object.assign(
+        {},
+        d.abilityCatalogue.canonicalTiers.featureCosts,
+        (cat.canonicalTiers.featureCosts && typeof cat.canonicalTiers.featureCosts === 'object')
+          ? cat.canonicalTiers.featureCosts : {}
+      );
+      cat.canonicalTiers.flawRefunds = Object.assign(
+        {},
+        d.abilityCatalogue.canonicalTiers.flawRefunds,
+        (cat.canonicalTiers.flawRefunds && typeof cat.canonicalTiers.flawRefunds === 'object')
+          ? cat.canonicalTiers.flawRefunds : {}
+      );
     }
+
+    // ── MIGRATION: old shape → new types-wrapped shape ──
+    // Old: cat.categories (flat array directly under cat)
+    // New: cat.types.{ability|artifact|...}.categories
+    //
+    // If we see the old shape (cat.categories present, cat.types absent),
+    // move the legacy array into types.ability.categories. This is a
+    // one-time silent migration so existing rulesets don't lose data —
+    // the user told us "burn it down" but better to migrate cheaply
+    // than leave invisible orphan data sitting in Firestore.
+    if (Array.isArray(cat.categories) && !cat.types) {
+      cat.types = JSON.parse(JSON.stringify(d.abilityCatalogue.types));
+      cat.types.ability.categories = cat.categories;
+      delete cat.categories;
+    }
+
+    // Normalize the types map. Anything missing gets the default
+    // skeleton. Anything malformed gets reset.
+    if (!cat.types || typeof cat.types !== 'object') {
+      cat.types = JSON.parse(JSON.stringify(d.abilityCatalogue.types));
+    }
+
+    let synthCounter = 0;
+    const synthId = (prefix) => `${prefix}_${Date.now().toString(36)}_${(synthCounter++).toString(36)}`;
+
+    // Walk every type and clean its categories+builders. The shape
+    // inside each type is identical regardless of which type we're in
+    // — categories are categories, builders are builders. Mechanics
+    // divergence (Artifacts having durability, etc.) will live on the
+    // Builder fields themselves, not in the container shape.
+    Object.keys(d.abilityCatalogue.types).forEach(typeKey => {
+      const defType = d.abilityCatalogue.types[typeKey];
+      let t = cat.types[typeKey];
+      if (!t || typeof t !== 'object') {
+        t = JSON.parse(JSON.stringify(defType));
+        cat.types[typeKey] = t;
+        return;
+      }
+      if (typeof t.label !== 'string')        t.label = defType.label;
+      if (typeof t.description !== 'string')  t.description = defType.description;
+      if (typeof t.inDesign !== 'boolean')    t.inDesign = !!defType.inDesign;
+      if (!Array.isArray(t.categories))       t.categories = [];
+
+      t.categories = t.categories
+        .filter(c => c && typeof c === 'object')
+        .map(c => {
+          const cleanCat = {
+            id:          (typeof c.id === 'string' && c.id.trim()) ? c.id : synthId('cat'),
+            name:        typeof c.name === 'string' ? c.name : 'Untitled Category',
+            description: typeof c.description === 'string' ? c.description : '',
+            builders:    Array.isArray(c.builders) ? c.builders : []
+          };
+          cleanCat.builders = cleanCat.builders
+            .filter(b => b && typeof b === 'object')
+            .map(b => normalizeBuilder(b, synthId));
+          return cleanCat;
+        });
+    });
+
+    // Drop any unknown type keys that snuck in — keeps the structure
+    // tight and predictable.
+    Object.keys(cat.types).forEach(k => {
+      if (!d.abilityCatalogue.types[k]) delete cat.types[k];
+    });
+  }
+
+  // ─── INVENTORY NORMALIZATION ─────────────────────────────────────────
+  //
+  // bodySlots / containers / equipment are all arrays of small records.
+  // We re-shape each entry to enforce the schema — drop fields we don't
+  // recognize, coerce types, default anything missing. Empty / invalid
+  // entries are filtered out so downstream code never sees garbage.
+
+  // Slot entries need a stable `code` (used as a key in character data's
+  // inventory.bySlot map) plus a human `label`. Code gets slugified so a
+  // user-entered "Back Left" works as a key.
+  const slugSlotCode = (s) => String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+  if (!Array.isArray(out.bodySlots)) out.bodySlots = [];
+  out.bodySlots = out.bodySlots
+    .map(s => {
+      if (!s || typeof s !== 'object') return null;
+      const code  = slugSlotCode(s.code || s.label || '');
+      const label = (typeof s.label === 'string' && s.label.trim()) ? s.label.trim()
+                  : (typeof s.code  === 'string' && s.code.trim())  ? s.code.trim()
+                  : '';
+      if (!code || !label) return null;
+      return { code, label };
+    })
+    .filter(Boolean);
+  // Dedupe by code — if two entries collide, first wins.
+  {
+    const seen = new Set();
+    out.bodySlots = out.bodySlots.filter(s => {
+      if (seen.has(s.code)) return false;
+      seen.add(s.code);
+      return true;
+    });
+  }
+  // Empty bodySlots is a valid, supported state now. The old fallback
+  // auto-filled with defaults here; we no longer do that. Organization
+  // is handled by the groups system instead (On-Person + player-created
+  // groups + subgroups).
+
+  // ── UNIFIED ITEM CATALOG + CATEGORIES ──
+  //
+  // The inventory catalog is ONE array of items (any kind of carryable
+  // thing) plus a tree of categories. Items point at a category via
+  // `categoryId`; uncategorized items fall into the built-in
+  // "Miscellaneous" category at display time. Items become containers
+  // when their `containerOf` block is populated.
+  //
+  // On load we handle three shapes:
+  //   1. Legacy: `containers` + `equipment` arrays present, no `items`.
+  //      → migrate containers into items (wrapped as container items),
+  //        move equipment in directly, assemble unified `items` array,
+  //        then drop the legacy fields.
+  //   2. Current: `items` + `categories` arrays present.
+  //      → validate and fill any gaps.
+  //   3. Empty: nothing here.
+  //      → create empty arrays + a built-in "Miscellaneous" category.
+
+  const nextSynthId = (() => {
+    let n = 0;
+    return (prefix) => `${prefix}_${Date.now().toString(36)}_${(n++).toString(36)}`;
+  })();
+
+  const coerceFiniteNonNeg = (v, fallback) => {
+    const n = typeof v === 'number' ? v : parseFloat(v);
+    return Number.isFinite(n) && n >= 0 ? n : fallback;
+  };
+  const coerceDimensions = (raw) => {
+    const d2 = (raw && typeof raw === 'object') ? raw : {};
+    return {
+      l: coerceFiniteNonNeg(d2.l, 0),
+      w: coerceFiniteNonNeg(d2.w, 0),
+      h: coerceFiniteNonNeg(d2.h, 0)
+    };
+  };
+  const coerceContainerBlock = (raw) => {
+    if (!raw || typeof raw !== 'object') return null;
+    const dims = coerceDimensions(raw.dimensions);
+    // packingEfficiency defaults to 0.75 — a reasonable "soft packed"
+    // number. Clamped to [0.1, 1.0] so nobody sets it to 0 (container
+    // can't hold anything) or negative.
+    let eff = coerceFiniteNonNeg(raw.packingEfficiency, 0.75);
+    if (eff < 0.1) eff = 0.1;
+    if (eff > 1.0) eff = 1.0;
+    return { dimensions: dims, packingEfficiency: eff };
   };
 
-  // ═══════════════ LEGACY CATALOGUE EDITOR — PORTED ═══════════════
+  // Weapon block — optional. Items that aren't weapons omit this field
+  // entirely (null return). The schema is split by `kind`:
   //
-  // The category-list renderer, builder editor, and all mutation
-  // handlers from the legacy in-page editor live below. They were
-  // ~847 lines in edit-ruleset.html; we've ported them with these
-  // adjustments:
-  //   • Function names: cat* instead of abil*
-  //   • cat.categories reads → getActiveCategories(cat)
-  //   • Render targets: #cat-categories
-  //   • catOpenBuilder sets view='builder', dispatches via renderCatalogueBodyArea
-  //   • catCloseBuilder sets view='type', dispatches via renderCatalogueBodyArea
-  // Cost engine reused unchanged via window.computeAbilityCost.
+  //   shared:   dice (number), pen (number), tags (string[] of tag ids)
+  //   melee:    ranges ([{s,e}, ...] in feet) — each band is an object
+  //             with start/end in feet. Stored as objects NOT nested
+  //             arrays because Firestore rejects arrays-of-arrays. The
+  //             UI uses the count of bands to assign Difficulty (+0 for
+  //             band 0, +1 for band 1, etc). Empty/missing ranges means
+  //             "all ranges are +0" (trivial weapon).
+  //   ranged:   range (base feet), ammo (string formula OR number),
+  //             rof (string formula OR number), dmgmod (number — ranged
+  //             weapons carry a DMG bonus woven into the damage formula)
+  //
+  // `ammo` and `rof` accept a formula string so rulesets can author
+  // weapons like "AMMO = STR" or "ROF = (DEXMOD/2)-1". Resolution
+  // happens at render time against the character's live stats; the
+  // snapshot on inventory entries stores the original formula text so
+  // later stat changes update the effective value while the weapon def
+  // stays frozen.
+  const coerceWeapon = (raw) => {
+    if (!raw || typeof raw !== 'object') return null;
+    const kindRaw = (typeof raw.kind === 'string') ? raw.kind.toLowerCase() : '';
+    if (kindRaw !== 'melee' && kindRaw !== 'ranged') return null;
 
-  // ── ABILITIES CATALOGUE EDITOR ───────────────────────────────────────
-  //
-  // GMs design the Catalogue here: top-level fields (name, description,
-  // enabled), centralized tier-cost tables (featureCosts / flawRefunds),
-  // and the Categories → Builders tree. This turn implements the SHELL
-  // only — Categories and Builders can be added/renamed/deleted, but
-  // clicking into a Builder's internals (Parameters, Features, Flaws,
-  // system text) shows a placeholder until Turn 3 lands the inner editor.
-  //
-  // Live-reference data model: the Catalogue is part of the ruleset doc
-  // and saves alongside everything else. Player Abilities reference
-  // Builders by id; if a Builder is renamed or has its parameter list
-  // tweaked here, existing Player Abilities update automatically on
-  // their next render via the cost-compute engine.
+    const dice = coerceFiniteNonNeg(raw.dice, 0);
+    const pen  = coerceFiniteNonNeg(raw.pen,  0);
 
-  // Render the Abilities tab — entry point. Called from initUI() and
-  // any time state.abilityCatalogue changes structurally.
-  // Tier cost tables — two-column grid of tier name + numeric input.
-  // Editable; changes write directly into state. Tier names themselves
-  // are NOT editable here (they're a fixed canonical list); only the
-  // AP values per tier are tunable.
-  // Categories list — collapsible groups of Builders. Each category has
-  // its own header (rename / delete / add-builder) and an expandable
-  // body listing builders. Inline editing for category name; click
-  // "edit" on a builder to open its full editor.
-  //
-  // When a Builder is opened (openedBuilder set), this function
-  // delegates to renderBuilderEditor instead — same DOM target,
-  // different content. This way the editor takes over the "Categories
-  // & Builders" section visually rather than overlaying as a modal.
-  function renderCategoryList() {
-    const el = document.getElementById('cat-categories');
-    if (!el) return;
-    const cat = state.abilityCatalogue || {};
-    const cats = getActiveCategories(cat);
-    const tiers = cat.canonicalTiers || {};
-    if (cats.length === 0) {
-      el.innerHTML = `
-        <div class="empty">No categories yet. Click "+ Add Category" above to start.</div>
-      `;
-      return;
+    // Tags: array of tag ids (strings). Anything non-string gets dropped.
+    // Deduped by string-equality. Bad tags (referencing deleted ruleset
+    // tags) are tolerated — the display layer silently skips unknown
+    // ids and shows only the resolvable ones.
+    let tags = [];
+    if (Array.isArray(raw.tags)) {
+      const seen = new Set();
+      raw.tags.forEach(t => {
+        if (typeof t !== 'string' || !t) return;
+        if (seen.has(t)) return;
+        seen.add(t);
+        tags.push(t);
+      });
     }
 
-    el.innerHTML = '';
-    cats.forEach((category, ci) => {
-      const band = document.createElement('div');
-      band.className = 'cat-band';
+    // Tag parameter values. Shape: { [tagId]: { [paramKey]: value } }.
+    // E.g. { t_scoped: { magnification: 4 } }. Preserved verbatim
+    // here — the resolver looks up parameter defaults from the
+    // ruleset's tag definitions and fills in missing values. Orphan
+    // tagParams (for tags the weapon doesn't actually have) are
+    // tolerated; they just do nothing.
+    let tagParams = null;
+    if (raw.tagParams && typeof raw.tagParams === 'object') {
+      const clean = {};
+      Object.keys(raw.tagParams).forEach(tagId => {
+        const v = raw.tagParams[tagId];
+        if (!v || typeof v !== 'object') return;
+        const sub = {};
+        Object.keys(v).forEach(key => {
+          const val = v[key];
+          if (typeof val === 'number' && Number.isFinite(val)) sub[key] = val;
+          else if (typeof val === 'string') sub[key] = val;
+          else if (typeof val === 'boolean') sub[key] = val;
+        });
+        if (Object.keys(sub).length > 0) clean[tagId] = sub;
+      });
+      if (Object.keys(clean).length > 0) tagParams = clean;
+    }
 
-      // Category header — name input as the title (editable), description
-      // as a subtitle, action buttons on the right.
-      const head = document.createElement('div');
-      head.className = 'cat-band-head';
-      head.innerHTML = `
-        <input type="text" class="cat-band-name-input"
-               value="${escapeHtmlAttr(category.name || '')}"
-               placeholder="Untitled Category"
-               oninput="catSetCategoryField(${ci},'name',this.value)">
-        <div class="cat-band-actions">
-          <button class="btn small" type="button" onclick="catAddBuilder(${ci})">+ Add Ability</button>
-          <button class="btn small danger" type="button" onclick="catDeleteCategory(${ci})">Delete Category</button>
-        </div>
-      `;
-      band.appendChild(head);
-
-      // Optional category description — slim row below the head, only
-      // visible if the GM wants to add one. Stays inline since it's
-      // light and tied to the category, not the per-ability listing.
-      const descRow = document.createElement('div');
-      descRow.style.cssText = 'margin-bottom:12px;';
-      descRow.innerHTML = `
-        <input type="text"
-               value="${escapeHtmlAttr(category.description || '')}"
-               placeholder="Optional description (one-line summary shown in the catalogue browser)"
-               style="width:100%;font-size:12px;color:#aaa;background:transparent;border:none;padding:0;outline:none;"
-               oninput="catSetCategoryField(${ci},'description',this.value)">
-      `;
-      band.appendChild(descRow);
-
-      // Builders — wrap-grid of tiles. Each tile shows name + 1-line
-      // description + AP cost. Click opens the Builder editor.
-      const builders = Array.isArray(category.builders) ? category.builders : [];
-      const tileGrid = document.createElement('div');
-      tileGrid.className = 'cat-band-tiles';
-      if (builders.length === 0) {
-        // Empty state for the band — fills the grid as a single
-        // dashed-border placeholder.
-        const empty = document.createElement('div');
-        empty.className = 'cat-band-empty';
-        empty.style.gridColumn = '1 / -1';
-        empty.textContent = 'No abilities yet. Click "+ Add Ability" to author one.';
-        tileGrid.appendChild(empty);
-      } else {
-        builders.forEach((builder, bi) => {
-          // Compute default-tuned cost so the tile shows what the
-          // player will pay just for picking this Builder. Identical
-          // logic to the Builder preview pill.
-          let cost = null;
-          try {
-            const result = window.computeAbilityCost
-              ? window.computeAbilityCost(builder, {}, tiers)
-              : null;
-            cost = result && Number.isFinite(result.computedCost) ? result.computedCost : null;
-          } catch (e) { cost = null; }
-
-          const tile = document.createElement('div');
-          tile.className = 'ability-tile';
-          tile.onclick = () => window.catOpenBuilder(ci, bi);
-
-          // Icon thumbnail on the same row as the name. Object-fit
-          // contain so freeform shapes (rectangles, SVGs) don't get
-          // squished. No icon ⇒ row collapses gracefully.
-          const iconThumb = (builder.iconUrl && builder.iconUrl.trim())
-            ? `<img class="ability-tile-icon" src="${escapeHtmlAttr(builder.iconUrl)}" alt="">`
-            : '';
-
-          const nameHtml = builder.name
-            ? `<div class="ability-tile-name">${escapeHtml(builder.name)}</div>`
-            : `<div class="ability-tile-name ability-tile-name-empty">(Unnamed Ability)</div>`;
-
-          const descHtml = builder.description
-            ? `<div class="ability-tile-desc">${escapeHtml(builder.description)}</div>`
-            : `<div class="ability-tile-desc"><span style="color:#444;font-style:italic;">No description</span></div>`;
-
-          // Tile structure:
-          //   [icon] [name + desc stacked vertically next to icon]
-          //   [hover-only × in top-right corner]
-          //
-          // Cost pill removed — costs depend on per-player tuning, so
-          // showing a "default cost" on the catalogue tile was misleading.
-          // Cost shows in the Builder editor's preview card and on the
-          // player's Ability Card after they've tuned their instance.
-          tile.innerHTML = `
-            <div class="ability-tile-head">
-              ${iconThumb}
-              <div class="ability-tile-headtext">
-                ${nameHtml}
-                ${descHtml}
-              </div>
-            </div>
-            <button class="ability-tile-x" type="button" title="Delete ability"
-                    onclick="event.stopPropagation();catDeleteBuilder(${ci},${bi});">×</button>
-          `;
-          tileGrid.appendChild(tile);
+    if (kindRaw === 'melee') {
+      // Range bands. Stored as an array of {s, e} objects (NOT nested
+      // arrays — Firestore doesn't support those). Legacy data
+      // may still have the old [[s,e], ...] shape from before this
+      // schema change; we accept either and normalize to the object
+      // form. Invalid entries (missing numbers, e < s, negative) are
+      // dropped silently.
+      let ranges = [];
+      if (Array.isArray(raw.ranges)) {
+        raw.ranges.forEach(band => {
+          let s, e;
+          if (Array.isArray(band) && band.length >= 2) {
+            s = Number(band[0]);
+            e = Number(band[1]);
+          } else if (band && typeof band === 'object') {
+            s = Number(band.s);
+            e = Number(band.e);
+          } else {
+            return;
+          }
+          if (!Number.isFinite(s) || !Number.isFinite(e)) return;
+          if (s < 0 || e < s) return;
+          ranges.push({ s, e });
         });
       }
-      band.appendChild(tileGrid);
+      return { kind: 'melee', dice, pen, tags, ranges, tagParams };
+    }
 
-      el.appendChild(band);
+    // ranged
+    const range  = coerceFiniteNonNeg(raw.range,  0);
+    const dmgmod = Number.isFinite(Number(raw.dmgmod)) ? Number(raw.dmgmod) : 0;
+    // ammo / rof accept either a number OR a formula string. We keep
+    // whatever the author provided — the resolver at use-time decides
+    // whether to eval a formula or use a literal.
+    const coerceNumOrFormula = (v, fallback) => {
+      if (typeof v === 'number' && Number.isFinite(v)) return v;
+      if (typeof v === 'string' && v.trim()) return v.trim();
+      return fallback;
+    };
+    const ammo = coerceNumOrFormula(raw.ammo, 1);
+    const rof  = coerceNumOrFormula(raw.rof,  0);
+    // Legacy scopeMagnification field: if present, migrate into
+    // tagParams.t_scoped.magnification so all tag parameters live in
+    // one place going forward.
+    if (Number.isFinite(Number(raw.scopeMagnification))) {
+      const mag = Math.max(1, Number(raw.scopeMagnification));
+      if (!tagParams) tagParams = {};
+      if (!tagParams.t_scoped) tagParams.t_scoped = {};
+      if (tagParams.t_scoped.magnification == null) {
+        tagParams.t_scoped.magnification = mag;
+      }
+    }
+    // Auto-migrate legacy `rof` scalar → Rate of Fire tag. If the
+    // weapon already has a 't_rate_of_fire' tag we leave it alone —
+    // the GM already made a deliberate choice. Otherwise we inject
+    // the tag and seed its level param from the weapon.rof value.
+    // Only applies when rof is a finite number; string formulas
+    // aren't migrated because we can't evaluate them at normalize
+    // time. Keeps weapon.rof as-is for now so legacy readers still
+    // work during the one-cycle transition; the resolver prefers
+    // tagParams over weapon.rof when both are present.
+    if (!tags.includes('t_rate_of_fire') && typeof rof === 'number' && Number.isFinite(rof)) {
+      tags.push('t_rate_of_fire');
+      if (!tagParams) tagParams = {};
+      if (!tagParams.t_rate_of_fire) tagParams.t_rate_of_fire = {};
+      if (tagParams.t_rate_of_fire.level == null) {
+        // Preserve the original rof value as-is (rounded to integer).
+        // No bounds clamp — rulesets with custom ROF tables may use
+        // levels outside the Standard Set's -1..3 range.
+        tagParams.t_rate_of_fire.level = Math.round(rof);
+      }
+    }
+    return { kind: 'ranged', dice, pen, tags, range, dmgmod, ammo, rof, tagParams };
+  };
+
+  // ── ARMOR-WORN facet ──
+  //
+  // An item becomes wearable armor when `item.armorWorn` is a populated
+  // object. Parallel to `containerOf` and `weapon` — orthogonal facets;
+  // a single item can carry any combination. A tactical vest is armor
+  // + container. A spiked shield could be armor + weapon.
+  //
+  // The item's Armor RATING (integer, used for both damage mitigation
+  // and durability computation) lives at `item.armor` (top-level,
+  // every item has one). This facet only carries what's specific to
+  // WORN armor: which hit locations it protects.
+  //
+  // Shape:
+  //   coverage:  [string] — array of coverage labels. Typically these
+  //              match `hitLocations[].code` entries (e.g. 'head',
+  //              'torso') but authors can also add custom free-text
+  //              labels for partial-coverage pieces not aligned with
+  //              the ruleset's standard hit locations.
+  const coerceArmorWornBlock = (raw, legacyArmor) => {
+    // `legacyArmor` is passed when migrating from the old shape where
+    // armor was a single block `{value, coverage, maxDurability, condition}`.
+    // We extract coverage here; the value part migrates to the top-level
+    // `armor` integer separately (see normalizeItem below). condition
+    // and maxDurability from the legacy shape are dropped — durability
+    // tracking is now opt-in per-entry and condition is tracked by
+    // direct durability-damage decisions, not a fluff label.
+    const src = raw || legacyArmor;
+    if (!src || typeof src !== 'object') return null;
+    // Coverage — normalize to array of non-empty strings, deduped.
+    let coverage = [];
+    if (Array.isArray(src.coverage)) {
+      const seen = new Set();
+      src.coverage.forEach(c => {
+        if (typeof c !== 'string') return;
+        const t = c.trim();
+        if (!t || seen.has(t)) return;
+        seen.add(t);
+        coverage.push(t);
+      });
+    }
+    // Only return a real facet when at least one coverage label is set.
+    // An empty-coverage armor block would be meaningless (armor that
+    // protects nothing) so collapse it to null.
+    if (coverage.length === 0) return null;
+    return { coverage };
+  };
+
+  // Helper: extract the legacy armor `value` field from an old-shape
+  // armor block so normalizeItem can promote it to the new top-level
+  // `item.armor` integer. Returns 0 if absent/invalid.
+  const extractLegacyArmorValue = (raw) => {
+    if (!raw || typeof raw !== 'object') return 0;
+    const n = Number(raw.value);
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+  };
+
+  // Normalize a single item record. Shared by the migration path
+  // (legacy entry → item) and the validation path (existing item → item).
+  // `sourceKind` is 'container' when coming from the old containers
+  // array — those are auto-promoted to have a containerOf block synthesized
+  // from their top-level dimensions/packing fields.
+  const normalizeItem = (raw, sourceKind) => {
+    if (!raw || typeof raw !== 'object') return null;
+    const name = (typeof raw.name === 'string' && raw.name.trim()) ? raw.name.trim() : '';
+    if (!name) return null;
+
+    // Outer dimensions (the item's physical size) — carried by every
+    // item whether it's a container or not.
+    const dimensions = coerceDimensions(raw.dimensions);
+
+    // Determine the containerOf block. Three paths:
+    //   - Legacy `container` record: synthesize from its top-level
+    //     dimensions + packingEfficiency (those fields describe its
+    //     internal capacity in the old schema).
+    //   - Legacy `equipment` record or current item: use its containerOf
+    //     block directly if present.
+    //   - Plain item: null.
+    let containerOf = null;
+    if (sourceKind === 'container') {
+      // Old containers carried packingEfficiency at the top level and
+      // their outer/inner dimensions were the same. Wrap into the new
+      // containerOf shape so they "just work" as containers.
+      containerOf = {
+        dimensions: { l: dimensions.l, w: dimensions.w, h: dimensions.h },
+        packingEfficiency: coerceContainerBlock(raw) ? coerceContainerBlock(raw).packingEfficiency : 0.75
+      };
+    } else if (raw.containerOf) {
+      containerOf = coerceContainerBlock(raw.containerOf);
+    }
+
+    return {
+      id:           (typeof raw.id === 'string' && raw.id) ? raw.id : nextSynthId(sourceKind === 'container' ? 'cont' : 'item'),
+      name,
+      description:  (typeof raw.description === 'string') ? raw.description : '',
+      dimensions,
+      weight:       coerceFiniteNonNeg(raw.weight, 0),
+      // Category membership — string id pointing at a categories entry,
+      // or null for uncategorized (displays under Miscellaneous).
+      categoryId:   (typeof raw.categoryId === 'string' && raw.categoryId) ? raw.categoryId : null,
+      // Legacy free-form `category` string preserved if present, for
+      // potential later auto-mapping to real categories. Safe to ignore
+      // by new code.
+      legacyCategory: (typeof raw.category === 'string' && raw.category) ? raw.category : '',
+      // Future weapon-catalog linkage (not built yet).
+      weaponId:     (typeof raw.weaponId === 'string' && raw.weaponId) ? raw.weaponId : null,
+      // Weapon block — present when the item is a weapon. Null/omitted
+      // otherwise. Structure depends on `weapon.kind` ('melee' or
+      // 'ranged'). Added to the catalogue item's def; snapshot-copied
+      // onto inventory entries at add-time (see char-inventory.js).
+      weapon:       coerceWeapon(raw.weapon),
+      // SIZE — integer used for volume scaling + durability computation.
+      // Defaults to 3 (Small) for legacy items that never carried a
+      // size value. PRIME convention: 1=Tiny, 3=Small, 5=Medium,
+      // 7=Large, 9=Huge, 12=Gargantuan, 15=Colossal. Authors are
+      // free to use any integer, though — the categories are just
+      // hints in the editor UI.
+      size:         (() => {
+        const n = Number(raw.size);
+        return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 3;
+      })(),
+      // Armor — top-level integer on every item, 0–20 typical range.
+      // Feeds both damage mitigation (when the item is worn armor —
+      // see armorWorn below) and the item's own Durability pool.
+      // Legacy shape had Armor inside a facet block as `{value,...}`;
+      // we migrate it to the top level here so every item has a
+      // consistent Armor rating regardless of whether it's wearable.
+      armor:        (() => {
+        // Prefer the new top-level field if present.
+        if (raw.armor != null && typeof raw.armor !== 'object') {
+          const n = Number(raw.armor);
+          return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+        }
+        // Legacy: armor was an object with a value field.
+        return extractLegacyArmorValue(raw.armor);
+      })(),
+      // Armor-worn facet — present when the item protects the wearer's
+      // hit locations. Just coverage + condition now; the numeric
+      // rating lives at item.armor (above). Null when the item is
+      // not wearable armor (a sword has item.armor = 4 but armorWorn
+      // = null because you don't wear a sword).
+      armorWorn:    coerceArmorWornBlock(raw.armorWorn, raw.armor),
+      // Default body slot — set on containers so adding one to a
+      // character pre-selects the right slot.
+      defaultSlot:  (typeof raw.defaultSlot === 'string' && raw.defaultSlot) ? raw.defaultSlot : null,
+      containerOf
+    };
+  };
+
+  // Detect legacy shape. If we find containers/equipment arrays AND no
+  // items array, it's pre-unification data that needs migrating.
+  const hasLegacyCatalog = Array.isArray(out.containers) || Array.isArray(out.equipment);
+  const hasUnifiedItems  = Array.isArray(out.items);
+
+  if (!hasUnifiedItems) {
+    // Migration path — merge old catalogs into one items array.
+    const items = [];
+    (Array.isArray(out.containers) ? out.containers : []).forEach(c => {
+      const item = normalizeItem(c, 'container');
+      if (item) items.push(item);
+    });
+    (Array.isArray(out.equipment) ? out.equipment : []).forEach(e => {
+      const item = normalizeItem(e, 'equipment');
+      if (item) items.push(item);
+    });
+    out.items = items;
+  } else {
+    // Current shape — just validate and clean.
+    out.items = out.items.map(i => normalizeItem(i, 'equipment')).filter(Boolean);
+  }
+
+  // Drop legacy fields so the persisted doc stays clean and we don't
+  // keep re-migrating on every load.
+  if (hasLegacyCatalog) {
+    delete out.containers;
+    delete out.equipment;
+  }
+
+  // ── CATEGORIES ──
+  //
+  // Flat array of { id, name, description, parentId, builtIn }.
+  // parentId=null means top-level; non-null must point at another
+  // category in the array. Arbitrary nesting depth is allowed.
+  // "Miscellaneous" is a built-in category that always exists — items
+  // with categoryId=null or pointing at a deleted category display
+  // under it.
+
+  if (!Array.isArray(out.categories)) out.categories = [];
+
+  // Normalize entries: name required, description optional, parentId
+  // nullable, builtIn preserved if set. defaultDimensions/defaultWeight
+  // carry category-level dimension + weight defaults that new items in
+  // this category will inherit. Missing fields become {0,0,0} and 0 —
+  // treated as "no default" by the UI (won't overwrite anything).
+  out.categories = out.categories.map(c => {
+    if (!c || typeof c !== 'object') return null;
+    const name = (typeof c.name === 'string' && c.name.trim()) ? c.name.trim() : '';
+    if (!name) return null;
+    const dd = c.defaultDimensions || {};
+    const clampDim = v => {
+      const n = Number(v);
+      return Number.isFinite(n) && n >= 0 ? n : 0;
+    };
+    return {
+      id:          (typeof c.id === 'string' && c.id) ? c.id : nextSynthId('cat'),
+      name,
+      description: (typeof c.description === 'string') ? c.description : '',
+      parentId:    (typeof c.parentId === 'string' && c.parentId) ? c.parentId : null,
+      builtIn:     c.builtIn === true,
+      defaultDimensions: { l: clampDim(dd.l), w: clampDim(dd.w), h: clampDim(dd.h) },
+      defaultWeight:     clampDim(c.defaultWeight)
+    };
+  }).filter(Boolean);
+
+  // Ensure built-in "Miscellaneous" exists. If the author tried to
+  // delete it in raw JSON, add it back. If multiple exist (shouldn't
+  // happen but defensive), keep the first.
+  const miscExists = out.categories.find(c => c.id === 'cat_misc');
+  if (!miscExists) {
+    out.categories.push({
+      id: 'cat_misc',
+      name: 'Miscellaneous',
+      description: 'Uncategorized items end up here.',
+      parentId: null,
+      builtIn: true,
+      defaultDimensions: { l: 0, w: 0, h: 0 },
+      defaultWeight: 0
+    });
+  } else {
+    miscExists.builtIn = true;
+  }
+
+  // Validate parent links: a parentId pointing at a non-existent
+  // category becomes null (orphan → top-level). A parentId pointing at
+  // ITSELF also becomes null (would cause infinite render loops).
+  // We don't try to detect longer cycles here — the editor should
+  // prevent them at input time; if they somehow slip through, the
+  // tree renderer guards against revisiting nodes.
+  const catIds = new Set(out.categories.map(c => c.id));
+  out.categories.forEach(c => {
+    if (c.parentId && (c.parentId === c.id || !catIds.has(c.parentId))) {
+      c.parentId = null;
+    }
+  });
+
+  // ── WEAPONS ──
+  // Ruleset-level roll formulas. A missing `weapons` object, or any
+  // individual missing formula, falls back to Standard Set defaults.
+  // Missing/blank formulas at runtime would be a silent roll bug, so
+  // we always resolve each one to a non-empty string.
+  if (!out.weapons || typeof out.weapons !== 'object') out.weapons = {};
+  const defFormulas = d.weapons || {
+    meleeAttackFormula:  'DEX + Melee + DEXMOD',
+    meleeDamageFormula:  'STR + DMG + ATK + STRMOD',
+    rangedAttackFormula: 'DEX + Ranged + DEXMOD',
+    rangedDamageFormula: 'DEX + DMG + ATK + DMGMOD'
+  };
+  ['meleeAttackFormula','meleeDamageFormula','rangedAttackFormula','rangedDamageFormula'].forEach(f => {
+    if (typeof out.weapons[f] !== 'string' || !out.weapons[f].trim()) {
+      out.weapons[f] = defFormulas[f];
+    }
+  });
+
+  // Item durability config — currently just the max-durability formula.
+  // Default is `SIZE + Armor` (matches the Standard Set). Authors can
+  // override per-ruleset. Blank/invalid → reset to default.
+  if (!out.itemDurability || typeof out.itemDurability !== 'object') out.itemDurability = {};
+  const defDur = d.itemDurability || { maxFormula: 'SIZE + Armor' };
+  if (typeof out.itemDurability.maxFormula !== 'string' || !out.itemDurability.maxFormula.trim()) {
+    out.itemDurability.maxFormula = defDur.maxFormula;
+  }
+
+  // Tag categories — nested tree (same shape as item `categories`).
+  // Each category is {id, name, parentId|null, builtIn?}. Seed with
+  // the built-in "Uncategorized" if missing so the fallback home for
+  // orphaned tags always exists. Invalid entries (no id or no name)
+  // are dropped. Cycles (a category's parent pointing back to itself
+  // or a descendant) are broken by nulling the offending parentId.
+  if (!Array.isArray(out.tagCategories)) out.tagCategories = [];
+  const tcatSeen = new Set();
+  out.tagCategories = out.tagCategories.map(c => {
+    if (!c || typeof c !== 'object') return null;
+    const name = (typeof c.name === 'string') ? c.name.trim() : '';
+    if (!name) return null;
+    let id = (typeof c.id === 'string' && c.id) ? c.id : nextSynthId('tcat');
+    while (tcatSeen.has(id)) id = nextSynthId('tcat');
+    tcatSeen.add(id);
+    return {
+      id,
+      name,
+      parentId: (typeof c.parentId === 'string' && c.parentId) ? c.parentId : null,
+      builtIn: !!c.builtIn
+    };
+  }).filter(Boolean);
+  // Seed the built-in Uncategorized if absent.
+  if (!out.tagCategories.some(c => c.id === 'tcat_uncategorized')) {
+    out.tagCategories.unshift({
+      id: 'tcat_uncategorized',
+      name: 'Uncategorized',
+      parentId: null,
+      builtIn: true
     });
   }
-
-  // ─────────────────────────────────────────────────────────────────
-  // Builder editor — replaces the Categories list when a Builder is
-  // opened. Renders into the same #cat-categories container so the
-  // surrounding chrome (Catalogue header, tier tables) stays visible
-  // for context.
-  //
-  // Layout:
-  //   [ Header: Back, Builder name, Cost preview pill ]
-  //   [ Basics: name, description, baseCost, systemTextTemplate ]
-  //   [ Primary Parameters list — flat-cost ]
-  //   [ Secondary Parameters list — multiplier-cost with steps ]
-  //   [ Features list — paid-AP options ]
-  //   [ Flaws list — refund-AP options ]
-  //
-  // Each section has its own add button at the section header; rows
-  // include a delete button. Saves happen via the global save button
-  // at the bottom of the page (state mutations only here).
-  // ═════════ PHASE B — BUILDER EDITOR ═════════
-  //
-  // The Builder editor replaces the legacy stacked-form layout with a
-  // spatial workspace:
-  //
-  //   ┌─ Header — back link, editable name, live AP cost pill ─┐
-  //   │                                                         │
-  //   │  ┌─ Card preview ─┐  ┌─ Parameters ─┐                   │
-  //   │  │ name           │  │ row …        │                   │
-  //   │  │ AP cost        │  │ row …        │                   │
-  //   │  │ system text    │  │ + Add        │                   │
-  //   │  └────────────────┘  └──────────────┘                   │
-  //   │                                                         │
-  //   │  ┌─ Features ─────┐  ┌─ Flaws ──────┐                   │
-  //   │  │ Minor: rows…   │  │ Minor: rows… │                   │
-  //   │  │ Moderate: rows │  │ Moderate: …  │                   │
-  //   │  │ … all 7 tiers  │  │ … all 7 tiers│                   │
-  //   │  └────────────────┘  └──────────────┘                   │
-  //   │                                                         │
-  //   │  System    [textarea ────────────────────────]          │
-  //   │  Visual    [textarea ────────────────────────]          │
-  //   │  Extra     [textarea ────────────────────────]          │
-  //   └─────────────────────────────────────────────────────────┘
-  //
-  // The card preview reflects the Builder's CURRENT state — its name,
-  // current default param values substituted into systemTemplate, and
-  // the cost computed from current params/features/flaws (with no
-  // player tuning beyond defaults). Updates live on every input.
-  //
-  // Features and Flaws are organized by tier band — each tier is a
-  // sub-section with a "+ Add <Tier>" button. Reordering between
-  // tiers is via a per-row dropdown. Tier costs come from the
-  // canonicalTiers tables at the top of the page; they're shown
-  // next to each tier band header for context.
-  //
-  // Parameters are clickable rows that open a modal for deeper
-  // editing (steps + values + cost-delta + which step is default).
-  // The Primary/Secondary distinction (flat-cost vs multiplier)
-  // is preserved on the param record and is set in the modal.
-  // (TIER_ORDER and TIER_LABELS are declared at the top of the module
-  // alongside the other view-state, so they're available when initUI
-  // fires renderBuilderEditor before this point in source order.)
-
-  function renderBuilderEditor() {
-    const el = document.getElementById('cat-categories');
-    if (!el) return;
-    const b = getOpenedBuilder();
-    if (!b) {
-      // Builder went away — return to the type's category list.
-      openedBuilder = null;
-      catalogueView = 'type';
-      renderCatalogueBodyArea();
-      return;
+  // Break parent cycles + repair orphaned parentIds.
+  const tcatIds = new Set(out.tagCategories.map(c => c.id));
+  out.tagCategories.forEach(c => {
+    if (c.parentId && !tcatIds.has(c.parentId)) c.parentId = null;
+  });
+  const tcatHasCycle = (cid, visited) => {
+    if (!cid) return false;
+    if (visited.has(cid)) return true;
+    visited.add(cid);
+    const c = out.tagCategories.find(x => x.id === cid);
+    return c ? tcatHasCycle(c.parentId, visited) : false;
+  };
+  out.tagCategories.forEach(c => {
+    if (c.parentId && tcatHasCycle(c.parentId, new Set([c.id]))) {
+      c.parentId = null;
     }
+  });
 
-    const cat = state.abilityCatalogue || {};
-    const tiers = cat.canonicalTiers || {};
-    const featureCosts = tiers.featureCosts || {};
-    const flawRefunds  = tiers.flawRefunds  || {};
-
-    el.innerHTML = '';
-    const wrap = document.createElement('div');
-
-    // Header row — Back button, icon slot, name input, cost pill.
-    // The icon slot opens a hidden file input on click. Empty state
-    // shows a "+" placeholder; with an icon, it shows the image and
-    // a small × overlay to clear it.
-    const head = document.createElement('div');
-    head.className = 'bldr-head';
-    const hasIcon = !!(b.iconUrl && b.iconUrl.trim());
-    head.innerHTML = `
-      <button class="btn small" type="button" onclick="catCloseBuilder()">← Back</button>
-      <div class="bldr-head-icon${hasIcon ? ' has-icon' : ''}" id="bldr-head-icon"
-           onclick="document.getElementById('bldr-icon-input').click()"
-           title="${hasIcon ? 'Click to replace icon' : 'Click to upload an icon (PNG/JPG/WebP/SVG, ≤500KB)'}">
-        ${hasIcon
-          ? `<img src="${escapeHtmlAttr(b.iconUrl)}" alt="">
-             <button class="bldr-head-icon-clear" type="button"
-                     onclick="event.stopPropagation();bldrClearIcon();" title="Remove icon">×</button>`
-          : `<span class="bldr-head-icon-empty">+</span>`}
-      </div>
-      <input id="bldr-icon-input" type="file"
-             accept="image/png,image/jpeg,image/webp,image/svg+xml"
-             style="display:none;"
-             onchange="bldrUploadIcon(this)">
-      <input class="bldr-head-name" type="text"
-             placeholder="(Unnamed Builder)"
-             value="${escapeHtmlAttr(b.name || '')}"
-             oninput="catBldrSetField('name',this.value);renderBuilderPreview();">
-      <span class="bldr-head-cost" id="bldr-cost-pill">… AP</span>
-    `;
-    wrap.appendChild(head);
-
-    // Top grid — Card preview (left) + Parameters (right)
-    const topGrid = document.createElement('div');
-    topGrid.className = 'bldr-grid-top';
-    topGrid.innerHTML = `
-      <div class="bldr-panel">
-        <div class="bldr-panel-title">Ability Card Preview</div>
-        <div id="bldr-card-preview" class="bldr-card-preview"></div>
-      </div>
-      <div class="bldr-panel">
-        <div class="bldr-panel-title">
-          <span>Parameters</span>
-          <button class="btn small" type="button" onclick="bldrAddParam()">+ Add Parameter</button>
-        </div>
-        <div id="bldr-params-list"></div>
-        <div class="hint" style="margin:8px 0 0 0;font-size:11px;">
-          Click a parameter to edit its steps, values, and per-step cost.
-        </div>
-      </div>
-    `;
-    wrap.appendChild(topGrid);
-
-    // Mid grid — Features (left) + Flaws (right)
-    const midGrid = document.createElement('div');
-    midGrid.className = 'bldr-grid-mid';
-    midGrid.style.marginTop = '14px';
-    midGrid.innerHTML = `
-      <div class="bldr-panel">
-        <div class="bldr-panel-title">Features <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— player pays AP to take</span></div>
-        <div id="bldr-features-list"></div>
-      </div>
-      <div class="bldr-panel">
-        <div class="bldr-panel-title">Flaws <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— player gets AP back</span></div>
-        <div id="bldr-flaws-list"></div>
-      </div>
-    `;
-    wrap.appendChild(midGrid);
-
-    // Description, base cost, system template — these are inputs that
-    // drive the preview but aren't part of the spatial layout per
-    // the sketch. They live in the System/Visual/Extra stack below.
-    // Specifically:
-    //   • description → above the System textarea (it's the catalogue-
-    //     browser blurb, not part of the card)
-    //   • baseCost → small box near the cost pill in the header? We
-    //     keep it inline next to the System template input since
-    //     they're tightly related authoring-wise.
-    //   • systemTextTemplate → IS the System textarea
-    //   • visualPrompt → IS the Visual textarea
-    //   • extra → IS the Extra textarea
-    //
-    // Description gets its own slim section above System.
-
-    const descSection = document.createElement('div');
-    descSection.className = 'bldr-textarea-section';
-    descSection.style.marginTop = '14px';
-    descSection.innerHTML = `
-      <div class="bldr-panel-title">Description <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— shown to players in the catalogue browser</span></div>
-      <textarea rows="2"
-                placeholder="Short description of what this Ability does. Players see this when picking the Builder."
-                oninput="catBldrSetField('description',this.value)">${escapeHtml(b.description || '')}</textarea>
-      <div style="display:grid;grid-template-columns:160px 1fr;gap:14px;margin-top:10px;">
-        <div class="field" style="margin:0;">
-          <label>Base Cost (AP)</label>
-          <input type="number" min="0" step="1"
-                 value="${Number.isFinite(b.baseCost) ? b.baseCost : 0}"
-                 oninput="catBldrSetField('baseCost',this.value);renderBuilderPreview();">
-        </div>
-        <div></div>
-      </div>
-    `;
-    wrap.appendChild(descSection);
-
-    // ── ACTIVATION ROLL ──
-    // Single panel with a toggle. When enabled, shows two slot
-    // configurators (slot 1 always STAT, slot 2 STAT or SKILL).
-    // Each slot can be FIXED to a specific value or PLAYER-CHOSEN.
-    // A live preview line shows the resulting roll description, which
-    // is what the {ACTIVATION_ROLL} token will substitute into System
-    // text below.
-    const arSection = document.createElement('div');
-    arSection.className = 'bldr-textarea-section';
-    arSection.id = 'bldr-activation-section';
-    arSection.innerHTML = renderActivationRollSection(b);
-    wrap.appendChild(arSection);
-
-    // System template
-    const sysSection = document.createElement('div');
-    sysSection.className = 'bldr-textarea-section';
-    sysSection.innerHTML = `
-      <div class="bldr-panel-title">System <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— rules text. Use {paramId} placeholders to substitute parameter values. Use {ACTIVATION_ROLL} to insert the roll pool when Activation Roll is enabled.</span></div>
-      <textarea rows="3"
-                placeholder="e.g. Spend an Action and {activationCost}; deal {damage} fire damage to a target within {range}."
-                oninput="catBldrSetField('systemTextTemplate',this.value);renderBuilderPreview();">${escapeHtml(b.systemTextTemplate || '')}</textarea>
-    `;
-    wrap.appendChild(sysSection);
-
-    // Visual guideline — GM authors what the Player should depict.
-    // Doesn't appear directly on the rendered card; instead, the card
-    // shows the Player's visualText (which they author on their
-    // Ability instance) with the GM's guideline shown as placeholder
-    // hint text when the Player hasn't written anything yet.
-    const visSection = document.createElement('div');
-    visSection.className = 'bldr-textarea-section';
-    visSection.innerHTML = `
-      <div class="bldr-panel-title">Visual Guideline <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— GM hint: what the Player should depict for this Ability's visual</span></div>
-      <textarea rows="2"
-                placeholder="e.g. The icon of a flame appearing in the Player's hand. Players will write the actual visual description on their own Ability."
-                oninput="catBldrSetField('visualGuideline',this.value)">${escapeHtml(b.visualGuideline || b.visualPrompt || '')}</textarea>
-    `;
-    wrap.appendChild(visSection);
-
-    // Extra guideline — same pattern as Visual. GM authors what the
-    // Extra section is for; Player writes the actual content on
-    // their Ability instance.
-    const extraSection = document.createElement('div');
-    extraSection.className = 'bldr-textarea-section';
-    extraSection.innerHTML = `
-      <div class="bldr-panel-title">Extra Guideline <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— GM hint: what the Player should write in the Extra section (lore, metapsychic, background, etc.)</span></div>
-      <textarea rows="3"
-                placeholder="e.g. Describe the metapsychic resonance this Ability creates. Players will fill this in on their own Ability."
-                oninput="catBldrSetField('extraGuideline',this.value)">${escapeHtml(b.extraGuideline || b.extra || '')}</textarea>
-    `;
-    wrap.appendChild(extraSection);
-
-    el.appendChild(wrap);
-
-    // Render the dynamic sub-areas (params list, feature/flaw bands,
-    // card preview). These get re-rendered on structural mutation but
-    // don't repaint the whole editor.
-    renderBldrParamsList();
-    renderBldrFeaturesList();
-    renderBldrFlawsList();
-    renderBuilderPreview();
-  }
-
-  // ── PARAMETERS LIST (Phase B v2 — inline expand) ──
-  //
-  // Both Primary and Secondary params share the same shape now:
-  //   { id, name, token, description, steps: [{label, value, cost}], defaultStep }
-  // The difference is interpretation at cost-engine time:
-  //   • Primary's cost = flat AP added per selected step
-  //   • Secondary's cost = multiplier on the running total
-  //
-  // UI: rows render as collapsible cards. Click the head to expand the
-  // step editor inline below the row. Click again to collapse. Multiple
-  // params can be expanded at once. The expanded set survives re-renders
-  // (we track it in expandedParamKeys).
-  //
-  // Param keys are "kind:idx" — kind is 'primary' or 'secondary', idx
-  // is the position in the corresponding array. We use this rather than
-  // param.id because it survives kind-conversion and array reordering
-  // is not implemented.
-  // (expandedParamKeys is declared at the top of the module alongside
-  // the other view-state vars to avoid a temporal-dead-zone crash when
-  // initUI() fires renderBuilderEditor before this point in source order.)
-
-  function paramKey(kind, idx) { return kind + ':' + idx; }
-
-  function renderBldrParamsList() {
-    const el = document.getElementById('bldr-params-list');
-    if (!el) return;
-    const b = getOpenedBuilder();
-    if (!b) { el.innerHTML = ''; return; }
-    const primary   = Array.isArray(b.primaryParams)   ? b.primaryParams   : [];
-    const secondary = Array.isArray(b.secondaryParams) ? b.secondaryParams : [];
-
-    if (primary.length === 0 && secondary.length === 0) {
-      el.innerHTML = `<div class="empty" style="padding:18px 0;">No parameters yet. Click "+ Add Parameter" to make this Builder tunable.</div>`;
-      return;
+  // Weapon tags — shared tag catalogue used across all weapons in this
+  // ruleset. Each tag is {id, name, description, categoryId?, params?}.
+  // Tags without a usable name are dropped. Missing descriptions become
+  // empty strings. IDs autogenerate with the `t_` prefix if absent (or
+  // invalid). A missing or orphaned categoryId is repaired to point at
+  // the built-in Uncategorized so the display layer always has a bucket.
+  if (!Array.isArray(out.weaponTags)) out.weaponTags = [];
+  const tagSeen = new Set();
+  out.weaponTags = out.weaponTags.map(t => {
+    if (!t || typeof t !== 'object') return null;
+    const name = (typeof t.name === 'string') ? t.name.trim() : '';
+    if (!name) return null;
+    let id = (typeof t.id === 'string' && t.id) ? t.id : nextSynthId('t');
+    // Avoid duplicate ids — if two tags share, the later one gets a new id.
+    while (tagSeen.has(id)) id = nextSynthId('t');
+    tagSeen.add(id);
+    // Preserve structured params if present. Each param is
+    // {key, type, label, default, min?, max?}. Invalid entries drop.
+    let params = null;
+    if (Array.isArray(t.params) && t.params.length > 0) {
+      const clean = t.params.map(p => {
+        if (!p || typeof p !== 'object') return null;
+        const key = (typeof p.key === 'string' && p.key.trim()) ? p.key.trim() : '';
+        const type = (typeof p.type === 'string' && p.type.trim()) ? p.type.trim() : 'number';
+        if (!key) return null;
+        const entry = {
+          key, type,
+          label: (typeof p.label === 'string' && p.label) ? p.label : key,
+          default: (typeof p.default === 'number' || typeof p.default === 'string' || typeof p.default === 'boolean')
+            ? p.default : null
+        };
+        if (Number.isFinite(Number(p.min))) entry.min = Number(p.min);
+        if (Number.isFinite(Number(p.max))) entry.max = Number(p.max);
+        return entry;
+      }).filter(Boolean);
+      if (clean.length > 0) params = clean;
     }
-
-    el.innerHTML =
-      primary.map((p, i)   => renderParamCard(p, 'primary', i)).join('') +
-      secondary.map((p, i) => renderParamCard(p, 'secondary', i)).join('');
-  }
-
-  // Render a single param card. Two-part: head (always visible) and body
-  // (visible only when expanded). The head has the toggle caret, name
-  // input, default-step summary, and delete X. The body has the kind
-  // selector, step list, and add-step button.
-  function renderParamCard(p, kind, idx) {
-    const key       = paramKey(kind, idx);
-    const expanded  = expandedParamKeys.has(key);
-    const steps     = Array.isArray(p.steps) ? p.steps : [];
-    const defIdx    = Number.isFinite(p.defaultStep) ? p.defaultStep : 0;
-    const defStep   = steps[defIdx] || steps[0] || null;
-    const summary   = defStep
-      ? (defStep.label || defStep.value || '(blank)') + ` · ${kind === 'primary' ? defStep.cost + ' AP' : '×' + defStep.cost}`
-      : '(no steps)';
-
-    const head = `
-      <div class="bldr-param-head" onclick="bldrToggleParam('${kind}', ${idx})">
-        <span class="bldr-param-caret">▶</span>
-        <span class="bldr-param-name${p.name ? '' : ' bldr-param-name-empty'}">${escapeHtml(p.name || '(Unnamed parameter)')}</span>
-        <span class="bldr-param-summary">${kind === 'primary' ? 'flat' : 'mult'} · ${escapeHtml(summary)}</span>
-        <button class="row-x" type="button" title="Delete parameter"
-                onclick="event.stopPropagation();bldrDeleteParam('${kind}', ${idx});">×</button>
-      </div>
-    `;
-
-    const body = expanded ? `
-      <div class="bldr-param-body">
-        <div class="field">
-          <label>Parameter Name</label>
-          <input type="text" value="${escapeHtmlAttr(p.name || '')}"
-                 placeholder="e.g. Damage Dice, Range, STAT Bonus"
-                 oninput="bldrParamSetField('${kind}', ${idx}, 'name', this.value)">
-        </div>
-        <div class="field">
-          <label>Token <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— for {token} substitution in System text</span></label>
-          <input type="text" value="${escapeHtmlAttr(p.token || '')}"
-                 placeholder="e.g. damage, range, stat"
-                 oninput="bldrParamSetField('${kind}', ${idx}, 'token', this.value)">
-        </div>
-        <div class="field">
-          <label>Kind</label>
-          <select onchange="bldrParamChangeKind('${kind}', ${idx}, this.value)">
-            <option value="primary"${kind === 'primary' ? ' selected' : ''}>Primary — flat AP added per step</option>
-            <option value="secondary"${kind === 'secondary' ? ' selected' : ''}>Secondary — multiplier on total cost</option>
-          </select>
-        </div>
-
-        <label style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#888;display:block;margin-top:10px;margin-bottom:6px;">Steps</label>
-        <div class="bldr-step-row-head">
-          <div style="text-align:center;">Def</div>
-          <div>Label</div>
-          <div>Value</div>
-          <div>${kind === 'primary' ? 'AP Cost' : 'Multiplier'}</div>
-          <div></div>
-        </div>
-        ${steps.map((s, si) => `
-          <div class="bldr-step-row">
-            <div class="step-default-radio">
-              <input type="radio" name="bldr-default-${escapeHtmlAttr(p.id || key)}"${si === defIdx ? ' checked' : ''}
-                     onchange="bldrParamSetField('${kind}', ${idx}, 'defaultStep', ${si})">
-            </div>
-            <input type="text" placeholder="${kind === 'primary' ? 'e.g. 1d6, +2, Heavy' : 'e.g. Touch, 30ft'}"
-                   value="${escapeHtmlAttr(s.label || '')}"
-                   oninput="bldrStepSetField('${kind}', ${idx}, ${si}, 'label', this.value)">
-            <input type="text" placeholder="${kind === 'primary' ? 'e.g. 6, 30' : 'e.g. 30'}"
-                   value="${escapeHtmlAttr(s.value || '')}"
-                   oninput="bldrStepSetField('${kind}', ${idx}, ${si}, 'value', this.value)">
-            <input type="number" step="0.5" placeholder="${kind === 'primary' ? '0' : '1.0'}"
-                   value="${(s.cost !== undefined && s.cost !== null && s.cost !== '') ? s.cost : (kind === 'primary' ? 0 : 1)}"
-                   oninput="bldrStepSetField('${kind}', ${idx}, ${si}, 'cost', this.value)">
-            <button class="row-x" type="button" title="Delete step"
-                    onclick="bldrStepDelete('${kind}', ${idx}, ${si})">×</button>
-          </div>
-        `).join('')}
-        <button class="btn small" type="button" style="margin-top:6px;width:100%;"
-                onclick="bldrStepAdd('${kind}', ${idx})">+ Add Step</button>
-
-        <p class="hint" style="margin-top:10px;font-size:11px;">
-          ${kind === 'primary'
-            ? 'Each step adds its AP cost to the Builder when the player picks it. The radio marks the default step.'
-            : 'Each step multiplies the Builder\'s total cost when the player picks it (1.0 = no change, 1.5 = +50%, 0.75 = -25%). The radio marks the default step.'}
-        </p>
-      </div>
-    ` : '';
-
-    return `<div class="bldr-param-card${expanded ? ' expanded' : ''}">${head}${body}</div>`;
-  }
-
-  // ── PARAMETER WINDOW HANDLERS ──
-
-  // Toggle a param card's expanded state. Tracked in expandedParamKeys
-  // so re-renders preserve which rows are open.
-  window.bldrToggleParam = function(kind, idx) {
-    const key = paramKey(kind, idx);
-    if (expandedParamKeys.has(key)) expandedParamKeys.delete(key);
-    else                            expandedParamKeys.add(key);
-    renderBldrParamsList();
-  };
-
-  // Add a new parameter. Defaults to Primary kind with one empty step,
-  // and auto-expands it so the GM can fill in details.
-  window.bldrAddParam = function() {
-    const b = getOpenedBuilder();
-    if (!b) return;
-    if (!Array.isArray(b.primaryParams)) b.primaryParams = [];
-    b.primaryParams.push({
-      id: 'pp_' + Math.random().toString(36).slice(2, 10),
-      name: '',
-      token: '',
-      description: '',
-      steps: [{ label: '', value: '', cost: 0 }],
-      defaultStep: 0
-    });
-    const newIdx = b.primaryParams.length - 1;
-    expandedParamKeys.add(paramKey('primary', newIdx));
-    renderBldrParamsList();
-    renderBuilderPreview();
-  };
-
-  window.bldrDeleteParam = function(kind, idx) {
-    const b = getOpenedBuilder();
-    if (!b) return;
-    const arr = kind === 'primary' ? b.primaryParams : b.secondaryParams;
-    if (!Array.isArray(arr) || !arr[idx]) return;
-    const name = arr[idx].name || 'this parameter';
-    if (!confirm(`Delete parameter "${name}"? Player Abilities referencing it will fall back to default.`)) return;
-    arr.splice(idx, 1);
-    // Drop expanded state for this key + shift down any keys above it
-    const newSet = new Set();
-    expandedParamKeys.forEach(key => {
-      const [k, i] = key.split(':');
-      const ii = parseInt(i, 10);
-      if (k !== kind) { newSet.add(key); return; }
-      if (ii < idx) { newSet.add(key); return; }
-      if (ii === idx) return;  // dropped param; drop its expanded state too
-      newSet.add(paramKey(k, ii - 1));  // shift down
-    });
-    expandedParamKeys.clear();
-    newSet.forEach(k => expandedParamKeys.add(k));
-    renderBldrParamsList();
-    renderBuilderPreview();
-  };
-
-  // Set a top-level field on a param (name, token, defaultStep). Routes
-  // to the existing legacy per-kind handlers which mutate state in place.
-  window.bldrParamSetField = function(kind, idx, field, value) {
-    if (kind === 'primary') window.catBldrSetPrimary(idx, field, value);
-    else                    window.catBldrSetSecondary(idx, field, value);
-    // defaultStep needs the cards re-rendered so the radio button moves
-    // and the head summary updates. Other fields are inline-bound, no
-    // re-render needed beyond cost preview.
-    if (field === 'defaultStep' || field === 'name') {
-      renderBldrParamsList();
+    // Resolve categoryId — use the provided value if it references an
+    // existing category; otherwise drop it into Uncategorized.
+    let categoryId = 'tcat_uncategorized';
+    if (typeof t.categoryId === 'string' && t.categoryId && tcatIds.has(t.categoryId)) {
+      categoryId = t.categoryId;
     }
-    renderBuilderPreview();
-  };
-
-  // Convert a parameter between Primary (flat) and Secondary (multiplier).
-  // Same step shape — just moves the record between arrays.
-  window.bldrParamChangeKind = function(oldKind, idx, newKind) {
-    if (oldKind === newKind) return;
-    const b = getOpenedBuilder();
-    if (!b) return;
-    const srcArr = oldKind === 'primary' ? b.primaryParams : b.secondaryParams;
-    if (!Array.isArray(srcArr) || !srcArr[idx]) return;
-    const moved = srcArr[idx];
-    const dstArr = newKind === 'primary' ? (b.primaryParams = b.primaryParams || []) : (b.secondaryParams = b.secondaryParams || []);
-    dstArr.push(moved);
-    srcArr.splice(idx, 1);
-    // Update expanded-keys tracking — old key gone, new key open.
-    expandedParamKeys.delete(paramKey(oldKind, idx));
-    expandedParamKeys.add(paramKey(newKind, dstArr.length - 1));
-    // Shift down any expanded keys in the source kind that were above idx
-    const newSet = new Set();
-    expandedParamKeys.forEach(key => {
-      const [k, i] = key.split(':');
-      const ii = parseInt(i, 10);
-      if (k !== oldKind) { newSet.add(key); return; }
-      if (ii < idx) { newSet.add(key); return; }
-      if (ii === idx) return;
-      newSet.add(paramKey(k, ii - 1));
-    });
-    expandedParamKeys.clear();
-    newSet.forEach(k => expandedParamKeys.add(k));
-    renderBldrParamsList();
-    renderBuilderPreview();
-  };
-
-  // ── STEP HANDLERS ──
-
-  window.bldrStepAdd = function(kind, idx) {
-    const b = getOpenedBuilder();
-    if (!b) return;
-    const arr = kind === 'primary' ? b.primaryParams : b.secondaryParams;
-    if (!Array.isArray(arr) || !arr[idx]) return;
-    if (!Array.isArray(arr[idx].steps)) arr[idx].steps = [];
-    arr[idx].steps.push({ label: '', value: '', cost: kind === 'primary' ? 0 : 1 });
-    renderBldrParamsList();
-    renderBuilderPreview();
-  };
-
-  window.bldrStepDelete = function(kind, idx, stepIdx) {
-    const b = getOpenedBuilder();
-    if (!b) return;
-    const arr = kind === 'primary' ? b.primaryParams : b.secondaryParams;
-    if (!Array.isArray(arr) || !arr[idx]) return;
-    const p = arr[idx];
-    if (!Array.isArray(p.steps) || !p.steps[stepIdx]) return;
-    p.steps.splice(stepIdx, 1);
-    if (typeof p.defaultStep === 'number') {
-      if (p.defaultStep >= p.steps.length) p.defaultStep = Math.max(0, p.steps.length - 1);
+    const tag = {
+      id,
+      name,
+      description: (typeof t.description === 'string') ? t.description : '',
+      categoryId
+    };
+    if (params) tag.params = params;
+    // Preserve rofTable — the ROF tag's level→{label, perAmmo, dm}
+    // lookup. Each entry: {level, label, perAmmo, dm}. Drops malformed
+    // entries silently. If the tag carries a rofTable field but it's
+    // invalid/empty, we leave the field off; downstream lookup falls
+    // back to the hardcoded default table.
+    if (Array.isArray(t.rofTable) && t.rofTable.length > 0) {
+      const cleanRof = t.rofTable.map(r => {
+        if (!r || typeof r !== 'object') return null;
+        const level = Number(r.level);
+        if (!Number.isFinite(level)) return null;
+        return {
+          level: Math.round(level),
+          label: (typeof r.label === 'string' && r.label.trim()) ? r.label.trim() : String(level),
+          perAmmo: Number.isFinite(Number(r.perAmmo)) ? Math.max(1, Math.round(Number(r.perAmmo))) : 1,
+          dm: Number.isFinite(Number(r.dm)) ? Math.round(Number(r.dm)) : 0
+        };
+      }).filter(Boolean);
+      if (cleanRof.length > 0) tag.rofTable = cleanRof;
     }
-    renderBldrParamsList();
-    renderBuilderPreview();
-  };
+    return tag;
+  }).filter(Boolean);
 
-  window.bldrStepSetField = function(kind, idx, stepIdx, field, value) {
-    const b = getOpenedBuilder();
-    if (!b) return;
-    const arr = kind === 'primary' ? b.primaryParams : b.secondaryParams;
-    if (!Array.isArray(arr) || !arr[idx]) return;
-    const p = arr[idx];
-    if (!Array.isArray(p.steps) || !p.steps[stepIdx]) return;
-    const s = p.steps[stepIdx];
-    if (field === 'cost') {
-      const n = parseFloat(value);
-      s.cost = Number.isFinite(n) ? n : (kind === 'primary' ? 0 : 1);
-    } else {
-      s[field] = String(value || '');
+  // Auto-merge the Standard Set's mechanically-active tags if the
+  // ruleset is missing them. Match on case-insensitive name: if a
+  // user-authored tag happens to be named "Shotgun" already, we
+  // leave it alone (their description wins). Only absent tags get
+  // injected. This keeps older rulesets working with the new
+  // tag-driven mechanics without overwriting custom descriptions.
+  const haveTagNames = new Set(out.weaponTags.map(t => (t.name || '').toLowerCase()));
+  (d.weaponTags || []).forEach(stdTag => {
+    if (!haveTagNames.has((stdTag.name || '').toLowerCase())) {
+      const injected = {
+        id:          stdTag.id,
+        name:        stdTag.name,
+        description: stdTag.description || '',
+        categoryId:  'tcat_uncategorized'
+      };
+      if (Array.isArray(stdTag.params)) {
+        injected.params = stdTag.params.map(p => Object.assign({}, p));
+      }
+      // Carry rofTable through when injecting the Rate of Fire tag.
+      // The tag is useless without its lookup table — level param
+      // alone wouldn't know what "ROF 2" means for per-ammo count
+      // or DM. Deep-copy so later edits don't mutate the default.
+      if (Array.isArray(stdTag.rofTable)) {
+        injected.rofTable = stdTag.rofTable.map(r => Object.assign({}, r));
+      }
+      out.weaponTags.push(injected);
     }
-    // We DON'T full-rerender on every keystroke — the input is bound to
-    // s[field] via the value attribute, but since we mutated s in place
-    // the next user keystroke writes to the still-current input. The
-    // cost preview pill needs an update though.
-    renderBuilderPreview();
-  };
+  });
 
-  // ═════════ FEATURES / FLAWS RENDERING ═════════
-  //
-  // Both columns render as tier bands (Minor → Mythical). Each band
-  // shows the per-tier AP cost/refund from canonicalTiers, the rows
-  // for features/flaws at that tier, and a "+ Add" button. The row's
-  // tier is set by which band it lives under, but a per-row dropdown
-  // lets the GM move it between tiers explicitly.
-
-  function renderTierGrouped(b, kind) {
-    // kind: 'feature' or 'flaw'
-    const list = (kind === 'feature' ? b.features : b.flaws) || [];
-    const cat = state.abilityCatalogue || {};
-    const tiers = cat.canonicalTiers || {};
-    const tierTable = (kind === 'feature' ? tiers.featureCosts : tiers.flawRefunds) || {};
-    return TIER_ORDER.map(tier => {
-      const rows = list
-        .map((it, idx) => ({ it, idx }))
-        .filter(({it}) => it && it.tier === tier);
-      const tierCost = Number.isFinite(tierTable[tier]) ? tierTable[tier] : 0;
-      const costLabel = kind === 'feature' ? `+${tierCost} AP` : `−${tierCost} AP`;
-      const rowHtml = rows.map(({it, idx}) => `
-        <div class="bldr-ff-row">
-          <textarea rows="1"
-                    placeholder="${kind === 'feature' ? 'Feature description' : 'Flaw description'}"
-                    oninput="bldrSetFFText('${kind}', ${idx}, this.value);autoGrow(this);">${escapeHtml(it.description || it.name || '')}</textarea>
-          <select class="ff-tier-move" title="Change tier"
-                  onchange="bldrSetFFTier('${kind}', ${idx}, this.value)">
-            ${TIER_ORDER.map(t => `<option value="${t}"${t === tier ? ' selected' : ''}>${TIER_LABELS[t]}</option>`).join('')}
-          </select>
-          <button class="row-x" type="button" title="Delete"
-                  onclick="bldrDeleteFF('${kind}', ${idx});">×</button>
-        </div>
-      `).join('');
-      return `
-        <div class="bldr-tier-band">
-          <div class="bldr-tier-band-head">
-            <span class="bldr-tier-band-name">${TIER_LABELS[tier]}</span>
-            <span class="bldr-tier-band-cost">${costLabel}</span>
-          </div>
-          ${rowHtml}
-          <button class="btn small" type="button" style="width:100%;margin-top:2px;"
-                  onclick="bldrAddFF('${kind}', '${tier}')">+ Add ${TIER_LABELS[tier]} ${kind === 'feature' ? 'Feature' : 'Flaw'}</button>
-        </div>
-      `;
-    }).join('');
-  }
-
-  function renderBldrFeaturesList() {
-    const el = document.getElementById('bldr-features-list');
-    if (!el) return;
-    const b = getOpenedBuilder();
-    if (!b) { el.innerHTML = ''; return; }
-    el.innerHTML = renderTierGrouped(b, 'feature');
-    el.querySelectorAll('textarea').forEach(autoGrow);
-  }
-
-  function renderBldrFlawsList() {
-    const el = document.getElementById('bldr-flaws-list');
-    if (!el) return;
-    const b = getOpenedBuilder();
-    if (!b) { el.innerHTML = ''; return; }
-    el.innerHTML = renderTierGrouped(b, 'flaw');
-    el.querySelectorAll('textarea').forEach(autoGrow);
-  }
-
-  // Auto-grow a textarea to fit its content. Called on every input
-  // event from feature/flaw textareas, plus on initial render.
-  function autoGrow(el) {
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = (el.scrollHeight) + 'px';
-  }
-
-  // ═════════ LIVE PREVIEW CARD ═════════
-  //
-  // Renders the full player-facing Ability Card. The card shows fields
-  // from three sources:
-  //   • GM-authored on the Builder    — Name, Description, System
-  //   • Player-authored on instance   — Tagline, Visual, Extra
-  //   • Computed live                 — AP cost
-  //
-  // Since this is the BUILDER editor preview (not a real player
-  // instance), the Player-authored fields don't have content. We show
-  // the GM's Visual/Extra GUIDELINES italicized as placeholders so the
-  // GM sees what the Player will be told to fill in.
-  //
-  // The Extra section is collapsed by default behind an "Extra?" tab.
-  // Click toggles it open/closed. The toggle state lives on the card
-  // root in a data attribute so re-renders preserve it.
-
-  // Toggle handler reads/writes window.bldrPreviewExtraOpen — see
-  // declaration at the top of the module.
-
-  window.bldrTogglePreviewExtra = function() {
-    window.bldrPreviewExtraOpen = !window.bldrPreviewExtraOpen;
-    renderBuilderPreview();
-  };
-
-  // ═══════════ ACTIVATION ROLL ═══════════
-  //
-  // Pulls stat/skill lists from the active ruleset (state.stats etc.)
-  // and renders the toggle + per-slot configuration panel.
-  //
-  // Slot 1 = STAT only. Modes: 'fixed-stat', 'any-stat'.
-  // Slot 2 = STAT or SKILL. Modes: 'fixed-stat', 'fixed-skill',
-  //          'any-stat', 'any-skill', 'any'.
-  //
-  // {ACTIVATION_ROLL} token in System text resolves via
-  // describeActivationRoll() — at GM editor time, no player instance
-  // exists, so it shows the GM-configured pool description ("POW + STAT"
-  // or "POW + Athletics" etc.).
-
-  // Helpers — pull stat/skill name lists from the active ruleset.
-  function activationStatList() {
-    const stats = (state && Array.isArray(state.stats)) ? state.stats : [];
-    return stats.map(s => s && s.code).filter(c => typeof c === 'string' && c);
-  }
-  function activationSkillList() {
-    const out = [];
-    ['primarySkills', 'secondarySkills', 'specialtySkills'].forEach(key => {
-      const arr = (state && Array.isArray(state[key])) ? state[key] : [];
-      arr.forEach(s => {
-        const n = s && s.name;
-        if (typeof n === 'string' && n) out.push(n);
+  // Dimension presets — named L×W×H (+ weight) shapes that the UI
+  // exposes as a quick-pick dropdown on item dimension inputs. Each
+  // preset is {id, name, dimensions:{l,w,h}, weight, builtIn?}.
+  // Built-ins from RULESET_DEFAULTS are auto-seeded into FRESH rulesets
+  // (those missing the field entirely). Rulesets with an existing
+  // dimensionPresets array are left alone — authors can delete built-ins
+  // and the normalizer won't re-inject them. This matches the author's
+  // intent: an empty list means "I don't want any presets".
+  const hadDimensionPresets = Array.isArray(out.dimensionPresets);
+  if (!hadDimensionPresets) out.dimensionPresets = [];
+  const dpSeen = new Set();
+  out.dimensionPresets = out.dimensionPresets.map(p => {
+    if (!p || typeof p !== 'object') return null;
+    const name = (typeof p.name === 'string') ? p.name.trim() : '';
+    if (!name) return null;
+    let id = (typeof p.id === 'string' && p.id) ? p.id : nextSynthId('dp');
+    while (dpSeen.has(id)) id = nextSynthId('dp');
+    dpSeen.add(id);
+    const dims = p.dimensions || {};
+    const dim = v => {
+      const n = Number(v);
+      return Number.isFinite(n) && n >= 0 ? n : 0;
+    };
+    return {
+      id,
+      name,
+      dimensions: { l: dim(dims.l), w: dim(dims.w), h: dim(dims.h) },
+      weight:     dim(p.weight),
+      builtIn:    p.builtIn === true
+    };
+  }).filter(Boolean);
+  // Seed defaults ONLY if the ruleset didn't carry the field at all.
+  // This is the "first load on a fresh ruleset" case. Once the author
+  // has saved any change, the field exists and their deletions stick.
+  if (!hadDimensionPresets) {
+    (d.dimensionPresets || []).forEach(std => {
+      out.dimensionPresets.push({
+        id:         std.id,
+        name:       std.name,
+        dimensions: Object.assign({}, std.dimensions),
+        weight:     std.weight || 0,
+        builtIn:    true
       });
     });
-    return out;
   }
 
-  // Resolve the activation-roll display string. With no player choice,
-  // returns the GM-configured pool ("POW + STAT", "POW + Athletics",
-  // "POW + STAT or SKILL", etc.). Used by both the live preview line
-  // in the Builder editor and the {ACTIVATION_ROLL} token in System
-  // text.
-  function describeActivationRoll(builder, instance) {
-    const ar = builder && builder.activationRoll;
-    if (!ar || !ar.enabled) return '';
-    const choice = (instance && instance.activationRollChoice) || {};
-    // Slot 1 — always a STAT.
-    let s1;
-    if (ar.slot1.mode === 'fixed-stat') {
-      s1 = ar.slot1.fixedStat || 'STAT';
-    } else if (choice.slot1) {
-      s1 = choice.slot1;
-    } else {
-      s1 = 'STAT';
-    }
-    // Slot 2 — STAT or SKILL.
-    let s2;
-    if (ar.slot2.mode === 'fixed-stat') {
-      s2 = ar.slot2.fixedStat || 'STAT';
-    } else if (ar.slot2.mode === 'fixed-skill') {
-      s2 = ar.slot2.fixedSkill || 'SKILL';
-    } else if (choice.slot2) {
-      s2 = choice.slot2;
-    } else if (ar.slot2.mode === 'any-stat') {
-      s2 = 'STAT';
-    } else if (ar.slot2.mode === 'any-skill') {
-      s2 = 'SKILL';
-    } else {
-      s2 = 'STAT or SKILL';
-    }
-    return `${s1} + ${s2} + STATMOD`;
-  }
-  // Expose to char-abilities so renderSystemText can resolve the
-  // {ACTIVATION_ROLL} token without re-implementing this logic.
-  window.describeActivationRoll = describeActivationRoll;
-
-  // Render the Activation Roll panel HTML — toggle + (when enabled)
-  // slot configurators + preview line. Re-rendered on every mutation
-  // since the state cascades (changing slot 1 mode hides/shows the
-  // fixed-stat dropdown, etc.).
-  function renderActivationRollSection(b) {
-    const ar = b.activationRoll || { enabled: false, slot1: { mode: 'any-stat', fixedStat: '' }, slot2: { mode: 'any', fixedStat: '', fixedSkill: '' } };
-    const stats  = activationStatList();
-    const skills = activationSkillList();
-
-    const toggleRow = `
-      <div class="bldr-panel-title" style="margin-bottom:12px;">
-        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#888;margin:0;">
-          <input type="checkbox" ${ar.enabled ? 'checked' : ''}
-                 onchange="bldrToggleActivationRoll(this.checked)">
-          <span>Activation Roll</span>
-        </label>
-        <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;margin-left:8px;">— if on, this Ability is activated by rolling a dice pool. Use {ACTIVATION_ROLL} in System text to insert the pool description.</span>
-      </div>
-    `;
-
-    if (!ar.enabled) {
-      return toggleRow;
-    }
-
-    // Slot 1 — STAT
-    const s1ModeOpts = `
-      <option value="fixed-stat"${ar.slot1.mode === 'fixed-stat' ? ' selected' : ''}>Lock to specific STAT</option>
-      <option value="any-stat"${ar.slot1.mode === 'any-stat' ? ' selected' : ''}>Player picks any STAT</option>
-    `;
-    const s1FixedDropdown = (ar.slot1.mode === 'fixed-stat') ? `
-      <select onchange="bldrSetActivationField('slot1','fixedStat',this.value)">
-        <option value="">— choose stat —</option>
-        ${stats.map(c => `<option value="${escapeHtmlAttr(c)}"${ar.slot1.fixedStat === c ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')}
-      </select>
-    ` : '';
-
-    // Slot 2 — STAT or SKILL
-    const s2ModeOpts = `
-      <option value="fixed-stat"${ar.slot2.mode === 'fixed-stat' ? ' selected' : ''}>Lock to specific STAT</option>
-      <option value="fixed-skill"${ar.slot2.mode === 'fixed-skill' ? ' selected' : ''}>Lock to specific SKILL</option>
-      <option value="any-stat"${ar.slot2.mode === 'any-stat' ? ' selected' : ''}>Player picks any STAT</option>
-      <option value="any-skill"${ar.slot2.mode === 'any-skill' ? ' selected' : ''}>Player picks any SKILL</option>
-      <option value="any"${ar.slot2.mode === 'any' ? ' selected' : ''}>Player picks any STAT or SKILL</option>
-    `;
-    let s2FixedDropdown = '';
-    if (ar.slot2.mode === 'fixed-stat') {
-      s2FixedDropdown = `
-        <select onchange="bldrSetActivationField('slot2','fixedStat',this.value)">
-          <option value="">— choose stat —</option>
-          ${stats.map(c => `<option value="${escapeHtmlAttr(c)}"${ar.slot2.fixedStat === c ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')}
-        </select>
-      `;
-    } else if (ar.slot2.mode === 'fixed-skill') {
-      s2FixedDropdown = `
-        <select onchange="bldrSetActivationField('slot2','fixedSkill',this.value)">
-          <option value="">— choose skill —</option>
-          ${skills.map(n => `<option value="${escapeHtmlAttr(n)}"${ar.slot2.fixedSkill === n ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('')}
-        </select>
-      `;
-    }
-
-    const previewText = describeActivationRoll(b, null);
-
-    return `
-      ${toggleRow}
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:6px;">
-        <div class="field" style="margin:0;">
-          <label>Slot 1 — STAT</label>
-          <select style="margin-bottom:6px;" onchange="bldrSetActivationField('slot1','mode',this.value)">${s1ModeOpts}</select>
-          ${s1FixedDropdown}
-        </div>
-        <div class="field" style="margin:0;">
-          <label>Slot 2 — STAT or SKILL</label>
-          <select style="margin-bottom:6px;" onchange="bldrSetActivationField('slot2','mode',this.value)">${s2ModeOpts}</select>
-          ${s2FixedDropdown}
-        </div>
-      </div>
-      <div style="margin-top:12px;padding:10px 12px;background:#0a0a06;border:1px solid #1a1a14;border-radius:4px;font-family:'Consolas','Courier New',monospace;font-size:13px;color:#d8c060;">
-        Preview: <span style="color:#e6e0cc;">${escapeHtml(previewText || '(configure slots)')}</span>
-      </div>
-    `;
-  }
-
-  // Re-render only the activation section in place. Cheaper than a full
-  // editor re-render and avoids losing focus/cursor in unrelated inputs.
-  function refreshActivationSection() {
-    const el = document.getElementById('bldr-activation-section');
-    if (!el) return;
-    const b = getOpenedBuilder();
-    if (!b) return;
-    el.innerHTML = renderActivationRollSection(b);
-  }
-
-  window.bldrToggleActivationRoll = function(checked) {
-    const b = getOpenedBuilder();
-    if (!b) return;
-    if (!b.activationRoll || typeof b.activationRoll !== 'object') {
-      b.activationRoll = { enabled: false, slot1: { mode: 'any-stat', fixedStat: '' }, slot2: { mode: 'any', fixedStat: '', fixedSkill: '' } };
-    }
-    b.activationRoll.enabled = !!checked;
-    refreshActivationSection();
-    renderBuilderPreview();
-  };
-
-  // Set a single field on slot1 or slot2. Mode changes also trigger a
-  // re-render so the conditional dropdown (fixed-stat select / fixed-
-  // skill select) appears or disappears.
-  window.bldrSetActivationField = function(slotKey, field, value) {
-    const b = getOpenedBuilder();
-    if (!b || !b.activationRoll || (slotKey !== 'slot1' && slotKey !== 'slot2')) return;
-    const slot = b.activationRoll[slotKey];
-    if (!slot) return;
-    slot[field] = String(value || '');
-    refreshActivationSection();
-    renderBuilderPreview();
-  };
-
-  function renderBuilderPreview() {
-    const card = document.getElementById('bldr-card-preview');
-    const pill = document.getElementById('bldr-cost-pill');
-    if (!card && !pill) return;
-    const b = getOpenedBuilder();
-    if (!b) return;
-    const cat = state.abilityCatalogue || {};
-    const tiers = cat.canonicalTiers || {};
-
-    // Default-tuned instance — every param at its default step, no
-    // features/flaws selected. The card preview shows the cost a Player
-    // pays just by picking this Builder before any tuning of their own.
-    const inst = { paramValues: {}, selectedFeatureIds: [], selectedFlawIds: [] };
-
-    let cost = null, systemText = '', systemTextHtml = '';
-    try {
-      const result = window.computeAbilityCost
-        ? window.computeAbilityCost(b, inst, tiers)
-        : null;
-      cost = result && Number.isFinite(result.computedCost) ? result.computedCost : null;
-    } catch (e) { cost = null; }
-    try {
-      systemText = window.renderSystemTextForBuilder
-        ? window.renderSystemTextForBuilder(b, inst)
-        : (b.systemTextTemplate || '');
-    } catch (e) { systemText = b.systemTextTemplate || ''; }
-    try {
-      // HTML form bolds substituted tokens. No character context here
-      // (this is the GM's authoring preview), so token values resolve
-      // to text descriptions like "POW + STAT + STATMOD" — those still
-      // get bolded.
-      systemTextHtml = window.renderSystemTextHtmlForBuilder
-        ? window.renderSystemTextHtmlForBuilder(b, inst)
-        : escapeHtml(systemText || '');
-    } catch (e) { systemTextHtml = escapeHtml(systemText || ''); }
-
-    // Cost pill in the editor header (separate from the card)
-    if (pill) {
-      pill.textContent = (cost === null ? '… AP' : `${cost} AP default`);
-    }
-    if (!card) return;
-
-    // Mirror the player-facing Card layout:
-    //   Header (Name + Tagline + Cost)
-    //   Description
-    //   System box (click to expand features/flaws)
-    //   Visual box (read-only)
-    //   Extra? tab → Extra section
-    //
-    // GM-side preview shows ALL the Builder's features and flaws when
-    // System is expanded (since the default-tuned instance has none
-    // selected, but the GM authoring needs to see what they've defined).
-
-    // Icon + Name row at the top. Icon ~48px on the left, name beside
-    // it. Mirrors the player-facing Card on character.html.
-    const iconImg = (b.iconUrl && b.iconUrl.trim())
-      ? `<img class="bldr-card-icon" src="${escapeHtmlAttr(b.iconUrl)}" alt="">`
-      : '';
-    const nameInner = b.name
-      ? escapeHtml(b.name)
-      : '<span class="bldr-card-empty">(Unnamed Ability)</span>';
-    const nameHtml = `
-      <div class="bldr-card-head-row">
-        ${iconImg}
-        <div class="bldr-card-name">${nameInner}</div>
-      </div>
-    `;
-
-    const taglineHtml = `<div class="bldr-card-tagline bldr-card-placeholder">(Player adds their tagline)</div>`;
-
-    const costHtml = (cost !== null)
-      ? `<div class="bldr-card-cost">${cost} AP default</div>`
-      : '';
-
-    // Description (GM-authored catalogue blurb)
-    const descHtml = b.description
-      ? `<div class="bldr-card-desc">${escapeHtml(b.description)}</div>`
-      : `<div class="bldr-card-desc bldr-card-placeholder">(Description — shown to Players in the catalogue browser)</div>`;
-
-    // System box. Always shows the rules text. Click toggles the
-    // Features/Flaws list. We show ALL features and flaws (not "selected"
-    // ones) since this is the GM's authoring preview and they want to
-    // see what they've defined.
-    const features = Array.isArray(b.features) ? b.features.filter(f => f) : [];
-    const flaws    = Array.isArray(b.flaws)    ? b.flaws.filter(f => f)    : [];
-    const hasFFContent = features.length > 0 || flaws.length > 0;
-    const systemExpanded = !!window.bldrPreviewSystemOpen;
-
-    const systemBodyHtml = (systemText && systemText.trim())
-      ? `<div class="bldr-card-section-body" style="background:transparent;border:none;padding:0;">${systemTextHtml}</div>`
-      : `<div class="bldr-card-section-body bldr-card-placeholder" style="background:transparent;border:none;padding:0;">(System text — fill in via the System textarea below using {token} placeholders)</div>`;
-
-    // Helper: format a feature/flaw line as "(Tier · ±N AP) text".
-    // Same format as the player-facing Card on character.html — these
-    // two views must stay visually identical.
-    const featureCosts = (tiers.featureCosts || {});
-    const flawRefunds  = (tiers.flawRefunds  || {});
-    function ffLineText(f) {
-      const name = (f && typeof f.name === 'string') ? f.name.trim() : '';
-      const desc = (f && typeof f.description === 'string') ? f.description.trim() : '';
-      if (name && desc && name !== desc) return name + ': ' + desc;
-      return desc || name || '(unnamed)';
-    }
-    function tierPrefix(f, kind) {
-      const tier = (f && f.tier) ? f.tier : 'minor';
-      const tierLabel = tier[0].toUpperCase() + tier.slice(1);
-      const tierCostTable = (kind === 'feature') ? featureCosts : flawRefunds;
-      const ap = Number.isFinite(tierCostTable[tier]) ? tierCostTable[tier] : 0;
-      const sign = (kind === 'feature') ? '+' : '−';
-      return `(${tierLabel} · ${sign}${ap} AP)`;
-    }
-
-    let ffListHtml = '';
-    if (systemExpanded && hasFFContent) {
-      ffListHtml += `<div style="margin-top:12px;padding-top:10px;border-top:1px solid #2a2a20;display:flex;flex-direction:column;gap:10px;">`;
-      if (features.length > 0) {
-        ffListHtml += `<div style="font-size:10px;color:#6a8a6a;letter-spacing:.1em;text-transform:uppercase;font-weight:700;">Features</div>`;
-        ffListHtml += `<div style="display:flex;flex-direction:column;gap:4px;">`;
-        features.forEach(f => {
-          ffListHtml += `
-            <div style="font-size:12px;color:#9aaf9a;line-height:1.55;">
-              <span style="color:#6a8a6a;">${tierPrefix(f, 'feature')}</span>
-              ${escapeHtml(ffLineText(f))}
-            </div>
-          `;
-        });
-        ffListHtml += `</div>`;
-      }
-      if (flaws.length > 0) {
-        ffListHtml += `<div style="font-size:10px;color:#8a6a6a;letter-spacing:.1em;text-transform:uppercase;font-weight:700;${features.length > 0 ? 'margin-top:4px;' : ''}">Flaws</div>`;
-        ffListHtml += `<div style="display:flex;flex-direction:column;gap:4px;">`;
-        flaws.forEach(f => {
-          ffListHtml += `
-            <div style="font-size:12px;color:#af9a9a;line-height:1.55;">
-              <span style="color:#8a6a6a;">${tierPrefix(f, 'flaw')}</span>
-              ${escapeHtml(ffLineText(f))}
-            </div>
-          `;
-        });
-        ffListHtml += `</div>`;
-      }
-      ffListHtml += '</div>';
-    } else if (systemExpanded && !hasFFContent) {
-      ffListHtml = `<div style="margin-top:10px;padding-top:8px;border-top:1px solid #2a2a20;font-size:11px;color:#555;font-style:italic;">No Features or Flaws defined on this Builder yet.</div>`;
-    }
-
-    const sysCaret = hasFFContent
-      ? `<span style="color:#666;font-size:10px;margin-left:auto;">${systemExpanded ? '▾' : '▸'}</span>`
-      : '';
-    const sysCursor = hasFFContent ? 'cursor:pointer;' : '';
-    const sysOnclick = hasFFContent ? `onclick="bldrTogglePreviewSystem()"` : '';
-
-    const systemBlock = `
-      <div class="bldr-card-section">
-        <div ${sysOnclick}
-             style="padding:10px 12px;background:#0a0a06;border:1px solid #1a1a14;border-radius:4px;${sysCursor}">
-          <div style="display:flex;align-items:center;gap:8px;font-size:10px;color:#888;letter-spacing:.12em;text-transform:uppercase;font-weight:700;margin-bottom:8px;">
-            <span>System</span>
-            ${sysCaret}
-          </div>
-          ${systemBodyHtml}
-          ${ffListHtml}
-        </div>
-      </div>
-    `;
-
-    // Visual box. Read-only — shows the GM's guideline italicized as
-    // the placeholder for what the Player will eventually write.
-    const visualGuide = b.visualGuideline || b.visualPrompt || '';
-    const visualBody = visualGuide
-      ? `<div class="bldr-card-section-body bldr-card-placeholder" style="background:transparent;border:none;padding:0;">${escapeHtml(visualGuide)}</div>`
-      : `<div class="bldr-card-section-body bldr-card-placeholder" style="background:transparent;border:none;padding:0;">(No GM guideline set — Player will see "no visual described".)</div>`;
-    const visualBlock = `
-      <div class="bldr-card-section">
-        <div style="padding:10px 12px;background:#0a0a06;border:1px solid #1a1a14;border-radius:4px;">
-          <div style="font-size:10px;color:#888;letter-spacing:.12em;text-transform:uppercase;font-weight:700;margin-bottom:8px;">Visual</div>
-          ${visualBody}
-        </div>
-      </div>
-    `;
-
-    // Extra tab + section.
-    const extraGuide = b.extraGuideline || b.extra || '';
-    const extraBody = extraGuide
-      ? `<div class="bldr-card-section-body bldr-card-placeholder" style="background:transparent;border:none;padding:0;">${escapeHtml(extraGuide)}</div>`
-      : `<div class="bldr-card-section-body bldr-card-placeholder" style="background:transparent;border:none;padding:0;">(No GM guideline set.)</div>`;
-    const extraBlock = window.bldrPreviewExtraOpen
-      ? `<div class="bldr-card-section">
-           <div style="padding:10px 12px;background:#0a0a06;border:1px solid #1a1a14;border-radius:4px;">
-             <div style="font-size:10px;color:#888;letter-spacing:.12em;text-transform:uppercase;font-weight:700;margin-bottom:8px;">Extra</div>
-             ${extraBody}
-           </div>
-         </div>`
-      : '';
-    const extraTab = `
-      <div class="bldr-card-extra-tab-wrap">
-        <button type="button" class="bldr-card-extra-tab${window.bldrPreviewExtraOpen ? ' is-open' : ''}"
-                onclick="bldrTogglePreviewExtra()">${window.bldrPreviewExtraOpen ? 'Hide Extra' : 'Extra?'}</button>
-      </div>
-    `;
-
-    card.innerHTML = `
-      ${nameHtml}
-      ${taglineHtml}
-      ${costHtml}
-      ${descHtml}
-      ${systemBlock}
-      ${visualBlock}
-      ${extraBlock}
-      ${extraTab}
-    `;
-  }
-
-  // System box toggle on the Builder preview — mirrors the player Card.
-  // Stored on window for the same TDZ-immunity reasons as bldrPreviewExtraOpen.
-  if (typeof window.bldrPreviewSystemOpen !== 'boolean') window.bldrPreviewSystemOpen = false;
-  window.bldrTogglePreviewSystem = function() {
-    window.bldrPreviewSystemOpen = !window.bldrPreviewSystemOpen;
-    renderBuilderPreview();
-  };
-
-  // ── FEATURE / FLAW HANDLERS ──
-  // Wrappers around the legacy add/set/delete that take a tier
-  // arg up front. Legacy add* defaults the tier to 'minor'; we just
-  // override it after creation.
-  window.bldrAddFF = function(kind, tier) {
-    const b = getOpenedBuilder();
-    if (!b) return;
-    if (kind === 'feature') {
-      window.catBldrAddFeature();
-      const arr = b.features || [];
-      if (arr.length > 0) arr[arr.length - 1].tier = tier;
-    } else {
-      window.catBldrAddFlaw();
-      const arr = b.flaws || [];
-      if (arr.length > 0) arr[arr.length - 1].tier = tier;
-    }
-    if (kind === 'feature') renderBldrFeaturesList();
-    else                    renderBldrFlawsList();
-    renderBuilderPreview();
-  };
-
-  window.bldrDeleteFF = function(kind, idx) {
-    if (kind === 'feature') window.catBldrDeleteFeature(idx);
-    else                    window.catBldrDeleteFlaw(idx);
-    if (kind === 'feature') renderBldrFeaturesList();
-    else                    renderBldrFlawsList();
-    renderBuilderPreview();
-  };
-
-  window.bldrSetFFText = function(kind, idx, value) {
-    // The single textarea writes to BOTH name and description so the
-    // legacy preview/cost code (which looks at name) and the player-
-    // facing display (which looks at description) both see the text.
-    // Players won't author features/flaws in two halves.
-    if (kind === 'feature') {
-      window.catBldrSetFeature(idx, 'description', value);
-      window.catBldrSetFeature(idx, 'name', value.split('\n')[0].slice(0, 80));
-    } else {
-      window.catBldrSetFlaw(idx, 'description', value);
-      window.catBldrSetFlaw(idx, 'name', value.split('\n')[0].slice(0, 80));
-    }
-  };
-
-  window.bldrSetFFTier = function(kind, idx, newTier) {
-    if (TIER_ORDER.indexOf(newTier) < 0) return;
-    if (kind === 'feature') window.catBldrSetFeature(idx, 'tier', newTier);
-    else                    window.catBldrSetFlaw(idx, 'tier', newTier);
-    if (kind === 'feature') renderBldrFeaturesList();
-    else                    renderBldrFlawsList();
-    renderBuilderPreview();
-  };
-
-  // ── BUILDER FIELD HANDLERS ──
-  // These edit the OPENED builder via openedBuilder.{ci,bi} so the UI
-  // doesn't have to thread indices into every input. Always re-renders
-  // either the modal as a whole (for structural changes — adding
-  // params, features, flaws) or just the cost preview (for value
-  // changes — names, defaults, etc).
-  function getOpenedBuilder() {
-    if (!openedBuilder) return null;
-    const cat = ensureCat();
-    // Resolve against openedBuilder.typeKey first — covers the case
-    // where a future code path sets openedBuilder without first
-    // setting currentTypeKey. Falls back to currentTypeKey for the
-    // normal nav flow (where they're always set together).
-    const tk = openedBuilder.typeKey || currentTypeKey;
-    if (!tk || !cat.types || !cat.types[tk]) return null;
-    const cats = Array.isArray(cat.types[tk].categories) ? cat.types[tk].categories : [];
-    const c = cats[openedBuilder.ci];
-    if (!c || !Array.isArray(c.builders)) return null;
-    const b = c.builders[openedBuilder.bi];
-    return b || null;
-  }
-
-  window.catBldrSetField = function(field, value) {
-    const b = getOpenedBuilder();
-    if (!b) return;
-    if (field === 'baseCost') {
-      const n = parseFloat(value);
-      b.baseCost = Number.isFinite(n) ? Math.max(0, n) : 0;
-    } else {
-      b[field] = String(value || '');
-    }
-    // Field changes don't restructure the editor — only update the
-    // cost preview at the top of the editor.
-    renderBuilderPreview();
-  };
-
-  // ── PRIMARY PARAMS ──
-
-  window.catBldrAddPrimary = function() {
-    const b = getOpenedBuilder();
-    if (!b) return;
-    if (!Array.isArray(b.primaryParams)) b.primaryParams = [];
-    b.primaryParams.push({
-      id: 'pp_' + Math.random().toString(36).slice(2, 10),
-      name: '',
-      token: '',
-      description: '',
-      steps: [{ label: '', value: '', cost: 0 }],
-      defaultStep: 0
-    });
-    renderBuilderEditor();
-  };
-
-  window.catBldrDeletePrimary = function(idx) {
-    const b = getOpenedBuilder();
-    if (!b || !Array.isArray(b.primaryParams) || !b.primaryParams[idx]) return;
-    const name = b.primaryParams[idx].name || 'this parameter';
-    if (!confirm(`Delete primary parameter "${name}"? Player Abilities referencing it will fall back to default.`)) return;
-    b.primaryParams.splice(idx, 1);
-    renderBuilderEditor();
-  };
-
-  window.catBldrSetPrimary = function(idx, field, value) {
-    const b = getOpenedBuilder();
-    if (!b || !Array.isArray(b.primaryParams) || !b.primaryParams[idx]) return;
-    const p = b.primaryParams[idx];
-    if (field === 'defaultStep') {
-      const n = parseInt(value, 10);
-      p.defaultStep = Number.isFinite(n) ? Math.max(0, n) : 0;
-    } else if (field === 'defaultValue' || field === 'minValue' || field === 'maxValue' || field === 'stepCost') {
-      // Legacy fields — kept for any old callers; new param shape ignores them.
-      const n = parseFloat(value);
-      p[field] = Number.isFinite(n) ? n : 0;
-    } else {
-      p[field] = String(value || '');
-    }
-    renderBuilderPreview();
-  };
-
-  // ── SECONDARY PARAMS ──
-
-  window.catBldrAddSecondary = function() {
-    const b = getOpenedBuilder();
-    if (!b) return;
-    if (!Array.isArray(b.secondaryParams)) b.secondaryParams = [];
-    b.secondaryParams.push({
-      id: 'sp_' + Math.random().toString(36).slice(2, 10),
-      name: '',
-      token: '',
-      description: '',
-      steps: [{ label: '', value: '', cost: 1 }],
-      defaultStep: 0
-    });
-    renderBuilderEditor();
-  };
-
-  window.catBldrDeleteSecondary = function(idx) {
-    const b = getOpenedBuilder();
-    if (!b || !Array.isArray(b.secondaryParams) || !b.secondaryParams[idx]) return;
-    const name = b.secondaryParams[idx].name || 'this parameter';
-    if (!confirm(`Delete secondary parameter "${name}"? Player Abilities referencing it will fall back to default step.`)) return;
-    b.secondaryParams.splice(idx, 1);
-    renderBuilderEditor();
-  };
-
-  window.catBldrSetSecondary = function(idx, field, value) {
-    const b = getOpenedBuilder();
-    if (!b || !Array.isArray(b.secondaryParams) || !b.secondaryParams[idx]) return;
-    const p = b.secondaryParams[idx];
-    if (field === 'defaultStep' || field === 'defaultStepIndex') {
-      // Both names accepted; canonical field is defaultStep.
-      const n = parseInt(value, 10);
-      p.defaultStep = Number.isFinite(n) ? Math.max(0, n) : 0;
-      // Drop the legacy alias if present
-      delete p.defaultStepIndex;
-    } else {
-      p[field] = String(value || '');
-    }
-    renderBuilderPreview();
-  };
-
-  window.catBldrAddStep = function(paramIdx) {
-    const b = getOpenedBuilder();
-    if (!b) return;
-    const p = b.secondaryParams && b.secondaryParams[paramIdx];
-    if (!p) return;
-    if (!Array.isArray(p.steps)) p.steps = [];
-    // Default new step to 1.0 multiplier — neutral. Designer tunes.
-    p.steps.push({ value: '', label: '', multiplier: 1.0 });
-    // Caller is responsible for re-rendering. Phase B's modal handlers
-    // re-render the modal's steps area; if you call this from anywhere
-    // else, you must trigger your own render.
-  };
-
-  window.catBldrDeleteStep = function(paramIdx, stepIdx) {
-    const b = getOpenedBuilder();
-    if (!b) return;
-    const p = b.secondaryParams && b.secondaryParams[paramIdx];
-    if (!p || !Array.isArray(p.steps) || !p.steps[stepIdx]) return;
-    p.steps.splice(stepIdx, 1);
-    // If we removed the default step, reset to 0.
-    if (p.defaultStepIndex >= p.steps.length) p.defaultStepIndex = 0;
-    // Caller re-renders. See note above.
-  };
-
-  window.catBldrSetStep = function(paramIdx, stepIdx, field, value) {
-    const b = getOpenedBuilder();
-    if (!b) return;
-    const p = b.secondaryParams && b.secondaryParams[paramIdx];
-    if (!p || !Array.isArray(p.steps) || !p.steps[stepIdx]) return;
-    const s = p.steps[stepIdx];
-    if (field === 'multiplier') {
-      const n = parseFloat(value);
-      // Floor at 0.1x — anything lower combines pathologically. The
-      // 0.25 floor in the normalizer is for safety; this 0.1 is a
-      // softer guideline so designers can still set very-low steps
-      // like "Touch range only — 0.5×" without being clamped.
-      s.multiplier = Number.isFinite(n) ? Math.max(0.1, n) : 1.0;
-    } else if (field === 'value') {
-      // Try to parse as number; if not, keep as string (for labels
-      // like "Touch", "Self").
-      const n = parseFloat(value);
-      s.value = Number.isFinite(n) && String(value).trim() !== '' && !isNaN(value) ? n : value;
-    } else {
-      s[field] = String(value || '');
-    }
-    renderBuilderPreview();
-  };
-
-  // ── FEATURES & FLAWS ──
-
-  window.catBldrAddFeature = function() {
-    const b = getOpenedBuilder();
-    if (!b) return;
-    if (!Array.isArray(b.features)) b.features = [];
-    b.features.push({
-      id: 'feat_' + Math.random().toString(36).slice(2, 10),
-      name: '',
-      description: '',
-      tier: 'minor'
-    });
-    renderBuilderEditor();
-  };
-
-  window.catBldrDeleteFeature = function(idx) {
-    const b = getOpenedBuilder();
-    if (!b || !Array.isArray(b.features) || !b.features[idx]) return;
-    const name = b.features[idx].name || 'this feature';
-    if (!confirm(`Delete feature "${name}"? Player Abilities that selected it will lose the selection.`)) return;
-    b.features.splice(idx, 1);
-    renderBuilderEditor();
-  };
-
-  window.catBldrSetFeature = function(idx, field, value) {
-    const b = getOpenedBuilder();
-    if (!b || !Array.isArray(b.features) || !b.features[idx]) return;
-    b.features[idx][field] = String(value || '');
-    renderBuilderPreview();
-  };
-
-  window.catBldrAddFlaw = function() {
-    const b = getOpenedBuilder();
-    if (!b) return;
-    if (!Array.isArray(b.flaws)) b.flaws = [];
-    b.flaws.push({
-      id: 'flaw_' + Math.random().toString(36).slice(2, 10),
-      name: '',
-      description: '',
-      tier: 'minor'
-    });
-    renderBuilderEditor();
-  };
-
-  window.catBldrDeleteFlaw = function(idx) {
-    const b = getOpenedBuilder();
-    if (!b || !Array.isArray(b.flaws) || !b.flaws[idx]) return;
-    const name = b.flaws[idx].name || 'this flaw';
-    if (!confirm(`Delete flaw "${name}"? Player Abilities that selected it will lose the selection.`)) return;
-    b.flaws.splice(idx, 1);
-    renderBuilderEditor();
-  };
-
-  window.catBldrSetFlaw = function(idx, field, value) {
-    const b = getOpenedBuilder();
-    if (!b || !Array.isArray(b.flaws) || !b.flaws[idx]) return;
-    b.flaws[idx][field] = String(value || '');
-    renderBuilderPreview();
-  };
-</script>
-
-</body>
-</html>
+  return out;
+};
