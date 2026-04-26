@@ -1461,7 +1461,7 @@ export function computeDerivedStats(character, ruleset) {
     let total = 0;
     if (f.pain)        total += painPct;
     if (f.stress)      total += stressPct;
-    if (f.exh)         total += exhPct;
+    if (f.exhaustion)  total += exhPct;
     if (f.encumbrance) total += encPct;
     // Other mods — each entry independently whitelisted via f.other[modId].
     // Accumulate only the values for otherModifiers whose id is listed true.
