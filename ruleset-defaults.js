@@ -599,10 +599,25 @@ window.RULESET_DEFAULTS = {
   // Flaws. Builders reference tier names ('minor', 'moderate', etc)
   // rather than baking in numeric costs, so changing this table once
   // re-prices every Feature/Flaw across all Builders.
+  // ─── ABILITY CATALOGUE ──────────────────────────────────────────────
+  //
+  // Catalogue ─→ Types ─→ Categories ─→ Builders
+  //   (top-level)   (4 worlds, parallel)   (organization)   (the unit Players pick)
+  //
+  // Top-level `types` houses four parallel hierarchies — Ability, Artifact,
+  // Artifact Assembly, Consumable Assembly — each with its own categories
+  // and builders. Only `ability` is fully designed today; the other three
+  // are scaffolded with `inDesign: true` so the UI can render them as
+  // "coming soon" tiles without code branches per type.
+  //
+  // canonicalTiers (Feature/Flaw cost tables) live at the catalogue level,
+  // not per-type. All Builders across all types reference the same tier
+  // names — change a tier here and every Feature/Flaw at that tier
+  // re-prices automatically across the entire Catalogue.
   abilityCatalogue: {
     enabled: true,
-    name: 'Standard Abilities',
-    description: 'The default Ability Catalogue for the Standard Set.',
+    name: 'Standard Catalogue',
+    description: 'The default Catalogue for the Standard Set.',
     canonicalTiers: {
       // Feature tiers — Player PAYS this AP to take a Feature on their Ability.
       featureCosts: {
@@ -626,10 +641,40 @@ window.RULESET_DEFAULTS = {
         mythical:   5
       }
     },
-    // Categories start empty by default. Designers populate them via
-    // the Ruleset Editor. Keep this empty rather than seeding examples
-    // so a fresh ruleset is a blank canvas.
-    categories: []
+    // Four parallel type-worlds. Categories+Builders for each are
+    // identical in shape; mechanics may diverge later (Artifacts get
+    // durability, Consumables get charges, etc.) — at which point we
+    // extend the Builder schema per type without restructuring this.
+    //
+    // `inDesign: true` flags a type as not-yet-ready for authoring.
+    // The UI shows it as a non-clickable tile labeled "In design."
+    // Flip to false (or remove) when its mechanics are designed.
+    types: {
+      ability: {
+        label: 'Ability',
+        description: 'Active or passive Abilities a Character uses.',
+        inDesign: false,
+        categories: []
+      },
+      artifact: {
+        label: 'Artifact',
+        description: 'Persistent magical/technological items.',
+        inDesign: true,
+        categories: []
+      },
+      artifactAssembly: {
+        label: 'Artifact Assembly',
+        description: 'Combined artifact constructs and configurations.',
+        inDesign: true,
+        categories: []
+      },
+      consumableAssembly: {
+        label: 'Consumable Assembly',
+        description: 'Single-use or limited-charge constructs.',
+        inDesign: true,
+        categories: []
+      }
+    }
   },
 
   // ─── INVENTORY ──────────────────────────────────────────────────────
@@ -1551,7 +1596,7 @@ window.normalizeRuleset = function(rs) {
     const cat = out.abilityCatalogue;
     // Top-level fields with sensible defaults
     if (typeof cat.enabled !== 'boolean')      cat.enabled = true;
-    if (typeof cat.name !== 'string')          cat.name = 'Abilities';
+    if (typeof cat.name !== 'string')          cat.name = 'Catalogue';
     if (typeof cat.description !== 'string')   cat.description = '';
     // Canonical tiers — merged from defaults so newly-added tier
     // entries (if we ever extend the table) flow through to existing
@@ -1572,28 +1617,70 @@ window.normalizeRuleset = function(rs) {
           ? cat.canonicalTiers.flawRefunds : {}
       );
     }
-    if (!Array.isArray(cat.categories)) cat.categories = [];
 
-    // Walk and clean each category + its builders. Strict shape
-    // enforcement: anything malformed gets reset; anything missing an
-    // id gets one assigned.
+    // ── MIGRATION: old shape → new types-wrapped shape ──
+    // Old: cat.categories (flat array directly under cat)
+    // New: cat.types.{ability|artifact|...}.categories
+    //
+    // If we see the old shape (cat.categories present, cat.types absent),
+    // move the legacy array into types.ability.categories. This is a
+    // one-time silent migration so existing rulesets don't lose data —
+    // the user told us "burn it down" but better to migrate cheaply
+    // than leave invisible orphan data sitting in Firestore.
+    if (Array.isArray(cat.categories) && !cat.types) {
+      cat.types = JSON.parse(JSON.stringify(d.abilityCatalogue.types));
+      cat.types.ability.categories = cat.categories;
+      delete cat.categories;
+    }
+
+    // Normalize the types map. Anything missing gets the default
+    // skeleton. Anything malformed gets reset.
+    if (!cat.types || typeof cat.types !== 'object') {
+      cat.types = JSON.parse(JSON.stringify(d.abilityCatalogue.types));
+    }
+
     let synthCounter = 0;
     const synthId = (prefix) => `${prefix}_${Date.now().toString(36)}_${(synthCounter++).toString(36)}`;
 
-    cat.categories = cat.categories
-      .filter(c => c && typeof c === 'object')
-      .map(c => {
-        const out = {
-          id:          (typeof c.id === 'string' && c.id.trim()) ? c.id : synthId('cat'),
-          name:        typeof c.name === 'string' ? c.name : 'Untitled Category',
-          description: typeof c.description === 'string' ? c.description : '',
-          builders:    Array.isArray(c.builders) ? c.builders : []
-        };
-        out.builders = out.builders
-          .filter(b => b && typeof b === 'object')
-          .map(b => normalizeBuilder(b, synthId));
-        return out;
-      });
+    // Walk every type and clean its categories+builders. The shape
+    // inside each type is identical regardless of which type we're in
+    // — categories are categories, builders are builders. Mechanics
+    // divergence (Artifacts having durability, etc.) will live on the
+    // Builder fields themselves, not in the container shape.
+    Object.keys(d.abilityCatalogue.types).forEach(typeKey => {
+      const defType = d.abilityCatalogue.types[typeKey];
+      let t = cat.types[typeKey];
+      if (!t || typeof t !== 'object') {
+        t = JSON.parse(JSON.stringify(defType));
+        cat.types[typeKey] = t;
+        return;
+      }
+      if (typeof t.label !== 'string')        t.label = defType.label;
+      if (typeof t.description !== 'string')  t.description = defType.description;
+      if (typeof t.inDesign !== 'boolean')    t.inDesign = !!defType.inDesign;
+      if (!Array.isArray(t.categories))       t.categories = [];
+
+      t.categories = t.categories
+        .filter(c => c && typeof c === 'object')
+        .map(c => {
+          const cleanCat = {
+            id:          (typeof c.id === 'string' && c.id.trim()) ? c.id : synthId('cat'),
+            name:        typeof c.name === 'string' ? c.name : 'Untitled Category',
+            description: typeof c.description === 'string' ? c.description : '',
+            builders:    Array.isArray(c.builders) ? c.builders : []
+          };
+          cleanCat.builders = cleanCat.builders
+            .filter(b => b && typeof b === 'object')
+            .map(b => normalizeBuilder(b, synthId));
+          return cleanCat;
+        });
+    });
+
+    // Drop any unknown type keys that snuck in — keeps the structure
+    // tight and predictable.
+    Object.keys(cat.types).forEach(k => {
+      if (!d.abilityCatalogue.types[k]) delete cat.types[k];
+    });
   }
 
   // ─── INVENTORY NORMALIZATION ─────────────────────────────────────────
