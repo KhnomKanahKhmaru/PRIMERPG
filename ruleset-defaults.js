@@ -1638,6 +1638,20 @@ window.normalizeRuleset = function(rs) {
     // Features — paid-AP additions. Each references a tier from
     // canonicalTiers.featureCosts (looked up at cost time, not stored
     // as a number here, so tier table edits propagate).
+    //
+    // customField: per-feature/flaw player-input slot. When enabled,
+    // the GM defines a label (e.g. "Conditional"); the player's
+    // instance carries a free-text value (in instance.customFieldValues
+    // keyed by feature/flaw id) which renders as an extra line on the
+    // Card. Useful for features/flaws that need player-specific detail
+    // — "Conditional: requires heavy moisture", "Limited Use: 3/day", etc.
+    function normalizeCustomField(cf) {
+      cf = (cf && typeof cf === 'object') ? cf : {};
+      return {
+        enabled: !!cf.enabled,
+        label:   typeof cf.label === 'string' ? cf.label : ''
+      };
+    }
     const VALID_TIERS = ['minor','moderate','major','massive','monumental','mega','mythical'];
     builder.features = builder.features
       .filter(f => f && typeof f === 'object')
@@ -1645,7 +1659,8 @@ window.normalizeRuleset = function(rs) {
         id:          (typeof f.id === 'string' && f.id.trim()) ? f.id : synthId('feat'),
         name:        typeof f.name === 'string' ? f.name : 'Untitled Feature',
         description: typeof f.description === 'string' ? f.description : '',
-        tier:        VALID_TIERS.includes(f.tier) ? f.tier : 'minor'
+        tier:        VALID_TIERS.includes(f.tier) ? f.tier : 'minor',
+        customField: normalizeCustomField(f.customField)
       }));
 
     // Flaws — refund-AP additions. Same shape as Features but priced
@@ -1656,7 +1671,8 @@ window.normalizeRuleset = function(rs) {
         id:          (typeof f.id === 'string' && f.id.trim()) ? f.id : synthId('flaw'),
         name:        typeof f.name === 'string' ? f.name : 'Untitled Flaw',
         description: typeof f.description === 'string' ? f.description : '',
-        tier:        VALID_TIERS.includes(f.tier) ? f.tier : 'minor'
+        tier:        VALID_TIERS.includes(f.tier) ? f.tier : 'minor',
+        customField: normalizeCustomField(f.customField)
       }));
 
     return builder;
