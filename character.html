@@ -6907,15 +6907,38 @@
       ? `<img src="${escapeHtml(builder.iconUrl)}" alt=""
               style="width:48px;height:48px;object-fit:contain;background:#0a0a06;border:1px solid #1a1a14;border-radius:5px;flex-shrink:0;">`
       : '';
+
+    // Header text column — vertical stack, sits between the icon and
+    // the cost pill. When collapsed, this is ALL the GM sees, so it
+    // packs four pieces of info into a scannable column:
+    //
+    //   1. Name (bold)  +  Tagline (italic, inline)
+    //   2. Description (Builder.description — GM catalogue blurb)
+    //   3. Visual (abl.visual — Player-authored, in quotes)
+    //
+    // Description and Visual are each clamped to 2 lines max so a
+    // verbose entry doesn't blow up the card, but a GM browsing 30+
+    // abilities still sees the start of each. Icon + cost pill stay
+    // vertically centered against the column's center via the outer
+    // flexbox's align-items:center.
+    const collapsedDescHtml = (builder.description && builder.description.trim())
+      ? `<div style="font-size:12px;color:#aaa;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${escapeHtml(builder.description)}</div>`
+      : '';
+    const collapsedVisualHtml = (abl.visual && abl.visual.trim())
+      ? `<div style="font-size:12px;color:#888;font-style:italic;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">"${escapeHtml(abl.visual)}"</div>`
+      : '';
+
     const headerHtml = `
       <div class="abil-card-header" onclick="abilitiesToggleCardCollapse('${escapeHtml(abl.id)}')"
            style="display:flex;align-items:center;gap:14px;padding:14px 16px;cursor:pointer;${cardCollapsed ? '' : 'border-bottom:1px solid #1a1a1a;'}">
         ${iconImgHtml}
-        <div style="flex:1;min-width:0;">
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;">
           <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
             <span style="font-weight:700;color:#e6e0cc;font-size:16px;">${escapeHtml(displayName)}</span>
             ${abl.tagline ? `<span style="font-size:13px;font-style:italic;color:#999;">${escapeHtml(abl.tagline)}</span>` : ''}
           </div>
+          ${collapsedDescHtml}
+          ${collapsedVisualHtml}
         </div>
         <span style="padding:5px 12px;background:${costBg};border:1px solid ${costBorder};border-radius:4px;font-size:12px;color:${costColor};font-family:monospace;flex-shrink:0;font-weight:700;">${cost} AP</span>
         <span style="color:#666;font-size:11px;width:12px;text-align:center;flex-shrink:0;">${caretChar}</span>
