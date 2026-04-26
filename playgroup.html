@@ -229,6 +229,19 @@
   let myUsername = '';
   const quills = {};
 
+  // Hoisted early so the inline onclick handlers on .pg-tab divs work
+  // even if the user clicks during the page-load awaits below (auth,
+  // playgroup load, memberships, news, ruleset picker — multiple
+  // sequential awaits). Pure DOM, no dependencies on loaded state.
+  // The late definition was causing a benign-but-noisy ReferenceError
+  // in the console for clicks made before the script finished.
+  window.switchTab = function(name, el) {
+    document.querySelectorAll('.pg-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('tab-' + name).classList.add('active');
+  }
+
   function randomToken(n) {
     const chars = 'abcdefghijkmnpqrstuvwxyz23456789';
     let out = '';
@@ -930,12 +943,7 @@
     } catch(e) { msg.textContent = 'Error saving.'; msg.style.color = '#ff6666'; }
   }
 
-  window.switchTab = function(name, el) {
-    document.querySelectorAll('.pg-tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    el.classList.add('active');
-    document.getElementById('tab-' + name).classList.add('active');
-  }
+  // switchTab is hoisted to the top of the script — see comment there.
 
   window.logout = async function() {
     await signOut(auth);
