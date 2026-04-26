@@ -7057,6 +7057,108 @@
     const sysCursor = hasFFContent ? 'cursor:pointer;' : '';
     const sysOnclick = hasFFContent ? `onclick="abilitiesToggleSystem('${escapeHtml(abl.id)}')"` : '';
 
+    // ─── ACTIVATION ROLL PICKER ───
+    // When the Builder has activationRoll.enabled and any slot is in
+    // a "player picks" mode, show inline dropdowns so the Player can
+    // bind the slot to a specific stat or skill. The chosen value
+    // gets stored on instance.activationRollChoice.{slot1|slot2} and
+    // is read by char-abilities.renderSystemText to fill in the
+    // {ACTIVATION_ROLL} token.
+    //
+    // Click on the dropdowns must NOT bubble to the System-box click
+    // handler (which toggles features/flaws), so each select stops
+    // propagation. The dropdowns sit ABOVE the system text body so
+    // changing them updates the {ACTIVATION_ROLL} text below in real
+    // time.
+    let activationPickerHtml = '';
+    const arBld = builder.activationRoll;
+    if (arBld && arBld.enabled) {
+      const choice = (abl.activationRollChoice && typeof abl.activationRollChoice === 'object')
+        ? abl.activationRollChoice : {};
+      // Pull stat / skill lists from the active ruleset. Same logic
+      // as the GM-side Builder editor uses.
+      const arStats = (Array.isArray(activeRuleset.stats) ? activeRuleset.stats : [])
+        .map(s => s && s.code).filter(c => typeof c === 'string' && c);
+      const arSkills = [];
+      ['primarySkills', 'secondarySkills', 'specialtySkills'].forEach(k => {
+        const arr = Array.isArray(activeRuleset[k]) ? activeRuleset[k] : [];
+        arr.forEach(s => { if (s && typeof s.name === 'string' && s.name) arSkills.push(s.name); });
+      });
+
+      // Build the textual representation of each slot — either fixed
+      // (just the locked value as readonly text) or a dropdown the
+      // Player picks from.
+      function statDropdown(slotKey, currentVal) {
+        return `
+          <select style="background:#111;border:1px solid #2a2a2a;color:#e0e0e0;font-family:inherit;font-size:13px;padding:3px 8px;border-radius:3px;outline:none;font-weight:700;"
+                  onclick="event.stopPropagation();"
+                  onchange="event.stopPropagation();abilitiesSetActivationChoice(${idx},'${slotKey}',this.value)">
+            <option value="">— pick STAT —</option>
+            ${arStats.map(c => `<option value="${escapeHtml(c)}"${currentVal === c ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')}
+          </select>
+        `;
+      }
+      function skillDropdown(slotKey, currentVal) {
+        return `
+          <select style="background:#111;border:1px solid #2a2a2a;color:#e0e0e0;font-family:inherit;font-size:13px;padding:3px 8px;border-radius:3px;outline:none;font-weight:700;"
+                  onclick="event.stopPropagation();"
+                  onchange="event.stopPropagation();abilitiesSetActivationChoice(${idx},'${slotKey}',this.value)">
+            <option value="">— pick SKILL —</option>
+            ${arSkills.map(n => `<option value="${escapeHtml(n)}"${currentVal === n ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('')}
+          </select>
+        `;
+      }
+      function statOrSkillDropdown(slotKey, currentVal) {
+        // Combined dropdown — stats first (with a STAT optgroup),
+        // skills second. Player can pick either.
+        return `
+          <select style="background:#111;border:1px solid #2a2a2a;color:#e0e0e0;font-family:inherit;font-size:13px;padding:3px 8px;border-radius:3px;outline:none;font-weight:700;"
+                  onclick="event.stopPropagation();"
+                  onchange="event.stopPropagation();abilitiesSetActivationChoice(${idx},'${slotKey}',this.value)">
+            <option value="">— pick STAT or SKILL —</option>
+            <optgroup label="Stats">
+              ${arStats.map(c => `<option value="${escapeHtml(c)}"${currentVal === c ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')}
+            </optgroup>
+            <optgroup label="Skills">
+              ${arSkills.map(n => `<option value="${escapeHtml(n)}"${currentVal === n ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('')}
+            </optgroup>
+          </select>
+        `;
+      }
+
+      // Slot 1: STAT only.
+      let s1Html;
+      if (arBld.slot1.mode === 'fixed-stat') {
+        s1Html = `<span style="color:#e6e0cc;font-weight:700;">${escapeHtml(arBld.slot1.fixedStat || 'STAT')}</span>`;
+      } else {
+        s1Html = statDropdown('slot1', choice.slot1 || '');
+      }
+
+      // Slot 2: STAT, SKILL, or either.
+      let s2Html;
+      if (arBld.slot2.mode === 'fixed-stat') {
+        s2Html = `<span style="color:#e6e0cc;font-weight:700;">${escapeHtml(arBld.slot2.fixedStat || 'STAT')}</span>`;
+      } else if (arBld.slot2.mode === 'fixed-skill') {
+        s2Html = `<span style="color:#e6e0cc;font-weight:700;">${escapeHtml(arBld.slot2.fixedSkill || 'SKILL')}</span>`;
+      } else if (arBld.slot2.mode === 'any-stat') {
+        s2Html = statDropdown('slot2', choice.slot2 || '');
+      } else if (arBld.slot2.mode === 'any-skill') {
+        s2Html = skillDropdown('slot2', choice.slot2 || '');
+      } else {
+        s2Html = statOrSkillDropdown('slot2', choice.slot2 || '');
+      }
+
+      activationPickerHtml = `
+        <div style="margin-bottom:10px;padding:8px 10px;background:#0d0d0a;border:1px solid #1f1f14;border-radius:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:#c8c8c8;">
+          <span style="font-size:10px;color:#d8c060;letter-spacing:.1em;text-transform:uppercase;font-weight:700;margin-right:4px;">Activation Roll</span>
+          ${s1Html}
+          <span style="color:#666;">+</span>
+          ${s2Html}
+          <span style="color:#666;">+ STATMOD</span>
+        </div>
+      `;
+    }
+
     const systemBoxHtml = `
       <div ${sysOnclick}
            style="margin:14px 16px 0;padding:12px 14px;background:#080808;border:1px solid #1a1a1a;border-radius:4px;${sysCursor}">
@@ -7064,6 +7166,7 @@
           <span>System</span>
           ${sysCaret}
         </div>
+        ${activationPickerHtml}
         ${systemBodyHtml}
         ${ffListHtml}
       </div>
@@ -7173,6 +7276,32 @@
   // card-level collapse so old links still work.
   window.abilitiesToggleCard = function(abilityId) {
     window.abilitiesToggleCardCollapse(abilityId);
+  };
+
+  // Player picks a stat/skill for an Activation Roll slot. Mutates the
+  // Ability instance, persists, and re-renders the Abilities tab so the
+  // {ACTIVATION_ROLL} token in System text picks up the new choice.
+  // No-op when canEdit is false (read-only sheet view).
+  window.abilitiesSetActivationChoice = async function(idx, slotKey, value) {
+    if (!canEdit) return;
+    const arr = Array.isArray(charData.abilities) ? charData.abilities : [];
+    const abl = arr[idx];
+    if (!abl) return;
+    if (slotKey !== 'slot1' && slotKey !== 'slot2') return;
+    if (!abl.activationRollChoice || typeof abl.activationRollChoice !== 'object') {
+      abl.activationRollChoice = {};
+    }
+    abl.activationRollChoice[slotKey] = String(value || '');
+    // Persist + re-render. We re-render BEFORE awaiting so the UI
+    // updates instantly; the save fires in parallel. If the save
+    // fails we'd want to revert, but there's no current error path
+    // for ability mutations (matches the pattern used by abilitiesDelete).
+    renderAbilitiesTab();
+    try {
+      await saveCharacter(charId, { abilities: arr });
+    } catch (e) {
+      console.error('Failed to save activation roll choice:', e);
+    }
   };
 
   // Catalogue browser — opens a modal listing every Builder available.
