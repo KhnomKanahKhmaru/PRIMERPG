@@ -243,37 +243,28 @@
     }
 
     /* Ability tile — the per-Builder card on the category screen.
-       Big enough to feel like a real choice (180+ px tall), name in
-       weight 700, AP cost as a pill at the bottom-right. Hover state
-       lifts the border. Click opens the Builder editor. */
+       Layout: a single horizontal row at the top with the icon on
+       the left and a vertical stack (name above, description below)
+       on the right. Delete × is an absolutely-positioned overlay
+       in the top-right corner that fades in on hover. */
     .ability-tile {
       background: #0d0d0d; border: 1px solid #1f1f1f;
       border-radius: 6px; padding: 14px;
       cursor: pointer;
       display: flex; flex-direction: column;
-      min-height: 130px;
+      min-height: 100px;
       transition: border-color 0.15s, background 0.15s;
       position: relative;
     }
     .ability-tile:hover {
       border-color: #4a4a4a; background: #111;
     }
-    .ability-tile-name {
-      font-size: 14px; font-weight: 700; color: #e8e8e8;
-      margin-bottom: 4px;
-      overflow: hidden; text-overflow: ellipsis;
-      display: -webkit-box; -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      flex: 1; min-width: 0;
-    }
-    .ability-tile-name-empty { color: #555; font-style: italic; font-weight: 500; }
-    /* Top-of-tile flex row: icon thumbnail next to the name. When no
-       icon, the name fills the row and the layout looks the same. */
+    /* Top-of-tile flex row: icon on the left, name+description stacked
+       to the right of it. When there's no icon, the headtext column
+       expands to fill the tile. */
     .ability-tile-head {
       display: flex; align-items: flex-start; gap: 10px;
-      margin-bottom: 4px;
     }
-    .ability-tile-head .ability-tile-name { margin-bottom: 0; }
     .ability-tile-icon {
       flex: 0 0 auto;
       width: 36px; height: 36px;
@@ -282,29 +273,36 @@
       border: 1px solid #1a1a14;
       border-radius: 4px;
     }
+    .ability-tile-headtext {
+      flex: 1; min-width: 0;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .ability-tile-name {
+      font-size: 14px; font-weight: 700; color: #e8e8e8;
+      overflow: hidden; text-overflow: ellipsis;
+      display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      line-height: 1.3;
+    }
+    .ability-tile-name-empty { color: #555; font-style: italic; font-weight: 500; }
     .ability-tile-desc {
       font-size: 12px; color: #888; line-height: 1.45;
-      flex: 1;
       overflow: hidden;
       display: -webkit-box; -webkit-line-clamp: 3;
       -webkit-box-orient: vertical;
     }
-    .ability-tile-meta {
-      display: flex; align-items: center; justify-content: space-between;
-      margin-top: 10px; gap: 8px;
-    }
-    .ability-tile-cost {
-      padding: 3px 8px;
-      background: #1a1a14; border: 1px solid #2a2a20;
-      border-radius: 3px; font-size: 11px; color: #d8c060;
-      font-family: 'Consolas', 'Courier New', monospace;
-    }
+    /* Delete × — absolute overlay in the top-right of the tile.
+       Hidden by default; fades in when the tile is hovered. */
     .ability-tile-x {
-      background: transparent; border: 1px solid #2a2a2a;
+      position: absolute; top: 6px; right: 6px;
+      background: rgba(0,0,0,0.6); border: 1px solid #2a2a2a;
       color: #c66; font-size: 13px; cursor: pointer;
-      padding: 2px 8px; border-radius: 3px;
+      padding: 1px 7px; border-radius: 3px;
+      opacity: 0; transition: opacity 0.1s, border-color 0.1s, color 0.1s;
+      line-height: 1;
     }
-    .ability-tile-x:hover { border-color: #4a2a2a; color: #f88; }
+    .ability-tile:hover .ability-tile-x { opacity: 1; }
+    .ability-tile-x:hover { border-color: #4a2a2a; color: #f88; background: #1a0a0a; }
 
     /* ═════════════════════════════════════════════════════════════════
        SCREEN 3 — Builder editor
@@ -662,9 +660,16 @@
       .tier-grid { grid-template-columns: 1fr; }
     }
     .tier-grid-label {
-      display: block; font-weight: 700; margin-bottom: 8px;
+      display: block; font-weight: 700; margin-bottom: 14px;
       font-size: 11px; letter-spacing: .1em;
       text-transform: uppercase; color: #888;
+    }
+    /* "Feature Tier Costs (AP)" / "Flaw Tier Refunds (AP)" headers in
+       the Settings pane sit right above their row stack — give them
+       breathing room instead of letting the first row crowd them. */
+    .tier-grid > div > label {
+      display: block; margin-bottom: 14px;
+      font-size: 13px;
     }
 
     /* Empty-state copy. */
@@ -717,10 +722,6 @@
 
     <div class="crumb">
       <a id="crumb-back" onclick="goBackToRuleset()">← Back to Ruleset Editor</a>
-    </div>
-    <div class="page-title" id="page-title">Ability Catalogue</div>
-    <div class="page-sub"  id="page-sub">
-      Author the Catalogue's types, categories, and builders for this ruleset.
     </div>
 
     <!-- Top-level tab strip — switches between the player-facing browse
@@ -935,10 +936,11 @@
         alert('You do not have permission to edit this catalogue.');
         window.location.href = 'my-rulesets.html';
       } else {
-        document.getElementById('page-title').textContent =
-          isBasic
-            ? 'Edit Basic Set Catalogue'
-            : 'Catalogue — ' + (existingDoc.name || 'Ruleset');
+        // page-title element removed from markup; set the browser tab
+        // title instead so users still know which catalogue they're in.
+        document.title = isBasic
+          ? 'Edit Basic Set Catalogue'
+          : 'Catalogue — ' + (existingDoc.name || 'Ruleset');
         applyInitialUrlState();
         initUI();
         document.getElementById('loading').style.display = 'none';
@@ -1570,23 +1572,24 @@
             ? `<div class="ability-tile-desc">${escapeHtml(builder.description)}</div>`
             : `<div class="ability-tile-desc"><span style="color:#444;font-style:italic;">No description</span></div>`;
 
-          const costHtml = cost !== null
-            ? `<span class="ability-tile-cost">${cost} AP</span>`
-            : `<span class="ability-tile-cost">— AP</span>`;
-
-          // Icon + name share a flex row at the top of the tile so the
-          // name reflows next to the image rather than under it.
+          // Tile structure:
+          //   [icon] [name + desc stacked vertically next to icon]
+          //   [hover-only × in top-right corner]
+          //
+          // Cost pill removed — costs depend on per-player tuning, so
+          // showing a "default cost" on the catalogue tile was misleading.
+          // Cost shows in the Builder editor's preview card and on the
+          // player's Ability Card after they've tuned their instance.
           tile.innerHTML = `
             <div class="ability-tile-head">
               ${iconThumb}
-              ${nameHtml}
+              <div class="ability-tile-headtext">
+                ${nameHtml}
+                ${descHtml}
+              </div>
             </div>
-            ${descHtml}
-            <div class="ability-tile-meta">
-              ${costHtml}
-              <button class="ability-tile-x" type="button" title="Delete ability"
-                      onclick="event.stopPropagation();catDeleteBuilder(${ci},${bi});">×</button>
-            </div>
+            <button class="ability-tile-x" type="button" title="Delete ability"
+                    onclick="event.stopPropagation();catDeleteBuilder(${ci},${bi});">×</button>
           `;
           tileGrid.appendChild(tile);
         });
