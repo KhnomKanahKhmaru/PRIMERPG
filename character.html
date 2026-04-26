@@ -6921,11 +6921,15 @@
     //
     // mix-blend-mode:screen drops pure-black pixels (most icons have a
     // black background) so the icon reads as a glyph against the dark
-    // card. Combined with no border/background container, the icon
-    // floats cleanly without a hard rectangle frame around it.
+    // card. A clipping wrapper scales the image up slightly and hides
+    // overflow so any baked-in dark border on the source PNG (which
+    // screen blend can't fully eliminate when the border is near-black
+    // but not exactly #000) gets cropped off.
     const iconImgHtml = (builder.iconUrl && builder.iconUrl.trim())
-      ? `<img src="${escapeHtml(builder.iconUrl)}" alt=""
-              style="width:48px;height:48px;object-fit:contain;flex-shrink:0;mix-blend-mode:screen;">`
+      ? `<div style="width:48px;height:48px;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+           <img src="${escapeHtml(builder.iconUrl)}" alt=""
+                style="width:120%;height:120%;object-fit:contain;mix-blend-mode:screen;">
+         </div>`
       : '';
 
     // Header text column — vertical stack, sits between the icon and
