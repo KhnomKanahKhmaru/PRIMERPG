@@ -175,10 +175,18 @@
       border: 1px solid #2a2a20;
       border-radius: 4px; padding: 14px;
       min-height: 180px;
+      position: relative;
     }
     .bldr-card-name {
       font-size: 16px; font-weight: 700; color: #e6e0cc;
-      margin-bottom: 4px;
+      margin-bottom: 2px;
+    }
+    /* Tagline — italic, smaller, sits right under the name. Always
+       Player-authored, so in the Builder editor preview it's a
+       placeholder. */
+    .bldr-card-tagline {
+      font-size: 12px; font-style: italic; color: #aaa;
+      margin-bottom: 6px;
     }
     .bldr-card-cost {
       display: inline-block; padding: 3px 8px;
@@ -189,16 +197,51 @@
     }
     .bldr-card-desc {
       font-size: 12px; color: #999; line-height: 1.5;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
     }
-    .bldr-card-system {
+    /* Sections inside the card (System / Visual / Extra). Each has a
+       small label + a body block. The section-label is the muted
+       all-caps header; section-body is the actual content. */
+    .bldr-card-section {
+      margin-top: 8px;
+    }
+    .bldr-card-section-label {
+      font-size: 10px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #888;
+      margin-bottom: 4px;
+    }
+    .bldr-card-section-body {
       font-size: 13px; color: #c8c8c8; line-height: 1.55;
       padding: 8px 10px; background: #0a0a06;
       border: 1px solid #1a1a14; border-radius: 3px;
       white-space: pre-wrap;
     }
+    /* Placeholder text — italic, dim. Used when a Player-authored
+       field has no content yet (so Builder preview shows the GM
+       guideline italicized). */
+    .bldr-card-placeholder {
+      color: #555; font-style: italic;
+    }
     .bldr-card-empty {
       color: #555; font-style: italic;
+    }
+    /* Extra tab — a small clickable button at the bottom of the card.
+       Click toggles the Extra section open/closed. */
+    .bldr-card-extra-tab-wrap {
+      margin-top: 10px; display: flex; justify-content: center;
+    }
+    .bldr-card-extra-tab {
+      background: #1a1a14; border: 1px solid #2a2a20; color: #aaa;
+      font-family: inherit; font-size: 11px; font-weight: 600;
+      letter-spacing: .06em; text-transform: uppercase;
+      padding: 4px 12px; border-radius: 12px; cursor: pointer;
+      transition: background 0.1s, border-color 0.1s, color 0.1s;
+    }
+    .bldr-card-extra-tab:hover {
+      background: #222218; border-color: #3a3a30; color: #d8c060;
+    }
+    .bldr-card-extra-tab.is-open {
+      background: #2a2a18; border-color: #3a3a20; color: #d8c060;
     }
 
     /* Param card — collapsible. Click the head to expand/collapse the
@@ -884,8 +927,8 @@
       description: '',
       baseCost: 0,
       systemTextTemplate: '',
-      visualPrompt: '',
-      extra: '',
+      visualGuideline: '',
+      extraGuideline: '',
       primaryParams: [],
       secondaryParams: [],
       features: [],
@@ -1250,25 +1293,31 @@
     `;
     wrap.appendChild(sysSection);
 
-    // Visual prompt
+    // Visual guideline — GM authors what the Player should depict.
+    // Doesn't appear directly on the rendered card; instead, the card
+    // shows the Player's visualText (which they author on their
+    // Ability instance) with the GM's guideline shown as placeholder
+    // hint text when the Player hasn't written anything yet.
     const visSection = document.createElement('div');
     visSection.className = 'bldr-textarea-section';
     visSection.innerHTML = `
-      <div class="bldr-panel-title">Visual <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— guideline for what the player should depict (icon, sketch, full art, etc.)</span></div>
+      <div class="bldr-panel-title">Visual Guideline <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— GM hint: what the Player should depict for this Ability's visual</span></div>
       <textarea rows="2"
-                placeholder="e.g. A small icon depicting a flame in the player's hand."
-                oninput="catBldrSetField('visualPrompt',this.value)">${escapeHtml(b.visualPrompt || '')}</textarea>
+                placeholder="e.g. The icon of a flame appearing in the Player's hand. Players will write the actual visual description on their own Ability."
+                oninput="catBldrSetField('visualGuideline',this.value)">${escapeHtml(b.visualGuideline || b.visualPrompt || '')}</textarea>
     `;
     wrap.appendChild(visSection);
 
-    // Extra
+    // Extra guideline — same pattern as Visual. GM authors what the
+    // Extra section is for; Player writes the actual content on
+    // their Ability instance.
     const extraSection = document.createElement('div');
     extraSection.className = 'bldr-textarea-section';
     extraSection.innerHTML = `
-      <div class="bldr-panel-title">Extra <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— metapsychic, background, lore, anything that doesn't fit elsewhere</span></div>
+      <div class="bldr-panel-title">Extra Guideline <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— GM hint: what the Player should write in the Extra section (lore, metapsychic, background, etc.)</span></div>
       <textarea rows="3"
-                placeholder="Optional. Free-form notes about this Builder."
-                oninput="catBldrSetField('extra',this.value)">${escapeHtml(b.extra || '')}</textarea>
+                placeholder="e.g. Describe the metapsychic resonance this Ability creates. Players will fill this in on their own Ability."
+                oninput="catBldrSetField('extraGuideline',this.value)">${escapeHtml(b.extraGuideline || b.extra || '')}</textarea>
     `;
     wrap.appendChild(extraSection);
 
@@ -1635,9 +1684,30 @@
 
   // ═════════ LIVE PREVIEW CARD ═════════
   //
-  // Updates on every input affecting cost or display. Shows the
-  // Builder's current name, default-tuned cost, description blurb,
-  // and system text with default param values substituted.
+  // Renders the full player-facing Ability Card. The card shows fields
+  // from three sources:
+  //   • GM-authored on the Builder    — Name, Description, System
+  //   • Player-authored on instance   — Tagline, Visual, Extra
+  //   • Computed live                 — AP cost
+  //
+  // Since this is the BUILDER editor preview (not a real player
+  // instance), the Player-authored fields don't have content. We show
+  // the GM's Visual/Extra GUIDELINES italicized as placeholders so the
+  // GM sees what the Player will be told to fill in.
+  //
+  // The Extra section is collapsed by default behind an "Extra?" tab.
+  // Click toggles it open/closed. The toggle state lives on the card
+  // root in a data attribute so re-renders preserve it.
+
+  // Track preview-card "Extra expanded" state across re-renders.
+  // (The tab state lives outside the card DOM so the renderer can
+  // restore it after each repaint.)
+  let bldrPreviewExtraOpen = false;
+
+  window.bldrTogglePreviewExtra = function() {
+    bldrPreviewExtraOpen = !bldrPreviewExtraOpen;
+    renderBuilderPreview();
+  };
 
   function renderBuilderPreview() {
     const card = document.getElementById('bldr-card-preview');
@@ -1648,10 +1718,9 @@
     const cat = state.abilityCatalogue || {};
     const tiers = cat.canonicalTiers || {};
 
-    // Build a default-tuned instance: every param at its default step,
-    // no features/flaws selected. computeAbilityCost computes AP from
-    // THAT instance against the Builder's shape — what we see is the
-    // baseline cost a player pays just for picking this Builder.
+    // Default-tuned instance — every param at its default step, no
+    // features/flaws selected. The card preview shows the cost a Player
+    // pays just by picking this Builder before any tuning of their own.
     const inst = { paramValues: {}, selectedFeatureIds: [], selectedFlawIds: [] };
 
     let cost = null, systemText = '';
@@ -1667,28 +1736,81 @@
         : (b.systemTextTemplate || '');
     } catch (e) { systemText = b.systemTextTemplate || ''; }
 
-    // Cost pill (header)
+    // Cost pill in the editor header (separate from the card)
     if (pill) {
       pill.textContent = (cost === null ? '… AP' : `${cost} AP default`);
     }
+    if (!card) return;
 
-    // Card body
-    if (card) {
-      const parts = [];
-      parts.push(`<div class="bldr-card-name">${b.name ? escapeHtml(b.name) : '<span class="bldr-card-empty">(Unnamed Ability)</span>'}</div>`);
-      if (cost !== null) {
-        parts.push(`<div class="bldr-card-cost">${cost} AP default</div>`);
-      }
-      if (b.description) {
-        parts.push(`<div class="bldr-card-desc">${escapeHtml(b.description)}</div>`);
-      }
-      if (systemText && systemText.trim()) {
-        parts.push(`<div class="bldr-card-system">${escapeHtml(systemText)}</div>`);
-      } else {
-        parts.push(`<div class="bldr-card-system bldr-card-empty">(System text — fill in below using {paramId} tokens)</div>`);
-      }
-      card.innerHTML = parts.join('');
-    }
+    // ── HEAD: Name + Tagline + Cost ──
+    // Name: GM-authored. Tagline: Player-authored — shows placeholder.
+    const nameHtml = b.name
+      ? `<div class="bldr-card-name">${escapeHtml(b.name)}</div>`
+      : `<div class="bldr-card-name"><span class="bldr-card-empty">(Unnamed Ability)</span></div>`;
+
+    const taglineHtml = `<div class="bldr-card-tagline bldr-card-placeholder">(Player adds their tagline)</div>`;
+
+    const costHtml = (cost !== null)
+      ? `<div class="bldr-card-cost">${cost} AP default</div>`
+      : '';
+
+    // ── DESCRIPTION (GM, catalogue blurb) ──
+    const descHtml = b.description
+      ? `<div class="bldr-card-desc">${escapeHtml(b.description)}</div>`
+      : `<div class="bldr-card-desc bldr-card-placeholder">(Description — shown to Players in the catalogue browser)</div>`;
+
+    // ── SYSTEM (GM template, live-rendered with default tuning) ──
+    const systemBlock = (systemText && systemText.trim())
+      ? `<div class="bldr-card-section">
+           <div class="bldr-card-section-label">System</div>
+           <div class="bldr-card-section-body">${escapeHtml(systemText)}</div>
+         </div>`
+      : `<div class="bldr-card-section">
+           <div class="bldr-card-section-label">System</div>
+           <div class="bldr-card-section-body bldr-card-placeholder">(System text — fill in via the System textarea below using {token} placeholders)</div>
+         </div>`;
+
+    // ── VISUAL (Player-authored on instance; Builder editor shows the
+    //          GM's guideline italicized as a hint) ──
+    const visualGuide = b.visualGuideline || b.visualPrompt || '';
+    const visualBody = visualGuide
+      ? `<div class="bldr-card-section-body bldr-card-placeholder">(Player will write their visual description here. GM guideline: ${escapeHtml(visualGuide)})</div>`
+      : `<div class="bldr-card-section-body bldr-card-placeholder">(Player will write their visual description here. No GM guideline set.)</div>`;
+    const visualBlock = `
+      <div class="bldr-card-section">
+        <div class="bldr-card-section-label">Visual</div>
+        ${visualBody}
+      </div>
+    `;
+
+    // ── EXTRA (Player-authored, collapsible behind the "Extra?" tab) ──
+    const extraGuide = b.extraGuideline || b.extra || '';
+    const extraBody = extraGuide
+      ? `<div class="bldr-card-section-body bldr-card-placeholder">(Player will write their extra info here. GM guideline: ${escapeHtml(extraGuide)})</div>`
+      : `<div class="bldr-card-section-body bldr-card-placeholder">(Player will write their extra info here. No GM guideline set.)</div>`;
+    const extraBlock = bldrPreviewExtraOpen
+      ? `<div class="bldr-card-section">
+           <div class="bldr-card-section-label">Extra</div>
+           ${extraBody}
+         </div>`
+      : '';
+    const extraTab = `
+      <div class="bldr-card-extra-tab-wrap">
+        <button type="button" class="bldr-card-extra-tab${bldrPreviewExtraOpen ? ' is-open' : ''}"
+                onclick="bldrTogglePreviewExtra()">${bldrPreviewExtraOpen ? 'Hide Extra' : 'Extra?'}</button>
+      </div>
+    `;
+
+    card.innerHTML = `
+      ${nameHtml}
+      ${taglineHtml}
+      ${costHtml}
+      ${descHtml}
+      ${systemBlock}
+      ${visualBlock}
+      ${extraBlock}
+      ${extraTab}
+    `;
   }
 
   // ── FEATURE / FLAW HANDLERS ──
