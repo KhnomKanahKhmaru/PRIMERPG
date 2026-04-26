@@ -1894,45 +1894,43 @@
   function renderParamCard(p, kind, idx) {
     const key       = paramKey(kind, idx);
     const expanded  = expandedParamKeys.has(key);
+    const isLinear  = (kind === 'primary' && p.mode === 'linear');
     const steps     = Array.isArray(p.steps) ? p.steps : [];
     const defIdx    = Number.isFinite(p.defaultStep) ? p.defaultStep : 0;
     const defStep   = steps[defIdx] || steps[0] || null;
-    const summary   = defStep
-      ? (defStep.label || defStep.value || '(blank)') + ` · ${kind === 'primary' ? defStep.cost + ' AP' : '×' + defStep.cost}`
-      : '(no steps)';
+
+    // Summary line shown next to the param name in the collapsed head.
+    // Linear mode shows the AP-per-step rate + range; manual mode
+    // shows the default step's label + cost (existing behavior).
+    let summary;
+    if (isLinear) {
+      const lc = p.linearConfig || {};
+      const ap = Number.isFinite(lc.apPerStep) ? lc.apPerStep : 1;
+      const lo = Number.isFinite(lc.minValue) ? lc.minValue : 0;
+      const hi = Number.isFinite(lc.maxValue) ? lc.maxValue : 100;
+      summary = `linear · ${ap} AP/step · ${lo}–${hi}`;
+    } else {
+      summary = defStep
+        ? (defStep.label || defStep.value || '(blank)') + ` · ${kind === 'primary' ? defStep.cost + ' AP' : '×' + defStep.cost}`
+        : '(no steps)';
+    }
 
     const head = `
       <div class="bldr-param-head" onclick="bldrToggleParam('${kind}', ${idx})">
         <span class="bldr-param-caret">▶</span>
         <span class="bldr-param-name${p.name ? '' : ' bldr-param-name-empty'}">${escapeHtml(p.name || '(Unnamed parameter)')}</span>
-        <span class="bldr-param-summary">${kind === 'primary' ? 'flat' : 'mult'} · ${escapeHtml(summary)}</span>
+        <span class="bldr-param-summary">${kind === 'primary' ? (isLinear ? 'linear' : 'flat') : 'mult'} · ${escapeHtml(summary)}</span>
         <button class="row-x" type="button" title="Delete parameter"
                 onclick="event.stopPropagation();bldrDeleteParam('${kind}', ${idx});">×</button>
       </div>
     `;
 
-    const body = expanded ? `
-      <div class="bldr-param-body">
-        <div class="field">
-          <label>Parameter Name</label>
-          <input type="text" value="${escapeHtmlAttr(p.name || '')}"
-                 placeholder="e.g. Damage Dice, Range, STAT Bonus"
-                 oninput="bldrParamSetField('${kind}', ${idx}, 'name', this.value)">
-        </div>
-        <div class="field">
-          <label>Token <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— for {token} substitution in System text</span></label>
-          <input type="text" value="${escapeHtmlAttr(p.token || '')}"
-                 placeholder="e.g. damage, range, stat"
-                 oninput="bldrParamSetField('${kind}', ${idx}, 'token', this.value)">
-        </div>
-        <div class="field">
-          <label>Kind</label>
-          <select onchange="bldrParamChangeKind('${kind}', ${idx}, this.value)">
-            <option value="primary"${kind === 'primary' ? ' selected' : ''}>Primary — flat AP added per step</option>
-            <option value="secondary"${kind === 'secondary' ? ' selected' : ''}>Secondary — multiplier on total cost</option>
-          </select>
-        </div>
+    // ── Body renderers — split into manual and linear variants ──
 
+    // Manual: full step-list editor (current behavior). Used by all
+    // Secondary params and by Primary params with mode === 'manual'.
+    function manualBody() {
+      return `
         <label style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#888;display:block;margin-top:10px;margin-bottom:6px;">Steps</label>
         <div class="bldr-step-row-head">
           <div style="text-align:center;">Def</div>
@@ -1968,6 +1966,101 @@
             ? 'Each step adds its AP cost to the Builder when the player picks it. The radio marks the default step.'
             : 'Each step multiplies the Builder\'s total cost when the player picks it (1.0 = no change, 1.5 = +50%, 0.75 = -25%). The radio marks the default step.'}
         </p>
+      `;
+    }
+
+    // Linear: cost computed as (playerValue - defaultValue) × apPerStep.
+    // GM authors a value range, AP rate, default, and optional
+    // prefix/suffix that wraps the value when the {token} renders.
+    // No explicit step list — the player picks any value in [min,max].
+    function linearBody() {
+      const lc = p.linearConfig || {};
+      const ap  = Number.isFinite(lc.apPerStep)    ? lc.apPerStep    : 1;
+      const def = Number.isFinite(lc.defaultValue) ? lc.defaultValue : 0;
+      const lo  = Number.isFinite(lc.minValue)     ? lc.minValue     : 0;
+      const hi  = Number.isFinite(lc.maxValue)     ? lc.maxValue     : 100;
+      const vstep = Number.isFinite(lc.valueStep)  ? lc.valueStep    : 1;
+      const pre = typeof lc.valuePrefix === 'string' ? lc.valuePrefix : '';
+      const suf = typeof lc.valueSuffix === 'string' ? lc.valueSuffix : '';
+      const previewVal = pre + String(def) + suf;
+      return `
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-top:10px;">
+          <div class="field" style="margin:0;">
+            <label>Min Value</label>
+            <input type="number" step="any" value="${lo}"
+                   oninput="bldrLinearSetField('${kind}', ${idx}, 'minValue', this.value)">
+          </div>
+          <div class="field" style="margin:0;">
+            <label>Max Value</label>
+            <input type="number" step="any" value="${hi}"
+                   oninput="bldrLinearSetField('${kind}', ${idx}, 'maxValue', this.value)">
+          </div>
+          <div class="field" style="margin:0;">
+            <label>Default Value</label>
+            <input type="number" step="any" value="${def}"
+                   oninput="bldrLinearSetField('${kind}', ${idx}, 'defaultValue', this.value)">
+          </div>
+          <div class="field" style="margin:0;">
+            <label>AP per Step</label>
+            <input type="number" step="0.5" value="${ap}"
+                   oninput="bldrLinearSetField('${kind}', ${idx}, 'apPerStep', this.value)">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:10px;">
+          <div class="field" style="margin:0;">
+            <label>Value Step</label>
+            <input type="number" step="any" value="${vstep}"
+                   oninput="bldrLinearSetField('${kind}', ${idx}, 'valueStep', this.value)">
+          </div>
+          <div class="field" style="margin:0;">
+            <label>Value Prefix</label>
+            <input type="text" placeholder="(none)" value="${escapeHtmlAttr(pre)}"
+                   oninput="bldrLinearSetField('${kind}', ${idx}, 'valuePrefix', this.value)">
+          </div>
+          <div class="field" style="margin:0;">
+            <label>Value Suffix</label>
+            <input type="text" placeholder="e.g. d6, ft" value="${escapeHtmlAttr(suf)}"
+                   oninput="bldrLinearSetField('${kind}', ${idx}, 'valueSuffix', this.value)">
+          </div>
+        </div>
+        <div style="margin-top:12px;padding:10px 12px;background:#0a0a06;border:1px solid #1a1a14;border-radius:4px;font-family:'Consolas','Courier New',monospace;font-size:13px;color:#d8c060;">
+          Default renders as: <span style="color:#e6e0cc;">${escapeHtml(previewVal)}</span>
+          <span style="color:#666;font-family:inherit;font-size:11px;margin-left:10px;">— player can pick ${lo}–${hi}, costing (value − ${def}) × ${ap} AP</span>
+        </div>
+      `;
+    }
+
+    const body = expanded ? `
+      <div class="bldr-param-body">
+        <div class="field">
+          <label>Parameter Name</label>
+          <input type="text" value="${escapeHtmlAttr(p.name || '')}"
+                 placeholder="e.g. Damage Dice, Range, STAT Bonus"
+                 oninput="bldrParamSetField('${kind}', ${idx}, 'name', this.value)">
+        </div>
+        <div class="field">
+          <label>Token <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— for {token} substitution in System text</span></label>
+          <input type="text" value="${escapeHtmlAttr(p.token || '')}"
+                 placeholder="e.g. damage, range, stat"
+                 oninput="bldrParamSetField('${kind}', ${idx}, 'token', this.value)">
+        </div>
+        <div class="field">
+          <label>Kind</label>
+          <select onchange="bldrParamChangeKind('${kind}', ${idx}, this.value)">
+            <option value="primary"${kind === 'primary' ? ' selected' : ''}>Primary — flat AP added per step</option>
+            <option value="secondary"${kind === 'secondary' ? ' selected' : ''}>Secondary — multiplier on total cost</option>
+          </select>
+        </div>
+        ${kind === 'primary' ? `
+          <div class="field">
+            <label>Mode</label>
+            <select onchange="bldrParamSetMode('${kind}', ${idx}, this.value)">
+              <option value="manual"${!isLinear ? ' selected' : ''}>Manual — author each step explicitly (best for short discrete lists)</option>
+              <option value="linear"${isLinear ? ' selected' : ''}>Linear — single AP-per-step rate over a value range (best for damage, range, etc.)</option>
+            </select>
+          </div>
+        ` : ''}
+        ${isLinear ? linearBody() : manualBody()}
       </div>
     ` : '';
 
@@ -2040,6 +2133,54 @@
     if (field === 'defaultStep' || field === 'name') {
       renderBldrParamsList();
     }
+    renderBuilderPreview();
+  };
+
+  // Toggle a Primary parameter between manual (step list) and linear
+  // (range + AP-per-step) mode. Re-renders the param card so the body
+  // swaps between the two editors. The other mode's data stays on the
+  // record (ignored when not in that mode), so flipping back-and-forth
+  // is non-destructive — the steps you authored aren't lost when you
+  // switch to linear and back.
+  window.bldrParamSetMode = function(kind, idx, mode) {
+    if (kind !== 'primary') return;
+    const b = getOpenedBuilder();
+    if (!b || !Array.isArray(b.primaryParams) || !b.primaryParams[idx]) return;
+    b.primaryParams[idx].mode = (mode === 'linear') ? 'linear' : 'manual';
+    // First time switching to linear with no prior config — seed a
+    // sensible default so the editor isn't all zeros.
+    if (b.primaryParams[idx].mode === 'linear' && !b.primaryParams[idx].linearConfig) {
+      b.primaryParams[idx].linearConfig = {
+        apPerStep: 1, defaultValue: 0, minValue: 0, maxValue: 10,
+        valueStep: 1, valuePrefix: '', valueSuffix: ''
+      };
+    }
+    renderBldrParamsList();
+    renderBuilderPreview();
+  };
+
+  // Set a single field on a Primary parameter's linearConfig.
+  // Numeric fields (ap, default, min, max, valueStep) parse to float;
+  // string fields (prefix, suffix) pass through. The summary line in
+  // the param head reflects ap/min/max so we re-render the list.
+  window.bldrLinearSetField = function(kind, idx, field, value) {
+    if (kind !== 'primary') return;
+    const b = getOpenedBuilder();
+    if (!b || !Array.isArray(b.primaryParams) || !b.primaryParams[idx]) return;
+    const p = b.primaryParams[idx];
+    if (!p.linearConfig || typeof p.linearConfig !== 'object') {
+      p.linearConfig = { apPerStep: 1, defaultValue: 0, minValue: 0, maxValue: 10, valueStep: 1, valuePrefix: '', valueSuffix: '' };
+    }
+    if (field === 'valuePrefix' || field === 'valueSuffix') {
+      p.linearConfig[field] = String(value == null ? '' : value);
+    } else {
+      const n = parseFloat(value);
+      p.linearConfig[field] = Number.isFinite(n) ? n : 0;
+    }
+    // The head summary shows AP rate + range — re-render the list when
+    // those change. Prefix/suffix only affect the preview line in the
+    // expanded body, which is bound in place via this re-render anyway.
+    renderBldrParamsList();
     renderBuilderPreview();
   };
 
