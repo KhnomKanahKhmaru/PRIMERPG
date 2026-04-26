@@ -6876,7 +6876,7 @@
     const tiers = (activeRuleset.abilityCatalogue && activeRuleset.abilityCatalogue.canonicalTiers) || {};
     const costRes = charAbilities.computeAbilityCost(builder, abl, tiers);
     const cost = costRes.computedCost;
-    const systemText = charAbilities.renderSystemText(builder, abl);
+    const systemText = charAbilities.renderSystemText(builder, abl, { charData, ruleset: activeRuleset });
 
     // Three independent state checks
     const cardCollapsed   = abilCardCollapsed.has(abl.id);
@@ -7435,7 +7435,7 @@
       // Pre-fill override with the current generated text so the
       // Player can edit instead of starting from scratch.
       const ref = charAbilities.findBuilderById(activeRuleset, inst.builderId);
-      const generated = ref ? charAbilities.renderSystemText(ref.builder, inst) : '';
+      const generated = ref ? charAbilities.renderSystemText(ref.builder, inst, { charData, ruleset: activeRuleset }) : '';
       inst.systemTextOverride = generated || ' ';
     }
     renderAbilitiesBuilderSystemText();
@@ -7765,7 +7765,7 @@
   }
 
   function renderAbilitiesBuilderSystemTextSection(builder, inst) {
-    const generated = charAbilities.renderSystemText(builder, { ...inst, systemTextOverride: '' });
+    const generated = charAbilities.renderSystemText(builder, { ...inst, systemTextOverride: '' }, { charData, ruleset: activeRuleset });
     const hasOverride = !!(inst.systemTextOverride && inst.systemTextOverride.trim());
     return `
       <div id="abil-builder-systemtext-section" style="border:1px solid #1f1f1f;border-radius:4px;padding:12px;background:#0d0d0d;">
@@ -7793,7 +7793,7 @@
         <div style="font-size:10px;color:#666;margin-top:6px;">Override active — generated text from parameters is bypassed.</div>
       `;
     }
-    const generated = charAbilities.renderSystemText(builder, inst);
+    const generated = charAbilities.renderSystemText(builder, inst, { charData, ruleset: activeRuleset });
     return `
       <div style="padding:10px;background:#080808;border:1px solid #1a1a1a;border-radius:3px;font-size:13px;color:#bbb;font-style:${generated ? 'normal' : 'italic'};">
         ${generated ? escapeHtml(generated) : '(no system text — Builder has no template, or no parameters)'}
