@@ -201,29 +201,91 @@
       color: #555; font-style: italic;
     }
 
-    /* Param row — shows name + a select previewing default step. Click
-       opens the deeper modal for steps editing. */
-    .bldr-param-row {
-      display: flex; align-items: center; gap: 8px;
-      padding: 8px; background: #111; border: 1px solid #1f1f1f;
+    /* Param card — collapsible. Click the head to expand/collapse the
+       step editor. Open state shows kind toggle + step list + add-step
+       button; collapsed state shows just the head row (name + summary). */
+    .bldr-param-card {
+      background: #111; border: 1px solid #1f1f1f;
       border-radius: 3px; margin-bottom: 6px;
-      cursor: pointer; transition: border-color 0.1s;
+      overflow: hidden;
+      transition: border-color 0.1s;
     }
-    .bldr-param-row:hover { border-color: #2f2f2f; }
+    .bldr-param-card:hover { border-color: #2f2f2f; }
+    .bldr-param-card.expanded { border-color: #3a3a3a; }
+    .bldr-param-head {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px; cursor: pointer; user-select: none;
+    }
+    .bldr-param-caret {
+      flex: 0 0 auto; width: 12px; color: #666;
+      font-size: 10px; text-align: center;
+      transition: transform 0.1s;
+    }
+    .bldr-param-card.expanded .bldr-param-caret {
+      transform: rotate(90deg);
+    }
     .bldr-param-name {
       font-size: 13px; color: #ddd; flex: 1; min-width: 0;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .bldr-param-name-empty { color: #555; font-style: italic; }
-    .bldr-param-default {
+    .bldr-param-summary {
       font-size: 11px; color: #888;
       font-family: 'Consolas', 'Courier New', monospace;
+      flex: 0 0 auto;
     }
-    .bldr-param-row .row-x {
+    .bldr-param-head .row-x {
+      flex: 0 0 auto;
       background: transparent; border: none; color: #c66;
       font-size: 14px; cursor: pointer; padding: 0 4px;
     }
-    .bldr-param-row .row-x:hover { color: #f88; }
+    .bldr-param-head .row-x:hover { color: #f88; }
+
+    /* Expanded body — kind selector at top, step rows below, then
+       add-step button at the bottom. Hidden when collapsed. */
+    .bldr-param-body {
+      padding: 10px 10px 10px 28px;  /* match indentation past the caret */
+      border-top: 1px solid #1a1a1a;
+      background: #0a0a0a;
+    }
+    .bldr-param-body .field { margin-bottom: 8px; }
+    .bldr-param-body label {
+      font-size: 10px; font-weight: 600; letter-spacing: .08em;
+      text-transform: uppercase; color: #888;
+    }
+
+    /* Step row inside the inline body — for editing a parameter's
+       individual steps (label / value / cost). Compact horizontal layout. */
+    .bldr-step-row {
+      display: grid;
+      grid-template-columns: 22px 1fr 1fr 80px 28px;
+      gap: 6px; align-items: center; margin-bottom: 4px;
+    }
+    .bldr-step-row-head {
+      display: grid;
+      grid-template-columns: 22px 1fr 1fr 80px 28px;
+      gap: 6px; align-items: center;
+      font-size: 10px; color: #666;
+      text-transform: uppercase; letter-spacing: .06em;
+      margin-bottom: 4px;
+    }
+    .bldr-step-row .step-default-radio {
+      display: flex; align-items: center; justify-content: center;
+    }
+    .bldr-step-row input[type="text"],
+    .bldr-step-row input[type="number"] {
+      background: #111; border: 1px solid #222; color: #e0e0e0;
+      font-family: inherit; font-size: 12px;
+      padding: 5px 7px; border-radius: 3px; outline: none;
+      width: 100%;
+    }
+    .bldr-step-row input:focus { border-color: #444; }
+    .bldr-step-row .row-x {
+      background: transparent; border: 1px solid #2a2a2a;
+      color: #c66; font-size: 14px; cursor: pointer;
+      border-radius: 3px;
+    }
+    .bldr-step-row .row-x:hover { border-color: #4a2a2a; color: #f88; }
 
     /* Tier band — section under Features or Flaws column for a single
        tier (Minor, Moderate, etc). Heading is muted; rows are stacked
@@ -313,56 +375,6 @@
       font-size: 13px; color: #d8c060;
     }
 
-    /* Modal — for deeper parameter editor. */
-    .bldr-modal-backdrop {
-      position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7);
-      display: flex; align-items: center; justify-content: center;
-      z-index: 1000; padding: 20px;
-    }
-    .bldr-modal {
-      background: #0e0e0e; border: 1px solid #2a2a2a;
-      border-radius: 6px; width: 100%; max-width: 640px;
-      max-height: 85vh; display: flex; flex-direction: column;
-    }
-    .bldr-modal-head {
-      display: flex; align-items: center; gap: 10px;
-      padding: 12px 16px; border-bottom: 1px solid #1a1a1a;
-    }
-    .bldr-modal-title {
-      flex: 1; font-size: 14px; font-weight: 600; color: #e0e0e0;
-    }
-    .bldr-modal-body {
-      flex: 1; padding: 14px 16px; overflow-y: auto;
-    }
-    .bldr-modal-foot {
-      display: flex; justify-content: flex-end; gap: 8px;
-      padding: 10px 16px; border-top: 1px solid #1a1a1a;
-    }
-
-    /* Step row inside the modal — for editing a parameter's individual
-       steps (label / value / cost-delta). Compact horizontal layout. */
-    .bldr-step-row {
-      display: grid;
-      grid-template-columns: 28px 1fr 100px 100px 32px;
-      gap: 6px; align-items: center; margin-bottom: 4px;
-    }
-    .bldr-step-row .step-default-radio {
-      display: flex; align-items: center; justify-content: center;
-    }
-    .bldr-step-row input[type="text"],
-    .bldr-step-row input[type="number"] {
-      background: #111; border: 1px solid #222; color: #e0e0e0;
-      font-family: inherit; font-size: 13px;
-      padding: 5px 8px; border-radius: 3px; outline: none;
-      width: 100%;
-    }
-    .bldr-step-row input:focus { border-color: #444; }
-    .bldr-step-row .row-x {
-      background: transparent; border: 1px solid #2a2a2a;
-      color: #c66; font-size: 14px; cursor: pointer;
-      border-radius: 3px;
-    }
-    .bldr-step-row .row-x:hover { border-color: #4a2a2a; color: #f88; }
   </style>
 </head>
 <body>
@@ -1258,10 +1270,28 @@
     renderBuilderPreview();
   }
 
-  // ── PARAMETERS LIST ──
-  // Single combined list of all params (Primary + Secondary). Each row
-  // shows the param's name and a select previewing its current default
-  // step. Clicking the row opens the modal for deeper editing.
+  // ── PARAMETERS LIST (Phase B v2 — inline expand) ──
+  //
+  // Both Primary and Secondary params share the same shape now:
+  //   { id, name, token, description, steps: [{label, value, cost}], defaultStep }
+  // The difference is interpretation at cost-engine time:
+  //   • Primary's cost = flat AP added per selected step
+  //   • Secondary's cost = multiplier on the running total
+  //
+  // UI: rows render as collapsible cards. Click the head to expand the
+  // step editor inline below the row. Click again to collapse. Multiple
+  // params can be expanded at once. The expanded set survives re-renders
+  // (we track it in expandedParamKeys).
+  //
+  // Param keys are "kind:idx" — kind is 'primary' or 'secondary', idx
+  // is the position in the corresponding array. We use this rather than
+  // param.id because it survives kind-conversion and array reordering
+  // is not implemented.
+
+  const expandedParamKeys = new Set();
+
+  function paramKey(kind, idx) { return kind + ':' + idx; }
+
   function renderBldrParamsList() {
     const el = document.getElementById('bldr-params-list');
     if (!el) return;
@@ -1275,440 +1305,244 @@
       return;
     }
 
-    const renderRow = (p, kind, idx) => {
-      const stepsList = (kind === 'primary')
-        // Primary params don't have a steps array in the legacy data
-        // model — they have a single value with delta-cost. We render
-        // them as if they had one default option so the row layout
-        // matches secondary params.
-        ? [`${escapeHtml(p.label || p.name || '')}: ${p.defaultValue || 0} (${p.deltaCost || 0} AP/step)`]
-        : (Array.isArray(p.steps) ? p.steps : []).map(s =>
-            `${escapeHtml(s.label || s.value || '')} (×${s.multiplier ?? 1})`);
-      const summary = stepsList.length > 0 ? stepsList[0] : '(no steps)';
-      return `
-        <div class="bldr-param-row" onclick="bldrEditParam('${kind}', ${idx})">
-          <span class="bldr-param-name${p.name ? '' : ' bldr-param-name-empty'}">${escapeHtml(p.name || '(Unnamed parameter)')}</span>
-          <span class="bldr-param-default">${kind === 'primary' ? 'flat' : 'mult'} · ${escapeHtml(summary)}</span>
-          <button class="row-x" type="button" title="Delete parameter"
-                  onclick="event.stopPropagation();bldrDeleteParam('${kind}', ${idx});">×</button>
-        </div>
-      `;
-    };
-
     el.innerHTML =
-      primary.map((p, i) => renderRow(p, 'primary', i)).join('') +
-      secondary.map((p, i) => renderRow(p, 'secondary', i)).join('');
+      primary.map((p, i)   => renderParamCard(p, 'primary', i)).join('') +
+      secondary.map((p, i) => renderParamCard(p, 'secondary', i)).join('');
   }
 
-  // ── FEATURES / FLAWS LIST ──
-  // Organized by tier band. Each tier shows: tier name + per-tier cost
-  // (from canonicalTiers), then rows for features at that tier, then
-  // a "+ Add" button. Empty tiers show only the header + add button.
-  function renderTierGrouped(b, kind) {
-    // kind: 'feature' or 'flaw'
-    const list = (kind === 'feature' ? b.features : b.flaws) || [];
-    const cat = state.abilityCatalogue || {};
-    const tiers = cat.canonicalTiers || {};
-    const tierTable = (kind === 'feature' ? tiers.featureCosts : tiers.flawRefunds) || {};
-    return TIER_ORDER.map(tier => {
-      const rows = list
-        .map((it, idx) => ({ it, idx }))
-        .filter(({it}) => it && it.tier === tier);
-      const tierCost = Number.isFinite(tierTable[tier]) ? tierTable[tier] : 0;
-      const costLabel = kind === 'feature' ? `+${tierCost} AP` : `−${tierCost} AP`;
-      const rowHtml = rows.map(({it, idx}) => `
-        <div class="bldr-ff-row">
-          <textarea rows="1"
-                    placeholder="${kind === 'feature' ? 'Feature description' : 'Flaw description'}"
-                    oninput="bldrSetFFText('${kind}', ${idx}, this.value);autoGrow(this);">${escapeHtml(it.description || it.name || '')}</textarea>
-          <select class="ff-tier-move" title="Change tier"
-                  onchange="bldrSetFFTier('${kind}', ${idx}, this.value)">
-            ${TIER_ORDER.map(t => `<option value="${t}"${t === tier ? ' selected' : ''}>${TIER_LABELS[t]}</option>`).join('')}
+  // Render a single param card. Two-part: head (always visible) and body
+  // (visible only when expanded). The head has the toggle caret, name
+  // input, default-step summary, and delete X. The body has the kind
+  // selector, step list, and add-step button.
+  function renderParamCard(p, kind, idx) {
+    const key       = paramKey(kind, idx);
+    const expanded  = expandedParamKeys.has(key);
+    const steps     = Array.isArray(p.steps) ? p.steps : [];
+    const defIdx    = Number.isFinite(p.defaultStep) ? p.defaultStep : 0;
+    const defStep   = steps[defIdx] || steps[0] || null;
+    const summary   = defStep
+      ? (defStep.label || defStep.value || '(blank)') + ` · ${kind === 'primary' ? defStep.cost + ' AP' : '×' + defStep.cost}`
+      : '(no steps)';
+
+    const head = `
+      <div class="bldr-param-head" onclick="bldrToggleParam('${kind}', ${idx})">
+        <span class="bldr-param-caret">▶</span>
+        <span class="bldr-param-name${p.name ? '' : ' bldr-param-name-empty'}">${escapeHtml(p.name || '(Unnamed parameter)')}</span>
+        <span class="bldr-param-summary">${kind === 'primary' ? 'flat' : 'mult'} · ${escapeHtml(summary)}</span>
+        <button class="row-x" type="button" title="Delete parameter"
+                onclick="event.stopPropagation();bldrDeleteParam('${kind}', ${idx});">×</button>
+      </div>
+    `;
+
+    const body = expanded ? `
+      <div class="bldr-param-body">
+        <div class="field">
+          <label>Parameter Name</label>
+          <input type="text" value="${escapeHtmlAttr(p.name || '')}"
+                 placeholder="e.g. Damage Dice, Range, STAT Bonus"
+                 oninput="bldrParamSetField('${kind}', ${idx}, 'name', this.value)">
+        </div>
+        <div class="field">
+          <label>Token <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— for {token} substitution in System text</span></label>
+          <input type="text" value="${escapeHtmlAttr(p.token || '')}"
+                 placeholder="e.g. damage, range, stat"
+                 oninput="bldrParamSetField('${kind}', ${idx}, 'token', this.value)">
+        </div>
+        <div class="field">
+          <label>Kind</label>
+          <select onchange="bldrParamChangeKind('${kind}', ${idx}, this.value)">
+            <option value="primary"${kind === 'primary' ? ' selected' : ''}>Primary — flat AP added per step</option>
+            <option value="secondary"${kind === 'secondary' ? ' selected' : ''}>Secondary — multiplier on total cost</option>
           </select>
-          <button class="row-x" type="button" title="Delete"
-                  onclick="bldrDeleteFF('${kind}', ${idx});">×</button>
         </div>
-      `).join('');
-      return `
-        <div class="bldr-tier-band">
-          <div class="bldr-tier-band-head">
-            <span class="bldr-tier-band-name">${TIER_LABELS[tier]}</span>
-            <span class="bldr-tier-band-cost">${costLabel}</span>
-          </div>
-          ${rowHtml}
-          <button class="btn small" type="button" style="width:100%;margin-top:2px;"
-                  onclick="bldrAddFF('${kind}', '${tier}')">+ Add ${TIER_LABELS[tier]} ${kind === 'feature' ? 'Feature' : 'Flaw'}</button>
-        </div>
-      `;
-    }).join('');
-  }
 
-  function renderBldrFeaturesList() {
-    const el = document.getElementById('bldr-features-list');
-    if (!el) return;
-    const b = getOpenedBuilder();
-    if (!b) { el.innerHTML = ''; return; }
-    el.innerHTML = renderTierGrouped(b, 'feature');
-    // Auto-grow all visible textareas to fit their initial content.
-    el.querySelectorAll('textarea').forEach(autoGrow);
-  }
-
-  function renderBldrFlawsList() {
-    const el = document.getElementById('bldr-flaws-list');
-    if (!el) return;
-    const b = getOpenedBuilder();
-    if (!b) { el.innerHTML = ''; return; }
-    el.innerHTML = renderTierGrouped(b, 'flaw');
-    el.querySelectorAll('textarea').forEach(autoGrow);
-  }
-
-  // Auto-grow a textarea to fit its content. Called on every input
-  // event from feature/flaw textareas, plus on initial render.
-  function autoGrow(el) {
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = (el.scrollHeight) + 'px';
-  }
-
-  // ── LIVE PREVIEW CARD ──
-  // Updates on every input. Shows the Builder's current name, default-
-  // tuned cost, and system text with default param values substituted.
-  function renderBuilderPreview() {
-    const card = document.getElementById('bldr-card-preview');
-    const pill = document.getElementById('bldr-cost-pill');
-    if (!card && !pill) return;
-    const b = getOpenedBuilder();
-    if (!b) return;
-    const cat = state.abilityCatalogue || {};
-    const tiers = cat.canonicalTiers || {};
-
-    // Build a default-tuned instance: every param at its default step,
-    // no features/flaws selected. computeAbilityCost computes the AP
-    // from THAT instance against the Builder's shape, so what we see
-    // here is the "you pay this much just by picking the Builder, then
-    // tune from there" baseline.
-    const inst = { paramValues: {}, selectedFeatureIds: [], selectedFlawIds: [] };
-
-    let cost = null, systemText = '';
-    try {
-      const result = window.computeAbilityCost
-        ? window.computeAbilityCost(b, inst, tiers)
-        : null;
-      cost = result && Number.isFinite(result.computedCost) ? result.computedCost : null;
-    } catch (e) { cost = null; }
-    try {
-      systemText = window.renderSystemTextForBuilder
-        ? window.renderSystemTextForBuilder(b, inst)
-        : (b.systemTextTemplate || '');
-    } catch (e) { systemText = b.systemTextTemplate || ''; }
-
-    // Cost pill (header)
-    if (pill) {
-      pill.textContent = (cost === null ? '… AP' : `${cost} AP default`);
-    }
-
-    // Card body
-    if (card) {
-      const parts = [];
-      parts.push(`<div class="bldr-card-name">${b.name ? escapeHtml(b.name) : '<span class="bldr-card-empty">(Unnamed Ability)</span>'}</div>`);
-      if (cost !== null) {
-        parts.push(`<div class="bldr-card-cost">${cost} AP default</div>`);
-      }
-      if (b.description) {
-        parts.push(`<div class="bldr-card-desc">${escapeHtml(b.description)}</div>`);
-      }
-      if (systemText && systemText.trim()) {
-        parts.push(`<div class="bldr-card-system">${escapeHtml(systemText)}</div>`);
-      } else {
-        parts.push(`<div class="bldr-card-system bldr-card-empty">(System text — fill in below using {paramId} tokens)</div>`);
-      }
-      card.innerHTML = parts.join('');
-    }
-  }
-
-  // ── PARAMETER MUTATION HANDLERS — wrappers for the new UI ──
-  // The legacy handlers (catBldrAddPrimary, etc.) are still on `window`
-  // but they only know about Primary vs Secondary as separate buckets.
-  // The new UI hides that distinction in the row list and surfaces
-  // it as a "type" choice in the modal. These wrappers make the row
-  // UI sensible.
-
-  // Add a parameter — defaults to Primary kind. The user can change
-  // it to Secondary in the modal. We open the modal immediately on
-  // add so the GM has somewhere to fill in the details.
-  window.bldrAddParam = function() {
-    window.catBldrAddPrimary();
-    // Newly-added param sits at the end of primaryParams
-    const b = getOpenedBuilder();
-    if (!b) return;
-    const idx = (b.primaryParams || []).length - 1;
-    renderBldrParamsList();
-    renderBuilderPreview();
-    if (idx >= 0) bldrOpenParamModal('primary', idx);
-  };
-
-  window.bldrDeleteParam = function(kind, idx) {
-    if (kind === 'primary') window.catBldrDeletePrimary(idx);
-    else                    window.catBldrDeleteSecondary(idx);
-    renderBldrParamsList();
-    renderBuilderPreview();
-  };
-
-  window.bldrEditParam = function(kind, idx) {
-    bldrOpenParamModal(kind, idx);
-  };
-
-  // ── PARAMETER MODAL ──
-  // Centered overlay for editing a param's name, kind (primary vs
-  // secondary), and steps. For primary params we show the simple
-  // single-value editor; for secondary we show the full steps editor.
-  // The kind toggle at the top lets the GM convert between them —
-  // converting copies what data it can and drops what it can't (e.g.
-  // primary→secondary keeps the name but starts with a fresh empty
-  // steps list).
-  let bldrModalState = null;  // { kind, idx } when open; null when closed
-
-  function bldrOpenParamModal(kind, idx) {
-    bldrModalState = { kind, idx };
-    renderBldrParamModal();
-  }
-
-  window.bldrCloseParamModal = function() {
-    bldrModalState = null;
-    document.querySelectorAll('.bldr-modal-backdrop').forEach(el => el.remove());
-    renderBldrParamsList();
-    renderBuilderPreview();
-  };
-
-  function getModalParam() {
-    if (!bldrModalState) return null;
-    const b = getOpenedBuilder();
-    if (!b) return null;
-    const arr = bldrModalState.kind === 'primary' ? b.primaryParams : b.secondaryParams;
-    return Array.isArray(arr) ? (arr[bldrModalState.idx] || null) : null;
-  }
-
-  function renderBldrParamModal() {
-    document.querySelectorAll('.bldr-modal-backdrop').forEach(el => el.remove());
-    if (!bldrModalState) return;
-    const p = getModalParam();
-    if (!p) { bldrModalState = null; return; }
-    const isPrimary = bldrModalState.kind === 'primary';
-
-    const backdrop = document.createElement('div');
-    backdrop.className = 'bldr-modal-backdrop';
-    backdrop.onclick = (e) => { if (e.target === backdrop) window.bldrCloseParamModal(); };
-    const modal = document.createElement('div');
-    modal.className = 'bldr-modal';
-
-    const head = document.createElement('div');
-    head.className = 'bldr-modal-head';
-    head.innerHTML = `
-      <div class="bldr-modal-title">Parameter — ${isPrimary ? 'Primary (flat-cost)' : 'Secondary (multiplier)'}</div>
-      <button class="btn small" type="button" onclick="bldrCloseParamModal()">Close</button>
-    `;
-    modal.appendChild(head);
-
-    const body = document.createElement('div');
-    body.className = 'bldr-modal-body';
-    body.innerHTML = `
-      <div class="field">
-        <label>Parameter Name <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— shown to players when tuning</span></label>
-        <input type="text" value="${escapeHtmlAttr(p.name || '')}"
-               placeholder="e.g. Damage Dice, Range, STAT Bonus"
-               oninput="bldrModalSetField('name',this.value)">
-      </div>
-
-      <div class="field">
-        <label>Token <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— for {token} substitution in System text</span></label>
-        <input type="text" value="${escapeHtmlAttr(p.token || p.id || '')}"
-               placeholder="e.g. damage, range, stat"
-               oninput="bldrModalSetField('token',this.value)">
-      </div>
-
-      <div class="field">
-        <label>Kind</label>
-        <select onchange="bldrModalChangeKind(this.value)">
-          <option value="primary"${isPrimary ? ' selected' : ''}>Primary — flat AP added per step</option>
-          <option value="secondary"${!isPrimary ? ' selected' : ''}>Secondary — multiplier on total cost</option>
-        </select>
-      </div>
-
-      <div id="bldr-modal-steps-area"></div>
-    `;
-    modal.appendChild(body);
-
-    const foot = document.createElement('div');
-    foot.className = 'bldr-modal-foot';
-    foot.innerHTML = `
-      <button class="btn small" type="button" onclick="bldrCloseParamModal()">Done</button>
-    `;
-    modal.appendChild(foot);
-
-    backdrop.appendChild(modal);
-    document.body.appendChild(backdrop);
-    renderBldrModalStepsArea();
-  }
-
-  // The steps-area body. Shape differs between Primary and Secondary:
-  //   • Primary: a single value + delta-cost (legacy data model has
-  //     defaultValue, minValue, maxValue, deltaCost). We expose a
-  //     simplified "default value + cost per step" pair.
-  //   • Secondary: an arbitrary list of {label, multiplier} steps.
-  function renderBldrModalStepsArea() {
-    const area = document.getElementById('bldr-modal-steps-area');
-    if (!area || !bldrModalState) return;
-    const p = getModalParam();
-    if (!p) return;
-
-    if (bldrModalState.kind === 'primary') {
-      area.innerHTML = `
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-          <div class="field">
-            <label>Default Value</label>
-            <input type="number" step="any"
-                   value="${Number.isFinite(parseFloat(p.defaultValue)) ? p.defaultValue : 0}"
-                   oninput="bldrModalSetField('defaultValue',this.value)">
-          </div>
-          <div class="field">
-            <label>Cost per Step (AP)</label>
-            <input type="number" step="0.5"
-                   value="${Number.isFinite(parseFloat(p.deltaCost)) ? p.deltaCost : 0}"
-                   oninput="bldrModalSetField('deltaCost',this.value)">
-          </div>
-          <div class="field">
-            <label>Min Value</label>
-            <input type="number" step="any"
-                   value="${Number.isFinite(parseFloat(p.minValue)) ? p.minValue : 0}"
-                   oninput="bldrModalSetField('minValue',this.value)">
-          </div>
-          <div class="field">
-            <label>Max Value <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— blank for no cap</span></label>
-            <input type="number" step="any"
-                   value="${Number.isFinite(parseFloat(p.maxValue)) ? p.maxValue : ''}"
-                   oninput="bldrModalSetField('maxValue',this.value)">
-          </div>
-        </div>
-        <p class="hint" style="margin-top:8px;">
-          The player sets a number within Min–Max. Each step above the default adds
-          Cost-per-Step AP to the Ability's cost.
-        </p>
-      `;
-    } else {
-      const steps = Array.isArray(p.steps) ? p.steps : [];
-      const defaultIdx = (typeof p.defaultStep === 'number' && p.defaultStep >= 0) ? p.defaultStep : 0;
-      area.innerHTML = `
-        <div class="bldr-panel-title" style="margin-top:10px;">Steps</div>
-        <div style="display:grid;grid-template-columns:28px 1fr 100px 100px 32px;gap:6px;font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">
+        <label style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#888;display:block;margin-top:10px;margin-bottom:6px;">Steps</label>
+        <div class="bldr-step-row-head">
           <div style="text-align:center;">Def</div>
           <div>Label</div>
           <div>Value</div>
-          <div>Multiplier</div>
+          <div>${kind === 'primary' ? 'AP Cost' : 'Multiplier'}</div>
           <div></div>
         </div>
         ${steps.map((s, si) => `
           <div class="bldr-step-row">
             <div class="step-default-radio">
-              <input type="radio" name="bldr-modal-default-step"${si === defaultIdx ? ' checked' : ''}
-                     onchange="bldrModalSetField('defaultStep',${si})">
+              <input type="radio" name="bldr-default-${escapeHtmlAttr(p.id || key)}"${si === defIdx ? ' checked' : ''}
+                     onchange="bldrParamSetField('${kind}', ${idx}, 'defaultStep', ${si})">
             </div>
-            <input type="text" placeholder="e.g. Touch, 30ft, 100ft"
+            <input type="text" placeholder="${kind === 'primary' ? 'e.g. 1d6, +2, Heavy' : 'e.g. Touch, 30ft'}"
                    value="${escapeHtmlAttr(s.label || '')}"
-                   oninput="bldrModalSetStep(${si},'label',this.value)">
-            <input type="text" placeholder="e.g. 30"
+                   oninput="bldrStepSetField('${kind}', ${idx}, ${si}, 'label', this.value)">
+            <input type="text" placeholder="${kind === 'primary' ? 'e.g. 6, 30' : 'e.g. 30'}"
                    value="${escapeHtmlAttr(s.value || '')}"
-                   oninput="bldrModalSetStep(${si},'value',this.value)">
-            <input type="number" step="0.1" min="0" placeholder="1.0"
-                   value="${Number.isFinite(parseFloat(s.multiplier)) ? s.multiplier : 1}"
-                   oninput="bldrModalSetStep(${si},'multiplier',this.value)">
+                   oninput="bldrStepSetField('${kind}', ${idx}, ${si}, 'value', this.value)">
+            <input type="number" step="0.5" placeholder="${kind === 'primary' ? '0' : '1.0'}"
+                   value="${(s.cost !== undefined && s.cost !== null && s.cost !== '') ? s.cost : (kind === 'primary' ? 0 : 1)}"
+                   oninput="bldrStepSetField('${kind}', ${idx}, ${si}, 'cost', this.value)">
             <button class="row-x" type="button" title="Delete step"
-                    onclick="bldrModalDeleteStep(${si})">×</button>
+                    onclick="bldrStepDelete('${kind}', ${idx}, ${si})">×</button>
           </div>
         `).join('')}
-        <button class="btn small" type="button" style="margin-top:6px;"
-                onclick="bldrModalAddStep()">+ Add Step</button>
-        <p class="hint" style="margin-top:10px;">
-          Each step's multiplier is applied to the Ability's total cost when the player picks that step.
-          The radio button marks the default step.
+        <button class="btn small" type="button" style="margin-top:6px;width:100%;"
+                onclick="bldrStepAdd('${kind}', ${idx})">+ Add Step</button>
+
+        <p class="hint" style="margin-top:10px;font-size:11px;">
+          ${kind === 'primary'
+            ? 'Each step adds its AP cost to the Builder when the player picks it. The radio marks the default step.'
+            : 'Each step multiplies the Builder\'s total cost when the player picks it (1.0 = no change, 1.5 = +50%, 0.75 = -25%). The radio marks the default step.'}
         </p>
-      `;
-    }
+      </div>
+    ` : '';
+
+    return `<div class="bldr-param-card${expanded ? ' expanded' : ''}">${head}${body}</div>`;
   }
 
-  // Modal field setters — the underlying mutation goes through the
-  // existing per-kind handlers (catBldrSetPrimary / catBldrSetSecondary)
-  // for fields, and catBldrAddStep / catBldrSetStep / catBldrDeleteStep
-  // for secondary param steps.
-  window.bldrModalSetField = function(field, value) {
-    if (!bldrModalState) return;
-    if (bldrModalState.kind === 'primary') {
-      window.catBldrSetPrimary(bldrModalState.idx, field, value);
-    } else {
-      window.catBldrSetSecondary(bldrModalState.idx, field, value);
-    }
-    // Some field changes affect the live preview (cost, default, etc.)
-    renderBuilderPreview();
+  // ── PARAMETER WINDOW HANDLERS ──
+
+  // Toggle a param card's expanded state. Tracked in expandedParamKeys
+  // so re-renders preserve which rows are open.
+  window.bldrToggleParam = function(kind, idx) {
+    const key = paramKey(kind, idx);
+    if (expandedParamKeys.has(key)) expandedParamKeys.delete(key);
+    else                            expandedParamKeys.add(key);
+    renderBldrParamsList();
   };
 
-  window.bldrModalAddStep = function() {
-    if (!bldrModalState || bldrModalState.kind !== 'secondary') return;
-    window.catBldrAddStep(bldrModalState.idx);
-    renderBldrModalStepsArea();
-    renderBuilderPreview();
-  };
-
-  window.bldrModalDeleteStep = function(stepIdx) {
-    if (!bldrModalState || bldrModalState.kind !== 'secondary') return;
-    window.catBldrDeleteStep(bldrModalState.idx, stepIdx);
-    renderBldrModalStepsArea();
-    renderBuilderPreview();
-  };
-
-  window.bldrModalSetStep = function(stepIdx, field, value) {
-    if (!bldrModalState || bldrModalState.kind !== 'secondary') return;
-    window.catBldrSetStep(bldrModalState.idx, stepIdx, field, value);
-    renderBuilderPreview();
-  };
-
-  // Convert a parameter between Primary (flat) and Secondary (multiplier)
-  // kinds. The legacy data model stores them in two separate arrays;
-  // the conversion moves the record between arrays, attempting to
-  // preserve the name + token.
-  window.bldrModalChangeKind = function(newKind) {
-    if (!bldrModalState) return;
+  // Add a new parameter. Defaults to Primary kind with one empty step,
+  // and auto-expands it so the GM can fill in details.
+  window.bldrAddParam = function() {
     const b = getOpenedBuilder();
     if (!b) return;
-    const oldKind = bldrModalState.kind;
-    if (oldKind === newKind) return;
-    const srcArr = oldKind === 'primary' ? b.primaryParams : b.secondaryParams;
-    if (!Array.isArray(srcArr) || !srcArr[bldrModalState.idx]) return;
-    const old = srcArr[bldrModalState.idx];
-
-    if (newKind === 'primary') {
-      // Going Secondary → Primary: discard steps array, default to
-      // 0 baseline, 0 cost/step. GM can re-tune.
-      const moved = {
-        id: old.id, name: old.name || '', token: old.token || '',
-        defaultValue: 0, minValue: 0, maxValue: null, deltaCost: 0
-      };
-      if (!Array.isArray(b.primaryParams)) b.primaryParams = [];
-      b.primaryParams.push(moved);
-      srcArr.splice(bldrModalState.idx, 1);
-      bldrModalState = { kind: 'primary', idx: b.primaryParams.length - 1 };
-    } else {
-      // Going Primary → Secondary: seed with one empty step.
-      const moved = {
-        id: old.id, name: old.name || '', token: old.token || '',
-        steps: [{ label: '', value: '', multiplier: 1 }],
-        defaultStep: 0
-      };
-      if (!Array.isArray(b.secondaryParams)) b.secondaryParams = [];
-      b.secondaryParams.push(moved);
-      srcArr.splice(bldrModalState.idx, 1);
-      bldrModalState = { kind: 'secondary', idx: b.secondaryParams.length - 1 };
-    }
-    renderBldrParamModal();
+    if (!Array.isArray(b.primaryParams)) b.primaryParams = [];
+    b.primaryParams.push({
+      id: 'pp_' + Math.random().toString(36).slice(2, 10),
+      name: '',
+      token: '',
+      description: '',
+      steps: [{ label: '', value: '', cost: 0 }],
+      defaultStep: 0
+    });
+    const newIdx = b.primaryParams.length - 1;
+    expandedParamKeys.add(paramKey('primary', newIdx));
     renderBldrParamsList();
+    renderBuilderPreview();
+  };
+
+  window.bldrDeleteParam = function(kind, idx) {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const arr = kind === 'primary' ? b.primaryParams : b.secondaryParams;
+    if (!Array.isArray(arr) || !arr[idx]) return;
+    const name = arr[idx].name || 'this parameter';
+    if (!confirm(`Delete parameter "${name}"? Player Abilities referencing it will fall back to default.`)) return;
+    arr.splice(idx, 1);
+    // Drop expanded state for this key + shift down any keys above it
+    const newSet = new Set();
+    expandedParamKeys.forEach(key => {
+      const [k, i] = key.split(':');
+      const ii = parseInt(i, 10);
+      if (k !== kind) { newSet.add(key); return; }
+      if (ii < idx) { newSet.add(key); return; }
+      if (ii === idx) return;  // dropped param; drop its expanded state too
+      newSet.add(paramKey(k, ii - 1));  // shift down
+    });
+    expandedParamKeys.clear();
+    newSet.forEach(k => expandedParamKeys.add(k));
+    renderBldrParamsList();
+    renderBuilderPreview();
+  };
+
+  // Set a top-level field on a param (name, token, defaultStep). Routes
+  // to the existing legacy per-kind handlers which mutate state in place.
+  window.bldrParamSetField = function(kind, idx, field, value) {
+    if (kind === 'primary') window.catBldrSetPrimary(idx, field, value);
+    else                    window.catBldrSetSecondary(idx, field, value);
+    // defaultStep needs the cards re-rendered so the radio button moves
+    // and the head summary updates. Other fields are inline-bound, no
+    // re-render needed beyond cost preview.
+    if (field === 'defaultStep' || field === 'name') {
+      renderBldrParamsList();
+    }
+    renderBuilderPreview();
+  };
+
+  // Convert a parameter between Primary (flat) and Secondary (multiplier).
+  // Same step shape — just moves the record between arrays.
+  window.bldrParamChangeKind = function(oldKind, idx, newKind) {
+    if (oldKind === newKind) return;
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const srcArr = oldKind === 'primary' ? b.primaryParams : b.secondaryParams;
+    if (!Array.isArray(srcArr) || !srcArr[idx]) return;
+    const moved = srcArr[idx];
+    const dstArr = newKind === 'primary' ? (b.primaryParams = b.primaryParams || []) : (b.secondaryParams = b.secondaryParams || []);
+    dstArr.push(moved);
+    srcArr.splice(idx, 1);
+    // Update expanded-keys tracking — old key gone, new key open.
+    expandedParamKeys.delete(paramKey(oldKind, idx));
+    expandedParamKeys.add(paramKey(newKind, dstArr.length - 1));
+    // Shift down any expanded keys in the source kind that were above idx
+    const newSet = new Set();
+    expandedParamKeys.forEach(key => {
+      const [k, i] = key.split(':');
+      const ii = parseInt(i, 10);
+      if (k !== oldKind) { newSet.add(key); return; }
+      if (ii < idx) { newSet.add(key); return; }
+      if (ii === idx) return;
+      newSet.add(paramKey(k, ii - 1));
+    });
+    expandedParamKeys.clear();
+    newSet.forEach(k => expandedParamKeys.add(k));
+    renderBldrParamsList();
+    renderBuilderPreview();
+  };
+
+  // ── STEP HANDLERS ──
+
+  window.bldrStepAdd = function(kind, idx) {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const arr = kind === 'primary' ? b.primaryParams : b.secondaryParams;
+    if (!Array.isArray(arr) || !arr[idx]) return;
+    if (!Array.isArray(arr[idx].steps)) arr[idx].steps = [];
+    arr[idx].steps.push({ label: '', value: '', cost: kind === 'primary' ? 0 : 1 });
+    renderBldrParamsList();
+    renderBuilderPreview();
+  };
+
+  window.bldrStepDelete = function(kind, idx, stepIdx) {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const arr = kind === 'primary' ? b.primaryParams : b.secondaryParams;
+    if (!Array.isArray(arr) || !arr[idx]) return;
+    const p = arr[idx];
+    if (!Array.isArray(p.steps) || !p.steps[stepIdx]) return;
+    p.steps.splice(stepIdx, 1);
+    if (typeof p.defaultStep === 'number') {
+      if (p.defaultStep >= p.steps.length) p.defaultStep = Math.max(0, p.steps.length - 1);
+    }
+    renderBldrParamsList();
+    renderBuilderPreview();
+  };
+
+  window.bldrStepSetField = function(kind, idx, stepIdx, field, value) {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const arr = kind === 'primary' ? b.primaryParams : b.secondaryParams;
+    if (!Array.isArray(arr) || !arr[idx]) return;
+    const p = arr[idx];
+    if (!Array.isArray(p.steps) || !p.steps[stepIdx]) return;
+    const s = p.steps[stepIdx];
+    if (field === 'cost') {
+      const n = parseFloat(value);
+      s.cost = Number.isFinite(n) ? n : (kind === 'primary' ? 0 : 1);
+    } else {
+      s[field] = String(value || '');
+    }
+    // We DON'T full-rerender on every keystroke — the input is bound to
+    // s[field] via the value attribute, but since we mutated s in place
+    // the next user keystroke writes to the still-current input. The
+    // cost preview pill needs an update though.
     renderBuilderPreview();
   };
 
@@ -1809,13 +1643,10 @@
     b.primaryParams.push({
       id: 'pp_' + Math.random().toString(36).slice(2, 10),
       name: '',
+      token: '',
       description: '',
-      defaultValue: 0,
-      minValue: 0,
-      maxValue: 100,
-      stepCost: 1,
-      displayUnit: '',
-      token: ''
+      steps: [{ label: '', value: '', cost: 0 }],
+      defaultStep: 0
     });
     renderBuilderEditor();
   };
@@ -1833,7 +1664,11 @@
     const b = getOpenedBuilder();
     if (!b || !Array.isArray(b.primaryParams) || !b.primaryParams[idx]) return;
     const p = b.primaryParams[idx];
-    if (field === 'defaultValue' || field === 'minValue' || field === 'maxValue' || field === 'stepCost') {
+    if (field === 'defaultStep') {
+      const n = parseInt(value, 10);
+      p.defaultStep = Number.isFinite(n) ? Math.max(0, n) : 0;
+    } else if (field === 'defaultValue' || field === 'minValue' || field === 'maxValue' || field === 'stepCost') {
+      // Legacy fields — kept for any old callers; new param shape ignores them.
       const n = parseFloat(value);
       p[field] = Number.isFinite(n) ? n : 0;
     } else {
@@ -1851,11 +1686,10 @@
     b.secondaryParams.push({
       id: 'sp_' + Math.random().toString(36).slice(2, 10),
       name: '',
+      token: '',
       description: '',
-      defaultStepIndex: 0,
-      steps: [{ value: 0, label: 'Default', multiplier: 1.0 }],
-      displayUnit: '',
-      token: ''
+      steps: [{ label: '', value: '', cost: 1 }],
+      defaultStep: 0
     });
     renderBuilderEditor();
   };
@@ -1873,9 +1707,12 @@
     const b = getOpenedBuilder();
     if (!b || !Array.isArray(b.secondaryParams) || !b.secondaryParams[idx]) return;
     const p = b.secondaryParams[idx];
-    if (field === 'defaultStepIndex') {
-      const n = parseInt(value);
-      p.defaultStepIndex = Number.isFinite(n) ? Math.max(0, n) : 0;
+    if (field === 'defaultStep' || field === 'defaultStepIndex') {
+      // Both names accepted; canonical field is defaultStep.
+      const n = parseInt(value, 10);
+      p.defaultStep = Number.isFinite(n) ? Math.max(0, n) : 0;
+      // Drop the legacy alias if present
+      delete p.defaultStepIndex;
     } else {
       p[field] = String(value || '');
     }
