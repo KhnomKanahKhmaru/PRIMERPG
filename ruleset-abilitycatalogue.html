@@ -265,9 +265,18 @@
     .ability-tile-head {
       display: flex; align-items: flex-start; gap: 10px;
     }
-    .ability-tile-icon {
+    /* Icons may have a near-black baked-in border that screen-blend
+       can't fully drop. Scaling the inner image past 100% combined
+       with overflow:hidden on a flex-centered container clips that
+       outer ring off cleanly. */
+    .ability-tile-icon-wrap {
       flex: 0 0 auto;
       width: 36px; height: 36px;
+      overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .ability-tile-icon {
+      width: 120%; height: 120%;
       object-fit: contain;
       mix-blend-mode: screen;
     }
@@ -336,7 +345,7 @@
       background: #0a0a06;
     }
     .bldr-head-icon img {
-      width: 100%; height: 100%;
+      width: 120%; height: 120%;
       object-fit: contain;
       display: block;
       mix-blend-mode: screen;
@@ -432,9 +441,14 @@
       margin-bottom: 4px;
     }
     .bldr-card-head-row .bldr-card-name { margin-bottom: 0; flex: 1; min-width: 0; }
-    .bldr-card-icon {
+    .bldr-card-icon-wrap {
       flex: 0 0 auto;
       width: 48px; height: 48px;
+      overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .bldr-card-icon {
+      width: 120%; height: 120%;
       object-fit: contain;
       mix-blend-mode: screen;
     }
@@ -1559,7 +1573,7 @@
           // contain so freeform shapes (rectangles, SVGs) don't get
           // squished. No icon ⇒ row collapses gracefully.
           const iconThumb = (builder.iconUrl && builder.iconUrl.trim())
-            ? `<img class="ability-tile-icon" src="${escapeHtmlAttr(builder.iconUrl)}" alt="">`
+            ? `<div class="ability-tile-icon-wrap"><img class="ability-tile-icon" src="${escapeHtmlAttr(builder.iconUrl)}" alt=""></div>`
             : '';
 
           const nameHtml = builder.name
@@ -2671,7 +2685,7 @@
     // Icon + Name row at the top. Icon ~48px on the left, name beside
     // it. Mirrors the player-facing Card on character.html.
     const iconImg = (b.iconUrl && b.iconUrl.trim())
-      ? `<img class="bldr-card-icon" src="${escapeHtmlAttr(b.iconUrl)}" alt="">`
+      ? `<div class="bldr-card-icon-wrap"><img class="bldr-card-icon" src="${escapeHtmlAttr(b.iconUrl)}" alt=""></div>`
       : '';
     const nameInner = b.name
       ? escapeHtml(b.name)
