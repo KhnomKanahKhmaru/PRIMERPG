@@ -7233,6 +7233,41 @@
   // On save we either push (create) or replace (edit) and persist.
   let abilitiesBuilderSession = null;
 
+  // Per-session collapse state for sections and tier bands in the
+  // Edit modal. Keys:
+  //   'identity', 'activation', 'primary', 'secondary',
+  //   'features', 'flaws', 'systemtext'         — section headers
+  //   'features:minor', 'features:moderate', …  — feature tier bands
+  //   'flaws:minor', 'flaws:moderate', …        — flaw tier bands
+  // Collapsed iff present in the set. Reset whenever the modal opens
+  // fresh (in abilitiesBuilderEdit / abilitiesBuilderNew handlers below).
+  // The toggle handlers route through partial-render helpers so opening
+  // /closing a section doesn't scroll the viewport.
+  const abilitiesBuilderCollapsed = new Set();
+  window.abilitiesBuilderToggleSection = function(sectionKey) {
+    if (abilitiesBuilderCollapsed.has(sectionKey)) abilitiesBuilderCollapsed.delete(sectionKey);
+    else                                            abilitiesBuilderCollapsed.add(sectionKey);
+    // Section toggle: which partial host to refresh? Map known keys
+    // to refresh helpers; 'systemtext' uses its existing helper, the
+    // rest just re-render the modal's body — but since this is a
+    // user-driven click (and we're not in mid-typing), a focused
+    // partial refresh per section keeps scroll position stable.
+    if (sectionKey === 'features')        refreshAbilitiesBuilderFeatures();
+    else if (sectionKey === 'flaws')      refreshAbilitiesBuilderFlaws();
+    else if (sectionKey === 'activation') refreshAbilitiesBuilderActivation();
+    else if (sectionKey === 'systemtext') renderAbilitiesBuilderSystemText();
+    else                                   renderAbilitiesBuilderUI();
+  };
+  window.abilitiesBuilderToggleTier = function(scopeKey) {
+    // scopeKey is e.g. 'features:moderate' or 'flaws:major'
+    if (abilitiesBuilderCollapsed.has(scopeKey)) abilitiesBuilderCollapsed.delete(scopeKey);
+    else                                          abilitiesBuilderCollapsed.add(scopeKey);
+    // Tier-band toggles only ever appear inside features/flaws
+    // sections, so refresh the right host.
+    if (scopeKey.startsWith('features:')) refreshAbilitiesBuilderFeatures();
+    else                                   refreshAbilitiesBuilderFlaws();
+  };
+
   window.abilitiesOpenBrowser = function() {
     if (!canEdit) return;
     const cat = activeRuleset && activeRuleset.abilityCatalogue;
@@ -7266,6 +7301,7 @@
     }
     // Close browser; open Builder UI.
     abilitiesBrowserOpen = false;
+    abilitiesBuilderCollapsed.clear();
     abilitiesBuilderSession = {
       mode: 'create',
       builderId,
@@ -7299,6 +7335,7 @@
       alert('Cannot edit — the Builder this Ability references no longer exists in the ruleset.');
       return;
     }
+    abilitiesBuilderCollapsed.clear();
     abilitiesBuilderSession = {
       mode: 'edit',
       builderId: abl.builderId,
@@ -7543,33 +7580,37 @@
   }
 
   function renderAbilitiesBuilderIdentitySection(inst) {
+    const collapsed = abilitiesBuilderIsCollapsed('identity');
+    const body = collapsed ? '' : `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div class="field">
+          <label>Name</label>
+          <input type="text" value="${escapeHtml(inst.name || '')}"
+                 placeholder="e.g. Sun-Kissed Lance"
+                 oninput="abilitiesBuilderSetField('name',this.value)">
+        </div>
+        <div class="field">
+          <label>Tagline (optional)</label>
+          <input type="text" value="${escapeHtml(inst.tagline || '')}"
+                 placeholder="A short quip or motto"
+                 oninput="abilitiesBuilderSetField('tagline',this.value)">
+        </div>
+      </div>
+      <div class="field" style="margin-top:8px;">
+        <label>Visual (optional)</label>
+        <textarea rows="2" placeholder="What does this Ability look like in play?"
+                  oninput="abilitiesBuilderSetField('visual',this.value)">${escapeHtml(inst.visual || '')}</textarea>
+      </div>
+      <div class="field" style="margin-top:8px;">
+        <label>Prose (optional, hidden by default on the Card)</label>
+        <textarea rows="2" placeholder="Inspiration, metapsychics, lore, anything"
+                  oninput="abilitiesBuilderSetField('prose',this.value)">${escapeHtml(inst.prose || '')}</textarea>
+      </div>
+    `;
     return `
       <div style="border:1px solid #1f1f1f;border-radius:4px;padding:12px;background:#0d0d0d;">
-        <h4 style="margin:0 0 10px;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">Identity</h4>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-          <div class="field">
-            <label>Name</label>
-            <input type="text" value="${escapeHtml(inst.name || '')}"
-                   placeholder="e.g. Sun-Kissed Lance"
-                   oninput="abilitiesBuilderSetField('name',this.value)">
-          </div>
-          <div class="field">
-            <label>Tagline (optional)</label>
-            <input type="text" value="${escapeHtml(inst.tagline || '')}"
-                   placeholder="A short quip or motto"
-                   oninput="abilitiesBuilderSetField('tagline',this.value)">
-          </div>
-        </div>
-        <div class="field" style="margin-top:8px;">
-          <label>Visual (optional)</label>
-          <textarea rows="2" placeholder="What does this Ability look like in play?"
-                    oninput="abilitiesBuilderSetField('visual',this.value)">${escapeHtml(inst.visual || '')}</textarea>
-        </div>
-        <div class="field" style="margin-top:8px;">
-          <label>Prose (optional, hidden by default on the Card)</label>
-          <textarea rows="2" placeholder="Inspiration, metapsychics, lore, anything"
-                    oninput="abilitiesBuilderSetField('prose',this.value)">${escapeHtml(inst.prose || '')}</textarea>
-        </div>
+        ${sectionHeaderHtml('identity', 'Identity', '')}
+        ${body}
       </div>
     `;
   }
@@ -7665,16 +7706,20 @@
       ? `<div style="margin-top:10px;font-size:11px;color:#d8a060;">Pick the missing slot${(s1NeedsPick && s2NeedsPick) ? 's' : ''} to resolve {ACTIVATION_ROLL} in your System text.</div>`
       : `<div style="margin-top:10px;font-size:11px;color:#888;">{ACTIVATION_ROLL} will resolve to the line above when this Ability is rendered.</div>`;
 
+    const collapsed = abilitiesBuilderIsCollapsed('activation');
+    const body = collapsed ? '' : `
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px;color:#c8c8c8;">
+        ${s1Html}
+        <span style="color:#666;">+</span>
+        ${s2Html}
+        <span style="color:#666;">+ STATMOD</span>
+      </div>
+      ${reminder}
+    `;
     return `
       <div style="border:1px solid #1f1f1f;border-radius:4px;padding:12px;background:#0d0d0d;">
-        <h4 style="margin:0 0 10px;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">Activation Roll</h4>
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px;color:#c8c8c8;">
-          ${s1Html}
-          <span style="color:#666;">+</span>
-          ${s2Html}
-          <span style="color:#666;">+ STATMOD</span>
-        </div>
-        ${reminder}
+        ${sectionHeaderHtml('activation', 'Activation Roll', '')}
+        ${body}
       </div>
     `;
   }
@@ -7682,10 +7727,15 @@
   function renderAbilitiesBuilderPrimarySection(builder, inst) {
     const params = Array.isArray(builder.primaryParams) ? builder.primaryParams : [];
     if (params.length === 0) return '';
+    const collapsed = abilitiesBuilderIsCollapsed('primary');
     let html = `
       <div style="border:1px solid #1f1f1f;border-radius:4px;padding:12px;background:#0d0d0d;">
-        <h4 style="margin:0 0 10px;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">Primary Parameters <span style="color:#666;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;">— flat AP cost per step from default</span></h4>
+        ${sectionHeaderHtml('primary', 'Primary Parameters', '— flat AP cost per step from default')}
     `;
+    if (collapsed) {
+      html += '</div>';
+      return html;
+    }
     params.forEach(p => {
       const def = Number.isFinite(p.defaultValue) ? p.defaultValue : 0;
       const min = Number.isFinite(p.minValue) ? p.minValue : 0;
@@ -7716,10 +7766,15 @@
   function renderAbilitiesBuilderSecondarySection(builder, inst) {
     const params = Array.isArray(builder.secondaryParams) ? builder.secondaryParams : [];
     if (params.length === 0) return '';
+    const collapsed = abilitiesBuilderIsCollapsed('secondary');
     let html = `
       <div style="border:1px solid #1f1f1f;border-radius:4px;padding:12px;background:#0d0d0d;">
-        <h4 style="margin:0 0 10px;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">Secondary Parameters <span style="color:#666;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;">— multiplier on total cost</span></h4>
+        ${sectionHeaderHtml('secondary', 'Secondary Parameters', '— multiplier on total cost')}
     `;
+    if (collapsed) {
+      html += '</div>';
+      return html;
+    }
     params.forEach(p => {
       const steps = Array.isArray(p.steps) ? p.steps : [];
       const defaultIdx = Number.isFinite(p.defaultStepIndex) ? p.defaultStepIndex : 0;
@@ -7774,21 +7829,22 @@
 
     let html = `
       <div style="border:1px solid #1f1f1f;border-radius:4px;padding:12px;background:#0d0d0d;">
-        <h4 style="margin:0 0 10px;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">Features <span style="color:#666;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;">— pay AP to take</span></h4>
+        ${sectionHeaderHtml('features', 'Features', '— pay AP to take')}
     `;
+    if (abilitiesBuilderIsCollapsed('features')) {
+      html += '</div>';
+      return html;
+    }
     TIER_ORDER.forEach(tier => {
       const list = byTier[tier];
       if (!list || list.length === 0) return;
       const cost = Number.isFinite(featureCosts[tier]) ? featureCosts[tier] : 0;
-      // Tier band header — small, all-caps, with the AP cost on the
-      // right. Same styling vocabulary as the GM-side editor's tier
-      // bands so the two editors feel like one product.
-      html += `
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid #1a1a1a;">
-          <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#aaa;">${TIER_LABELS[tier]}</span>
-          <span style="font-size:10px;color:#666;font-family:'Consolas','Courier New',monospace;">+${cost} AP each</span>
-        </div>
-      `;
+      const tierKey = 'features:' + tier;
+      const tierCollapsed = abilitiesBuilderIsCollapsed(tierKey);
+      // Tier band header — clickable, with caret + AP cost.
+      html += tierHeaderHtml(tierKey, TIER_LABELS[tier],
+        `<span style="font-size:10px;color:#666;font-family:'Consolas','Courier New',monospace;">+${cost} AP each</span>`);
+      if (tierCollapsed) return;
       list.forEach(f => {
         const isOn = selected.has(f.id);
         const cf = (f.customField && typeof f.customField === 'object') ? f.customField : { enabled: false, label: '' };
@@ -7841,18 +7897,21 @@
 
     let html = `
       <div style="border:1px solid #1f1f1f;border-radius:4px;padding:12px;background:#0d0d0d;">
-        <h4 style="margin:0 0 10px;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">Flaws <span style="color:#666;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;">— get AP back for taking</span></h4>
+        ${sectionHeaderHtml('flaws', 'Flaws', '— get AP back for taking')}
     `;
+    if (abilitiesBuilderIsCollapsed('flaws')) {
+      html += '</div>';
+      return html;
+    }
     TIER_ORDER.forEach(tier => {
       const list = byTier[tier];
       if (!list || list.length === 0) return;
       const refund = Number.isFinite(flawRefunds[tier]) ? flawRefunds[tier] : 0;
-      html += `
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid #1a1a1a;">
-          <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#aaa;">${TIER_LABELS[tier]}</span>
-          <span style="font-size:10px;color:#666;font-family:'Consolas','Courier New',monospace;">−${refund} AP each</span>
-        </div>
-      `;
+      const tierKey = 'flaws:' + tier;
+      const tierCollapsed = abilitiesBuilderIsCollapsed(tierKey);
+      html += tierHeaderHtml(tierKey, TIER_LABELS[tier],
+        `<span style="font-size:10px;color:#666;font-family:'Consolas','Courier New',monospace;">−${refund} AP each</span>`);
+      if (tierCollapsed) return;
       list.forEach(f => {
         const isOn = selected.has(f.id);
         const cf = (f.customField && typeof f.customField === 'object') ? f.customField : { enabled: false, label: '' };
@@ -7887,18 +7946,22 @@
   function renderAbilitiesBuilderSystemTextSection(builder, inst) {
     const generated = charAbilities.renderSystemText(builder, { ...inst, systemTextOverride: '' }, { charData, ruleset: activeRuleset });
     const hasOverride = !!(inst.systemTextOverride && inst.systemTextOverride.trim());
+    const collapsed = abilitiesBuilderIsCollapsed('systemtext');
+    const caret = collapsed ? '▸' : '▾';
     return `
       <div id="abil-builder-systemtext-section" style="border:1px solid #1f1f1f;border-radius:4px;padding:12px;background:#0d0d0d;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-          <h4 style="margin:0;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">System Text</h4>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${collapsed ? '0' : '8px'};">
+          <h4 onclick="abilitiesBuilderToggleSection('systemtext')"
+              style="margin:0;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;display:flex;align-items:center;gap:8px;user-select:none;">
+            <span style="color:#666;font-size:10px;width:10px;text-align:center;">${caret}</span>
+            <span>System Text</span>
+          </h4>
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;color:#888;">
             <input type="checkbox" ${hasOverride ? 'checked' : ''} onchange="abilitiesBuilderToggleOverride()">
             <span>Override generated text</span>
           </label>
         </div>
-        <div id="abil-builder-systemtext-body">
-          ${renderAbilitiesBuilderSystemTextBody(builder, inst)}
-        </div>
+        ${collapsed ? '' : `<div id="abil-builder-systemtext-body">${renderAbilitiesBuilderSystemTextBody(builder, inst)}</div>`}
       </div>
     `;
   }
@@ -7923,12 +7986,64 @@
   }
 
   function renderAbilitiesBuilderSystemText() {
-    const body = document.getElementById('abil-builder-systemtext-body');
-    if (!body || !abilitiesBuilderSession) return;
+    if (!abilitiesBuilderSession) return;
     const inst = abilitiesBuilderSession.instance;
     const ref = charAbilities.findBuilderById(activeRuleset, inst.builderId);
     if (!ref) return;
-    body.innerHTML = renderAbilitiesBuilderSystemTextBody(ref.builder, inst);
+    // If the section is currently collapsed (or its body element was
+    // removed for any reason), re-render the WHOLE section. Otherwise,
+    // just swap the body HTML (cheap update, preserves any focus
+    // outside the body).
+    const body = document.getElementById('abil-builder-systemtext-body');
+    if (body) {
+      body.innerHTML = renderAbilitiesBuilderSystemTextBody(ref.builder, inst);
+      return;
+    }
+    const sectionEl = document.getElementById('abil-builder-systemtext-section');
+    if (sectionEl) {
+      sectionEl.outerHTML = renderAbilitiesBuilderSystemTextSection(ref.builder, inst);
+    }
+  }
+
+  // ── COLLAPSE / EXPAND HEADER HELPERS ──
+  //
+  // A section header (Identity, Activation Roll, Features, etc.) and
+  // a tier band header (Minor, Moderate, …) share the same toggle UX:
+  // a caret on the left, the title, an optional cost/info span on
+  // the right, and the whole row is clickable to flip collapsed state.
+  // These helpers produce the HTML and tell the caller whether the
+  // body should render below.
+  //
+  // sectionHeaderHtml is for the section level (Features, Flaws, etc.).
+  // tierHeaderHtml is the smaller band header inside Features/Flaws.
+  function abilitiesBuilderIsCollapsed(key) {
+    return abilitiesBuilderCollapsed.has(key);
+  }
+  function sectionHeaderHtml(sectionKey, title, hintHtml) {
+    const collapsed = abilitiesBuilderIsCollapsed(sectionKey);
+    const caret = collapsed ? '▸' : '▾';
+    return `
+      <h4 onclick="abilitiesBuilderToggleSection('${sectionKey}')"
+          style="margin:0 0 ${collapsed ? '0' : '10px'};color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;display:flex;align-items:center;gap:8px;user-select:none;">
+        <span style="color:#666;font-size:10px;width:10px;text-align:center;">${caret}</span>
+        <span>${escapeHtml(title)}</span>
+        ${hintHtml ? `<span style="color:#666;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;">${hintHtml}</span>` : ''}
+      </h4>
+    `;
+  }
+  function tierHeaderHtml(scopeKey, tierLabel, costHtml) {
+    const collapsed = abilitiesBuilderIsCollapsed(scopeKey);
+    const caret = collapsed ? '▸' : '▾';
+    return `
+      <div onclick="abilitiesBuilderToggleTier('${scopeKey}')"
+           style="display:flex;align-items:center;gap:8px;justify-content:space-between;margin-top:8px;margin-bottom:${collapsed ? '0' : '4px'};padding-bottom:4px;border-bottom:1px solid #1a1a1a;cursor:pointer;user-select:none;">
+        <span style="display:flex;align-items:center;gap:8px;">
+          <span style="color:#666;font-size:10px;width:10px;text-align:center;">${caret}</span>
+          <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#aaa;">${escapeHtml(tierLabel)}</span>
+        </span>
+        ${costHtml || ''}
+      </div>
+    `;
   }
 
   // ── PARTIAL RE-RENDER HELPERS ──
