@@ -578,6 +578,130 @@ export function renderSystemText(builder, instance, context) {
   });
 }
 
+// Tiny HTML escape — purpose-built for renderSystemTextHtml. Only
+// escapes the five characters that matter inside element bodies. Keeps
+// this module dependency-free instead of importing a util.
+function escapeForHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// HTML-form of renderSystemText. Identical token resolution, but the
+// final output is HTML-safe AND each substituted token value is wrapped
+// in <strong> tags so it stands out from the surrounding rules text.
+// Caller does NOT escape the result — it is already escape-safe.
+//
+// Override path: when instance.systemTextOverride is set, it's the
+// player's hand-written rules text. We escape it but DON'T wrap any
+// tokens — overrides bypass templating entirely (matching the plain-
+// text version's behavior).
+export function renderSystemTextHtml(builder, instance, context) {
+  if (instance && typeof instance.systemTextOverride === 'string' && instance.systemTextOverride.trim()) {
+    return escapeForHtml(instance.systemTextOverride);
+  }
+  // Reuse the plain-text resolver to get the raw string (which has
+  // already done all the token resolution and stat-value substitution).
+  // Then re-walk the original template to identify which spans were
+  // substituted, escape and bold those, and escape the rest.
+  if (!builder || typeof builder.systemTextTemplate !== 'string' || !builder.systemTextTemplate) {
+    return '';
+  }
+
+  // We need access to the SAME normTokens table renderSystemText built
+  // internally. Easiest path: call renderSystemText to get the resolved
+  // text, then walk the template's {tokenName} positions in lockstep.
+  // For each token position, look up its substituted value (matching
+  // by recomputing the normalized key) and emit `<strong>VALUE</strong>`.
+  // For non-token spans, emit the escaped template text verbatim.
+
+  const tpl = builder.systemTextTemplate;
+
+  // Rebuild the normalized token table using the same logic as
+  // renderSystemText. (Duplicated here to avoid exposing internals;
+  // small enough that the duplication is OK.) If this drifts from
+  // renderSystemText, both will produce different output for the same
+  // input — keep them in sync.
+  const inst = (instance && typeof instance === 'object') ? instance : {};
+  const paramValues = (inst.paramValues && typeof inst.paramValues === 'object') ? inst.paramValues : {};
+  const resolveStep = (p) => {
+    const steps = Array.isArray(p.steps) ? p.steps : [];
+    const defaultIdx = Number.isFinite(p.defaultStep)
+      ? p.defaultStep
+      : (Number.isFinite(p.defaultStepIndex) ? p.defaultStepIndex : 0);
+    const selectedRaw = paramValues[p.id];
+    const idx = Number.isFinite(selectedRaw) ? selectedRaw : defaultIdx;
+    return (idx >= 0 && idx < steps.length) ? steps[idx] : null;
+  };
+  const stepDisplay = (step) => {
+    if (!step) return null;
+    if (step.label) return step.label;
+    if (step.value !== undefined && step.value !== null && step.value !== '') return String(step.value);
+    return null;
+  };
+  const normTokens = {};
+  function normalizeTokenKey(s) {
+    return String(s == null ? '' : s).toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+  function setToken(name, val) {
+    const k = normalizeTokenKey(name);
+    if (k) normTokens[k] = val;
+  }
+  (Array.isArray(builder.primaryParams) ? builder.primaryParams : []).forEach(p => {
+    if (!p || !p.token) return;
+    const disp = stepDisplay(resolveStep(p));
+    if (disp != null) setToken(p.token, disp);
+  });
+  (Array.isArray(builder.secondaryParams) ? builder.secondaryParams : []).forEach(p => {
+    if (!p || !p.token) return;
+    const disp = stepDisplay(resolveStep(p));
+    if (disp != null) setToken(p.token, disp);
+  });
+  const ar = builder.activationRoll;
+  if (ar && ar.enabled) {
+    let arDesc = '';
+    const numeric = resolveActivationRollNumeric(builder, inst, context);
+    if (numeric) {
+      arDesc = numeric;
+    } else if (typeof window !== 'undefined' && typeof window.describeActivationRoll === 'function') {
+      arDesc = window.describeActivationRoll(builder, inst) || '';
+    } else {
+      const choice = (inst && inst.activationRollChoice) || {};
+      const slot1 = ar.slot1 || {};
+      const slot2 = ar.slot2 || {};
+      let s1 = (slot1.mode === 'fixed-stat')
+        ? (slot1.fixedStat || 'STAT')
+        : (choice.slot1 || 'STAT');
+      let s2;
+      if (slot2.mode === 'fixed-stat')        s2 = slot2.fixedStat  || 'STAT';
+      else if (slot2.mode === 'fixed-skill')  s2 = slot2.fixedSkill || 'SKILL';
+      else if (choice.slot2)                  s2 = choice.slot2;
+      else if (slot2.mode === 'any-stat')     s2 = 'STAT';
+      else if (slot2.mode === 'any-skill')    s2 = 'SKILL';
+      else                                    s2 = 'STAT or SKILL';
+      arDesc = `${s1} + ${s2} + STATMOD`;
+    }
+    setToken('ACTIVATION_ROLL', arDesc);
+    setToken('ACTIVATIONROLL',  arDesc);
+  }
+
+  // Walk the template, replacing tokens with bolded HTML.
+  return tpl.replace(/\{([^{}]+)\}|([^{]+)/g, (match, tokenKey, plainText) => {
+    if (tokenKey !== undefined) {
+      const norm = normalizeTokenKey(tokenKey);
+      if (Object.prototype.hasOwnProperty.call(normTokens, norm)) {
+        return `<strong>${escapeForHtml(normTokens[norm])}</strong>`;
+      }
+      // Unknown token — render as escaped literal so GM can spot typos
+      return escapeForHtml(match);
+    }
+    return escapeForHtml(plainText);
+  });
+}
+
 // ─── CHARACTER-SIDE ABILITY ARRAY ACCESS ───
 //
 // Defensive accessor — char.abilities should always be an array but
