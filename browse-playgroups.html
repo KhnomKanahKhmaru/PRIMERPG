@@ -136,7 +136,7 @@
       for (const mDoc of staffSnap.docs) {
         const r = mDoc.data().role;
         if ((r === 'Leader' || r === 'Administrator') && mDoc.data().uid !== currentUser.uid) {
-          await createAlert(db, mDoc.data().uid, `**${currentUsername}** joined your playgroup **${pgName}**.`, `playgroup.html?id=${pgId}`);
+          await createAlert(db, mDoc.data().uid, `**${currentUsername}** joined your playgroup **${pgName}**.`, `playgroup.html?id=${pgId}`, pgId);
         }
       }
 
