@@ -130,6 +130,239 @@
     .empty {
       padding: 12px; text-align: center; color: #666; font-size: 12px;
     }
+
+    /* ═════════ PHASE B — BUILDER EDITOR LAYOUT ═════════ */
+
+    /* Two-column grid for the Builder editor body. Left column holds
+       the Ability Card preview; right column holds the parameters list.
+       On narrow viewports the grid stacks (preview on top). */
+    .bldr-grid-top {
+      display: grid; gap: 14px;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+    @media (max-width: 800px) {
+      .bldr-grid-top { grid-template-columns: 1fr; }
+    }
+
+    /* Two-column grid for Features and Flaws. Same media rule as above. */
+    .bldr-grid-mid {
+      display: grid; gap: 14px;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+    @media (max-width: 800px) {
+      .bldr-grid-mid { grid-template-columns: 1fr; }
+    }
+
+    /* Inner panel — used inside the Builder editor for each of the
+       four primary regions (preview / params / features / flaws). */
+    .bldr-panel {
+      background: #0d0d0d; border: 1px solid #1a1a1a; border-radius: 4px;
+      padding: 12px; min-width: 0;
+    }
+    .bldr-panel-title {
+      font-size: 11px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #888;
+      margin-bottom: 8px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .bldr-panel-title .btn.small { padding: 3px 8px; font-size: 11px; }
+
+    /* Ability Card preview — meant to look like the player-facing card.
+       Slightly different styling from the editor panels so the GM can
+       tell at a glance "this is the OUTPUT, that is the INPUT." */
+    .bldr-card-preview {
+      background: linear-gradient(180deg, #14140e 0%, #0e0e08 100%);
+      border: 1px solid #2a2a20;
+      border-radius: 4px; padding: 14px;
+      min-height: 180px;
+    }
+    .bldr-card-name {
+      font-size: 16px; font-weight: 700; color: #e6e0cc;
+      margin-bottom: 4px;
+    }
+    .bldr-card-cost {
+      display: inline-block; padding: 3px 8px;
+      background: #1a1a14; border: 1px solid #2a2a20;
+      border-radius: 3px; font-size: 11px; color: #d8c060;
+      font-family: 'Consolas', 'Courier New', monospace;
+      margin-bottom: 8px;
+    }
+    .bldr-card-desc {
+      font-size: 12px; color: #999; line-height: 1.5;
+      margin-bottom: 8px;
+    }
+    .bldr-card-system {
+      font-size: 13px; color: #c8c8c8; line-height: 1.55;
+      padding: 8px 10px; background: #0a0a06;
+      border: 1px solid #1a1a14; border-radius: 3px;
+      white-space: pre-wrap;
+    }
+    .bldr-card-empty {
+      color: #555; font-style: italic;
+    }
+
+    /* Param row — shows name + a select previewing default step. Click
+       opens the deeper modal for steps editing. */
+    .bldr-param-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px; background: #111; border: 1px solid #1f1f1f;
+      border-radius: 3px; margin-bottom: 6px;
+      cursor: pointer; transition: border-color 0.1s;
+    }
+    .bldr-param-row:hover { border-color: #2f2f2f; }
+    .bldr-param-name {
+      font-size: 13px; color: #ddd; flex: 1; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .bldr-param-name-empty { color: #555; font-style: italic; }
+    .bldr-param-default {
+      font-size: 11px; color: #888;
+      font-family: 'Consolas', 'Courier New', monospace;
+    }
+    .bldr-param-row .row-x {
+      background: transparent; border: none; color: #c66;
+      font-size: 14px; cursor: pointer; padding: 0 4px;
+    }
+    .bldr-param-row .row-x:hover { color: #f88; }
+
+    /* Tier band — section under Features or Flaws column for a single
+       tier (Minor, Moderate, etc). Heading is muted; rows are stacked
+       below it. */
+    .bldr-tier-band {
+      margin-bottom: 10px;
+    }
+    .bldr-tier-band-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 4px 0 4px 0; margin-bottom: 4px;
+      border-bottom: 1px solid #1f1f1f;
+    }
+    .bldr-tier-band-name {
+      font-size: 11px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #aaa;
+    }
+    .bldr-tier-band-cost {
+      font-size: 10px; color: #666;
+      font-family: 'Consolas', 'Courier New', monospace;
+    }
+
+    /* Feature/flaw row — single auto-growing textarea + tier-move
+       dropdown + delete button. */
+    .bldr-ff-row {
+      display: flex; align-items: stretch; gap: 6px;
+      margin-bottom: 4px;
+    }
+    .bldr-ff-row textarea {
+      flex: 1; resize: vertical; min-height: 32px;
+      background: #111; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 13px;
+      padding: 6px 8px; border-radius: 3px; outline: none;
+    }
+    .bldr-ff-row textarea:focus { border-color: #444; }
+    .bldr-ff-row .ff-tier-move {
+      flex: 0 0 auto; background: #111;
+      border: 1px solid #222; color: #aaa;
+      font-family: inherit; font-size: 11px;
+      padding: 0 6px; border-radius: 3px; outline: none;
+    }
+    .bldr-ff-row .ff-tier-move:focus { border-color: #444; }
+    .bldr-ff-row .row-x {
+      flex: 0 0 auto; background: transparent;
+      border: 1px solid #2a2a2a; color: #c66;
+      font-size: 14px; cursor: pointer; padding: 0 8px;
+      border-radius: 3px;
+    }
+    .bldr-ff-row .row-x:hover { border-color: #4a2a2a; color: #f88; }
+
+    /* System / Visual / Extra section. Stacked, all visible. */
+    .bldr-textarea-section {
+      margin-top: 14px; background: #0d0d0d;
+      border: 1px solid #1a1a1a; border-radius: 4px;
+      padding: 12px;
+    }
+    .bldr-textarea-section + .bldr-textarea-section {
+      margin-top: 10px;
+    }
+    .bldr-textarea-section textarea {
+      width: 100%; min-height: 64px; resize: vertical;
+      background: #111; border: 1px solid #222; color: #e0e0e0;
+      font-family: 'Open Sans', sans-serif; font-size: 13px;
+      padding: 8px 10px; border-radius: 3px; outline: none;
+    }
+    .bldr-textarea-section textarea:focus { border-color: #444; }
+
+    /* Builder header — back link, name as the editable title, AP cost
+       pill on the right. */
+    .bldr-head {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 14px;
+    }
+    .bldr-head-name {
+      flex: 1; min-width: 0;
+      background: transparent; border: none;
+      font-family: inherit; color: #e8e8e8;
+      font-size: 18px; font-weight: 600;
+      padding: 4px 0; outline: none;
+    }
+    .bldr-head-name::placeholder { color: #555; }
+    .bldr-head-name:focus { border-bottom: 1px solid #444; }
+    .bldr-head-cost {
+      flex: 0 0 auto; padding: 6px 12px;
+      background: #1a1a14; border: 1px solid #2a2a20;
+      border-radius: 4px;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 13px; color: #d8c060;
+    }
+
+    /* Modal — for deeper parameter editor. */
+    .bldr-modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000; padding: 20px;
+    }
+    .bldr-modal {
+      background: #0e0e0e; border: 1px solid #2a2a2a;
+      border-radius: 6px; width: 100%; max-width: 640px;
+      max-height: 85vh; display: flex; flex-direction: column;
+    }
+    .bldr-modal-head {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 16px; border-bottom: 1px solid #1a1a1a;
+    }
+    .bldr-modal-title {
+      flex: 1; font-size: 14px; font-weight: 600; color: #e0e0e0;
+    }
+    .bldr-modal-body {
+      flex: 1; padding: 14px 16px; overflow-y: auto;
+    }
+    .bldr-modal-foot {
+      display: flex; justify-content: flex-end; gap: 8px;
+      padding: 10px 16px; border-top: 1px solid #1a1a1a;
+    }
+
+    /* Step row inside the modal — for editing a parameter's individual
+       steps (label / value / cost-delta). Compact horizontal layout. */
+    .bldr-step-row {
+      display: grid;
+      grid-template-columns: 28px 1fr 100px 100px 32px;
+      gap: 6px; align-items: center; margin-bottom: 4px;
+    }
+    .bldr-step-row .step-default-radio {
+      display: flex; align-items: center; justify-content: center;
+    }
+    .bldr-step-row input[type="text"],
+    .bldr-step-row input[type="number"] {
+      background: #111; border: 1px solid #222; color: #e0e0e0;
+      font-family: inherit; font-size: 13px;
+      padding: 5px 8px; border-radius: 3px; outline: none;
+      width: 100%;
+    }
+    .bldr-step-row input:focus { border-color: #444; }
+    .bldr-step-row .row-x {
+      background: transparent; border: 1px solid #2a2a2a;
+      color: #c66; font-size: 14px; cursor: pointer;
+      border-radius: 3px;
+    }
+    .bldr-step-row .row-x:hover { border-color: #4a2a2a; color: #f88; }
   </style>
 </head>
 <body>
@@ -714,6 +947,52 @@
   // Each section has its own add button at the section header; rows
   // include a delete button. Saves happen via the global save button
   // at the bottom of the page (state mutations only here).
+  // ═════════ PHASE B — BUILDER EDITOR ═════════
+  //
+  // The Builder editor replaces the legacy stacked-form layout with a
+  // spatial workspace:
+  //
+  //   ┌─ Header — back link, editable name, live AP cost pill ─┐
+  //   │                                                         │
+  //   │  ┌─ Card preview ─┐  ┌─ Parameters ─┐                   │
+  //   │  │ name           │  │ row …        │                   │
+  //   │  │ AP cost        │  │ row …        │                   │
+  //   │  │ system text    │  │ + Add        │                   │
+  //   │  └────────────────┘  └──────────────┘                   │
+  //   │                                                         │
+  //   │  ┌─ Features ─────┐  ┌─ Flaws ──────┐                   │
+  //   │  │ Minor: rows…   │  │ Minor: rows… │                   │
+  //   │  │ Moderate: rows │  │ Moderate: …  │                   │
+  //   │  │ … all 7 tiers  │  │ … all 7 tiers│                   │
+  //   │  └────────────────┘  └──────────────┘                   │
+  //   │                                                         │
+  //   │  System    [textarea ────────────────────────]          │
+  //   │  Visual    [textarea ────────────────────────]          │
+  //   │  Extra     [textarea ────────────────────────]          │
+  //   └─────────────────────────────────────────────────────────┘
+  //
+  // The card preview reflects the Builder's CURRENT state — its name,
+  // current default param values substituted into systemTemplate, and
+  // the cost computed from current params/features/flaws (with no
+  // player tuning beyond defaults). Updates live on every input.
+  //
+  // Features and Flaws are organized by tier band — each tier is a
+  // sub-section with a "+ Add <Tier>" button. Reordering between
+  // tiers is via a per-row dropdown. Tier costs come from the
+  // canonicalTiers tables at the top of the page; they're shown
+  // next to each tier band header for context.
+  //
+  // Parameters are clickable rows that open a modal for deeper
+  // editing (steps + values + cost-delta + which step is default).
+  // The Primary/Secondary distinction (flat-cost vs multiplier)
+  // is preserved on the param record and is set in the modal.
+
+  const TIER_ORDER = ['minor', 'moderate', 'major', 'massive', 'monumental', 'mega', 'mythical'];
+  const TIER_LABELS = {
+    minor: 'Minor', moderate: 'Moderate', major: 'Major',
+    massive: 'Massive', monumental: 'Monumental', mega: 'Mega', mythical: 'Mythical'
+  };
+
   function renderBuilderEditor() {
     const el = document.getElementById('cat-categories');
     if (!el) return;
@@ -726,437 +1005,647 @@
       return;
     }
 
+    const cat = state.abilityCatalogue || {};
+    const tiers = cat.canonicalTiers || {};
+    const featureCosts = tiers.featureCosts || {};
+    const flawRefunds  = tiers.flawRefunds  || {};
+
     el.innerHTML = '';
     const wrap = document.createElement('div');
-    wrap.style.cssText = 'border:1px solid #2a2a2a;border-radius:4px;background:#0a0a0a;';
 
-    // Header — back button + name preview + live cost pill
+    // Header row
     const head = document.createElement('div');
-    head.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #1a1a1a;background:#0d0d0d;';
+    head.className = 'bldr-head';
     head.innerHTML = `
-      <button class="btn small" onclick="catCloseBuilder()" type="button" style="flex:0 0 auto;">← Back</button>
-      <span style="flex:1;font-weight:600;color:#ddd;font-size:13px;">${escapeHtml(b.name || '(unnamed Builder)')}</span>
-      <span id="abil-bldr-cost-preview" style="flex:0 0 auto;padding:4px 10px;background:#1a1a14;border:1px solid #2a2a20;border-radius:3px;font-size:11px;color:#d8c060;font-family:monospace;">… AP</span>
+      <button class="btn small" type="button" onclick="catCloseBuilder()">← Back</button>
+      <input class="bldr-head-name" type="text"
+             placeholder="(Unnamed Builder)"
+             value="${escapeHtmlAttr(b.name || '')}"
+             oninput="catBldrSetField('name',this.value);renderBuilderPreview();">
+      <span class="bldr-head-cost" id="bldr-cost-pill">… AP</span>
     `;
     wrap.appendChild(head);
 
-    // Basics — name, description, baseCost, systemTextTemplate
-    const basics = document.createElement('div');
-    basics.style.cssText = 'padding:12px 14px;border-bottom:1px solid #1a1a1a;';
-    basics.innerHTML = `
-      <div class="field">
-        <label>Builder Name</label>
-        <input type="text" value="${escapeHtml(b.name || '')}"
-               placeholder="e.g. Fire Bolt, Healing Touch, Quick Reflexes"
-               oninput="catBldrSetField('name',this.value);document.querySelector('#cat-categories .builder-head-name').textContent=this.value||'(unnamed Builder)';">
+    // Top grid — Card preview (left) + Parameters (right)
+    const topGrid = document.createElement('div');
+    topGrid.className = 'bldr-grid-top';
+    topGrid.innerHTML = `
+      <div class="bldr-panel">
+        <div class="bldr-panel-title">Ability Card Preview</div>
+        <div id="bldr-card-preview" class="bldr-card-preview"></div>
       </div>
-      <div class="field">
-        <label>Description (shown to Players selecting this Builder)</label>
-        <textarea rows="2" oninput="catBldrSetField('description',this.value)"
-                  placeholder="Short description of what the Ability does. The Player picks this Builder by browsing the catalogue, so make it clear.">${escapeHtml(b.description || '')}</textarea>
-      </div>
-      <div style="display:grid;grid-template-columns:160px 1fr;gap:14px;">
-        <div class="field">
-          <label>Base Cost (AP)</label>
-          <input type="number" min="0" step="1" value="${Number.isFinite(b.baseCost) ? b.baseCost : 0}"
-                 oninput="catBldrSetField('baseCost',this.value)">
+      <div class="bldr-panel">
+        <div class="bldr-panel-title">
+          <span>Parameters</span>
+          <button class="btn small" type="button" onclick="bldrAddParam()">+ Add Parameter</button>
         </div>
-        <div class="field">
-          <label>System Text Template <span class="hint" style="margin-left:6px;">Use {token} placeholders to substitute parameter values.</span></label>
-          <textarea rows="2" oninput="catBldrSetField('systemTextTemplate',this.value)"
-                    placeholder="e.g. Deals {damage}d10 fire damage to a target within {range}.">${escapeHtml(b.systemTextTemplate || '')}</textarea>
+        <div id="bldr-params-list"></div>
+        <div class="hint" style="margin:8px 0 0 0;font-size:11px;">
+          Click a parameter to edit its steps, values, and per-step cost.
         </div>
       </div>
     `;
-    wrap.appendChild(basics);
+    wrap.appendChild(topGrid);
 
-    // Primary parameters
-    wrap.appendChild(buildPrimaryParamsSection(b));
-    // Secondary parameters
-    wrap.appendChild(buildSecondaryParamsSection(b));
-    // Features
-    wrap.appendChild(buildFeaturesSection(b));
-    // Flaws
-    wrap.appendChild(buildFlawsSection(b));
+    // Mid grid — Features (left) + Flaws (right)
+    const midGrid = document.createElement('div');
+    midGrid.className = 'bldr-grid-mid';
+    midGrid.style.marginTop = '14px';
+    midGrid.innerHTML = `
+      <div class="bldr-panel">
+        <div class="bldr-panel-title">Features <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— player pays AP to take</span></div>
+        <div id="bldr-features-list"></div>
+      </div>
+      <div class="bldr-panel">
+        <div class="bldr-panel-title">Flaws <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— player gets AP back</span></div>
+        <div id="bldr-flaws-list"></div>
+      </div>
+    `;
+    wrap.appendChild(midGrid);
+
+    // Description, base cost, system template — these are inputs that
+    // drive the preview but aren't part of the spatial layout per
+    // the sketch. They live in the System/Visual/Extra stack below.
+    // Specifically:
+    //   • description → above the System textarea (it's the catalogue-
+    //     browser blurb, not part of the card)
+    //   • baseCost → small box near the cost pill in the header? We
+    //     keep it inline next to the System template input since
+    //     they're tightly related authoring-wise.
+    //   • systemTextTemplate → IS the System textarea
+    //   • visualPrompt → IS the Visual textarea
+    //   • extra → IS the Extra textarea
+    //
+    // Description gets its own slim section above System.
+
+    const descSection = document.createElement('div');
+    descSection.className = 'bldr-textarea-section';
+    descSection.style.marginTop = '14px';
+    descSection.innerHTML = `
+      <div class="bldr-panel-title">Description <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— shown to players in the catalogue browser</span></div>
+      <textarea rows="2"
+                placeholder="Short description of what this Ability does. Players see this when picking the Builder."
+                oninput="catBldrSetField('description',this.value)">${escapeHtml(b.description || '')}</textarea>
+      <div style="display:grid;grid-template-columns:160px 1fr;gap:14px;margin-top:10px;">
+        <div class="field" style="margin:0;">
+          <label>Base Cost (AP)</label>
+          <input type="number" min="0" step="1"
+                 value="${Number.isFinite(b.baseCost) ? b.baseCost : 0}"
+                 oninput="catBldrSetField('baseCost',this.value);renderBuilderPreview();">
+        </div>
+        <div></div>
+      </div>
+    `;
+    wrap.appendChild(descSection);
+
+    // System template
+    const sysSection = document.createElement('div');
+    sysSection.className = 'bldr-textarea-section';
+    sysSection.innerHTML = `
+      <div class="bldr-panel-title">System <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— rules text. Use {paramId} placeholders to substitute parameter values.</span></div>
+      <textarea rows="3"
+                placeholder="e.g. Spend an Action and {activationCost}; deal {damage} fire damage to a target within {range}."
+                oninput="catBldrSetField('systemTextTemplate',this.value);renderBuilderPreview();">${escapeHtml(b.systemTextTemplate || '')}</textarea>
+    `;
+    wrap.appendChild(sysSection);
+
+    // Visual prompt
+    const visSection = document.createElement('div');
+    visSection.className = 'bldr-textarea-section';
+    visSection.innerHTML = `
+      <div class="bldr-panel-title">Visual <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— guideline for what the player should depict (icon, sketch, full art, etc.)</span></div>
+      <textarea rows="2"
+                placeholder="e.g. A small icon depicting a flame in the player's hand."
+                oninput="catBldrSetField('visualPrompt',this.value)">${escapeHtml(b.visualPrompt || '')}</textarea>
+    `;
+    wrap.appendChild(visSection);
+
+    // Extra
+    const extraSection = document.createElement('div');
+    extraSection.className = 'bldr-textarea-section';
+    extraSection.innerHTML = `
+      <div class="bldr-panel-title">Extra <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— metapsychic, background, lore, anything that doesn't fit elsewhere</span></div>
+      <textarea rows="3"
+                placeholder="Optional. Free-form notes about this Builder."
+                oninput="catBldrSetField('extra',this.value)">${escapeHtml(b.extra || '')}</textarea>
+    `;
+    wrap.appendChild(extraSection);
 
     el.appendChild(wrap);
 
-    // Initial cost preview
+    // Render the dynamic sub-areas (params list, feature/flaw bands,
+    // card preview). These get re-rendered on structural mutation but
+    // don't repaint the whole editor.
+    renderBldrParamsList();
+    renderBldrFeaturesList();
+    renderBldrFlawsList();
     renderBuilderPreview();
   }
 
-  // Update only the cost preview pill — called from field handlers
-  // that don't restructure the editor (just tweak values).
+  // ── PARAMETERS LIST ──
+  // Single combined list of all params (Primary + Secondary). Each row
+  // shows the param's name and a select previewing its current default
+  // step. Clicking the row opens the modal for deeper editing.
+  function renderBldrParamsList() {
+    const el = document.getElementById('bldr-params-list');
+    if (!el) return;
+    const b = getOpenedBuilder();
+    if (!b) { el.innerHTML = ''; return; }
+    const primary   = Array.isArray(b.primaryParams)   ? b.primaryParams   : [];
+    const secondary = Array.isArray(b.secondaryParams) ? b.secondaryParams : [];
+
+    if (primary.length === 0 && secondary.length === 0) {
+      el.innerHTML = `<div class="empty" style="padding:18px 0;">No parameters yet. Click "+ Add Parameter" to make this Builder tunable.</div>`;
+      return;
+    }
+
+    const renderRow = (p, kind, idx) => {
+      const stepsList = (kind === 'primary')
+        // Primary params don't have a steps array in the legacy data
+        // model — they have a single value with delta-cost. We render
+        // them as if they had one default option so the row layout
+        // matches secondary params.
+        ? [`${escapeHtml(p.label || p.name || '')}: ${p.defaultValue || 0} (${p.deltaCost || 0} AP/step)`]
+        : (Array.isArray(p.steps) ? p.steps : []).map(s =>
+            `${escapeHtml(s.label || s.value || '')} (×${s.multiplier ?? 1})`);
+      const summary = stepsList.length > 0 ? stepsList[0] : '(no steps)';
+      return `
+        <div class="bldr-param-row" onclick="bldrEditParam('${kind}', ${idx})">
+          <span class="bldr-param-name${p.name ? '' : ' bldr-param-name-empty'}">${escapeHtml(p.name || '(Unnamed parameter)')}</span>
+          <span class="bldr-param-default">${kind === 'primary' ? 'flat' : 'mult'} · ${escapeHtml(summary)}</span>
+          <button class="row-x" type="button" title="Delete parameter"
+                  onclick="event.stopPropagation();bldrDeleteParam('${kind}', ${idx});">×</button>
+        </div>
+      `;
+    };
+
+    el.innerHTML =
+      primary.map((p, i) => renderRow(p, 'primary', i)).join('') +
+      secondary.map((p, i) => renderRow(p, 'secondary', i)).join('');
+  }
+
+  // ── FEATURES / FLAWS LIST ──
+  // Organized by tier band. Each tier shows: tier name + per-tier cost
+  // (from canonicalTiers), then rows for features at that tier, then
+  // a "+ Add" button. Empty tiers show only the header + add button.
+  function renderTierGrouped(b, kind) {
+    // kind: 'feature' or 'flaw'
+    const list = (kind === 'feature' ? b.features : b.flaws) || [];
+    const cat = state.abilityCatalogue || {};
+    const tiers = cat.canonicalTiers || {};
+    const tierTable = (kind === 'feature' ? tiers.featureCosts : tiers.flawRefunds) || {};
+    return TIER_ORDER.map(tier => {
+      const rows = list
+        .map((it, idx) => ({ it, idx }))
+        .filter(({it}) => it && it.tier === tier);
+      const tierCost = Number.isFinite(tierTable[tier]) ? tierTable[tier] : 0;
+      const costLabel = kind === 'feature' ? `+${tierCost} AP` : `−${tierCost} AP`;
+      const rowHtml = rows.map(({it, idx}) => `
+        <div class="bldr-ff-row">
+          <textarea rows="1"
+                    placeholder="${kind === 'feature' ? 'Feature description' : 'Flaw description'}"
+                    oninput="bldrSetFFText('${kind}', ${idx}, this.value);autoGrow(this);">${escapeHtml(it.description || it.name || '')}</textarea>
+          <select class="ff-tier-move" title="Change tier"
+                  onchange="bldrSetFFTier('${kind}', ${idx}, this.value)">
+            ${TIER_ORDER.map(t => `<option value="${t}"${t === tier ? ' selected' : ''}>${TIER_LABELS[t]}</option>`).join('')}
+          </select>
+          <button class="row-x" type="button" title="Delete"
+                  onclick="bldrDeleteFF('${kind}', ${idx});">×</button>
+        </div>
+      `).join('');
+      return `
+        <div class="bldr-tier-band">
+          <div class="bldr-tier-band-head">
+            <span class="bldr-tier-band-name">${TIER_LABELS[tier]}</span>
+            <span class="bldr-tier-band-cost">${costLabel}</span>
+          </div>
+          ${rowHtml}
+          <button class="btn small" type="button" style="width:100%;margin-top:2px;"
+                  onclick="bldrAddFF('${kind}', '${tier}')">+ Add ${TIER_LABELS[tier]} ${kind === 'feature' ? 'Feature' : 'Flaw'}</button>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function renderBldrFeaturesList() {
+    const el = document.getElementById('bldr-features-list');
+    if (!el) return;
+    const b = getOpenedBuilder();
+    if (!b) { el.innerHTML = ''; return; }
+    el.innerHTML = renderTierGrouped(b, 'feature');
+    // Auto-grow all visible textareas to fit their initial content.
+    el.querySelectorAll('textarea').forEach(autoGrow);
+  }
+
+  function renderBldrFlawsList() {
+    const el = document.getElementById('bldr-flaws-list');
+    if (!el) return;
+    const b = getOpenedBuilder();
+    if (!b) { el.innerHTML = ''; return; }
+    el.innerHTML = renderTierGrouped(b, 'flaw');
+    el.querySelectorAll('textarea').forEach(autoGrow);
+  }
+
+  // Auto-grow a textarea to fit its content. Called on every input
+  // event from feature/flaw textareas, plus on initial render.
+  function autoGrow(el) {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = (el.scrollHeight) + 'px';
+  }
+
+  // ── LIVE PREVIEW CARD ──
+  // Updates on every input. Shows the Builder's current name, default-
+  // tuned cost, and system text with default param values substituted.
   function renderBuilderPreview() {
-    const pill = document.getElementById('abil-bldr-cost-preview');
-    if (!pill) return;
+    const card = document.getElementById('bldr-card-preview');
+    const pill = document.getElementById('bldr-cost-pill');
+    if (!card && !pill) return;
     const b = getOpenedBuilder();
     if (!b) return;
     const cat = state.abilityCatalogue || {};
     const tiers = cat.canonicalTiers || {};
-    // Compute against an empty instance (no Player tuning) — this
-    // shows the "default" cost of the Builder before any Player
-    // customization. Helpful for the GM to gauge whether their
-    // Builder lands in the intended cost tier.
-    let cost;
+
+    // Build a default-tuned instance: every param at its default step,
+    // no features/flaws selected. computeAbilityCost computes the AP
+    // from THAT instance against the Builder's shape, so what we see
+    // here is the "you pay this much just by picking the Builder, then
+    // tune from there" baseline.
+    const inst = { paramValues: {}, selectedFeatureIds: [], selectedFlawIds: [] };
+
+    let cost = null, systemText = '';
     try {
       const result = window.computeAbilityCost
-        ? window.computeAbilityCost(b, {}, tiers)
+        ? window.computeAbilityCost(b, inst, tiers)
         : null;
       cost = result && Number.isFinite(result.computedCost) ? result.computedCost : null;
-    } catch (e) {
-      cost = null;
+    } catch (e) { cost = null; }
+    try {
+      systemText = window.renderSystemTextForBuilder
+        ? window.renderSystemTextForBuilder(b, inst)
+        : (b.systemTextTemplate || '');
+    } catch (e) { systemText = b.systemTextTemplate || ''; }
+
+    // Cost pill (header)
+    if (pill) {
+      pill.textContent = (cost === null ? '… AP' : `${cost} AP default`);
     }
-    pill.textContent = (cost === null ? '— AP' : `${cost} AP default`);
-    // Tier-rough indicator — color the pill to match the cost tier
-    // band from the design doc.
-    let bg = '#1a1a14', border = '#2a2a20', color = '#d8c060';
-    if (cost !== null) {
-      if      (cost <= 5)   { bg = '#0d150d'; border = '#1f2f1f'; color = '#88c080'; }   // Minute / Minor
-      else if (cost <= 20)  { bg = '#15150a'; border = '#2f2f1f'; color = '#d8c060'; }   // Moderate
-      else if (cost <= 50)  { bg = '#1a1408'; border = '#3a2810'; color = '#d8a060'; }   // Major / Massive
-      else if (cost <= 100) { bg = '#1a0d0d'; border = '#3a1f1f'; color = '#d88060'; }   // Monumental / Mega
-      else                  { bg = '#1a0d1a'; border = '#3a1f3a'; color = '#d860d8'; }   // Mythical+
+
+    // Card body
+    if (card) {
+      const parts = [];
+      parts.push(`<div class="bldr-card-name">${b.name ? escapeHtml(b.name) : '<span class="bldr-card-empty">(Unnamed Ability)</span>'}</div>`);
+      if (cost !== null) {
+        parts.push(`<div class="bldr-card-cost">${cost} AP default</div>`);
+      }
+      if (b.description) {
+        parts.push(`<div class="bldr-card-desc">${escapeHtml(b.description)}</div>`);
+      }
+      if (systemText && systemText.trim()) {
+        parts.push(`<div class="bldr-card-system">${escapeHtml(systemText)}</div>`);
+      } else {
+        parts.push(`<div class="bldr-card-system bldr-card-empty">(System text — fill in below using {paramId} tokens)</div>`);
+      }
+      card.innerHTML = parts.join('');
     }
-    pill.style.background = bg;
-    pill.style.borderColor = border;
-    pill.style.color = color;
   }
 
-  // ── Builder editor section builders ──
-  // Each returns a DOM element; called from renderBuilderEditor.
+  // ── PARAMETER MUTATION HANDLERS — wrappers for the new UI ──
+  // The legacy handlers (catBldrAddPrimary, etc.) are still on `window`
+  // but they only know about Primary vs Secondary as separate buckets.
+  // The new UI hides that distinction in the row list and surfaces
+  // it as a "type" choice in the modal. These wrappers make the row
+  // UI sensible.
 
-  function buildPrimaryParamsSection(b) {
-    const sec = document.createElement('div');
-    sec.style.cssText = 'padding:12px 14px;border-bottom:1px solid #1a1a1a;';
-    const params = Array.isArray(b.primaryParams) ? b.primaryParams : [];
-    sec.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <h4 style="margin:0;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">Primary Parameters <span style="color:#666;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;">— flat AP cost per step</span></h4>
-        <button class="btn small" onclick="catBldrAddPrimary()" type="button">+ Primary Param</button>
-      </div>
-    `;
-    if (params.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'hint';
-      empty.style.cssText = 'padding:8px;color:#666;font-size:12px;text-align:center;';
-      empty.textContent = 'No primary parameters yet. Add one to make this Builder tunable (Damage Dice, STAT Bonus, Healing, etc).';
-      sec.appendChild(empty);
-    } else {
-      params.forEach((p, idx) => {
-        const row = document.createElement('div');
-        row.style.cssText = 'border:1px solid #1f1f1f;border-radius:3px;padding:8px 10px;margin-bottom:6px;background:#0d0d0d;';
-        row.innerHTML = `
-          <div style="display:grid;grid-template-columns:1fr 100px 100px 100px 100px 100px 1fr 30px;gap:6px;align-items:center;">
-            <input type="text" placeholder="Name (e.g. Damage Dice)" value="${escapeHtml(p.name || '')}"
-                   oninput="catBldrSetPrimary(${idx},'name',this.value)" title="Display name">
-            <input type="number" placeholder="Default" value="${Number.isFinite(p.defaultValue) ? p.defaultValue : 0}" step="0.1"
-                   oninput="catBldrSetPrimary(${idx},'defaultValue',this.value)" title="Default value (0 cost at this point)">
-            <input type="number" placeholder="Min" value="${Number.isFinite(p.minValue) ? p.minValue : 0}" step="0.1"
-                   oninput="catBldrSetPrimary(${idx},'minValue',this.value)" title="Minimum allowed">
-            <input type="number" placeholder="Max" value="${Number.isFinite(p.maxValue) ? p.maxValue : 100}" step="0.1"
-                   oninput="catBldrSetPrimary(${idx},'maxValue',this.value)" title="Maximum allowed">
-            <input type="number" placeholder="AP/step" value="${Number.isFinite(p.stepCost) ? p.stepCost : 1}" step="0.1"
-                   oninput="catBldrSetPrimary(${idx},'stepCost',this.value)" title="AP cost per +1 above default (or refund per −1 below)">
-            <input type="text" placeholder="Unit" value="${escapeHtml(p.displayUnit || '')}"
-                   oninput="catBldrSetPrimary(${idx},'displayUnit',this.value)" title="Display unit (d10, ft, %)">
-            <input type="text" placeholder="Token (for systemText)" value="${escapeHtml(p.token || '')}"
-                   oninput="catBldrSetPrimary(${idx},'token',this.value)" title="Token name for {token} substitution in system text">
-            <button class="btn small" onclick="catBldrDeletePrimary(${idx})" type="button" style="color:#c66;border-color:#4a2a2a;">×</button>
-          </div>
-          <input type="text" placeholder="Description (optional, shown to Player when tuning)" value="${escapeHtml(p.description || '')}"
-                 oninput="catBldrSetPrimary(${idx},'description',this.value)"
-                 style="width:100%;margin-top:6px;font-size:12px;color:#aaa;">
-        `;
-        sec.appendChild(row);
-      });
-    }
-    return sec;
+  // Add a parameter — defaults to Primary kind. The user can change
+  // it to Secondary in the modal. We open the modal immediately on
+  // add so the GM has somewhere to fill in the details.
+  window.bldrAddParam = function() {
+    window.catBldrAddPrimary();
+    // Newly-added param sits at the end of primaryParams
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const idx = (b.primaryParams || []).length - 1;
+    renderBldrParamsList();
+    renderBuilderPreview();
+    if (idx >= 0) bldrOpenParamModal('primary', idx);
+  };
+
+  window.bldrDeleteParam = function(kind, idx) {
+    if (kind === 'primary') window.catBldrDeletePrimary(idx);
+    else                    window.catBldrDeleteSecondary(idx);
+    renderBldrParamsList();
+    renderBuilderPreview();
+  };
+
+  window.bldrEditParam = function(kind, idx) {
+    bldrOpenParamModal(kind, idx);
+  };
+
+  // ── PARAMETER MODAL ──
+  // Centered overlay for editing a param's name, kind (primary vs
+  // secondary), and steps. For primary params we show the simple
+  // single-value editor; for secondary we show the full steps editor.
+  // The kind toggle at the top lets the GM convert between them —
+  // converting copies what data it can and drops what it can't (e.g.
+  // primary→secondary keeps the name but starts with a fresh empty
+  // steps list).
+  let bldrModalState = null;  // { kind, idx } when open; null when closed
+
+  function bldrOpenParamModal(kind, idx) {
+    bldrModalState = { kind, idx };
+    renderBldrParamModal();
   }
 
-  function buildSecondaryParamsSection(b) {
-    const sec = document.createElement('div');
-    sec.style.cssText = 'padding:12px 14px;border-bottom:1px solid #1a1a1a;';
-    const params = Array.isArray(b.secondaryParams) ? b.secondaryParams : [];
-    sec.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <h4 style="margin:0;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">Secondary Parameters <span style="color:#666;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;">— multiply total cost by step's multiplier</span></h4>
-        <button class="btn small" onclick="catBldrAddSecondary()" type="button">+ Secondary Param</button>
-      </div>
+  window.bldrCloseParamModal = function() {
+    bldrModalState = null;
+    document.querySelectorAll('.bldr-modal-backdrop').forEach(el => el.remove());
+    renderBldrParamsList();
+    renderBuilderPreview();
+  };
+
+  function getModalParam() {
+    if (!bldrModalState) return null;
+    const b = getOpenedBuilder();
+    if (!b) return null;
+    const arr = bldrModalState.kind === 'primary' ? b.primaryParams : b.secondaryParams;
+    return Array.isArray(arr) ? (arr[bldrModalState.idx] || null) : null;
+  }
+
+  function renderBldrParamModal() {
+    document.querySelectorAll('.bldr-modal-backdrop').forEach(el => el.remove());
+    if (!bldrModalState) return;
+    const p = getModalParam();
+    if (!p) { bldrModalState = null; return; }
+    const isPrimary = bldrModalState.kind === 'primary';
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'bldr-modal-backdrop';
+    backdrop.onclick = (e) => { if (e.target === backdrop) window.bldrCloseParamModal(); };
+    const modal = document.createElement('div');
+    modal.className = 'bldr-modal';
+
+    const head = document.createElement('div');
+    head.className = 'bldr-modal-head';
+    head.innerHTML = `
+      <div class="bldr-modal-title">Parameter — ${isPrimary ? 'Primary (flat-cost)' : 'Secondary (multiplier)'}</div>
+      <button class="btn small" type="button" onclick="bldrCloseParamModal()">Close</button>
     `;
-    if (params.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'hint';
-      empty.style.cssText = 'padding:8px;color:#666;font-size:12px;text-align:center;';
-      empty.textContent = 'No secondary parameters yet. Use these for Range, Activation Cost, Duration, etc — Player picks a step, multiplier applies to total Ability cost.';
-      sec.appendChild(empty);
-    } else {
-      params.forEach((p, idx) => {
-        const card = document.createElement('div');
-        card.style.cssText = 'border:1px solid #1f1f1f;border-radius:3px;padding:8px 10px;margin-bottom:8px;background:#0d0d0d;';
-        const steps = Array.isArray(p.steps) ? p.steps : [];
-        const defaultIdx = Number.isFinite(p.defaultStepIndex) ? p.defaultStepIndex : 0;
-        // Param header row — name, unit, token, default step picker, delete
-        const paramHead = `
-          <div style="display:grid;grid-template-columns:1fr 100px 1fr 100px 30px;gap:6px;align-items:center;margin-bottom:6px;">
-            <input type="text" placeholder="Name (e.g. Range)" value="${escapeHtml(p.name || '')}"
-                   oninput="catBldrSetSecondary(${idx},'name',this.value)" title="Display name">
-            <input type="text" placeholder="Unit" value="${escapeHtml(p.displayUnit || '')}"
-                   oninput="catBldrSetSecondary(${idx},'displayUnit',this.value)" title="Display unit (ft, sec, etc)">
-            <input type="text" placeholder="Token (for systemText)" value="${escapeHtml(p.token || '')}"
-                   oninput="catBldrSetSecondary(${idx},'token',this.value)" title="Token name for {token} substitution in system text">
-            <input type="number" min="0" max="${Math.max(0, steps.length - 1)}" value="${defaultIdx}"
-                   oninput="catBldrSetSecondary(${idx},'defaultStepIndex',this.value)" title="Default step index (0-based)">
-            <button class="btn small" onclick="catBldrDeleteSecondary(${idx})" type="button" style="color:#c66;border-color:#4a2a2a;">×</button>
+    modal.appendChild(head);
+
+    const body = document.createElement('div');
+    body.className = 'bldr-modal-body';
+    body.innerHTML = `
+      <div class="field">
+        <label>Parameter Name <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— shown to players when tuning</span></label>
+        <input type="text" value="${escapeHtmlAttr(p.name || '')}"
+               placeholder="e.g. Damage Dice, Range, STAT Bonus"
+               oninput="bldrModalSetField('name',this.value)">
+      </div>
+
+      <div class="field">
+        <label>Token <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— for {token} substitution in System text</span></label>
+        <input type="text" value="${escapeHtmlAttr(p.token || p.id || '')}"
+               placeholder="e.g. damage, range, stat"
+               oninput="bldrModalSetField('token',this.value)">
+      </div>
+
+      <div class="field">
+        <label>Kind</label>
+        <select onchange="bldrModalChangeKind(this.value)">
+          <option value="primary"${isPrimary ? ' selected' : ''}>Primary — flat AP added per step</option>
+          <option value="secondary"${!isPrimary ? ' selected' : ''}>Secondary — multiplier on total cost</option>
+        </select>
+      </div>
+
+      <div id="bldr-modal-steps-area"></div>
+    `;
+    modal.appendChild(body);
+
+    const foot = document.createElement('div');
+    foot.className = 'bldr-modal-foot';
+    foot.innerHTML = `
+      <button class="btn small" type="button" onclick="bldrCloseParamModal()">Done</button>
+    `;
+    modal.appendChild(foot);
+
+    backdrop.appendChild(modal);
+    document.body.appendChild(backdrop);
+    renderBldrModalStepsArea();
+  }
+
+  // The steps-area body. Shape differs between Primary and Secondary:
+  //   • Primary: a single value + delta-cost (legacy data model has
+  //     defaultValue, minValue, maxValue, deltaCost). We expose a
+  //     simplified "default value + cost per step" pair.
+  //   • Secondary: an arbitrary list of {label, multiplier} steps.
+  function renderBldrModalStepsArea() {
+    const area = document.getElementById('bldr-modal-steps-area');
+    if (!area || !bldrModalState) return;
+    const p = getModalParam();
+    if (!p) return;
+
+    if (bldrModalState.kind === 'primary') {
+      area.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="field">
+            <label>Default Value</label>
+            <input type="number" step="any"
+                   value="${Number.isFinite(parseFloat(p.defaultValue)) ? p.defaultValue : 0}"
+                   oninput="bldrModalSetField('defaultValue',this.value)">
           </div>
-        `;
-        const paramDesc = `
-          <input type="text" placeholder="Description (optional)" value="${escapeHtml(p.description || '')}"
-                 oninput="catBldrSetSecondary(${idx},'description',this.value)"
-                 style="width:100%;margin-bottom:8px;font-size:12px;color:#aaa;">
-        `;
-        // Steps editor
-        let stepsHtml = '';
-        if (steps.length === 0) {
-          stepsHtml = `<div class="hint" style="padding:6px;color:#666;font-size:11px;text-align:center;">No steps. Add at least one (the default step) for the parameter to work.</div>`;
-        } else {
-          stepsHtml = `
-            <div style="display:grid;grid-template-columns:60px 1fr 1fr 100px 30px;gap:6px;font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.05em;padding:0 4px;margin-bottom:4px;">
-              <span>Idx</span>
-              <span>Value</span>
-              <span>Label (optional)</span>
-              <span>Multiplier</span>
-              <span></span>
+          <div class="field">
+            <label>Cost per Step (AP)</label>
+            <input type="number" step="0.5"
+                   value="${Number.isFinite(parseFloat(p.deltaCost)) ? p.deltaCost : 0}"
+                   oninput="bldrModalSetField('deltaCost',this.value)">
+          </div>
+          <div class="field">
+            <label>Min Value</label>
+            <input type="number" step="any"
+                   value="${Number.isFinite(parseFloat(p.minValue)) ? p.minValue : 0}"
+                   oninput="bldrModalSetField('minValue',this.value)">
+          </div>
+          <div class="field">
+            <label>Max Value <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— blank for no cap</span></label>
+            <input type="number" step="any"
+                   value="${Number.isFinite(parseFloat(p.maxValue)) ? p.maxValue : ''}"
+                   oninput="bldrModalSetField('maxValue',this.value)">
+          </div>
+        </div>
+        <p class="hint" style="margin-top:8px;">
+          The player sets a number within Min–Max. Each step above the default adds
+          Cost-per-Step AP to the Ability's cost.
+        </p>
+      `;
+    } else {
+      const steps = Array.isArray(p.steps) ? p.steps : [];
+      const defaultIdx = (typeof p.defaultStep === 'number' && p.defaultStep >= 0) ? p.defaultStep : 0;
+      area.innerHTML = `
+        <div class="bldr-panel-title" style="margin-top:10px;">Steps</div>
+        <div style="display:grid;grid-template-columns:28px 1fr 100px 100px 32px;gap:6px;font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">
+          <div style="text-align:center;">Def</div>
+          <div>Label</div>
+          <div>Value</div>
+          <div>Multiplier</div>
+          <div></div>
+        </div>
+        ${steps.map((s, si) => `
+          <div class="bldr-step-row">
+            <div class="step-default-radio">
+              <input type="radio" name="bldr-modal-default-step"${si === defaultIdx ? ' checked' : ''}
+                     onchange="bldrModalSetField('defaultStep',${si})">
             </div>
-          `;
-          steps.forEach((s, si) => {
-            const isDefault = si === defaultIdx;
-            stepsHtml += `
-              <div style="display:grid;grid-template-columns:60px 1fr 1fr 100px 30px;gap:6px;align-items:center;margin-bottom:3px;${isDefault ? 'background:#0a1a0a;' : ''}padding:2px 4px;border-radius:2px;">
-                <span style="font-family:monospace;font-size:11px;color:${isDefault ? '#88c080' : '#888'};">${si}${isDefault ? ' ★' : ''}</span>
-                <input type="text" value="${escapeHtml(String(s.value === null || s.value === undefined ? '' : s.value))}"
-                       oninput="catBldrSetStep(${idx},${si},'value',this.value)" title="Numeric value, or label like 'Touch'/'Self'">
-                <input type="text" value="${escapeHtml(s.label || '')}"
-                       oninput="catBldrSetStep(${idx},${si},'label',this.value)" title="Display override (preferred over value)">
-                <input type="number" step="0.05" value="${Number.isFinite(s.multiplier) ? s.multiplier : 1}"
-                       oninput="catBldrSetStep(${idx},${si},'multiplier',this.value)" title="Cost multiplier (1.0 = neutral, 1.5 = +50%)">
-                <button class="btn small" onclick="catBldrDeleteStep(${idx},${si})" type="button" style="color:#c66;border-color:#4a2a2a;font-size:10px;padding:2px 6px;">×</button>
-              </div>
-            `;
-          });
-        }
-        const stepsActions = `
-          <div style="display:flex;justify-content:flex-end;margin-top:6px;">
-            <button class="btn small" onclick="catBldrAddStep(${idx})" type="button" style="font-size:10px;padding:2px 8px;">+ Step</button>
+            <input type="text" placeholder="e.g. Touch, 30ft, 100ft"
+                   value="${escapeHtmlAttr(s.label || '')}"
+                   oninput="bldrModalSetStep(${si},'label',this.value)">
+            <input type="text" placeholder="e.g. 30"
+                   value="${escapeHtmlAttr(s.value || '')}"
+                   oninput="bldrModalSetStep(${si},'value',this.value)">
+            <input type="number" step="0.1" min="0" placeholder="1.0"
+                   value="${Number.isFinite(parseFloat(s.multiplier)) ? s.multiplier : 1}"
+                   oninput="bldrModalSetStep(${si},'multiplier',this.value)">
+            <button class="row-x" type="button" title="Delete step"
+                    onclick="bldrModalDeleteStep(${si})">×</button>
           </div>
-        `;
-        card.innerHTML = paramHead + paramDesc + `<div style="background:#080808;padding:8px;border-radius:2px;border:1px solid #151515;">${stepsHtml}${stepsActions}</div>`;
-        sec.appendChild(card);
-      });
+        `).join('')}
+        <button class="btn small" type="button" style="margin-top:6px;"
+                onclick="bldrModalAddStep()">+ Add Step</button>
+        <p class="hint" style="margin-top:10px;">
+          Each step's multiplier is applied to the Ability's total cost when the player picks that step.
+          The radio button marks the default step.
+        </p>
+      `;
     }
-    return sec;
   }
 
-  // Tier dropdown options — used for both features and flaws.
-  const ABIL_TIER_ORDER = ['minor', 'moderate', 'major', 'massive', 'monumental', 'mega', 'mythical'];
-
-  function buildFeaturesSection(b) {
-    const sec = document.createElement('div');
-    sec.style.cssText = 'padding:12px 14px;border-bottom:1px solid #1a1a1a;';
-    const cat = state.abilityCatalogue || {};
-    const tiers = (cat.canonicalTiers && cat.canonicalTiers.featureCosts) || {};
-    const features = Array.isArray(b.features) ? b.features : [];
-    sec.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <h4 style="margin:0;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">Features <span style="color:#666;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;">— Player pays AP to take</span></h4>
-        <button class="btn small" onclick="catBldrAddFeature()" type="button">+ Feature</button>
-      </div>
-    `;
-    if (features.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'hint';
-      empty.style.cssText = 'padding:8px;color:#666;font-size:12px;text-align:center;';
-      empty.textContent = 'No features yet. Features expand or strengthen the Ability — Player pays AP at the feature\'s tier to take it.';
-      sec.appendChild(empty);
+  // Modal field setters — the underlying mutation goes through the
+  // existing per-kind handlers (catBldrSetPrimary / catBldrSetSecondary)
+  // for fields, and catBldrAddStep / catBldrSetStep / catBldrDeleteStep
+  // for secondary param steps.
+  window.bldrModalSetField = function(field, value) {
+    if (!bldrModalState) return;
+    if (bldrModalState.kind === 'primary') {
+      window.catBldrSetPrimary(bldrModalState.idx, field, value);
     } else {
-      features.forEach((f, idx) => {
-        const tierCost = Number.isFinite(tiers[f.tier]) ? tiers[f.tier] : '?';
-        const row = document.createElement('div');
-        row.style.cssText = 'border:1px solid #1f1f1f;border-radius:3px;padding:8px 10px;margin-bottom:6px;background:#0d0d0d;';
-        const tierOpts = ABIL_TIER_ORDER.map(t => {
-          const cost = Number.isFinite(tiers[t]) ? tiers[t] : '?';
-          return `<option value="${t}"${t === f.tier ? ' selected' : ''}>${t} (${cost} AP)</option>`;
-        }).join('');
-        row.innerHTML = `
-          <div style="display:grid;grid-template-columns:1fr 180px 80px 30px;gap:6px;align-items:center;">
-            <input type="text" placeholder="Feature name" value="${escapeHtml(f.name || '')}"
-                   oninput="catBldrSetFeature(${idx},'name',this.value)">
-            <select onchange="catBldrSetFeature(${idx},'tier',this.value)">${tierOpts}</select>
-            <span style="text-align:center;color:#d8c060;font-family:monospace;font-size:12px;">+${tierCost} AP</span>
-            <button class="btn small" onclick="catBldrDeleteFeature(${idx})" type="button" style="color:#c66;border-color:#4a2a2a;">×</button>
-          </div>
-          <input type="text" placeholder="Description (optional)" value="${escapeHtml(f.description || '')}"
-                 oninput="catBldrSetFeature(${idx},'description',this.value)"
-                 style="width:100%;margin-top:6px;font-size:12px;color:#aaa;">
-        `;
-        sec.appendChild(row);
-      });
+      window.catBldrSetSecondary(bldrModalState.idx, field, value);
     }
-    return sec;
-  }
+    // Some field changes affect the live preview (cost, default, etc.)
+    renderBuilderPreview();
+  };
 
-  function buildFlawsSection(b) {
-    const sec = document.createElement('div');
-    sec.style.cssText = 'padding:12px 14px;';
-    const cat = state.abilityCatalogue || {};
-    const refunds = (cat.canonicalTiers && cat.canonicalTiers.flawRefunds) || {};
-    const flaws = Array.isArray(b.flaws) ? b.flaws : [];
-    sec.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <h4 style="margin:0;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">Flaws <span style="color:#666;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;">— Player gets AP refunded for taking</span></h4>
-        <button class="btn small" onclick="catBldrAddFlaw()" type="button">+ Flaw</button>
-      </div>
-    `;
-    if (flaws.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'hint';
-      empty.style.cssText = 'padding:8px;color:#666;font-size:12px;text-align:center;';
-      empty.textContent = 'No flaws yet. Flaws narrow or restrict the Ability — Player gets AP back at the flaw\'s tier to take it.';
-      sec.appendChild(empty);
+  window.bldrModalAddStep = function() {
+    if (!bldrModalState || bldrModalState.kind !== 'secondary') return;
+    window.catBldrAddStep(bldrModalState.idx);
+    renderBldrModalStepsArea();
+    renderBuilderPreview();
+  };
+
+  window.bldrModalDeleteStep = function(stepIdx) {
+    if (!bldrModalState || bldrModalState.kind !== 'secondary') return;
+    window.catBldrDeleteStep(bldrModalState.idx, stepIdx);
+    renderBldrModalStepsArea();
+    renderBuilderPreview();
+  };
+
+  window.bldrModalSetStep = function(stepIdx, field, value) {
+    if (!bldrModalState || bldrModalState.kind !== 'secondary') return;
+    window.catBldrSetStep(bldrModalState.idx, stepIdx, field, value);
+    renderBuilderPreview();
+  };
+
+  // Convert a parameter between Primary (flat) and Secondary (multiplier)
+  // kinds. The legacy data model stores them in two separate arrays;
+  // the conversion moves the record between arrays, attempting to
+  // preserve the name + token.
+  window.bldrModalChangeKind = function(newKind) {
+    if (!bldrModalState) return;
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const oldKind = bldrModalState.kind;
+    if (oldKind === newKind) return;
+    const srcArr = oldKind === 'primary' ? b.primaryParams : b.secondaryParams;
+    if (!Array.isArray(srcArr) || !srcArr[bldrModalState.idx]) return;
+    const old = srcArr[bldrModalState.idx];
+
+    if (newKind === 'primary') {
+      // Going Secondary → Primary: discard steps array, default to
+      // 0 baseline, 0 cost/step. GM can re-tune.
+      const moved = {
+        id: old.id, name: old.name || '', token: old.token || '',
+        defaultValue: 0, minValue: 0, maxValue: null, deltaCost: 0
+      };
+      if (!Array.isArray(b.primaryParams)) b.primaryParams = [];
+      b.primaryParams.push(moved);
+      srcArr.splice(bldrModalState.idx, 1);
+      bldrModalState = { kind: 'primary', idx: b.primaryParams.length - 1 };
     } else {
-      flaws.forEach((f, idx) => {
-        const refund = Number.isFinite(refunds[f.tier]) ? refunds[f.tier] : '?';
-        const row = document.createElement('div');
-        row.style.cssText = 'border:1px solid #1f1f1f;border-radius:3px;padding:8px 10px;margin-bottom:6px;background:#0d0d0d;';
-        const tierOpts = ABIL_TIER_ORDER.map(t => {
-          const r = Number.isFinite(refunds[t]) ? refunds[t] : '?';
-          return `<option value="${t}"${t === f.tier ? ' selected' : ''}>${t} (−${r} AP)</option>`;
-        }).join('');
-        row.innerHTML = `
-          <div style="display:grid;grid-template-columns:1fr 180px 80px 30px;gap:6px;align-items:center;">
-            <input type="text" placeholder="Flaw name" value="${escapeHtml(f.name || '')}"
-                   oninput="catBldrSetFlaw(${idx},'name',this.value)">
-            <select onchange="catBldrSetFlaw(${idx},'tier',this.value)">${tierOpts}</select>
-            <span style="text-align:center;color:#88c080;font-family:monospace;font-size:12px;">−${refund} AP</span>
-            <button class="btn small" onclick="catBldrDeleteFlaw(${idx})" type="button" style="color:#c66;border-color:#4a2a2a;">×</button>
-          </div>
-          <input type="text" placeholder="Description (optional)" value="${escapeHtml(f.description || '')}"
-                 oninput="catBldrSetFlaw(${idx},'description',this.value)"
-                 style="width:100%;margin-top:6px;font-size:12px;color:#aaa;">
-        `;
-        sec.appendChild(row);
-      });
+      // Going Primary → Secondary: seed with one empty step.
+      const moved = {
+        id: old.id, name: old.name || '', token: old.token || '',
+        steps: [{ label: '', value: '', multiplier: 1 }],
+        defaultStep: 0
+      };
+      if (!Array.isArray(b.secondaryParams)) b.secondaryParams = [];
+      b.secondaryParams.push(moved);
+      srcArr.splice(bldrModalState.idx, 1);
+      bldrModalState = { kind: 'secondary', idx: b.secondaryParams.length - 1 };
     }
-    return sec;
-  }
-
-  // ── HANDLERS ──
-  // All mutate state.abilityCatalogue in place and re-render whatever
-  // surface they affect. State is persisted by the existing saveRuleset
-  // path (we just need to add abilityCatalogue to the payload — done
-  // separately).
-
-  function ensureCat() {
-    if (!state.abilityCatalogue || typeof state.abilityCatalogue !== 'object') {
-      state.abilityCatalogue = window.normalizeRuleset({}).abilityCatalogue;
-    }
-    return state.abilityCatalogue;
-  }
-
-  window.catAddCategory = function() {
-    const cat = ensureCat();
-    if (!Array.isArray(getActiveCategories(cat))) if (cat.types && cat.types[currentTypeKey]) cat.types[currentTypeKey].categories = [];
-    getActiveCategories(cat).push({
-      id: 'acat_' + Math.random().toString(36).slice(2, 10),
-      name: '',
-      description: '',
-      builders: []
-    });
-    renderCategoryList();
+    renderBldrParamModal();
+    renderBldrParamsList();
+    renderBuilderPreview();
   };
 
-  window.catDeleteCategory = function(ci) {
-    const cat = ensureCat();
-    const cats = getActiveCategories(cat);
-    if (!cats[ci]) return;
-    const name = cats[ci].name || 'this category';
-    const builders = Array.isArray(cats[ci].builders) ? cats[ci].builders : [];
-    if (builders.length > 0) {
-      if (!confirm(`Delete "${name}" and all ${builders.length} builder(s) inside it? This cannot be undone.`)) return;
+  // ── FEATURE / FLAW HANDLERS ──
+  // Wrappers around the legacy add/set/delete that take a tier
+  // arg up front. Legacy add* defaults the tier to 'minor'; we just
+  // override it after creation.
+  window.bldrAddFF = function(kind, tier) {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    if (kind === 'feature') {
+      window.catBldrAddFeature();
+      const arr = b.features || [];
+      if (arr.length > 0) arr[arr.length - 1].tier = tier;
     } else {
-      if (!confirm(`Delete "${name}"?`)) return;
+      window.catBldrAddFlaw();
+      const arr = b.flaws || [];
+      if (arr.length > 0) arr[arr.length - 1].tier = tier;
     }
-    cats.splice(ci, 1);
-    renderCategoryList();
+    if (kind === 'feature') renderBldrFeaturesList();
+    else                    renderBldrFlawsList();
+    renderBuilderPreview();
   };
 
-  window.catSetCategoryField = function(ci, field, value) {
-    const cat = ensureCat();
-    const c = (getActiveCategories(cat))[ci];
-    if (!c) return;
-    c[field] = String(value || '');
-    // Don't full-rerender (would lose focus). Just update the badge
-    // count if it changed (no-op for name/description; matters when
-    // builder count changes elsewhere).
+  window.bldrDeleteFF = function(kind, idx) {
+    if (kind === 'feature') window.catBldrDeleteFeature(idx);
+    else                    window.catBldrDeleteFlaw(idx);
+    if (kind === 'feature') renderBldrFeaturesList();
+    else                    renderBldrFlawsList();
+    renderBuilderPreview();
   };
 
-  window.catAddBuilder = function(ci) {
-    const cat = ensureCat();
-    const c = (getActiveCategories(cat))[ci];
-    if (!c) return;
-    if (!Array.isArray(c.builders)) c.builders = [];
-    c.builders.push({
-      id: 'bld_' + Math.random().toString(36).slice(2, 10),
-      name: '',
-      description: '',
-      baseCost: 0,
-      systemTextTemplate: '',
-      primaryParams: [],
-      secondaryParams: [],
-      features: [],
-      flaws: []
-    });
-    renderCategoryList();
+  window.bldrSetFFText = function(kind, idx, value) {
+    // The single textarea writes to BOTH name and description so the
+    // legacy preview/cost code (which looks at name) and the player-
+    // facing display (which looks at description) both see the text.
+    // Players won't author features/flaws in two halves.
+    if (kind === 'feature') {
+      window.catBldrSetFeature(idx, 'description', value);
+      window.catBldrSetFeature(idx, 'name', value.split('\n')[0].slice(0, 80));
+    } else {
+      window.catBldrSetFlaw(idx, 'description', value);
+      window.catBldrSetFlaw(idx, 'name', value.split('\n')[0].slice(0, 80));
+    }
   };
 
-  window.catDeleteBuilder = function(ci, bi) {
-    const cat = ensureCat();
-    const c = (getActiveCategories(cat))[ci];
-    if (!c || !Array.isArray(c.builders) || !c.builders[bi]) return;
-    const name = c.builders[bi].name || 'this builder';
-    if (!confirm(`Delete "${name}"? This will be reflected on every Character Ability that references it.`)) return;
-    c.builders.splice(bi, 1);
-    renderCategoryList();
-  };
-
-  window.catSetBuilderField = function(ci, bi, field, value) {
-    const cat = ensureCat();
-    const c = (getActiveCategories(cat))[ci];
-    if (!c || !Array.isArray(c.builders) || !c.builders[bi]) return;
-    c.builders[bi][field] = String(value || '');
-  };
-
-  // Open the full Builder editor. Stores the path on `openedBuilder`
-  // and re-renders the Categories panel — when openedBuilder is set,
-  // renderCategoryList switches to renderBuilderEditor instead.
-  // Path-based addressing (ci/bi) means we always look up the live
-  // Builder; mutations stay in sync with state.
-  window.catOpenBuilder = function(ci, bi) {
-    const cat = ensureCat();
-    const c = getActiveCategories(cat)[ci];
-    if (!c || !Array.isArray(c.builders) || !c.builders[bi]) return;
-    openedBuilder = { ci, bi, typeKey: currentTypeKey };
-    catalogueView = 'builder';
-    renderCatalogueBodyArea();
-    const body = document.getElementById('catalogue-body');
-    if (body && body.scrollIntoView) body.scrollIntoView({ block: 'start', behavior: 'smooth' });
-  };
-
-  // Close Builder editor — return to category list.
-  window.catCloseBuilder = function() {
-    openedBuilder = null;
-    catalogueView = 'type';
-    renderCatalogueBodyArea();
+  window.bldrSetFFTier = function(kind, idx, newTier) {
+    if (TIER_ORDER.indexOf(newTier) < 0) return;
+    if (kind === 'feature') window.catBldrSetFeature(idx, 'tier', newTier);
+    else                    window.catBldrSetFlaw(idx, 'tier', newTier);
+    if (kind === 'feature') renderBldrFeaturesList();
+    else                    renderBldrFlawsList();
+    renderBuilderPreview();
   };
 
   // ── BUILDER FIELD HANDLERS ──
@@ -1285,7 +1774,9 @@
     if (!Array.isArray(p.steps)) p.steps = [];
     // Default new step to 1.0 multiplier — neutral. Designer tunes.
     p.steps.push({ value: '', label: '', multiplier: 1.0 });
-    renderBuilderEditor();
+    // Caller is responsible for re-rendering. Phase B's modal handlers
+    // re-render the modal's steps area; if you call this from anywhere
+    // else, you must trigger your own render.
   };
 
   window.catBldrDeleteStep = function(paramIdx, stepIdx) {
@@ -1296,7 +1787,7 @@
     p.steps.splice(stepIdx, 1);
     // If we removed the default step, reset to 0.
     if (p.defaultStepIndex >= p.steps.length) p.defaultStepIndex = 0;
-    renderBuilderEditor();
+    // Caller re-renders. See note above.
   };
 
   window.catBldrSetStep = function(paramIdx, stepIdx, field, value) {
