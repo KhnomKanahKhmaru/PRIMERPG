@@ -505,6 +505,15 @@
   // Keys are "primary:idx" / "secondary:idx" — see paramKey() below.
   const expandedParamKeys = new Set();
 
+  // Tier names + display labels for Features and Flaws. Hoisted to the
+  // top of the module so the Phase B builder renderers (which run from
+  // initUI early in evaluation) can read them without a TDZ crash.
+  const TIER_ORDER = ['minor', 'moderate', 'major', 'massive', 'monumental', 'mega', 'mythical'];
+  const TIER_LABELS = {
+    minor: 'Minor', moderate: 'Moderate', major: 'Major',
+    massive: 'Massive', monumental: 'Monumental', mega: 'Mega', mythical: 'Mythical'
+  };
+
   // ── ESCAPE HELPERS ──
   // Used everywhere in the legacy ported render code. Both names point
   // to the same five-char substitution; the distinction was conventional
@@ -1121,12 +1130,9 @@
   // editing (steps + values + cost-delta + which step is default).
   // The Primary/Secondary distinction (flat-cost vs multiplier)
   // is preserved on the param record and is set in the modal.
-
-  const TIER_ORDER = ['minor', 'moderate', 'major', 'massive', 'monumental', 'mega', 'mythical'];
-  const TIER_LABELS = {
-    minor: 'Minor', moderate: 'Moderate', major: 'Major',
-    massive: 'Massive', monumental: 'Monumental', mega: 'Mega', mythical: 'Mythical'
-  };
+  // (TIER_ORDER and TIER_LABELS are declared at the top of the module
+  // alongside the other view-state, so they're available when initUI
+  // fires renderBuilderEditor before this point in source order.)
 
   function renderBuilderEditor() {
     const el = document.getElementById('cat-categories');
