@@ -6916,20 +6916,17 @@
     const caretChar = cardCollapsed ? '▸' : '▾';
     // Icon — pulled from the Builder, NOT the instance. The Builder's
     // iconUrl is the GM-uploaded icon; players don't author their own.
-    // 48px on the left of the header, freeform shape (object-fit:contain
-    // so SVGs and rectangles aren't squished). Hidden when no icon set.
     //
     // mix-blend-mode:screen drops pure-black pixels (most icons have a
     // black background) so the icon reads as a glyph against the dark
-    // card. A clipping wrapper scales the image up slightly and hides
-    // overflow so any baked-in dark border on the source PNG (which
-    // screen blend can't fully eliminate when the border is near-black
-    // but not exactly #000) gets cropped off.
+    // card. clip-path:inset(8%) trims the outermost ~8% on each side
+    // — where any baked-in dark border lives — without scaling the
+    // image up (which would crop into the icon's actual content). The
+    // icon body is preserved at its natural size; only the dead-space
+    // border ring is hidden.
     const iconImgHtml = (builder.iconUrl && builder.iconUrl.trim())
-      ? `<div style="width:48px;height:48px;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;">
-           <img src="${escapeHtml(builder.iconUrl)}" alt=""
-                style="width:120%;height:120%;object-fit:contain;mix-blend-mode:screen;">
-         </div>`
+      ? `<img src="${escapeHtml(builder.iconUrl)}" alt=""
+              style="width:48px;height:48px;object-fit:contain;flex-shrink:0;mix-blend-mode:lighten;">`
       : '';
 
     // Header text column — vertical stack, sits between the icon and
