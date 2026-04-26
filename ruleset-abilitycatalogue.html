@@ -535,22 +535,41 @@
   let existingDoc = null;
   let state       = null;
 
-  // Catalogue view state. Hoisted ABOVE the legacy ported handlers so
-  // they can read these without temporal dead-zone issues.
+  // ═════════ HOISTED MODULE STATE — ALL `let`/`const` THAT ANY ═════════
+  // ═════════ RENDERER MIGHT READ MUST GO HERE                  ═════════
+  //
+  // Module scripts evaluate top-to-bottom. The very last thing this
+  // module does (after auth + load) is call initUI() synchronously,
+  // which dispatches into renderBuilderEditor, renderBuilderPreview,
+  // and a chain of helpers — ALL OF WHICH RUN BEFORE any later
+  // `let`/`const` in this module is initialized. A bare `let foo`
+  // declared mid-file but read from initUI's render chain throws
+  // a temporal-dead-zone ReferenceError.
+  //
+  // **NEVER add a new `let`/`const` for runtime state mid-file.**
+  // Add it here, with a comment explaining what it tracks. The only
+  // exception is `function` declarations — those hoist properly, so
+  // helper functions can live anywhere.
+  //
+  // (If you see "Cannot access 'X' before initialization" in console,
+  // X is somewhere down in the file and needs to move up here.)
+
+  // — Catalogue view-state —
   let catalogueView   = 'home';   // 'home' | 'type' | 'builder'
-  let currentTypeKey  = null;     // null when home
+  let currentTypeKey  = null;     // null when home, else 'ability' | 'artifact' | …
   let openedBuilder   = null;     // { ci, bi, typeKey } when builder open
 
-  // Tracks which Parameter cards in the Builder editor are expanded
-  // (showing their step editor inline). Hoisted to the top alongside
-  // the other view-state vars so renderBuilderEditor can read it from
-  // initUI() without hitting a temporal dead zone.
+  // — Builder editor (Phase B) UI state —
+  // Which Parameter cards are expanded (inline step editor showing).
   // Keys are "primary:idx" / "secondary:idx" — see paramKey() below.
   const expandedParamKeys = new Set();
+  // Whether the Card Preview's "Extra" tab is currently open.
+  // Stored on window rather than as a `let` to make the file robust
+  // against any module-evaluation ordering surprises (TDZ-free).
+  if (typeof window.bldrPreviewExtraOpen !== 'boolean') window.bldrPreviewExtraOpen = false;
 
-  // Tier names + display labels for Features and Flaws. Hoisted to the
-  // top of the module so the Phase B builder renderers (which run from
-  // initUI early in evaluation) can read them without a TDZ crash.
+  // — Constants used by Phase B renderers —
+  // Tier names + display labels for Features and Flaws.
   const TIER_ORDER = ['minor', 'moderate', 'major', 'massive', 'monumental', 'mega', 'mythical'];
   const TIER_LABELS = {
     minor: 'Minor', moderate: 'Moderate', major: 'Major',
@@ -1699,13 +1718,11 @@
   // Click toggles it open/closed. The toggle state lives on the card
   // root in a data attribute so re-renders preserve it.
 
-  // Track preview-card "Extra expanded" state across re-renders.
-  // (The tab state lives outside the card DOM so the renderer can
-  // restore it after each repaint.)
-  let bldrPreviewExtraOpen = false;
+  // Toggle handler reads/writes window.bldrPreviewExtraOpen — see
+  // declaration at the top of the module.
 
   window.bldrTogglePreviewExtra = function() {
-    bldrPreviewExtraOpen = !bldrPreviewExtraOpen;
+    window.bldrPreviewExtraOpen = !window.bldrPreviewExtraOpen;
     renderBuilderPreview();
   };
 
@@ -1788,7 +1805,7 @@
     const extraBody = extraGuide
       ? `<div class="bldr-card-section-body bldr-card-placeholder">(Player will write their extra info here. GM guideline: ${escapeHtml(extraGuide)})</div>`
       : `<div class="bldr-card-section-body bldr-card-placeholder">(Player will write their extra info here. No GM guideline set.)</div>`;
-    const extraBlock = bldrPreviewExtraOpen
+    const extraBlock = window.bldrPreviewExtraOpen
       ? `<div class="bldr-card-section">
            <div class="bldr-card-section-label">Extra</div>
            ${extraBody}
@@ -1796,8 +1813,8 @@
       : '';
     const extraTab = `
       <div class="bldr-card-extra-tab-wrap">
-        <button type="button" class="bldr-card-extra-tab${bldrPreviewExtraOpen ? ' is-open' : ''}"
-                onclick="bldrTogglePreviewExtra()">${bldrPreviewExtraOpen ? 'Hide Extra' : 'Extra?'}</button>
+        <button type="button" class="bldr-card-extra-tab${window.bldrPreviewExtraOpen ? ' is-open' : ''}"
+                onclick="bldrTogglePreviewExtra()">${window.bldrPreviewExtraOpen ? 'Hide Extra' : 'Extra?'}</button>
       </div>
     `;
 
