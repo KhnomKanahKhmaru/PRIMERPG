@@ -7703,6 +7703,7 @@
             <div style="font-size:10px;color:#666;margin-top:2px;">Default: ${def}${p.displayUnit ? ' ' + escapeHtml(p.displayUnit) : ''} · ${stepCost} AP/step</div>
           </div>
           <input type="number" min="${min}" max="${max}" step="any" value="${cur}"
+                 style="background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:13px;padding:7px 10px;border-radius:4px;outline:none;width:100%;"
                  oninput="abilitiesBuilderSetPrimaryParam('${escapeHtml(p.id)}',this.value)">
           <span style="color:${deltaColor};font-family:monospace;font-size:12px;text-align:right;">${deltaStr}</span>
         </div>
@@ -7755,41 +7756,65 @@
     const featureCosts = (tiers && tiers.featureCosts) || {};
     const selected = Array.isArray(inst.selectedFeatureIds) ? new Set(inst.selectedFeatureIds) : new Set();
     const cfValues = (inst.customFieldValues && typeof inst.customFieldValues === 'object') ? inst.customFieldValues : {};
+
+    // Group by tier (Minor → Mythical). Within each tier, alphabetize
+    // by name (case-insensitive). Tiers with no features at all get
+    // skipped — no empty bands.
+    const TIER_ORDER  = ['minor', 'moderate', 'major', 'massive', 'monumental', 'mega', 'mythical'];
+    const TIER_LABELS = { minor: 'Minor', moderate: 'Moderate', major: 'Major', massive: 'Massive', monumental: 'Monumental', mega: 'Mega', mythical: 'Mythical' };
+    const byTier = {};
+    features.forEach(f => {
+      const t = (f && f.tier) ? f.tier : 'minor';
+      if (!byTier[t]) byTier[t] = [];
+      byTier[t].push(f);
+    });
+    Object.keys(byTier).forEach(t => {
+      byTier[t].sort((a, b) => (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()));
+    });
+
     let html = `
       <div style="border:1px solid #1f1f1f;border-radius:4px;padding:12px;background:#0d0d0d;">
         <h4 style="margin:0 0 10px;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">Features <span style="color:#666;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;">— pay AP to take</span></h4>
     `;
-    features.forEach(f => {
-      const cost = Number.isFinite(featureCosts[f.tier]) ? featureCosts[f.tier] : 0;
-      const isOn = selected.has(f.id);
-      const cf = (f.customField && typeof f.customField === 'object') ? f.customField : { enabled: false, label: '' };
-      // When the feature is selected AND has a custom field configured,
-      // render an inline input below the description so the player can
-      // fill in their value. Stops click-propagation so typing in the
-      // input doesn't toggle the checkbox.
-      const cfInputHtml = (isOn && cf.enabled) ? `
-        <div style="grid-column:2 / span 3;margin-top:6px;display:flex;align-items:center;gap:8px;font-size:12px;color:#bbb;">
-          <span style="color:#d8a060;font-weight:600;flex-shrink:0;">${escapeHtml(cf.label || 'Custom field')}:</span>
-          <input type="text"
-                 placeholder="e.g. Requires heavy moisture"
-                 value="${escapeHtml(cfValues[f.id] || '')}"
-                 onclick="event.stopPropagation();"
-                 oninput="event.stopPropagation();abilitiesBuilderSetCustomFieldValue('${escapeHtml(f.id)}',this.value)"
-                 style="flex:1;background:#111;border:1px solid #2a2a2a;color:#e0e0e0;font-family:inherit;font-size:12px;padding:5px 8px;border-radius:3px;outline:none;">
-        </div>
-      ` : '';
+    TIER_ORDER.forEach(tier => {
+      const list = byTier[tier];
+      if (!list || list.length === 0) return;
+      const cost = Number.isFinite(featureCosts[tier]) ? featureCosts[tier] : 0;
+      // Tier band header — small, all-caps, with the AP cost on the
+      // right. Same styling vocabulary as the GM-side editor's tier
+      // bands so the two editors feel like one product.
       html += `
-        <label style="display:grid;grid-template-columns:24px 1fr 80px 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;cursor:pointer;">
-          <input type="checkbox" ${isOn ? 'checked' : ''} onchange="abilitiesBuilderToggleFeature('${escapeHtml(f.id)}')">
-          <div>
-            <div style="font-weight:500;color:#ddd;font-size:13px;">${escapeHtml(f.name || 'Feature')}</div>
-            ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
-          </div>
-          <span style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.05em;">${escapeHtml(f.tier || '')}</span>
-          <span style="color:${isOn ? '#d8a060' : '#666'};font-family:monospace;font-size:12px;text-align:right;">+${cost} AP</span>
-          ${cfInputHtml}
-        </label>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid #1a1a1a;">
+          <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#aaa;">${TIER_LABELS[tier]}</span>
+          <span style="font-size:10px;color:#666;font-family:'Consolas','Courier New',monospace;">+${cost} AP each</span>
+        </div>
       `;
+      list.forEach(f => {
+        const isOn = selected.has(f.id);
+        const cf = (f.customField && typeof f.customField === 'object') ? f.customField : { enabled: false, label: '' };
+        const cfInputHtml = (isOn && cf.enabled) ? `
+          <div style="grid-column:2 / span 2;margin-top:6px;display:flex;align-items:center;gap:8px;font-size:12px;color:#bbb;">
+            <span style="color:#d8a060;font-weight:600;flex-shrink:0;">${escapeHtml(cf.label || 'Custom field')}:</span>
+            <input type="text"
+                   placeholder="e.g. Requires heavy moisture"
+                   value="${escapeHtml(cfValues[f.id] || '')}"
+                   onclick="event.stopPropagation();"
+                   oninput="event.stopPropagation();abilitiesBuilderSetCustomFieldValue('${escapeHtml(f.id)}',this.value)"
+                   style="flex:1;background:#111;border:1px solid #2a2a2a;color:#e0e0e0;font-family:inherit;font-size:12px;padding:5px 8px;border-radius:3px;outline:none;">
+          </div>
+        ` : '';
+        html += `
+          <label style="display:grid;grid-template-columns:24px 1fr 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;cursor:pointer;">
+            <input type="checkbox" ${isOn ? 'checked' : ''} onchange="abilitiesBuilderToggleFeature('${escapeHtml(f.id)}')">
+            <div>
+              <div style="font-weight:500;color:#ddd;font-size:13px;">${escapeHtml(f.name || 'Feature')}</div>
+              ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
+            </div>
+            <span style="color:${isOn ? '#d8a060' : '#666'};font-family:monospace;font-size:12px;text-align:right;">+${cost} AP</span>
+            ${cfInputHtml}
+          </label>
+        `;
+      });
     });
     html += '</div>';
     return html;
@@ -7801,37 +7826,59 @@
     const flawRefunds = (tiers && tiers.flawRefunds) || {};
     const selected = Array.isArray(inst.selectedFlawIds) ? new Set(inst.selectedFlawIds) : new Set();
     const cfValues = (inst.customFieldValues && typeof inst.customFieldValues === 'object') ? inst.customFieldValues : {};
+
+    const TIER_ORDER  = ['minor', 'moderate', 'major', 'massive', 'monumental', 'mega', 'mythical'];
+    const TIER_LABELS = { minor: 'Minor', moderate: 'Moderate', major: 'Major', massive: 'Massive', monumental: 'Monumental', mega: 'Mega', mythical: 'Mythical' };
+    const byTier = {};
+    flaws.forEach(f => {
+      const t = (f && f.tier) ? f.tier : 'minor';
+      if (!byTier[t]) byTier[t] = [];
+      byTier[t].push(f);
+    });
+    Object.keys(byTier).forEach(t => {
+      byTier[t].sort((a, b) => (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()));
+    });
+
     let html = `
       <div style="border:1px solid #1f1f1f;border-radius:4px;padding:12px;background:#0d0d0d;">
         <h4 style="margin:0 0 10px;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">Flaws <span style="color:#666;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;">— get AP back for taking</span></h4>
     `;
-    flaws.forEach(f => {
-      const refund = Number.isFinite(flawRefunds[f.tier]) ? flawRefunds[f.tier] : 0;
-      const isOn = selected.has(f.id);
-      const cf = (f.customField && typeof f.customField === 'object') ? f.customField : { enabled: false, label: '' };
-      const cfInputHtml = (isOn && cf.enabled) ? `
-        <div style="grid-column:2 / span 3;margin-top:6px;display:flex;align-items:center;gap:8px;font-size:12px;color:#bbb;">
-          <span style="color:#88c080;font-weight:600;flex-shrink:0;">${escapeHtml(cf.label || 'Custom field')}:</span>
-          <input type="text"
-                 placeholder="e.g. Requires heavy moisture"
-                 value="${escapeHtml(cfValues[f.id] || '')}"
-                 onclick="event.stopPropagation();"
-                 oninput="event.stopPropagation();abilitiesBuilderSetCustomFieldValue('${escapeHtml(f.id)}',this.value)"
-                 style="flex:1;background:#111;border:1px solid #2a2a2a;color:#e0e0e0;font-family:inherit;font-size:12px;padding:5px 8px;border-radius:3px;outline:none;">
-        </div>
-      ` : '';
+    TIER_ORDER.forEach(tier => {
+      const list = byTier[tier];
+      if (!list || list.length === 0) return;
+      const refund = Number.isFinite(flawRefunds[tier]) ? flawRefunds[tier] : 0;
       html += `
-        <label style="display:grid;grid-template-columns:24px 1fr 80px 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;cursor:pointer;">
-          <input type="checkbox" ${isOn ? 'checked' : ''} onchange="abilitiesBuilderToggleFlaw('${escapeHtml(f.id)}')">
-          <div>
-            <div style="font-weight:500;color:#ddd;font-size:13px;">${escapeHtml(f.name || 'Flaw')}</div>
-            ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
-          </div>
-          <span style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.05em;">${escapeHtml(f.tier || '')}</span>
-          <span style="color:${isOn ? '#88c080' : '#666'};font-family:monospace;font-size:12px;text-align:right;">−${refund} AP</span>
-          ${cfInputHtml}
-        </label>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid #1a1a1a;">
+          <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#aaa;">${TIER_LABELS[tier]}</span>
+          <span style="font-size:10px;color:#666;font-family:'Consolas','Courier New',monospace;">−${refund} AP each</span>
+        </div>
       `;
+      list.forEach(f => {
+        const isOn = selected.has(f.id);
+        const cf = (f.customField && typeof f.customField === 'object') ? f.customField : { enabled: false, label: '' };
+        const cfInputHtml = (isOn && cf.enabled) ? `
+          <div style="grid-column:2 / span 2;margin-top:6px;display:flex;align-items:center;gap:8px;font-size:12px;color:#bbb;">
+            <span style="color:#88c080;font-weight:600;flex-shrink:0;">${escapeHtml(cf.label || 'Custom field')}:</span>
+            <input type="text"
+                   placeholder="e.g. Requires heavy moisture"
+                   value="${escapeHtml(cfValues[f.id] || '')}"
+                   onclick="event.stopPropagation();"
+                   oninput="event.stopPropagation();abilitiesBuilderSetCustomFieldValue('${escapeHtml(f.id)}',this.value)"
+                   style="flex:1;background:#111;border:1px solid #2a2a2a;color:#e0e0e0;font-family:inherit;font-size:12px;padding:5px 8px;border-radius:3px;outline:none;">
+          </div>
+        ` : '';
+        html += `
+          <label style="display:grid;grid-template-columns:24px 1fr 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;cursor:pointer;">
+            <input type="checkbox" ${isOn ? 'checked' : ''} onchange="abilitiesBuilderToggleFlaw('${escapeHtml(f.id)}')">
+            <div>
+              <div style="font-weight:500;color:#ddd;font-size:13px;">${escapeHtml(f.name || 'Flaw')}</div>
+              ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
+            </div>
+            <span style="color:${isOn ? '#88c080' : '#666'};font-family:monospace;font-size:12px;text-align:right;">−${refund} AP</span>
+            ${cfInputHtml}
+          </label>
+        `;
+      });
     });
     html += '</div>';
     return html;
