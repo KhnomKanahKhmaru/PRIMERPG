@@ -8,233 +8,409 @@
   <script src="nav.js"></script>
   <script src="ruleset-defaults.js"></script>
   <style>
-    /* Page chrome — mirrors edit-ruleset.html so the visual jump between
-       the two feels native. The Catalogue page is wider than the Ruleset
-       Editor (max-width 1100px vs 900px) because the type-tile grid and
-       the builder editor both benefit from the extra horizontal real estate. */
+    /* ═════════════════════════════════════════════════════════════════
+       PRIME RPG — Catalogue editor stylesheet (Phase B v3)
+
+       Design direction: dark, full-width, restrained typography.
+       Card-based throughout. The same screens render for GM and Player —
+       only edit affordances differ. No animations. Bold weight reserved
+       for things that matter (titles, ability names, AP costs).
+
+       Layout architecture:
+         body
+         └ .page (full-width below the navbar, 24px gutters)
+            ├ .crumb (small breadcrumb)
+            ├ .screen-title (large, bold, screen header)
+            ├ .screen-sub (muted descriptor)
+            └ .screen-body (the screen-specific content)
+       ═════════════════════════════════════════════════════════════════ */
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       background: #0a0a0a; color: #e0e0e0;
       font-family: 'Open Sans', sans-serif; font-size: 14px;
       min-height: 100vh;
     }
-    .page { padding: 104px 24px 80px; max-width: 1100px; margin: 0 auto; }
-    .page-title { font-size: 20px; font-weight: 600; margin-bottom: 4px; color: #e0e0e0; }
-    .page-sub   { font-size: 12px; color: #666; margin-bottom: 24px; }
 
-    /* Breadcrumb above the title — gives the user an "out" back to the
-       Ruleset Editor. Keep visually quiet so it doesn't compete with
-       the page title. */
-    .crumb { font-size: 12px; color: #888; margin-bottom: 6px; }
-    .crumb a { color: #888; text-decoration: none; cursor: pointer; }
+    /* The page fills the viewport below the 64px navbar (injected by
+       nav.js). 40px top padding so screen titles don't slam into the
+       nav, generous bottom padding so the footer-actions row breathes. */
+    .page {
+      padding: 104px 24px 80px;
+      max-width: none;
+      margin: 0;
+    }
+
+    /* Breadcrumb above titles. Small, muted, click-able. */
+    .crumb {
+      font-size: 12px; color: #888; margin-bottom: 8px;
+    }
+    .crumb a {
+      color: #888; text-decoration: none; cursor: pointer;
+    }
     .crumb a:hover { color: #d4a574; text-decoration: underline; }
 
-    /* Sections — match edit-ruleset.html. */
-    .section {
-      border: 1px solid #1a1a1a; border-radius: 6px;
-      padding: 18px 20px; margin-bottom: 14px; background: #0e0e0e;
+    /* Screen titles — the big top-of-page header. NOT all-caps; just a
+       proper page title in size 22, weight 600. The screen-sub below
+       is the hint/subtitle line. */
+    .screen-title {
+      font-size: 22px; font-weight: 600; color: #e8e8e8;
+      margin-bottom: 4px;
     }
-    .section-header {
-      display: flex; align-items: center; gap: 12px;
-      margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid #1a1a1a;
-    }
-    .section-title {
-      font-size: 12px; font-weight: 700; letter-spacing: .08em;
-      text-transform: uppercase; color: #aaa; flex: 1;
+    .screen-sub {
+      font-size: 13px; color: #888; margin-bottom: 28px;
+      line-height: 1.5; max-width: 720px;
     }
 
-    /* Form fields — match edit-ruleset.html. */
-    .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+    /* Section divider — used between major regions on the Builder
+       editor. A small all-caps label sitting on a thin top border. */
+    .section-rule {
+      margin-top: 24px; padding-top: 14px;
+      border-top: 1px solid #1a1a1a;
+    }
+    .section-label {
+      font-size: 11px; font-weight: 700; letter-spacing: .12em;
+      text-transform: uppercase; color: #888;
+      margin-bottom: 12px;
+      display: flex; align-items: center; gap: 12px;
+    }
+    .section-label .section-actions {
+      margin-left: auto; display: flex; gap: 6px;
+    }
+
+    /* ───── Form fields (used across all screens for editable inputs) ───── */
+    .field {
+      display: flex; flex-direction: column; gap: 6px;
+      margin-bottom: 12px;
+    }
     .field label {
       font-size: 10px; font-weight: 600; letter-spacing: .08em;
       text-transform: uppercase; color: #888;
     }
     .field input, .field select, .field textarea {
       background: #111; border: 1px solid #222; color: #e0e0e0;
-      font-family: 'Open Sans', sans-serif; font-size: 13px;
-      padding: 7px 10px; border-radius: 4px; outline: none; width: 100%;
+      font-family: inherit; font-size: 13px;
+      padding: 8px 10px; border-radius: 4px; outline: none; width: 100%;
     }
-    .field input:focus, .field select:focus, .field textarea:focus { border-color: #444; }
+    .field input:focus, .field select:focus, .field textarea:focus {
+      border-color: #555;
+    }
 
-    /* Bare inputs in the catalogue body — for inline grids of inputs
-       in category rows, builder rows, parameter rows, etc., outside of
-       `.field` wrappers. */
+    /* Bare inputs in any catalogue body (without .field wrapper) get
+       the same dark styling. Avoids browser-default white inputs. */
     #catalogue-body input[type="text"],
     #catalogue-body input[type="number"],
     #catalogue-body select,
     #catalogue-body textarea {
       background: #111; border: 1px solid #222; color: #e0e0e0;
-      font-family: 'Open Sans', sans-serif; font-size: 13px;
-      padding: 6px 10px; border-radius: 4px; outline: none;
+      font-family: inherit; font-size: 13px;
+      padding: 7px 10px; border-radius: 4px; outline: none;
     }
-    #catalogue-body input[type="text"]:focus,
-    #catalogue-body input[type="number"]:focus,
+    #catalogue-body input:focus,
     #catalogue-body select:focus,
-    #catalogue-body textarea:focus { border-color: #444; }
+    #catalogue-body textarea:focus { border-color: #555; }
     #catalogue-body select option { background: #111; }
 
-    .hint { font-size: 12px; color: #666; line-height: 1.5; margin-bottom: 12px; }
+    /* Hint text — small muted instructional copy. */
+    .hint {
+      font-size: 12px; color: #666; line-height: 1.5;
+    }
 
-    /* Buttons — match edit-ruleset.html. */
+    /* ───── Buttons ───── */
     .btn {
       background: #1a1a1a; border: 1px solid #2a2a2a; color: #c8c8c8;
-      font-family: 'Open Sans', sans-serif; font-size: 13px;
-      padding: 7px 14px; border-radius: 4px; cursor: pointer;
-      transition: background 0.1s, border-color 0.1s;
+      font-family: inherit; font-size: 13px;
+      padding: 8px 16px; border-radius: 4px; cursor: pointer;
+      transition: background 0.1s, border-color 0.1s, color 0.1s;
     }
-    .btn:hover:not(:disabled) { background: #222; border-color: #3a3a3a; }
+    .btn:hover:not(:disabled) {
+      background: #222; border-color: #3a3a3a;
+    }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn.small { padding: 4px 10px; font-size: 12px; }
-    .btn.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
-    .btn.primary:hover:not(:disabled) { background: #1d4ed8; border-color: #1d4ed8; }
-    .btn.danger { background: #1f0e0e; border-color: #4a2a2a; color: #c66; }
-    .btn.danger:hover:not(:disabled) { background: #2a1414; border-color: #5a3030; }
+    .btn.small { padding: 5px 12px; font-size: 12px; }
+    .btn.primary {
+      background: #2563eb; border-color: #2563eb; color: #fff;
+    }
+    .btn.primary:hover:not(:disabled) {
+      background: #1d4ed8; border-color: #1d4ed8;
+    }
+    .btn.danger {
+      background: #1f0e0e; border-color: #4a2a2a; color: #c66;
+    }
+    .btn.danger:hover:not(:disabled) {
+      background: #2a1414; border-color: #5a3030; color: #d88;
+    }
+    .btn.ghost {
+      background: transparent; border: 1px dashed #2a2a2a; color: #888;
+      width: 100%;
+      padding: 12px 16px;
+    }
+    .btn.ghost:hover:not(:disabled) {
+      background: #111; border-color: #444; color: #c8c8c8;
+    }
 
-    /* Type-tile home grid. */
+    /* ═════════════════════════════════════════════════════════════════
+       SCREEN 1 — Type picker
+
+       Four large tiles in a row (or wrapping on narrow viewports).
+       Each tile has presence: tall enough to feel like a real choice,
+       not a button. Title in size 18 / weight 700. Description below
+       in muted size 13. Stat counts at the bottom (categories / builders).
+       ═════════════════════════════════════════════════════════════════ */
     .type-tile-grid {
-      display: grid; gap: 12px; margin-top: 8px;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+    @media (max-width: 1100px) {
+      .type-tile-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 600px) {
+      .type-tile-grid { grid-template-columns: 1fr; }
     }
     .type-tile {
       background: #0d0d0d; border: 1px solid #2a2a2a;
-      border-radius: 4px; padding: 14px; cursor: pointer;
+      border-radius: 6px; padding: 24px;
+      cursor: pointer;
+      display: flex; flex-direction: column;
+      min-height: 180px;
       transition: border-color 0.15s, background 0.15s;
     }
-    .type-tile:hover { border-color: #3a3a3a; background: #111; }
+    .type-tile:hover {
+      border-color: #4a4a4a; background: #111;
+    }
     .type-tile.in-design {
-      background: #0a0a0a; border-style: dashed; opacity: 0.5; cursor: not-allowed;
+      background: #0a0a0a; border-style: dashed; opacity: 0.55;
+      cursor: not-allowed;
     }
-    .type-tile.in-design:hover { border-color: #2a2a2a; background: #0a0a0a; }
-    .type-tile-name { font-size: 15px; font-weight: 600; color: #e8e8e8; }
-    .type-tile-desc { font-size: 12px; color: #999; margin-top: 4px; line-height: 1.4; }
-    .type-tile-meta { font-size: 11px; color: #888; margin-top: 6px; }
-    .type-tile-meta-design { letter-spacing: .04em; text-transform: uppercase; }
-
-    /* Footer — Save / Done / save msg. */
-    .footer-actions {
-      margin-top: 24px; padding-top: 18px;
-      border-top: 1px solid #1a1a1a;
-      display: flex; gap: 10px; align-items: center;
+    .type-tile.in-design:hover {
+      border-color: #2a2a2a; background: #0a0a0a;
     }
-    .save-msg { font-size: 12px; margin-left: auto; }
-
-    .tier-grid {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
-    }
-    .tier-grid label {
-      display: block; font-weight: 700; margin-bottom: 6px;
-      font-size: 11px; letter-spacing: .08em;
-      text-transform: uppercase; color: #888;
-    }
-
-    .empty {
-      padding: 12px; text-align: center; color: #666; font-size: 12px;
-    }
-
-    /* ═════════ PHASE B — BUILDER EDITOR LAYOUT ═════════ */
-
-    /* Two-column grid for the Builder editor body. Left column holds
-       the Ability Card preview; right column holds the parameters list.
-       On narrow viewports the grid stacks (preview on top). */
-    .bldr-grid-top {
-      display: grid; gap: 14px;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    }
-    @media (max-width: 800px) {
-      .bldr-grid-top { grid-template-columns: 1fr; }
-    }
-
-    /* Two-column grid for Features and Flaws. Same media rule as above. */
-    .bldr-grid-mid {
-      display: grid; gap: 14px;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    }
-    @media (max-width: 800px) {
-      .bldr-grid-mid { grid-template-columns: 1fr; }
-    }
-
-    /* Inner panel — used inside the Builder editor for each of the
-       four primary regions (preview / params / features / flaws). */
-    .bldr-panel {
-      background: #0d0d0d; border: 1px solid #1a1a1a; border-radius: 4px;
-      padding: 12px; min-width: 0;
-    }
-    .bldr-panel-title {
-      font-size: 11px; font-weight: 700; letter-spacing: .08em;
-      text-transform: uppercase; color: #888;
-      margin-bottom: 8px;
-      display: flex; align-items: center; justify-content: space-between;
-    }
-    .bldr-panel-title .btn.small { padding: 3px 8px; font-size: 11px; }
-
-    /* Ability Card preview — meant to look like the player-facing card.
-       Slightly different styling from the editor panels so the GM can
-       tell at a glance "this is the OUTPUT, that is the INPUT." */
-    .bldr-card-preview {
-      background: linear-gradient(180deg, #14140e 0%, #0e0e08 100%);
-      border: 1px solid #2a2a20;
-      border-radius: 4px; padding: 14px;
-      min-height: 180px;
-      position: relative;
-    }
-    .bldr-card-name {
-      font-size: 16px; font-weight: 700; color: #e6e0cc;
-      margin-bottom: 2px;
-    }
-    /* Tagline — italic, smaller, sits right under the name. Always
-       Player-authored, so in the Builder editor preview it's a
-       placeholder. */
-    .bldr-card-tagline {
-      font-size: 12px; font-style: italic; color: #aaa;
+    .type-tile-name {
+      font-size: 18px; font-weight: 700; color: #e8e8e8;
       margin-bottom: 6px;
     }
-    .bldr-card-cost {
-      display: inline-block; padding: 3px 8px;
+    .type-tile-desc {
+      font-size: 13px; color: #999; line-height: 1.5;
+      flex: 1;
+    }
+    .type-tile-meta {
+      font-size: 11px; color: #888; margin-top: 14px;
+      padding-top: 12px; border-top: 1px solid #1a1a1a;
+    }
+    .type-tile-meta-design {
+      letter-spacing: .06em; text-transform: uppercase;
+      color: #666;
+    }
+
+    /* ═════════════════════════════════════════════════════════════════
+       SCREEN 2 — Category screen
+
+       Vertical stack of category bands. Each band has a header strip
+       (name + edit + delete + add-builder) and a wrap grid of Ability
+       tiles inside. Categories visually separate via spacing, not
+       heavy borders.
+       ═════════════════════════════════════════════════════════════════ */
+    .cat-band {
+      margin-bottom: 24px;
+    }
+    .cat-band-head {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 0; margin-bottom: 12px;
+      border-bottom: 1px solid #1f1f1f;
+    }
+    .cat-band-name-input {
+      flex: 1; min-width: 0;
+      background: transparent; border: none;
+      font-family: inherit; color: #e8e8e8;
+      font-size: 16px; font-weight: 600;
+      padding: 4px 0; outline: none;
+    }
+    .cat-band-name-input::placeholder { color: #555; }
+    .cat-band-name-input:focus { border-bottom: 1px solid #444; }
+    .cat-band-actions {
+      display: flex; gap: 6px; flex: 0 0 auto;
+    }
+    .cat-band-tiles {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .cat-band-empty {
+      padding: 20px; text-align: center;
+      color: #555; font-style: italic; font-size: 13px;
+      border: 1px dashed #1f1f1f; border-radius: 4px;
+    }
+
+    /* Ability tile — the per-Builder card on the category screen.
+       Big enough to feel like a real choice (180+ px tall), name in
+       weight 700, AP cost as a pill at the bottom-right. Hover state
+       lifts the border. Click opens the Builder editor. */
+    .ability-tile {
+      background: #0d0d0d; border: 1px solid #1f1f1f;
+      border-radius: 6px; padding: 14px;
+      cursor: pointer;
+      display: flex; flex-direction: column;
+      min-height: 130px;
+      transition: border-color 0.15s, background 0.15s;
+      position: relative;
+    }
+    .ability-tile:hover {
+      border-color: #4a4a4a; background: #111;
+    }
+    .ability-tile-name {
+      font-size: 14px; font-weight: 700; color: #e8e8e8;
+      margin-bottom: 4px;
+      overflow: hidden; text-overflow: ellipsis;
+      display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+    .ability-tile-name-empty { color: #555; font-style: italic; font-weight: 500; }
+    .ability-tile-desc {
+      font-size: 12px; color: #888; line-height: 1.45;
+      flex: 1;
+      overflow: hidden;
+      display: -webkit-box; -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+    }
+    .ability-tile-meta {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-top: 10px; gap: 8px;
+    }
+    .ability-tile-cost {
+      padding: 3px 8px;
       background: #1a1a14; border: 1px solid #2a2a20;
       border-radius: 3px; font-size: 11px; color: #d8c060;
       font-family: 'Consolas', 'Courier New', monospace;
-      margin-bottom: 8px;
     }
-    .bldr-card-desc {
-      font-size: 12px; color: #999; line-height: 1.5;
+    .ability-tile-x {
+      background: transparent; border: 1px solid #2a2a2a;
+      color: #c66; font-size: 13px; cursor: pointer;
+      padding: 2px 8px; border-radius: 3px;
+    }
+    .ability-tile-x:hover { border-color: #4a2a2a; color: #f88; }
+
+    /* ═════════════════════════════════════════════════════════════════
+       SCREEN 3 — Builder editor
+
+       Full-width, generous spacing. Header takes the top with title +
+       AP cost. Then a two-column top region (Card preview + Parameters),
+       a two-column middle (Features + Flaws), a stack of three full-
+       width sections (Description, System, Visual, Extra). Doesn't
+       look like a form — looks like a creation interface.
+       ═════════════════════════════════════════════════════════════════ */
+
+    /* Top header strip: back link + name (editable) + AP cost pill. */
+    .bldr-head {
+      display: flex; align-items: center; gap: 16px;
+      margin-bottom: 24px;
+    }
+    .bldr-head-name {
+      flex: 1; min-width: 0;
+      background: transparent; border: none;
+      font-family: inherit; color: #e8e8e8;
+      font-size: 26px; font-weight: 700;
+      padding: 4px 0; outline: none;
+    }
+    .bldr-head-name::placeholder { color: #555; font-style: italic; }
+    .bldr-head-name:focus { border-bottom: 1px solid #444; }
+    .bldr-head-cost {
+      flex: 0 0 auto; padding: 8px 16px;
+      background: #1a1a14; border: 1px solid #2a2a20;
+      border-radius: 4px;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 14px; font-weight: 600; color: #d8c060;
+    }
+
+    /* Two-column grids for top region (preview + params) and mid
+       region (features + flaws). 5fr/4fr ratio puts a bit more weight
+       on the preview/features side. */
+    .bldr-grid-top, .bldr-grid-mid {
+      display: grid;
+      grid-template-columns: minmax(0, 5fr) minmax(0, 4fr);
+      gap: 24px;
+    }
+    @media (max-width: 900px) {
+      .bldr-grid-top, .bldr-grid-mid { grid-template-columns: 1fr; }
+    }
+
+    /* Region panel — wraps a single quadrant of the builder layout.
+       Each panel has its own subtle border + small label header. */
+    .bldr-panel {
+      background: #0d0d0d; border: 1px solid #1a1a1a;
+      border-radius: 6px; padding: 18px;
+      min-width: 0;
+    }
+    .bldr-panel-title {
+      font-size: 11px; font-weight: 700; letter-spacing: .12em;
+      text-transform: uppercase; color: #888;
+      margin-bottom: 14px;
+      display: flex; align-items: center; gap: 12px;
+    }
+    .bldr-panel-title .panel-actions {
+      margin-left: auto;
+    }
+
+    /* ───── Live Ability Card preview ─────
+       This is the core artefact — the player-facing card the GM is
+       authoring. Bigger and more presence than before. Uses the same
+       gradient + border treatment as the actual player card will use
+       on the character sheet. */
+    .bldr-card-preview {
+      background: linear-gradient(180deg, #14140e 0%, #0e0e08 100%);
+      border: 1px solid #2a2a20;
+      border-radius: 6px; padding: 20px;
+      min-height: 240px;
+      position: relative;
+    }
+    .bldr-card-name {
+      font-size: 20px; font-weight: 700; color: #e6e0cc;
+      margin-bottom: 4px;
+      line-height: 1.2;
+    }
+    .bldr-card-tagline {
+      font-size: 13px; font-style: italic; color: #aaa;
       margin-bottom: 10px;
     }
-    /* Sections inside the card (System / Visual / Extra). Each has a
-       small label + a body block. The section-label is the muted
-       all-caps header; section-body is the actual content. */
+    .bldr-card-cost {
+      display: inline-block; padding: 4px 10px;
+      background: #1a1a14; border: 1px solid #2a2a20;
+      border-radius: 3px; font-size: 12px; color: #d8c060;
+      font-family: 'Consolas', 'Courier New', monospace;
+      margin-bottom: 14px;
+    }
+    .bldr-card-desc {
+      font-size: 13px; color: #b0b0b0; line-height: 1.55;
+      margin-bottom: 14px;
+    }
     .bldr-card-section {
-      margin-top: 8px;
+      margin-top: 12px;
     }
     .bldr-card-section-label {
-      font-size: 10px; font-weight: 700; letter-spacing: .08em;
+      font-size: 10px; font-weight: 700; letter-spacing: .12em;
       text-transform: uppercase; color: #888;
-      margin-bottom: 4px;
+      margin-bottom: 5px;
     }
     .bldr-card-section-body {
       font-size: 13px; color: #c8c8c8; line-height: 1.55;
-      padding: 8px 10px; background: #0a0a06;
-      border: 1px solid #1a1a14; border-radius: 3px;
+      padding: 10px 12px; background: #0a0a06;
+      border: 1px solid #1a1a14; border-radius: 4px;
       white-space: pre-wrap;
     }
-    /* Placeholder text — italic, dim. Used when a Player-authored
-       field has no content yet (so Builder preview shows the GM
-       guideline italicized). */
     .bldr-card-placeholder {
       color: #555; font-style: italic;
     }
     .bldr-card-empty {
       color: #555; font-style: italic;
     }
-    /* Extra tab — a small clickable button at the bottom of the card.
-       Click toggles the Extra section open/closed. */
     .bldr-card-extra-tab-wrap {
-      margin-top: 10px; display: flex; justify-content: center;
+      margin-top: 14px; display: flex; justify-content: center;
     }
     .bldr-card-extra-tab {
       background: #1a1a14; border: 1px solid #2a2a20; color: #aaa;
       font-family: inherit; font-size: 11px; font-weight: 600;
-      letter-spacing: .06em; text-transform: uppercase;
-      padding: 4px 12px; border-radius: 12px; cursor: pointer;
+      letter-spacing: .08em; text-transform: uppercase;
+      padding: 5px 14px; border-radius: 14px; cursor: pointer;
       transition: background 0.1s, border-color 0.1s, color 0.1s;
     }
     .bldr-card-extra-tab:hover {
@@ -244,20 +420,19 @@
       background: #2a2a18; border-color: #3a3a20; color: #d8c060;
     }
 
-    /* Param card — collapsible. Click the head to expand/collapse the
-       step editor. Open state shows kind toggle + step list + add-step
-       button; collapsed state shows just the head row (name + summary). */
+    /* ───── Parameters panel ─────
+       Each parameter is a collapsible card. Click head → expand inline. */
     .bldr-param-card {
       background: #111; border: 1px solid #1f1f1f;
-      border-radius: 3px; margin-bottom: 6px;
+      border-radius: 4px; margin-bottom: 8px;
       overflow: hidden;
       transition: border-color 0.1s;
     }
     .bldr-param-card:hover { border-color: #2f2f2f; }
-    .bldr-param-card.expanded { border-color: #3a3a3a; }
+    .bldr-param-card.expanded { border-color: #4a4a4a; }
     .bldr-param-head {
-      display: flex; align-items: center; gap: 8px;
-      padding: 8px; cursor: pointer; user-select: none;
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; cursor: pointer; user-select: none;
     }
     .bldr-param-caret {
       flex: 0 0 auto; width: 12px; color: #666;
@@ -268,10 +443,11 @@
       transform: rotate(90deg);
     }
     .bldr-param-name {
-      font-size: 13px; color: #ddd; flex: 1; min-width: 0;
+      font-size: 14px; font-weight: 600; color: #ddd;
+      flex: 1; min-width: 0;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .bldr-param-name-empty { color: #555; font-style: italic; }
+    .bldr-param-name-empty { color: #555; font-style: italic; font-weight: 500; }
     .bldr-param-summary {
       font-size: 11px; color: #888;
       font-family: 'Consolas', 'Courier New', monospace;
@@ -284,33 +460,23 @@
     }
     .bldr-param-head .row-x:hover { color: #f88; }
 
-    /* Expanded body — kind selector at top, step rows below, then
-       add-step button at the bottom. Hidden when collapsed. */
     .bldr-param-body {
-      padding: 10px 10px 10px 28px;  /* match indentation past the caret */
+      padding: 12px 14px 14px 32px;
       border-top: 1px solid #1a1a1a;
       background: #0a0a0a;
     }
-    .bldr-param-body .field { margin-bottom: 8px; }
-    .bldr-param-body label {
-      font-size: 10px; font-weight: 600; letter-spacing: .08em;
-      text-transform: uppercase; color: #888;
-    }
+    .bldr-param-body .field { margin-bottom: 10px; }
 
-    /* Step row inside the inline body — for editing a parameter's
-       individual steps (label / value / cost). Compact horizontal layout. */
-    .bldr-step-row {
+    /* Step row inside the param body. Compact horizontal layout. */
+    .bldr-step-row, .bldr-step-row-head {
       display: grid;
-      grid-template-columns: 22px 1fr 1fr 80px 28px;
-      gap: 6px; align-items: center; margin-bottom: 4px;
+      grid-template-columns: 24px 1fr 1fr 90px 32px;
+      gap: 8px; align-items: center; margin-bottom: 5px;
     }
     .bldr-step-row-head {
-      display: grid;
-      grid-template-columns: 22px 1fr 1fr 80px 28px;
-      gap: 6px; align-items: center;
       font-size: 10px; color: #666;
-      text-transform: uppercase; letter-spacing: .06em;
-      margin-bottom: 4px;
+      text-transform: uppercase; letter-spacing: .08em;
+      margin-bottom: 6px;
     }
     .bldr-step-row .step-default-radio {
       display: flex; align-items: center; justify-content: center;
@@ -318,11 +484,11 @@
     .bldr-step-row input[type="text"],
     .bldr-step-row input[type="number"] {
       background: #111; border: 1px solid #222; color: #e0e0e0;
-      font-family: inherit; font-size: 12px;
-      padding: 5px 7px; border-radius: 3px; outline: none;
+      font-family: inherit; font-size: 13px;
+      padding: 6px 8px; border-radius: 3px; outline: none;
       width: 100%;
     }
-    .bldr-step-row input:focus { border-color: #444; }
+    .bldr-step-row input:focus { border-color: #555; }
     .bldr-step-row .row-x {
       background: transparent; border: 1px solid #2a2a2a;
       color: #c66; font-size: 14px; cursor: pointer;
@@ -330,94 +496,117 @@
     }
     .bldr-step-row .row-x:hover { border-color: #4a2a2a; color: #f88; }
 
-    /* Tier band — section under Features or Flaws column for a single
-       tier (Minor, Moderate, etc). Heading is muted; rows are stacked
-       below it. */
+    /* ───── Features / Flaws panels ─────
+       Tier-banded structure. Each tier band has a small header (tier
+       name + per-tier AP cost), then rows of textareas, then "+ Add"
+       at the bottom. */
     .bldr-tier-band {
-      margin-bottom: 10px;
+      margin-bottom: 14px;
     }
     .bldr-tier-band-head {
       display: flex; align-items: center; justify-content: space-between;
-      padding: 4px 0 4px 0; margin-bottom: 4px;
-      border-bottom: 1px solid #1f1f1f;
+      padding: 4px 0 6px 0; margin-bottom: 6px;
+      border-bottom: 1px solid #1a1a1a;
     }
     .bldr-tier-band-name {
-      font-size: 11px; font-weight: 700; letter-spacing: .08em;
+      font-size: 11px; font-weight: 700; letter-spacing: .1em;
       text-transform: uppercase; color: #aaa;
     }
     .bldr-tier-band-cost {
       font-size: 10px; color: #666;
       font-family: 'Consolas', 'Courier New', monospace;
     }
-
-    /* Feature/flaw row — single auto-growing textarea + tier-move
-       dropdown + delete button. */
     .bldr-ff-row {
       display: flex; align-items: stretch; gap: 6px;
-      margin-bottom: 4px;
+      margin-bottom: 5px;
     }
     .bldr-ff-row textarea {
-      flex: 1; resize: vertical; min-height: 32px;
+      flex: 1; resize: vertical; min-height: 36px;
       background: #111; border: 1px solid #222; color: #e0e0e0;
-      font-family: 'Open Sans', sans-serif; font-size: 13px;
-      padding: 6px 8px; border-radius: 3px; outline: none;
+      font-family: inherit; font-size: 13px;
+      padding: 8px 10px; border-radius: 3px; outline: none;
     }
-    .bldr-ff-row textarea:focus { border-color: #444; }
+    .bldr-ff-row textarea:focus { border-color: #555; }
     .bldr-ff-row .ff-tier-move {
       flex: 0 0 auto; background: #111;
       border: 1px solid #222; color: #aaa;
       font-family: inherit; font-size: 11px;
       padding: 0 6px; border-radius: 3px; outline: none;
     }
-    .bldr-ff-row .ff-tier-move:focus { border-color: #444; }
+    .bldr-ff-row .ff-tier-move:focus { border-color: #555; }
     .bldr-ff-row .row-x {
       flex: 0 0 auto; background: transparent;
       border: 1px solid #2a2a2a; color: #c66;
-      font-size: 14px; cursor: pointer; padding: 0 8px;
+      font-size: 14px; cursor: pointer; padding: 0 10px;
       border-radius: 3px;
     }
     .bldr-ff-row .row-x:hover { border-color: #4a2a2a; color: #f88; }
+    .bldr-tier-add {
+      width: 100%; margin-top: 4px;
+      padding: 6px; font-size: 11px;
+      background: transparent; border: 1px dashed #2a2a2a;
+      color: #666; cursor: pointer; border-radius: 3px;
+      font-family: inherit;
+    }
+    .bldr-tier-add:hover {
+      border-color: #444; color: #aaa; background: #0d0d0d;
+    }
 
-    /* System / Visual / Extra section. Stacked, all visible. */
+    /* ───── Bottom textarea sections (Description, System, Visual, Extra) ─────
+       Stacked, full-width below the param/features region. Each is its
+       own panel with a label and a generously-sized textarea. */
     .bldr-textarea-section {
-      margin-top: 14px; background: #0d0d0d;
-      border: 1px solid #1a1a1a; border-radius: 4px;
-      padding: 12px;
-    }
-    .bldr-textarea-section + .bldr-textarea-section {
-      margin-top: 10px;
-    }
-    .bldr-textarea-section textarea {
-      width: 100%; min-height: 64px; resize: vertical;
-      background: #111; border: 1px solid #222; color: #e0e0e0;
-      font-family: 'Open Sans', sans-serif; font-size: 13px;
-      padding: 8px 10px; border-radius: 3px; outline: none;
-    }
-    .bldr-textarea-section textarea:focus { border-color: #444; }
-
-    /* Builder header — back link, name as the editable title, AP cost
-       pill on the right. */
-    .bldr-head {
-      display: flex; align-items: center; gap: 12px;
+      background: #0d0d0d; border: 1px solid #1a1a1a;
+      border-radius: 6px; padding: 18px;
       margin-bottom: 14px;
     }
-    .bldr-head-name {
-      flex: 1; min-width: 0;
-      background: transparent; border: none;
-      font-family: inherit; color: #e8e8e8;
-      font-size: 18px; font-weight: 600;
-      padding: 4px 0; outline: none;
+    .bldr-textarea-section .bldr-panel-title {
+      margin-bottom: 10px;
     }
-    .bldr-head-name::placeholder { color: #555; }
-    .bldr-head-name:focus { border-bottom: 1px solid #444; }
-    .bldr-head-cost {
-      flex: 0 0 auto; padding: 6px 12px;
-      background: #1a1a14; border: 1px solid #2a2a20;
-      border-radius: 4px;
-      font-family: 'Consolas', 'Courier New', monospace;
-      font-size: 13px; color: #d8c060;
+    .bldr-textarea-section textarea {
+      width: 100%; min-height: 80px; resize: vertical;
+      background: #111; border: 1px solid #222; color: #e0e0e0;
+      font-family: inherit; font-size: 13px;
+      padding: 10px 12px; border-radius: 4px; outline: none;
+    }
+    .bldr-textarea-section textarea:focus { border-color: #555; }
+
+    /* Footer — Save / Done / status. Wide row. */
+    .footer-actions {
+      margin-top: 32px; padding-top: 20px;
+      border-top: 1px solid #1a1a1a;
+      display: flex; gap: 12px; align-items: center;
+    }
+    .save-msg { font-size: 12px; margin-left: auto; }
+
+    /* Tier cost tables — used in Catalogue Settings. */
+    .tier-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+    }
+    @media (max-width: 700px) {
+      .tier-grid { grid-template-columns: 1fr; }
+    }
+    .tier-grid-label {
+      display: block; font-weight: 700; margin-bottom: 8px;
+      font-size: 11px; letter-spacing: .1em;
+      text-transform: uppercase; color: #888;
     }
 
+    /* Empty-state copy. */
+    .empty {
+      padding: 24px; text-align: center; color: #666;
+      font-size: 13px; font-style: italic;
+    }
+
+    /* Settings strip — top-of-page strip with catalogue-level fields
+       (enabled toggle, name, description, tier costs). Compact, sits
+       below the screen title & sub. Not a heavy panel — just a thin
+       row of controls. */
+    .settings-strip {
+      background: #0d0d0d; border: 1px solid #1a1a1a;
+      border-radius: 6px; padding: 18px;
+      margin-bottom: 20px;
+    }
   </style>
 </head>
 <body>
@@ -1070,69 +1259,106 @@
     if (!el) return;
     const cat = state.abilityCatalogue || {};
     const cats = getActiveCategories(cat);
+    const tiers = cat.canonicalTiers || {};
     if (cats.length === 0) {
-      el.innerHTML = `<div class="hint" style="padding:12px;text-align:center;color:#666;">No categories yet. Click "+ Add Category" above to start.</div>`;
+      el.innerHTML = `
+        <div class="empty">No categories yet. Click "+ Add Category" above to start.</div>
+      `;
       return;
     }
+
     el.innerHTML = '';
     cats.forEach((category, ci) => {
-      const card = document.createElement('div');
-      card.style.cssText = 'border:1px solid #2a2a2a;border-radius:4px;margin-bottom:10px;background:#0d0d0d;';
-      const builderCount = Array.isArray(category.builders) ? category.builders.length : 0;
-      // Header: name input, delete, add builder
+      const band = document.createElement('div');
+      band.className = 'cat-band';
+
+      // Category header — name input as the title (editable), description
+      // as a subtitle, action buttons on the right.
       const head = document.createElement('div');
-      head.style.cssText = 'display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid #1a1a1a;';
+      head.className = 'cat-band-head';
       head.innerHTML = `
-        <input type="text" value="${escapeHtml(category.name || '')}"
-               placeholder="Category name (e.g. Offensive)"
-               oninput="catSetCategoryField(${ci},'name',this.value)"
-               style="flex:1;font-weight:600;">
-        <span style="color:#666;font-size:11px;">${builderCount} builder${builderCount === 1 ? '' : 's'}</span>
-        <button class="btn small" onclick="catAddBuilder(${ci})" type="button">+ Builder</button>
-        <button class="btn small" onclick="catDeleteCategory(${ci})" type="button" style="color:#c66;border-color:#4a2a2a;">Delete</button>
+        <input type="text" class="cat-band-name-input"
+               value="${escapeHtmlAttr(category.name || '')}"
+               placeholder="Untitled Category"
+               oninput="catSetCategoryField(${ci},'name',this.value)">
+        <div class="cat-band-actions">
+          <button class="btn small" type="button" onclick="catAddBuilder(${ci})">+ Add Ability</button>
+          <button class="btn small danger" type="button" onclick="catDeleteCategory(${ci})">Delete Category</button>
+        </div>
       `;
-      card.appendChild(head);
-      // Optional description
-      const desc = document.createElement('div');
-      desc.style.cssText = 'padding:6px 12px;border-bottom:1px solid #1a1a1a;background:#0a0a0a;';
-      desc.innerHTML = `
-        <input type="text" value="${escapeHtml(category.description || '')}"
-               placeholder="Optional category description (one-line summary for the browser)"
-               oninput="catSetCategoryField(${ci},'description',this.value)"
-               style="width:100%;font-size:12px;color:#aaa;">
+      band.appendChild(head);
+
+      // Optional category description — slim row below the head, only
+      // visible if the GM wants to add one. Stays inline since it's
+      // light and tied to the category, not the per-ability listing.
+      const descRow = document.createElement('div');
+      descRow.style.cssText = 'margin-bottom:12px;';
+      descRow.innerHTML = `
+        <input type="text"
+               value="${escapeHtmlAttr(category.description || '')}"
+               placeholder="Optional description (one-line summary shown in the catalogue browser)"
+               style="width:100%;font-size:12px;color:#aaa;background:transparent;border:none;padding:0;outline:none;"
+               oninput="catSetCategoryField(${ci},'description',this.value)">
       `;
-      card.appendChild(desc);
-      // Builders list
-      const list = document.createElement('div');
-      list.style.cssText = 'padding:8px 12px;';
+      band.appendChild(descRow);
+
+      // Builders — wrap-grid of tiles. Each tile shows name + 1-line
+      // description + AP cost. Click opens the Builder editor.
       const builders = Array.isArray(category.builders) ? category.builders : [];
+      const tileGrid = document.createElement('div');
+      tileGrid.className = 'cat-band-tiles';
       if (builders.length === 0) {
-        list.innerHTML = `<div class="hint" style="padding:6px;color:#666;font-size:12px;">No builders in this category yet.</div>`;
+        // Empty state for the band — fills the grid as a single
+        // dashed-border placeholder.
+        const empty = document.createElement('div');
+        empty.className = 'cat-band-empty';
+        empty.style.gridColumn = '1 / -1';
+        empty.textContent = 'No abilities yet. Click "+ Add Ability" to author one.';
+        tileGrid.appendChild(empty);
       } else {
         builders.forEach((builder, bi) => {
-          const row = document.createElement('div');
-          row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #151515;';
-          const featureCount = Array.isArray(builder.features) ? builder.features.length : 0;
-          const flawCount    = Array.isArray(builder.flaws)    ? builder.flaws.length    : 0;
-          const ppCount      = Array.isArray(builder.primaryParams)   ? builder.primaryParams.length   : 0;
-          const spCount      = Array.isArray(builder.secondaryParams) ? builder.secondaryParams.length : 0;
-          row.innerHTML = `
-            <input type="text" value="${escapeHtml(builder.name || '')}"
-                   placeholder="Builder name (e.g. Fire Bolt)"
-                   oninput="catSetBuilderField(${ci},${bi},'name',this.value)"
-                   style="flex:1;font-weight:500;">
-            <span style="color:#666;font-size:10px;letter-spacing:.04em;text-transform:uppercase;">
-              ${ppCount}P · ${spCount}S · ${featureCount}F · ${flawCount}f
-            </span>
-            <span style="color:#888;font-size:11px;">Base: ${Number.isFinite(builder.baseCost) ? builder.baseCost : 0} AP</span>
-            <button class="btn small" onclick="catOpenBuilder(${ci},${bi})" type="button">Edit</button>
-            <button class="btn small" onclick="catDeleteBuilder(${ci},${bi})" type="button" style="color:#c66;border-color:#4a2a2a;">×</button>
+          // Compute default-tuned cost so the tile shows what the
+          // player will pay just for picking this Builder. Identical
+          // logic to the Builder preview pill.
+          let cost = null;
+          try {
+            const result = window.computeAbilityCost
+              ? window.computeAbilityCost(builder, {}, tiers)
+              : null;
+            cost = result && Number.isFinite(result.computedCost) ? result.computedCost : null;
+          } catch (e) { cost = null; }
+
+          const tile = document.createElement('div');
+          tile.className = 'ability-tile';
+          tile.onclick = () => window.catOpenBuilder(ci, bi);
+
+          const nameHtml = builder.name
+            ? `<div class="ability-tile-name">${escapeHtml(builder.name)}</div>`
+            : `<div class="ability-tile-name ability-tile-name-empty">(Unnamed Ability)</div>`;
+
+          const descHtml = builder.description
+            ? `<div class="ability-tile-desc">${escapeHtml(builder.description)}</div>`
+            : `<div class="ability-tile-desc"><span style="color:#444;font-style:italic;">No description</span></div>`;
+
+          const costHtml = cost !== null
+            ? `<span class="ability-tile-cost">${cost} AP</span>`
+            : `<span class="ability-tile-cost">— AP</span>`;
+
+          tile.innerHTML = `
+            ${nameHtml}
+            ${descHtml}
+            <div class="ability-tile-meta">
+              ${costHtml}
+              <button class="ability-tile-x" type="button" title="Delete ability"
+                      onclick="event.stopPropagation();catDeleteBuilder(${ci},${bi});">×</button>
+            </div>
           `;
-          list.appendChild(row);
+          tileGrid.appendChild(tile);
         });
       }
-      card.appendChild(list);
-      el.appendChild(card);
+      band.appendChild(tileGrid);
+
+      el.appendChild(band);
     });
   }
 
