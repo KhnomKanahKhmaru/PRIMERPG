@@ -361,7 +361,113 @@ const DEFAULT_TIERS = {
 //
 // Player override (instance.systemTextOverride) replaces the template
 // output entirely if set.
-export function renderSystemText(builder, instance) {
+// Resolve a STAT value from charData. Stats are stored lowercase-keyed
+// on charData.stats (e.g. charData.stats.pow). Returns null if missing.
+function resolveStatValueFromChar(charData, statCode) {
+  if (!charData || !charData.stats || !statCode) return null;
+  const v = charData.stats[String(statCode).toLowerCase()];
+  return Number.isFinite(v) ? v : null;
+}
+
+// Resolve a SKILL value from charData. Skills live in three places:
+//   charData.skills.primary    = { 'SkillName': value, ... }
+//   charData.skills.secondary  = [{ name, value }, ...]
+//   charData.skills.specialty  = [{ name, value }, ...]
+// Returns null if the skill isn't found in any container.
+function resolveSkillValueFromChar(charData, skillName) {
+  if (!charData || !charData.skills || !skillName) return null;
+  const sk = charData.skills;
+  if (sk.primary && Number.isFinite(sk.primary[skillName])) return sk.primary[skillName];
+  if (Array.isArray(sk.secondary)) {
+    const m = sk.secondary.find(s => s && s.name === skillName);
+    if (m && Number.isFinite(m.value)) return m.value;
+  }
+  if (Array.isArray(sk.specialty)) {
+    const m = sk.specialty.find(s => s && s.name === skillName);
+    if (m && Number.isFinite(m.value)) return m.value;
+  }
+  return null;
+}
+
+// Look up the STATMOD for a given stat value via the ruleset's
+// statMods array (indexed by stat value, 0..statMax). Defensive against
+// out-of-range values (clamped to the array bounds) and a missing or
+// malformed ruleset (returns 0).
+function lookupStatMod(ruleset, statValue) {
+  const mods = (ruleset && Array.isArray(ruleset.statMods)) ? ruleset.statMods : [];
+  if (!Number.isFinite(statValue) || mods.length === 0) return 0;
+  const idx = Math.max(0, Math.min(mods.length - 1, statValue));
+  const m = mods[idx];
+  return Number.isFinite(m) ? m : 0;
+}
+
+// Compute the numerical activation-roll string (e.g. "(7D10)+1") from
+// the player's sheet. Returns null when any slot can't be resolved
+// (slot unpicked, stat/skill name missing from sheet, etc.) so the
+// caller can fall back to the textual description.
+//
+// Pool = STAT1_value + STAT_OR_SKILL2_value  (number of d10s)
+// Mod  = max of the two STATMODs (skills don't have statmods, so when
+//        slot 2 is a skill, the mod is just slot 1's statmod)
+function resolveActivationRollNumeric(builder, instance, context) {
+  const ar = builder && builder.activationRoll;
+  if (!ar || !ar.enabled || !context) return null;
+  const charData = context.charData;
+  const ruleset  = context.ruleset;
+  if (!charData || !ruleset) return null;
+  const choice = (instance && instance.activationRollChoice) || {};
+
+  // Slot 1 — always a STAT. Either fixed or player-chosen.
+  const slot1Code = (ar.slot1 && ar.slot1.mode === 'fixed-stat')
+    ? ar.slot1.fixedStat
+    : choice.slot1;
+  if (!slot1Code) return null;
+  const slot1Val = resolveStatValueFromChar(charData, slot1Code);
+  if (slot1Val == null) return null;
+  const slot1Mod = lookupStatMod(ruleset, slot1Val);
+
+  // Slot 2 — STAT or SKILL. Determine which based on Builder mode and
+  // (for player-pick modes) by checking whether the choice matches a
+  // ruleset stat code. Skills don't contribute a statmod, so slot2Mod
+  // stays null in that case.
+  let slot2Val = null, slot2Mod = null;
+  const s2 = ar.slot2 || {};
+  if (s2.mode === 'fixed-stat') {
+    slot2Val = resolveStatValueFromChar(charData, s2.fixedStat);
+    if (slot2Val != null) slot2Mod = lookupStatMod(ruleset, slot2Val);
+  } else if (s2.mode === 'fixed-skill') {
+    slot2Val = resolveSkillValueFromChar(charData, s2.fixedSkill);
+  } else if (choice.slot2) {
+    // Player picked. Disambiguate STAT vs SKILL by checking whether the
+    // choice matches one of the ruleset's stat codes.
+    const stats = Array.isArray(ruleset.stats) ? ruleset.stats : [];
+    const upper = String(choice.slot2).toUpperCase();
+    const isStatPick = stats.some(s => s && s.code && s.code.toUpperCase() === upper);
+    if (isStatPick) {
+      slot2Val = resolveStatValueFromChar(charData, choice.slot2);
+      if (slot2Val != null) slot2Mod = lookupStatMod(ruleset, slot2Val);
+    } else {
+      slot2Val = resolveSkillValueFromChar(charData, choice.slot2);
+    }
+  }
+  if (slot2Val == null) return null;
+
+  const pool = slot1Val + slot2Val;
+  // Mod is the max of the two statmods. When slot 2 is a skill,
+  // slot2Mod is null and we just use slot1Mod.
+  const finalMod = (slot2Mod != null) ? Math.max(slot1Mod, slot2Mod) : slot1Mod;
+  if (finalMod > 0) return `(${pool}D10)+${finalMod}`;
+  if (finalMod < 0) return `(${pool}D10)${finalMod}`;  // negative renders as "-N" already
+  return `(${pool}D10)`;
+}
+
+// Optional 3rd arg `context` carries `{charData, ruleset}` so the
+// resolver can substitute live numerical values for the
+// {ACTIVATION_ROLL} token. When absent, the token falls back to a
+// textual description like "POW + DEX + STATMOD". Existing callers
+// that don't pass context still work — the only difference is they
+// see text instead of computed values.
+export function renderSystemText(builder, instance, context) {
   if (instance && typeof instance.systemTextOverride === 'string' && instance.systemTextOverride.trim()) {
     return instance.systemTextOverride;
   }
@@ -432,7 +538,14 @@ export function renderSystemText(builder, instance) {
   const ar = builder.activationRoll;
   if (ar && ar.enabled) {
     let arDesc = '';
-    if (typeof window !== 'undefined' && typeof window.describeActivationRoll === 'function') {
+    // Prefer numerical resolution when context is provided AND all
+    // slots resolve to actual sheet values. resolveActivationRollNumeric
+    // returns null when something can't be resolved; we then fall
+    // through to the text descriptor below.
+    const numeric = resolveActivationRollNumeric(builder, inst, context);
+    if (numeric) {
+      arDesc = numeric;
+    } else if (typeof window !== 'undefined' && typeof window.describeActivationRoll === 'function') {
       arDesc = window.describeActivationRoll(builder, inst) || '';
     } else {
       // Inline fallback. Mirrors the logic in describeActivationRoll.
@@ -452,7 +565,7 @@ export function renderSystemText(builder, instance) {
       arDesc = `${s1} + ${s2} + STATMOD`;
     }
     setToken('ACTIVATION_ROLL', arDesc);
-    setToken('ACTIVATIONROLL',  arDesc);  // alias (both forms normalize to same key, but explicit registration is harmless)
+    setToken('ACTIVATIONROLL',  arDesc);
   }
 
   // Substitute. Match anything-between-single-braces. The captured text
