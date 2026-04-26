@@ -6876,7 +6876,11 @@
     const tiers = (activeRuleset.abilityCatalogue && activeRuleset.abilityCatalogue.canonicalTiers) || {};
     const costRes = charAbilities.computeAbilityCost(builder, abl, tiers);
     const cost = costRes.computedCost;
-    const systemText = charAbilities.renderSystemText(builder, abl, { charData, ruleset: activeRuleset });
+    // Plain text used to check "is there any system text?" — and for
+    // anything that needs the unstyled string. The HTML form is used
+    // for the actual rendering since it bolds substituted tokens.
+    const systemText     = charAbilities.renderSystemText(builder, abl, { charData, ruleset: activeRuleset });
+    const systemTextHtml = charAbilities.renderSystemTextHtml(builder, abl, { charData, ruleset: activeRuleset });
 
     // Three independent state checks
     const cardCollapsed   = abilCardCollapsed.has(abl.id);
@@ -6985,7 +6989,7 @@
     const hasFFContent = selFeatures.length > 0 || selFlaws.length > 0;
 
     let systemBodyHtml = systemText
-      ? `<div style="font-size:13px;color:#cfcfcf;line-height:1.55;white-space:pre-wrap;">${escapeHtml(systemText)}</div>`
+      ? `<div style="font-size:13px;color:#cfcfcf;line-height:1.55;white-space:pre-wrap;">${systemTextHtml}</div>`
       : `<div style="font-size:13px;color:#555;line-height:1.55;font-style:italic;">(No system text — ask your GM to fill in the System template on the Builder.)</div>`;
 
     // Features/Flaws list — only when System is expanded AND there's content to show.
@@ -7793,10 +7797,11 @@
         <div style="font-size:10px;color:#666;margin-top:6px;">Override active — generated text from parameters is bypassed.</div>
       `;
     }
-    const generated = charAbilities.renderSystemText(builder, inst, { charData, ruleset: activeRuleset });
+    const generated     = charAbilities.renderSystemText(builder, inst, { charData, ruleset: activeRuleset });
+    const generatedHtml = charAbilities.renderSystemTextHtml(builder, inst, { charData, ruleset: activeRuleset });
     return `
       <div style="padding:10px;background:#080808;border:1px solid #1a1a1a;border-radius:3px;font-size:13px;color:#bbb;font-style:${generated ? 'normal' : 'italic'};">
-        ${generated ? escapeHtml(generated) : '(no system text — Builder has no template, or no parameters)'}
+        ${generated ? generatedHtml : '(no system text — Builder has no template, or no parameters)'}
       </div>
     `;
   }
