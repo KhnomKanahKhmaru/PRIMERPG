@@ -185,32 +185,37 @@ export function computeAbilityCost(builder, instance, tiers) {
   result.baseCost = Number.isFinite(builder.baseCost) ? builder.baseCost : 0;
 
   // ─ Primary parameters ─
-  // Each contributes flat AP based on (currentValue − defaultValue) × stepCost.
-  // Currentvalue defaults to defaultValue if the player hasn't tuned it
-  // (a fresh build, or a param added to the Builder after the Ability
-  // was authored).
+  // New shape (per Phase B redesign): primary params are a list of
+  // explicit steps {label, value, cost}, where cost is FLAT AP added
+  // when the player picks that step. The player's selection is stored
+  // in paramValues[paramId] as the step INDEX. Falls back to defaultStep
+  // (or 0) when no selection.
+  //
+  // This replaces the old defaultValue + (current - default) × deltaCost
+  // model — the old model was implicit and made authoring multi-cost
+  // step structures impossible.
   const primaryParams = Array.isArray(builder.primaryParams) ? builder.primaryParams : [];
   primaryParams.forEach(param => {
-    const def = Number.isFinite(param.defaultValue) ? param.defaultValue : 0;
-    const stepCost = Number.isFinite(param.stepCost) ? param.stepCost : 1;
-    const currentRaw = paramValues[param.id];
-    const current = Number.isFinite(currentRaw) ? currentRaw : def;
-    const delta = (current - def) * stepCost;
-    result.primaryDelta += delta;
+    const steps = Array.isArray(param.steps) ? param.steps : [];
+    const defaultIdx = Number.isFinite(param.defaultStep) ? param.defaultStep : 0;
+    const selectedRaw = paramValues[param.id];
+    const selectedIdx = Number.isFinite(selectedRaw) ? selectedRaw : defaultIdx;
+    const step = (selectedIdx >= 0 && selectedIdx < steps.length) ? steps[selectedIdx] : null;
+    const cost = (step && Number.isFinite(parseFloat(step.cost))) ? parseFloat(step.cost) : 0;
+    result.primaryDelta += cost;
     result.breakdown.primary.push({
       paramId: param.id,
       paramName: param.name || 'Parameter',
-      defaultValue: def,
-      currentValue: current,
-      stepCost,
-      delta,
-      displayUnit: param.displayUnit || ''
+      defaultStepIndex: defaultIdx,
+      selectedStepIndex: selectedIdx,
+      stepValue: step ? step.value : null,
+      stepLabel: step ? step.label : '',
+      cost
     });
   });
 
   // Warn about orphan paramValues — keys that don't match any current
-  // primary or secondary param. Useful for "this Ability's Builder
-  // changed" indicators on the Player side.
+  // primary or secondary param.
   const validParamIds = new Set([
     ...primaryParams.map(p => p && p.id).filter(Boolean),
     ...(Array.isArray(builder.secondaryParams) ? builder.secondaryParams : []).map(p => p && p.id).filter(Boolean)
@@ -222,28 +227,41 @@ export function computeAbilityCost(builder, instance, tiers) {
   });
 
   // ─ Secondary parameters ─
-  // Each contributes a multiplier from the active step. defaultStepIndex
-  // controls which step is used when the Player hasn't selected one.
-  // Multipliers compose multiplicatively: a 1.5× and a 0.75× yield 1.125×.
+  // Same step-list shape as Primary; the difference is interpretation:
+  // a step's `cost` for Secondary is treated as a MULTIPLIER on the
+  // running total (1.0 = no change, 1.5 = +50%, 0.75 = -25%).
+  // Multipliers compose multiplicatively across multiple secondaries.
+  //
+  // Backward compat: legacy secondary steps used `multiplier`; we read
+  // either field (`cost` first, fall back to `multiplier`).
   const secondaryParams = Array.isArray(builder.secondaryParams) ? builder.secondaryParams : [];
   secondaryParams.forEach(param => {
     const steps = Array.isArray(param.steps) ? param.steps : [];
-    const defaultIdx = Number.isFinite(param.defaultStepIndex) ? param.defaultStepIndex : 0;
-    // The Player stores selected step index in paramValues[paramId] for
-    // secondary params. (Primary params store the value directly; secondary
-    // params store the step index since values can be non-numeric labels.)
+    const defaultIdx = Number.isFinite(param.defaultStep)
+      ? param.defaultStep
+      : (Number.isFinite(param.defaultStepIndex) ? param.defaultStepIndex : 0);
     const selectedRaw = paramValues[param.id];
     const selectedIdx = Number.isFinite(selectedRaw) ? selectedRaw : defaultIdx;
     const step = (selectedIdx >= 0 && selectedIdx < steps.length) ? steps[selectedIdx] : null;
-    const multiplier = (step && Number.isFinite(step.multiplier)) ? step.multiplier : 1;
+    let multiplier = 1;
+    if (step) {
+      const raw = (step.cost !== undefined && step.cost !== null && step.cost !== '')
+        ? parseFloat(step.cost)
+        : parseFloat(step.multiplier);
+      if (Number.isFinite(raw)) multiplier = raw;
+    }
     if (step) {
       result.percentMultiplier *= multiplier;
     } else {
-      // Selected step index out of range — degrade to default step (or 1×).
       const fallbackStep = (defaultIdx >= 0 && defaultIdx < steps.length) ? steps[defaultIdx] : null;
-      if (fallbackStep && Number.isFinite(fallbackStep.multiplier)) {
-        result.percentMultiplier *= fallbackStep.multiplier;
-        result.warnings.push(`Selected step for ${param.name || 'param'} is out of range; using default.`);
+      if (fallbackStep) {
+        const fbRaw = (fallbackStep.cost !== undefined && fallbackStep.cost !== null && fallbackStep.cost !== '')
+          ? parseFloat(fallbackStep.cost)
+          : parseFloat(fallbackStep.multiplier);
+        if (Number.isFinite(fbRaw)) {
+          result.percentMultiplier *= fbRaw;
+          result.warnings.push(`Selected step for ${param.name || 'param'} is out of range; using default.`);
+        }
       }
     }
     result.breakdown.secondary.push({
@@ -253,8 +271,7 @@ export function computeAbilityCost(builder, instance, tiers) {
       selectedStepIndex: selectedIdx,
       stepValue: step ? step.value : null,
       stepLabel: step ? step.label : '',
-      multiplier,
-      displayUnit: param.displayUnit || ''
+      multiplier
     });
   });
 
@@ -355,30 +372,35 @@ export function renderSystemText(builder, instance) {
   const paramValues = (inst.paramValues && typeof inst.paramValues === 'object') ? inst.paramValues : {};
 
   // Build token lookup: token-name → display string
+  // Both Primary and Secondary now use step lists. The token resolves
+  // to the picked step's label (preferred) or value, with no per-param
+  // displayUnit suffix anymore — the label is authored verbatim by the
+  // GM and meant to read as-is.
   const tokens = {};
+  const resolveStep = (p) => {
+    const steps = Array.isArray(p.steps) ? p.steps : [];
+    const defaultIdx = Number.isFinite(p.defaultStep)
+      ? p.defaultStep
+      : (Number.isFinite(p.defaultStepIndex) ? p.defaultStepIndex : 0);
+    const selectedRaw = paramValues[p.id];
+    const idx = Number.isFinite(selectedRaw) ? selectedRaw : defaultIdx;
+    return (idx >= 0 && idx < steps.length) ? steps[idx] : null;
+  };
+  const stepDisplay = (step) => {
+    if (!step) return null;
+    if (step.label) return step.label;
+    if (step.value !== undefined && step.value !== null && step.value !== '') return String(step.value);
+    return null;
+  };
   (Array.isArray(builder.primaryParams) ? builder.primaryParams : []).forEach(p => {
     if (!p || !p.token) return;
-    const def = Number.isFinite(p.defaultValue) ? p.defaultValue : 0;
-    const cur = Number.isFinite(paramValues[p.id]) ? paramValues[p.id] : def;
-    const unit = p.displayUnit ? ' ' + p.displayUnit : '';
-    tokens[p.token] = `${cur}${unit}`;
+    const disp = stepDisplay(resolveStep(p));
+    if (disp != null) tokens[p.token] = disp;
   });
   (Array.isArray(builder.secondaryParams) ? builder.secondaryParams : []).forEach(p => {
     if (!p || !p.token) return;
-    const steps = Array.isArray(p.steps) ? p.steps : [];
-    const defaultIdx = Number.isFinite(p.defaultStepIndex) ? p.defaultStepIndex : 0;
-    const selectedRaw = paramValues[p.id];
-    const idx = Number.isFinite(selectedRaw) ? selectedRaw : defaultIdx;
-    const step = (idx >= 0 && idx < steps.length) ? steps[idx] : null;
-    if (!step) return;
-    // Prefer label if set, else value + unit. Steps where value is a
-    // string (e.g. "Touch") use the value as-is.
-    let display;
-    if (step.label) display = step.label;
-    else if (typeof step.value === 'string') display = step.value;
-    else if (Number.isFinite(step.value)) display = `${step.value}${p.displayUnit ? ' ' + p.displayUnit : ''}`;
-    else display = String(step.value);
-    tokens[p.token] = display;
+    const disp = stepDisplay(resolveStep(p));
+    if (disp != null) tokens[p.token] = disp;
   });
 
   // Substitute. Match {tokenName} pattern. Leave unknown tokens visible.
