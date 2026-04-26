@@ -1985,8 +1985,17 @@
     }
     if (!card) return;
 
-    // ── HEAD: Name + Tagline + Cost ──
-    // Name: GM-authored. Tagline: Player-authored — shows placeholder.
+    // Mirror the player-facing Card layout:
+    //   Header (Name + Tagline + Cost)
+    //   Description
+    //   System box (click to expand features/flaws)
+    //   Visual box (read-only)
+    //   Extra? tab → Extra section
+    //
+    // GM-side preview shows ALL the Builder's features and flaws when
+    // System is expanded (since the default-tuned instance has none
+    // selected, but the GM authoring needs to see what they've defined).
+
     const nameHtml = b.name
       ? `<div class="bldr-card-name">${escapeHtml(b.name)}</div>`
       : `<div class="bldr-card-name"><span class="bldr-card-empty">(Unnamed Ability)</span></div>`;
@@ -1997,44 +2006,103 @@
       ? `<div class="bldr-card-cost">${cost} AP default</div>`
       : '';
 
-    // ── DESCRIPTION (GM, catalogue blurb) ──
+    // Description (GM-authored catalogue blurb)
     const descHtml = b.description
       ? `<div class="bldr-card-desc">${escapeHtml(b.description)}</div>`
       : `<div class="bldr-card-desc bldr-card-placeholder">(Description — shown to Players in the catalogue browser)</div>`;
 
-    // ── SYSTEM (GM template, live-rendered with default tuning) ──
-    const systemBlock = (systemText && systemText.trim())
-      ? `<div class="bldr-card-section">
-           <div class="bldr-card-section-label">System</div>
-           <div class="bldr-card-section-body">${escapeHtml(systemText)}</div>
-         </div>`
-      : `<div class="bldr-card-section">
-           <div class="bldr-card-section-label">System</div>
-           <div class="bldr-card-section-body bldr-card-placeholder">(System text — fill in via the System textarea below using {token} placeholders)</div>
-         </div>`;
+    // System box. Always shows the rules text. Click toggles the
+    // Features/Flaws list. We show ALL features and flaws (not "selected"
+    // ones) since this is the GM's authoring preview and they want to
+    // see what they've defined.
+    const features = Array.isArray(b.features) ? b.features.filter(f => f) : [];
+    const flaws    = Array.isArray(b.flaws)    ? b.flaws.filter(f => f)    : [];
+    const hasFFContent = features.length > 0 || flaws.length > 0;
+    const systemExpanded = !!window.bldrPreviewSystemOpen;
 
-    // ── VISUAL (Player-authored on instance; Builder editor shows the
-    //          GM's guideline italicized as a hint) ──
-    const visualGuide = b.visualGuideline || b.visualPrompt || '';
-    const visualBody = visualGuide
-      ? `<div class="bldr-card-section-body bldr-card-placeholder">(Player will write their visual description here. GM guideline: ${escapeHtml(visualGuide)})</div>`
-      : `<div class="bldr-card-section-body bldr-card-placeholder">(Player will write their visual description here. No GM guideline set.)</div>`;
-    const visualBlock = `
+    const systemBodyHtml = (systemText && systemText.trim())
+      ? `<div class="bldr-card-section-body" style="background:transparent;border:none;padding:0;">${escapeHtml(systemText)}</div>`
+      : `<div class="bldr-card-section-body bldr-card-placeholder" style="background:transparent;border:none;padding:0;">(System text — fill in via the System textarea below using {token} placeholders)</div>`;
+
+    let ffListHtml = '';
+    if (systemExpanded && hasFFContent) {
+      ffListHtml += `<div style="margin-top:12px;padding-top:10px;border-top:1px solid #2a2a20;display:flex;flex-direction:column;gap:8px;">`;
+      const tierName = (t) => (t ? t[0].toUpperCase() + t.slice(1) : 'Minor');
+      if (features.length > 0) {
+        ffListHtml += `<div style="font-size:10px;color:#806040;letter-spacing:.08em;text-transform:uppercase;font-weight:700;">Features (all)</div>`;
+        features.forEach(f => {
+          ffListHtml += `
+            <div style="font-size:12px;color:#d8a060;line-height:1.5;">
+              <span style="font-weight:700;">${escapeHtml(f.name || tierName(f.tier) + ' Feature')}</span>
+              <span style="color:#806040;font-size:10px;text-transform:uppercase;letter-spacing:.06em;margin-left:6px;">${escapeHtml(tierName(f.tier))}</span>
+              ${f.description && f.description !== f.name ? `<div style="color:#aa8050;font-size:12px;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
+            </div>
+          `;
+        });
+      }
+      if (flaws.length > 0) {
+        ffListHtml += `<div style="font-size:10px;color:#608060;letter-spacing:.08em;text-transform:uppercase;font-weight:700;${features.length > 0 ? 'margin-top:6px;' : ''}">Flaws (all)</div>`;
+        flaws.forEach(f => {
+          ffListHtml += `
+            <div style="font-size:12px;color:#88c080;line-height:1.5;">
+              <span style="font-weight:700;">${escapeHtml(f.name || tierName(f.tier) + ' Flaw')}</span>
+              <span style="color:#608060;font-size:10px;text-transform:uppercase;letter-spacing:.06em;margin-left:6px;">${escapeHtml(tierName(f.tier))}</span>
+              ${f.description && f.description !== f.name ? `<div style="color:#7aa67a;font-size:12px;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
+            </div>
+          `;
+        });
+      }
+      ffListHtml += '</div>';
+    } else if (systemExpanded && !hasFFContent) {
+      ffListHtml = `<div style="margin-top:10px;padding-top:8px;border-top:1px solid #2a2a20;font-size:11px;color:#555;font-style:italic;">No Features or Flaws defined on this Builder yet.</div>`;
+    }
+
+    const sysCaret = hasFFContent
+      ? `<span style="color:#666;font-size:10px;margin-left:auto;">${systemExpanded ? '▾' : '▸'}</span>`
+      : '';
+    const sysCursor = hasFFContent ? 'cursor:pointer;' : '';
+    const sysOnclick = hasFFContent ? `onclick="bldrTogglePreviewSystem()"` : '';
+
+    const systemBlock = `
       <div class="bldr-card-section">
-        <div class="bldr-card-section-label">Visual</div>
-        ${visualBody}
+        <div ${sysOnclick}
+             style="padding:10px 12px;background:#0a0a06;border:1px solid #1a1a14;border-radius:4px;${sysCursor}">
+          <div style="display:flex;align-items:center;gap:8px;font-size:10px;color:#888;letter-spacing:.12em;text-transform:uppercase;font-weight:700;margin-bottom:8px;">
+            <span>System</span>
+            ${sysCaret}
+          </div>
+          ${systemBodyHtml}
+          ${ffListHtml}
+        </div>
       </div>
     `;
 
-    // ── EXTRA (Player-authored, collapsible behind the "Extra?" tab) ──
+    // Visual box. Read-only — shows the GM's guideline italicized as
+    // the placeholder for what the Player will eventually write.
+    const visualGuide = b.visualGuideline || b.visualPrompt || '';
+    const visualBody = visualGuide
+      ? `<div class="bldr-card-section-body bldr-card-placeholder" style="background:transparent;border:none;padding:0;">${escapeHtml(visualGuide)}</div>`
+      : `<div class="bldr-card-section-body bldr-card-placeholder" style="background:transparent;border:none;padding:0;">(No GM guideline set — Player will see "no visual described".)</div>`;
+    const visualBlock = `
+      <div class="bldr-card-section">
+        <div style="padding:10px 12px;background:#0a0a06;border:1px solid #1a1a14;border-radius:4px;">
+          <div style="font-size:10px;color:#888;letter-spacing:.12em;text-transform:uppercase;font-weight:700;margin-bottom:8px;">Visual</div>
+          ${visualBody}
+        </div>
+      </div>
+    `;
+
+    // Extra tab + section.
     const extraGuide = b.extraGuideline || b.extra || '';
     const extraBody = extraGuide
-      ? `<div class="bldr-card-section-body bldr-card-placeholder">(Player will write their extra info here. GM guideline: ${escapeHtml(extraGuide)})</div>`
-      : `<div class="bldr-card-section-body bldr-card-placeholder">(Player will write their extra info here. No GM guideline set.)</div>`;
+      ? `<div class="bldr-card-section-body bldr-card-placeholder" style="background:transparent;border:none;padding:0;">${escapeHtml(extraGuide)}</div>`
+      : `<div class="bldr-card-section-body bldr-card-placeholder" style="background:transparent;border:none;padding:0;">(No GM guideline set.)</div>`;
     const extraBlock = window.bldrPreviewExtraOpen
       ? `<div class="bldr-card-section">
-           <div class="bldr-card-section-label">Extra</div>
-           ${extraBody}
+           <div style="padding:10px 12px;background:#0a0a06;border:1px solid #1a1a14;border-radius:4px;">
+             <div style="font-size:10px;color:#888;letter-spacing:.12em;text-transform:uppercase;font-weight:700;margin-bottom:8px;">Extra</div>
+             ${extraBody}
+           </div>
          </div>`
       : '';
     const extraTab = `
@@ -2055,6 +2123,14 @@
       ${extraTab}
     `;
   }
+
+  // System box toggle on the Builder preview — mirrors the player Card.
+  // Stored on window for the same TDZ-immunity reasons as bldrPreviewExtraOpen.
+  if (typeof window.bldrPreviewSystemOpen !== 'boolean') window.bldrPreviewSystemOpen = false;
+  window.bldrTogglePreviewSystem = function() {
+    window.bldrPreviewSystemOpen = !window.bldrPreviewSystemOpen;
+    renderBuilderPreview();
+  };
 
   // ── FEATURE / FLAW HANDLERS ──
   // Wrappers around the legacy add/set/delete that take a tier
