@@ -2215,12 +2215,16 @@
   }
 
   // Auto-grow a textarea to fit its content. Called on every input
-  // event from feature/flaw textareas, plus on initial render.
+  // event from feature/flaw textareas, plus on initial render. Exposed
+  // on window so inline oninput="...autoGrow(this);" handlers in the
+  // generated HTML strings can reach it (module-scoped functions are
+  // not visible to inline event attributes).
   function autoGrow(el) {
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = (el.scrollHeight) + 'px';
   }
+  window.autoGrow = autoGrow;
 
   // ═════════ LIVE PREVIEW CARD ═════════
   //
