@@ -1782,11 +1782,24 @@
     `;
     wrap.appendChild(descSection);
 
+    // ── ACTIVATION ROLL ──
+    // Single panel with a toggle. When enabled, shows two slot
+    // configurators (slot 1 always STAT, slot 2 STAT or SKILL).
+    // Each slot can be FIXED to a specific value or PLAYER-CHOSEN.
+    // A live preview line shows the resulting roll description, which
+    // is what the {ACTIVATION_ROLL} token will substitute into System
+    // text below.
+    const arSection = document.createElement('div');
+    arSection.className = 'bldr-textarea-section';
+    arSection.id = 'bldr-activation-section';
+    arSection.innerHTML = renderActivationRollSection(b);
+    wrap.appendChild(arSection);
+
     // System template
     const sysSection = document.createElement('div');
     sysSection.className = 'bldr-textarea-section';
     sysSection.innerHTML = `
-      <div class="bldr-panel-title">System <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— rules text. Use {paramId} placeholders to substitute parameter values.</span></div>
+      <div class="bldr-panel-title">System <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— rules text. Use {paramId} placeholders to substitute parameter values. Use {ACTIVATION_ROLL} to insert the roll pool when Activation Roll is enabled.</span></div>
       <textarea rows="3"
                 placeholder="e.g. Spend an Action and {activationCost}; deal {damage} fire damage to a target within {range}."
                 oninput="catBldrSetField('systemTextTemplate',this.value);renderBuilderPreview();">${escapeHtml(b.systemTextTemplate || '')}</textarea>
@@ -2204,6 +2217,193 @@
 
   window.bldrTogglePreviewExtra = function() {
     window.bldrPreviewExtraOpen = !window.bldrPreviewExtraOpen;
+    renderBuilderPreview();
+  };
+
+  // ═══════════ ACTIVATION ROLL ═══════════
+  //
+  // Pulls stat/skill lists from the active ruleset (state.stats etc.)
+  // and renders the toggle + per-slot configuration panel.
+  //
+  // Slot 1 = STAT only. Modes: 'fixed-stat', 'any-stat'.
+  // Slot 2 = STAT or SKILL. Modes: 'fixed-stat', 'fixed-skill',
+  //          'any-stat', 'any-skill', 'any'.
+  //
+  // {ACTIVATION_ROLL} token in System text resolves via
+  // describeActivationRoll() — at GM editor time, no player instance
+  // exists, so it shows the GM-configured pool description ("POW + STAT"
+  // or "POW + Athletics" etc.).
+
+  // Helpers — pull stat/skill name lists from the active ruleset.
+  function activationStatList() {
+    const stats = (state && Array.isArray(state.stats)) ? state.stats : [];
+    return stats.map(s => s && s.code).filter(c => typeof c === 'string' && c);
+  }
+  function activationSkillList() {
+    const out = [];
+    ['primarySkills', 'secondarySkills', 'specialtySkills'].forEach(key => {
+      const arr = (state && Array.isArray(state[key])) ? state[key] : [];
+      arr.forEach(s => {
+        const n = s && s.name;
+        if (typeof n === 'string' && n) out.push(n);
+      });
+    });
+    return out;
+  }
+
+  // Resolve the activation-roll display string. With no player choice,
+  // returns the GM-configured pool ("POW + STAT", "POW + Athletics",
+  // "POW + STAT or SKILL", etc.). Used by both the live preview line
+  // in the Builder editor and the {ACTIVATION_ROLL} token in System
+  // text.
+  function describeActivationRoll(builder, instance) {
+    const ar = builder && builder.activationRoll;
+    if (!ar || !ar.enabled) return '';
+    const choice = (instance && instance.activationRollChoice) || {};
+    // Slot 1 — always a STAT.
+    let s1;
+    if (ar.slot1.mode === 'fixed-stat') {
+      s1 = ar.slot1.fixedStat || 'STAT';
+    } else if (choice.slot1) {
+      s1 = choice.slot1;
+    } else {
+      s1 = 'STAT';
+    }
+    // Slot 2 — STAT or SKILL.
+    let s2;
+    if (ar.slot2.mode === 'fixed-stat') {
+      s2 = ar.slot2.fixedStat || 'STAT';
+    } else if (ar.slot2.mode === 'fixed-skill') {
+      s2 = ar.slot2.fixedSkill || 'SKILL';
+    } else if (choice.slot2) {
+      s2 = choice.slot2;
+    } else if (ar.slot2.mode === 'any-stat') {
+      s2 = 'STAT';
+    } else if (ar.slot2.mode === 'any-skill') {
+      s2 = 'SKILL';
+    } else {
+      s2 = 'STAT or SKILL';
+    }
+    return `${s1} + ${s2} + STATMOD`;
+  }
+  // Expose to char-abilities so renderSystemText can resolve the
+  // {ACTIVATION_ROLL} token without re-implementing this logic.
+  window.describeActivationRoll = describeActivationRoll;
+
+  // Render the Activation Roll panel HTML — toggle + (when enabled)
+  // slot configurators + preview line. Re-rendered on every mutation
+  // since the state cascades (changing slot 1 mode hides/shows the
+  // fixed-stat dropdown, etc.).
+  function renderActivationRollSection(b) {
+    const ar = b.activationRoll || { enabled: false, slot1: { mode: 'any-stat', fixedStat: '' }, slot2: { mode: 'any', fixedStat: '', fixedSkill: '' } };
+    const stats  = activationStatList();
+    const skills = activationSkillList();
+
+    const toggleRow = `
+      <div class="bldr-panel-title" style="margin-bottom:12px;">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#888;margin:0;">
+          <input type="checkbox" ${ar.enabled ? 'checked' : ''}
+                 onchange="bldrToggleActivationRoll(this.checked)">
+          <span>Activation Roll</span>
+        </label>
+        <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;margin-left:8px;">— if on, this Ability is activated by rolling a dice pool. Use {ACTIVATION_ROLL} in System text to insert the pool description.</span>
+      </div>
+    `;
+
+    if (!ar.enabled) {
+      return toggleRow;
+    }
+
+    // Slot 1 — STAT
+    const s1ModeOpts = `
+      <option value="fixed-stat"${ar.slot1.mode === 'fixed-stat' ? ' selected' : ''}>Lock to specific STAT</option>
+      <option value="any-stat"${ar.slot1.mode === 'any-stat' ? ' selected' : ''}>Player picks any STAT</option>
+    `;
+    const s1FixedDropdown = (ar.slot1.mode === 'fixed-stat') ? `
+      <select onchange="bldrSetActivationField('slot1','fixedStat',this.value)">
+        <option value="">— choose stat —</option>
+        ${stats.map(c => `<option value="${escapeHtmlAttr(c)}"${ar.slot1.fixedStat === c ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')}
+      </select>
+    ` : '';
+
+    // Slot 2 — STAT or SKILL
+    const s2ModeOpts = `
+      <option value="fixed-stat"${ar.slot2.mode === 'fixed-stat' ? ' selected' : ''}>Lock to specific STAT</option>
+      <option value="fixed-skill"${ar.slot2.mode === 'fixed-skill' ? ' selected' : ''}>Lock to specific SKILL</option>
+      <option value="any-stat"${ar.slot2.mode === 'any-stat' ? ' selected' : ''}>Player picks any STAT</option>
+      <option value="any-skill"${ar.slot2.mode === 'any-skill' ? ' selected' : ''}>Player picks any SKILL</option>
+      <option value="any"${ar.slot2.mode === 'any' ? ' selected' : ''}>Player picks any STAT or SKILL</option>
+    `;
+    let s2FixedDropdown = '';
+    if (ar.slot2.mode === 'fixed-stat') {
+      s2FixedDropdown = `
+        <select onchange="bldrSetActivationField('slot2','fixedStat',this.value)">
+          <option value="">— choose stat —</option>
+          ${stats.map(c => `<option value="${escapeHtmlAttr(c)}"${ar.slot2.fixedStat === c ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')}
+        </select>
+      `;
+    } else if (ar.slot2.mode === 'fixed-skill') {
+      s2FixedDropdown = `
+        <select onchange="bldrSetActivationField('slot2','fixedSkill',this.value)">
+          <option value="">— choose skill —</option>
+          ${skills.map(n => `<option value="${escapeHtmlAttr(n)}"${ar.slot2.fixedSkill === n ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('')}
+        </select>
+      `;
+    }
+
+    const previewText = describeActivationRoll(b, null);
+
+    return `
+      ${toggleRow}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:6px;">
+        <div class="field" style="margin:0;">
+          <label>Slot 1 — STAT</label>
+          <select style="margin-bottom:6px;" onchange="bldrSetActivationField('slot1','mode',this.value)">${s1ModeOpts}</select>
+          ${s1FixedDropdown}
+        </div>
+        <div class="field" style="margin:0;">
+          <label>Slot 2 — STAT or SKILL</label>
+          <select style="margin-bottom:6px;" onchange="bldrSetActivationField('slot2','mode',this.value)">${s2ModeOpts}</select>
+          ${s2FixedDropdown}
+        </div>
+      </div>
+      <div style="margin-top:12px;padding:10px 12px;background:#0a0a06;border:1px solid #1a1a14;border-radius:4px;font-family:'Consolas','Courier New',monospace;font-size:13px;color:#d8c060;">
+        Preview: <span style="color:#e6e0cc;">${escapeHtml(previewText || '(configure slots)')}</span>
+      </div>
+    `;
+  }
+
+  // Re-render only the activation section in place. Cheaper than a full
+  // editor re-render and avoids losing focus/cursor in unrelated inputs.
+  function refreshActivationSection() {
+    const el = document.getElementById('bldr-activation-section');
+    if (!el) return;
+    const b = getOpenedBuilder();
+    if (!b) return;
+    el.innerHTML = renderActivationRollSection(b);
+  }
+
+  window.bldrToggleActivationRoll = function(checked) {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    if (!b.activationRoll || typeof b.activationRoll !== 'object') {
+      b.activationRoll = { enabled: false, slot1: { mode: 'any-stat', fixedStat: '' }, slot2: { mode: 'any', fixedStat: '', fixedSkill: '' } };
+    }
+    b.activationRoll.enabled = !!checked;
+    refreshActivationSection();
+    renderBuilderPreview();
+  };
+
+  // Set a single field on slot1 or slot2. Mode changes also trigger a
+  // re-render so the conditional dropdown (fixed-stat select / fixed-
+  // skill select) appears or disappears.
+  window.bldrSetActivationField = function(slotKey, field, value) {
+    const b = getOpenedBuilder();
+    if (!b || !b.activationRoll || (slotKey !== 'slot1' && slotKey !== 'slot2')) return;
+    const slot = b.activationRoll[slotKey];
+    if (!slot) return;
+    slot[field] = String(value || '');
+    refreshActivationSection();
     renderBuilderPreview();
   };
 
