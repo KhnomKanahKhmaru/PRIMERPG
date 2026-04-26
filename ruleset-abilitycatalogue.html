@@ -804,6 +804,105 @@
     renderCatalogueBodyArea();
   };
 
+  // ── CATEGORY-LEVEL MUTATION HANDLERS ──
+  // These were lost during the Phase B builder-editor replacement.
+  // They mutate state.abilityCatalogue.types[currentTypeKey].categories
+  // (via getActiveCategories) and re-render the category list.
+
+  window.catAddCategory = function() {
+    const cat = ensureCat();
+    const cats = getActiveCategories(cat);
+    cats.push({
+      id: 'acat_' + Math.random().toString(36).slice(2, 10),
+      name: '',
+      description: '',
+      builders: []
+    });
+    renderCategoryList();
+  };
+
+  window.catDeleteCategory = function(ci) {
+    const cat = ensureCat();
+    const cats = getActiveCategories(cat);
+    if (!cats[ci]) return;
+    const name = cats[ci].name || 'this category';
+    const builders = Array.isArray(cats[ci].builders) ? cats[ci].builders : [];
+    if (builders.length > 0) {
+      if (!confirm(`Delete "${name}" and all ${builders.length} builder(s) inside it? This cannot be undone.`)) return;
+    } else {
+      if (!confirm(`Delete "${name}"?`)) return;
+    }
+    cats.splice(ci, 1);
+    renderCategoryList();
+  };
+
+  window.catSetCategoryField = function(ci, field, value) {
+    const cat = ensureCat();
+    const c = getActiveCategories(cat)[ci];
+    if (!c) return;
+    c[field] = String(value || '');
+    // Don't full-rerender (would lose focus). Inline-edit handles its
+    // own visible value via the input element.
+  };
+
+  window.catAddBuilder = function(ci) {
+    const cat = ensureCat();
+    const c = getActiveCategories(cat)[ci];
+    if (!c) return;
+    if (!Array.isArray(c.builders)) c.builders = [];
+    c.builders.push({
+      id: 'bld_' + Math.random().toString(36).slice(2, 10),
+      name: '',
+      description: '',
+      baseCost: 0,
+      systemTextTemplate: '',
+      visualPrompt: '',
+      extra: '',
+      primaryParams: [],
+      secondaryParams: [],
+      features: [],
+      flaws: []
+    });
+    renderCategoryList();
+  };
+
+  window.catDeleteBuilder = function(ci, bi) {
+    const cat = ensureCat();
+    const c = getActiveCategories(cat)[ci];
+    if (!c || !Array.isArray(c.builders) || !c.builders[bi]) return;
+    const name = c.builders[bi].name || 'this builder';
+    if (!confirm(`Delete "${name}"? This will be reflected on every Character Ability that references it.`)) return;
+    c.builders.splice(bi, 1);
+    renderCategoryList();
+  };
+
+  window.catSetBuilderField = function(ci, bi, field, value) {
+    const cat = ensureCat();
+    const c = getActiveCategories(cat)[ci];
+    if (!c || !Array.isArray(c.builders) || !c.builders[bi]) return;
+    c.builders[bi][field] = String(value || '');
+  };
+
+  // Open the full Builder editor — switches view to 'builder' and the
+  // dispatcher routes to renderBuilderEditor (Phase B layout).
+  window.catOpenBuilder = function(ci, bi) {
+    const cat = ensureCat();
+    const c = getActiveCategories(cat)[ci];
+    if (!c || !Array.isArray(c.builders) || !c.builders[bi]) return;
+    openedBuilder = { ci, bi, typeKey: currentTypeKey };
+    catalogueView = 'builder';
+    renderCatalogueBodyArea();
+    const body = document.getElementById('catalogue-body');
+    if (body && body.scrollIntoView) body.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  };
+
+  // Close Builder editor — return to the type's category list.
+  window.catCloseBuilder = function() {
+    openedBuilder = null;
+    catalogueView = 'type';
+    renderCatalogueBodyArea();
+  };
+
   // Save — partial update of just the abilityCatalogue field.
   // This is intentional: the Catalogue page should never overwrite
   // other ruleset fields (stats, skills, weapons), so a stale state
