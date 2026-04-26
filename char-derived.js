@@ -1128,6 +1128,33 @@ export function computeDerivedStats(character, ruleset) {
     const exhDamage = manualDamage + damagesContribution;
     const exhCurrent = exhMax - exhDamage;
 
+    // ── EXH penalty (drives global Penalty %) ──
+    // No penalty when EXH ≥ 0. Below zero the penalty scales linearly
+    // across the [-2×max, 0] range — each point of negative EXH adds
+    // (1 / 2×max) × 100% to penalty. At -2×max the character is
+    // Unconscious and the base penalty pegs at 100%.
+    //
+    // Modifiers stack additively on top, mirroring the Pain/Stress shape:
+    //   {name, value} entries on charData.exhPenaltyModifiers, value as
+    //   integer percent. Negative values (e.g. adrenaline shot) offset
+    //   the base penalty; positive values (e.g. snake venom) amplify it.
+    //
+    // NOTE: this is a SEPARATE field from charData.exhModifiers, which
+    // adjusts EXH max. exhPenaltyModifiers adjusts the % penalty derived
+    // from current EXH. Two distinct levers, kept distinct on purpose.
+    const exhPenaltyMods = Array.isArray(character.exhPenaltyModifiers)
+      ? character.exhPenaltyModifiers : [];
+    const exhPenaltyModTotal = exhPenaltyMods.reduce(
+      (a, m) => a + (parseInt(m && m.value) || 0), 0);
+    let exhBasePercent = 0;
+    if (exhMax > 0 && exhCurrent < 0) {
+      const denom = 2 * exhMax;
+      exhBasePercent = Math.max(0, Math.min(100,
+        Math.round(Math.abs(exhCurrent) / denom * 100)));
+    }
+    const exhFinalPercent = Math.max(0, Math.min(100,
+      Math.round(exhBasePercent + exhPenaltyModTotal)));
+
     // Status bands — matches the HP/SAN tiering pattern, named for the
     // exhaustion fiction. Passing -2×max means character is Unconscious
     // (out until regen pulls them back above that threshold).
@@ -1166,6 +1193,13 @@ export function computeDerivedStats(character, ruleset) {
       damagesContribution,
       damages,
       modifiers: exhMods,
+      // Penalty-side data — matches the pain/stress shape so UI can render
+      // EXH penalty with the same component (basePercent + modifiers +
+      // finalPercent). Distinct from `modifiers` above (which adjusts max).
+      basePercent:      exhBasePercent,
+      penaltyModifiers: exhPenaltyMods,
+      penaltyModTotal:  exhPenaltyModTotal,
+      finalPercent:     exhFinalPercent,
       status: exhStatus,
       statusLabel: exhStatusLabel,
       penaltyText: exhPenaltyText
@@ -1243,13 +1277,15 @@ export function computeDerivedStats(character, ruleset) {
   // Other: player-entered modifiers for everything that isn't damage —
   //   Exposure, Encumbrance, drugged, bound, etc. Sum of otherModifiers
   //   values (each ±integer%). No implicit base percent.
-  // Penalty: total drag on capabilities. Sum of Pain + Stress + Other,
-  //   clamped to [0, 100].
+  // Penalty: total drag on capabilities. Sum of Pain + Stress + EXH +
+  //   Encumbrance + Other, clamped to [0, 100].
   //
-  // Pain and Stress also support internal MODIFIERS (charData.painModifiers /
-  // stressModifiers arrays of {name, value}) that stack additively onto
-  // the base percentage of that component. Final per-component values
-  // clamp to [0, 100] before rolling up into Penalty.
+  // Pain, Stress, and EXH also support internal MODIFIERS — charData.painModifiers,
+  // stressModifiers, and exhPenaltyModifiers (arrays of {name, value}) —
+  // that stack additively onto the base percentage of that component.
+  // Final per-component values clamp to [0, 100] before rolling up into
+  // Penalty. Note: exhPenaltyModifiers is distinct from charData.exhModifiers,
+  // which adjusts EXH MAX (a different lever entirely).
   //
   // Penalty reduces the dice count on any stat whose def.passiveRoll isn't
   // true — applied in the stats loop's post-pass below. Also reduces
@@ -1384,12 +1420,14 @@ export function computeDerivedStats(character, ruleset) {
 
   const painPct = pain ? pain.finalPercent : 0;
   const stressPct = stress ? stress.finalPercent : 0;
+  const exhPct = exh ? exh.finalPercent : 0;
   const otherPct = other.finalPercent;
   const encPct = encumbrance.finalPercent;
-  const penaltyPct = Math.max(0, Math.min(100, painPct + stressPct + encPct + otherPct));
+  const penaltyPct = Math.max(0, Math.min(100, painPct + stressPct + exhPct + encPct + otherPct));
   const penalty = {
     painPercent:        painPct,
     stressPercent:      stressPct,
+    exhPercent:         exhPct,
     encumbrancePercent: encPct,
     otherPercent:       otherPct,
     percent:            penaltyPct
@@ -1423,6 +1461,7 @@ export function computeDerivedStats(character, ruleset) {
     let total = 0;
     if (f.pain)        total += painPct;
     if (f.stress)      total += stressPct;
+    if (f.exh)         total += exhPct;
     if (f.encumbrance) total += encPct;
     // Other mods — each entry independently whitelisted via f.other[modId].
     // Accumulate only the values for otherModifiers whose id is listed true.
