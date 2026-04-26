@@ -6924,9 +6924,16 @@
     // image up (which would crop into the icon's actual content). The
     // icon body is preserved at its natural size; only the dead-space
     // border ring is hidden.
+    //
+    // Frame style mirrors the Stat icons on this sheet: a 48px square
+    // box with a subtle dark background + border. The icon's own
+    // background and edges are inside the frame, so they don't matter
+    // visually — the user reads the box's edge as the icon boundary.
     const iconImgHtml = (builder.iconUrl && builder.iconUrl.trim())
-      ? `<img src="${escapeHtml(builder.iconUrl)}" alt=""
-              style="width:48px;height:48px;object-fit:contain;flex-shrink:0;mix-blend-mode:lighten;">`
+      ? `<div style="width:48px;height:48px;flex-shrink:0;background:#151515;border:1px solid #252525;border-radius:4px;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+           <img src="${escapeHtml(builder.iconUrl)}" alt=""
+                style="width:46px;height:46px;object-fit:contain;display:block;">
+         </div>`
       : '';
 
     // Header text column — vertical stack, sits between the icon and
