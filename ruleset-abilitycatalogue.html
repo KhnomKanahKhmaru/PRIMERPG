@@ -1554,6 +1554,137 @@
     renderBuilderPreview();
   };
 
+  // ═════════ FEATURES / FLAWS RENDERING ═════════
+  //
+  // Both columns render as tier bands (Minor → Mythical). Each band
+  // shows the per-tier AP cost/refund from canonicalTiers, the rows
+  // for features/flaws at that tier, and a "+ Add" button. The row's
+  // tier is set by which band it lives under, but a per-row dropdown
+  // lets the GM move it between tiers explicitly.
+
+  function renderTierGrouped(b, kind) {
+    // kind: 'feature' or 'flaw'
+    const list = (kind === 'feature' ? b.features : b.flaws) || [];
+    const cat = state.abilityCatalogue || {};
+    const tiers = cat.canonicalTiers || {};
+    const tierTable = (kind === 'feature' ? tiers.featureCosts : tiers.flawRefunds) || {};
+    return TIER_ORDER.map(tier => {
+      const rows = list
+        .map((it, idx) => ({ it, idx }))
+        .filter(({it}) => it && it.tier === tier);
+      const tierCost = Number.isFinite(tierTable[tier]) ? tierTable[tier] : 0;
+      const costLabel = kind === 'feature' ? `+${tierCost} AP` : `−${tierCost} AP`;
+      const rowHtml = rows.map(({it, idx}) => `
+        <div class="bldr-ff-row">
+          <textarea rows="1"
+                    placeholder="${kind === 'feature' ? 'Feature description' : 'Flaw description'}"
+                    oninput="bldrSetFFText('${kind}', ${idx}, this.value);autoGrow(this);">${escapeHtml(it.description || it.name || '')}</textarea>
+          <select class="ff-tier-move" title="Change tier"
+                  onchange="bldrSetFFTier('${kind}', ${idx}, this.value)">
+            ${TIER_ORDER.map(t => `<option value="${t}"${t === tier ? ' selected' : ''}>${TIER_LABELS[t]}</option>`).join('')}
+          </select>
+          <button class="row-x" type="button" title="Delete"
+                  onclick="bldrDeleteFF('${kind}', ${idx});">×</button>
+        </div>
+      `).join('');
+      return `
+        <div class="bldr-tier-band">
+          <div class="bldr-tier-band-head">
+            <span class="bldr-tier-band-name">${TIER_LABELS[tier]}</span>
+            <span class="bldr-tier-band-cost">${costLabel}</span>
+          </div>
+          ${rowHtml}
+          <button class="btn small" type="button" style="width:100%;margin-top:2px;"
+                  onclick="bldrAddFF('${kind}', '${tier}')">+ Add ${TIER_LABELS[tier]} ${kind === 'feature' ? 'Feature' : 'Flaw'}</button>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function renderBldrFeaturesList() {
+    const el = document.getElementById('bldr-features-list');
+    if (!el) return;
+    const b = getOpenedBuilder();
+    if (!b) { el.innerHTML = ''; return; }
+    el.innerHTML = renderTierGrouped(b, 'feature');
+    el.querySelectorAll('textarea').forEach(autoGrow);
+  }
+
+  function renderBldrFlawsList() {
+    const el = document.getElementById('bldr-flaws-list');
+    if (!el) return;
+    const b = getOpenedBuilder();
+    if (!b) { el.innerHTML = ''; return; }
+    el.innerHTML = renderTierGrouped(b, 'flaw');
+    el.querySelectorAll('textarea').forEach(autoGrow);
+  }
+
+  // Auto-grow a textarea to fit its content. Called on every input
+  // event from feature/flaw textareas, plus on initial render.
+  function autoGrow(el) {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = (el.scrollHeight) + 'px';
+  }
+
+  // ═════════ LIVE PREVIEW CARD ═════════
+  //
+  // Updates on every input affecting cost or display. Shows the
+  // Builder's current name, default-tuned cost, description blurb,
+  // and system text with default param values substituted.
+
+  function renderBuilderPreview() {
+    const card = document.getElementById('bldr-card-preview');
+    const pill = document.getElementById('bldr-cost-pill');
+    if (!card && !pill) return;
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const cat = state.abilityCatalogue || {};
+    const tiers = cat.canonicalTiers || {};
+
+    // Build a default-tuned instance: every param at its default step,
+    // no features/flaws selected. computeAbilityCost computes AP from
+    // THAT instance against the Builder's shape — what we see is the
+    // baseline cost a player pays just for picking this Builder.
+    const inst = { paramValues: {}, selectedFeatureIds: [], selectedFlawIds: [] };
+
+    let cost = null, systemText = '';
+    try {
+      const result = window.computeAbilityCost
+        ? window.computeAbilityCost(b, inst, tiers)
+        : null;
+      cost = result && Number.isFinite(result.computedCost) ? result.computedCost : null;
+    } catch (e) { cost = null; }
+    try {
+      systemText = window.renderSystemTextForBuilder
+        ? window.renderSystemTextForBuilder(b, inst)
+        : (b.systemTextTemplate || '');
+    } catch (e) { systemText = b.systemTextTemplate || ''; }
+
+    // Cost pill (header)
+    if (pill) {
+      pill.textContent = (cost === null ? '… AP' : `${cost} AP default`);
+    }
+
+    // Card body
+    if (card) {
+      const parts = [];
+      parts.push(`<div class="bldr-card-name">${b.name ? escapeHtml(b.name) : '<span class="bldr-card-empty">(Unnamed Ability)</span>'}</div>`);
+      if (cost !== null) {
+        parts.push(`<div class="bldr-card-cost">${cost} AP default</div>`);
+      }
+      if (b.description) {
+        parts.push(`<div class="bldr-card-desc">${escapeHtml(b.description)}</div>`);
+      }
+      if (systemText && systemText.trim()) {
+        parts.push(`<div class="bldr-card-system">${escapeHtml(systemText)}</div>`);
+      } else {
+        parts.push(`<div class="bldr-card-system bldr-card-empty">(System text — fill in below using {paramId} tokens)</div>`);
+      }
+      card.innerHTML = parts.join('');
+    }
+  }
+
   // ── FEATURE / FLAW HANDLERS ──
   // Wrappers around the legacy add/set/delete that take a tier
   // arg up front. Legacy add* defaults the tier to 'minor'; we just
