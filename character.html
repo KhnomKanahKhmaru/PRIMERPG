@@ -7017,6 +7017,25 @@
       const sign = (kind === 'feature') ? '+' : '−';
       return `(${tierLabel} · ${sign}${ap} AP)`;
     }
+    // Per-feature/flaw custom field — when the GM enabled it AND the
+    // player filled in a value, render an extra indented line below
+    // the description: "<Label>: <player value>". Slightly muted so
+    // the eye treats it as a sub-clause of the feature, not a
+    // separate item.
+    const cfValues = (abl.customFieldValues && typeof abl.customFieldValues === 'object') ? abl.customFieldValues : {};
+    function customFieldHtml(f, kind) {
+      const cf = (f && f.customField && typeof f.customField === 'object') ? f.customField : null;
+      if (!cf || !cf.enabled) return '';
+      const val = cfValues[f.id];
+      if (typeof val !== 'string' || !val.trim()) return '';
+      const labelColor = (kind === 'feature') ? '#6a8a6a' : '#8a6a6a';
+      return `
+        <div style="margin-top:2px;margin-left:14px;font-size:12px;line-height:1.5;">
+          <span style="color:${labelColor};font-weight:600;">${escapeHtml(cf.label || 'Note')}:</span>
+          <span style="color:#bbb;"> ${escapeHtml(val)}</span>
+        </div>
+      `;
+    }
 
     let ffListHtml = '';
     if (systemExpanded && hasFFContent) {
@@ -7031,6 +7050,7 @@
             <div style="font-size:12px;color:#9aaf9a;line-height:1.55;">
               <span style="color:#6a8a6a;">${tierPrefix(f, 'feature')}</span>
               ${escapeHtml(ffLineText(f))}
+              ${customFieldHtml(f, 'feature')}
             </div>
           `;
         });
@@ -7044,6 +7064,7 @@
             <div style="font-size:12px;color:#af9a9a;line-height:1.55;">
               <span style="color:#8a6a6a;">${tierPrefix(f, 'flaw')}</span>
               ${escapeHtml(ffLineText(f))}
+              ${customFieldHtml(f, 'flaw')}
             </div>
           `;
         });
@@ -7408,6 +7429,22 @@
     renderAbilitiesBuilderUI();
   };
 
+  // Set the player's value for a feature/flaw's custom field. Stored
+  // by feature/flaw id on instance.customFieldValues. No re-render —
+  // the input is bound in place; we just mutate the working copy and
+  // let abilitiesBuilderSave persist it. Empty string clears the
+  // value (matches the user typing it blank).
+  window.abilitiesBuilderSetCustomFieldValue = function(featureOrFlawId, value) {
+    if (!abilitiesBuilderSession) return;
+    const inst = abilitiesBuilderSession.instance;
+    if (!inst.customFieldValues || typeof inst.customFieldValues !== 'object') {
+      inst.customFieldValues = {};
+    }
+    const v = String(value == null ? '' : value);
+    if (v === '') delete inst.customFieldValues[featureOrFlawId];
+    else          inst.customFieldValues[featureOrFlawId] = v;
+  };
+
   // Toggle the system-text-override checkbox. When ON, the player's
   // textarea content replaces the generated text. When OFF, the
   // generated text shows.
@@ -7704,6 +7741,7 @@
     if (features.length === 0) return '';
     const featureCosts = (tiers && tiers.featureCosts) || {};
     const selected = Array.isArray(inst.selectedFeatureIds) ? new Set(inst.selectedFeatureIds) : new Set();
+    const cfValues = (inst.customFieldValues && typeof inst.customFieldValues === 'object') ? inst.customFieldValues : {};
     let html = `
       <div style="border:1px solid #1f1f1f;border-radius:4px;padding:12px;background:#0d0d0d;">
         <h4 style="margin:0 0 10px;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">Features <span style="color:#666;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;">— pay AP to take</span></h4>
@@ -7711,6 +7749,22 @@
     features.forEach(f => {
       const cost = Number.isFinite(featureCosts[f.tier]) ? featureCosts[f.tier] : 0;
       const isOn = selected.has(f.id);
+      const cf = (f.customField && typeof f.customField === 'object') ? f.customField : { enabled: false, label: '' };
+      // When the feature is selected AND has a custom field configured,
+      // render an inline input below the description so the player can
+      // fill in their value. Stops click-propagation so typing in the
+      // input doesn't toggle the checkbox.
+      const cfInputHtml = (isOn && cf.enabled) ? `
+        <div style="grid-column:2 / span 3;margin-top:6px;display:flex;align-items:center;gap:8px;font-size:12px;color:#bbb;">
+          <span style="color:#d8a060;font-weight:600;flex-shrink:0;">${escapeHtml(cf.label || 'Custom field')}:</span>
+          <input type="text"
+                 placeholder="e.g. Requires heavy moisture"
+                 value="${escapeHtml(cfValues[f.id] || '')}"
+                 onclick="event.stopPropagation();"
+                 oninput="event.stopPropagation();abilitiesBuilderSetCustomFieldValue('${escapeHtml(f.id)}',this.value)"
+                 style="flex:1;background:#111;border:1px solid #2a2a2a;color:#e0e0e0;font-family:inherit;font-size:12px;padding:5px 8px;border-radius:3px;outline:none;">
+        </div>
+      ` : '';
       html += `
         <label style="display:grid;grid-template-columns:24px 1fr 80px 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;cursor:pointer;">
           <input type="checkbox" ${isOn ? 'checked' : ''} onchange="abilitiesBuilderToggleFeature('${escapeHtml(f.id)}')">
@@ -7720,6 +7774,7 @@
           </div>
           <span style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.05em;">${escapeHtml(f.tier || '')}</span>
           <span style="color:${isOn ? '#d8a060' : '#666'};font-family:monospace;font-size:12px;text-align:right;">+${cost} AP</span>
+          ${cfInputHtml}
         </label>
       `;
     });
@@ -7732,6 +7787,7 @@
     if (flaws.length === 0) return '';
     const flawRefunds = (tiers && tiers.flawRefunds) || {};
     const selected = Array.isArray(inst.selectedFlawIds) ? new Set(inst.selectedFlawIds) : new Set();
+    const cfValues = (inst.customFieldValues && typeof inst.customFieldValues === 'object') ? inst.customFieldValues : {};
     let html = `
       <div style="border:1px solid #1f1f1f;border-radius:4px;padding:12px;background:#0d0d0d;">
         <h4 style="margin:0 0 10px;color:#ccc;font-size:12px;letter-spacing:.05em;text-transform:uppercase;">Flaws <span style="color:#666;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;">— get AP back for taking</span></h4>
@@ -7739,6 +7795,18 @@
     flaws.forEach(f => {
       const refund = Number.isFinite(flawRefunds[f.tier]) ? flawRefunds[f.tier] : 0;
       const isOn = selected.has(f.id);
+      const cf = (f.customField && typeof f.customField === 'object') ? f.customField : { enabled: false, label: '' };
+      const cfInputHtml = (isOn && cf.enabled) ? `
+        <div style="grid-column:2 / span 3;margin-top:6px;display:flex;align-items:center;gap:8px;font-size:12px;color:#bbb;">
+          <span style="color:#88c080;font-weight:600;flex-shrink:0;">${escapeHtml(cf.label || 'Custom field')}:</span>
+          <input type="text"
+                 placeholder="e.g. Requires heavy moisture"
+                 value="${escapeHtml(cfValues[f.id] || '')}"
+                 onclick="event.stopPropagation();"
+                 oninput="event.stopPropagation();abilitiesBuilderSetCustomFieldValue('${escapeHtml(f.id)}',this.value)"
+                 style="flex:1;background:#111;border:1px solid #2a2a2a;color:#e0e0e0;font-family:inherit;font-size:12px;padding:5px 8px;border-radius:3px;outline:none;">
+        </div>
+      ` : '';
       html += `
         <label style="display:grid;grid-template-columns:24px 1fr 80px 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;cursor:pointer;">
           <input type="checkbox" ${isOn ? 'checked' : ''} onchange="abilitiesBuilderToggleFlaw('${escapeHtml(f.id)}')">
@@ -7748,6 +7816,7 @@
           </div>
           <span style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.05em;">${escapeHtml(f.tier || '')}</span>
           <span style="color:${isOn ? '#88c080' : '#666'};font-family:monospace;font-size:12px;text-align:right;">−${refund} AP</span>
+          ${cfInputHtml}
         </label>
       `;
     });
