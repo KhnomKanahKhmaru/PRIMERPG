@@ -1869,6 +1869,49 @@
 
   function paramKey(kind, idx) { return kind + ':' + idx; }
 
+  // Build the head-summary text for a param. Pulled out so handlers
+  // that mutate things which appear in the summary (mode, AP/step,
+  // linearConfig fields, default step, etc.) can update the head
+  // span in place WITHOUT re-rendering the entire params list (which
+  // destroys the input the user is typing in and steals focus).
+  function paramHeadSummary(p, kind) {
+    const isLinear = (kind === 'primary' && p.mode === 'linear');
+    if (isLinear) {
+      const lc = p.linearConfig || {};
+      const ap = Number.isFinite(lc.apPerStep) ? lc.apPerStep : 1;
+      const lo = Number.isFinite(lc.minValue) ? lc.minValue : 0;
+      const hi = Number.isFinite(lc.maxValue) ? lc.maxValue : 100;
+      return `linear · ${ap} AP/step · ${lo}–${hi}`;
+    }
+    const steps = Array.isArray(p.steps) ? p.steps : [];
+    const defIdx = Number.isFinite(p.defaultStep) ? p.defaultStep : 0;
+    const defStep = steps[defIdx] || steps[0] || null;
+    return defStep
+      ? (defStep.label || defStep.value || '(blank)') + ` · ${kind === 'primary' ? defStep.cost + ' AP' : '×' + defStep.cost}`
+      : '(no steps)';
+  }
+
+  // In-place update of a single param's head row (name + summary spans
+  // only). Used by handlers that change data shown in the head while
+  // an input inside the body is focused — avoids destroying the input.
+  function updateParamHeadInPlace(kind, idx) {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const arr = (kind === 'primary') ? b.primaryParams : b.secondaryParams;
+    if (!Array.isArray(arr) || !arr[idx]) return;
+    const p = arr[idx];
+    const isLinear = (kind === 'primary' && p.mode === 'linear');
+    const nameEl = document.getElementById(`bldr-param-name-${kind}-${idx}`);
+    const sumEl  = document.getElementById(`bldr-param-summary-${kind}-${idx}`);
+    if (nameEl) {
+      nameEl.textContent = p.name || '(Unnamed parameter)';
+      nameEl.classList.toggle('bldr-param-name-empty', !p.name);
+    }
+    if (sumEl) {
+      sumEl.textContent = `${kind === 'primary' ? (isLinear ? 'linear' : 'flat') : 'mult'} · ${paramHeadSummary(p, kind)}`;
+    }
+  }
+
   function renderBldrParamsList() {
     const el = document.getElementById('bldr-params-list');
     if (!el) return;
@@ -1897,29 +1940,13 @@
     const isLinear  = (kind === 'primary' && p.mode === 'linear');
     const steps     = Array.isArray(p.steps) ? p.steps : [];
     const defIdx    = Number.isFinite(p.defaultStep) ? p.defaultStep : 0;
-    const defStep   = steps[defIdx] || steps[0] || null;
-
-    // Summary line shown next to the param name in the collapsed head.
-    // Linear mode shows the AP-per-step rate + range; manual mode
-    // shows the default step's label + cost (existing behavior).
-    let summary;
-    if (isLinear) {
-      const lc = p.linearConfig || {};
-      const ap = Number.isFinite(lc.apPerStep) ? lc.apPerStep : 1;
-      const lo = Number.isFinite(lc.minValue) ? lc.minValue : 0;
-      const hi = Number.isFinite(lc.maxValue) ? lc.maxValue : 100;
-      summary = `linear · ${ap} AP/step · ${lo}–${hi}`;
-    } else {
-      summary = defStep
-        ? (defStep.label || defStep.value || '(blank)') + ` · ${kind === 'primary' ? defStep.cost + ' AP' : '×' + defStep.cost}`
-        : '(no steps)';
-    }
+    const summary   = paramHeadSummary(p, kind);
 
     const head = `
       <div class="bldr-param-head" onclick="bldrToggleParam('${kind}', ${idx})">
         <span class="bldr-param-caret">▶</span>
-        <span class="bldr-param-name${p.name ? '' : ' bldr-param-name-empty'}">${escapeHtml(p.name || '(Unnamed parameter)')}</span>
-        <span class="bldr-param-summary">${kind === 'primary' ? (isLinear ? 'linear' : 'flat') : 'mult'} · ${escapeHtml(summary)}</span>
+        <span class="bldr-param-name${p.name ? '' : ' bldr-param-name-empty'}" id="bldr-param-name-${kind}-${idx}">${escapeHtml(p.name || '(Unnamed parameter)')}</span>
+        <span class="bldr-param-summary" id="bldr-param-summary-${kind}-${idx}">${kind === 'primary' ? (isLinear ? 'linear' : 'flat') : 'mult'} · ${escapeHtml(summary)}</span>
         <button class="row-x" type="button" title="Delete parameter"
                 onclick="event.stopPropagation();bldrDeleteParam('${kind}', ${idx});">×</button>
       </div>
@@ -2127,10 +2154,14 @@
   window.bldrParamSetField = function(kind, idx, field, value) {
     if (kind === 'primary') window.catBldrSetPrimary(idx, field, value);
     else                    window.catBldrSetSecondary(idx, field, value);
-    // defaultStep needs the cards re-rendered so the radio button moves
-    // and the head summary updates. Other fields are inline-bound, no
-    // re-render needed beyond cost preview.
-    if (field === 'defaultStep' || field === 'name') {
+    // For 'name' or 'defaultStep', the head-row text changes — but
+    // re-rendering the whole param list would destroy the input the
+    // user is typing in and steal focus. Update the head spans in
+    // place instead. defaultStep also flips a radio in the body, so
+    // for that one we DO need the body re-render.
+    if (field === 'name') {
+      updateParamHeadInPlace(kind, idx);
+    } else if (field === 'defaultStep') {
       renderBldrParamsList();
     }
     renderBuilderPreview();
@@ -2177,10 +2208,16 @@
       const n = parseFloat(value);
       p.linearConfig[field] = Number.isFinite(n) ? n : 0;
     }
-    // The head summary shows AP rate + range — re-render the list when
-    // those change. Prefix/suffix only affect the preview line in the
-    // expanded body, which is bound in place via this re-render anyway.
-    renderBldrParamsList();
+    // The head summary shows AP rate + range — update it in place
+    // rather than re-rendering the whole params list (which would
+    // destroy the input the user is typing in). Prefix/suffix don't
+    // appear in the summary, so for those we don't even touch the
+    // head — only the preview line in the expanded body, which uses
+    // a stale render until the next full re-render. That's fine: the
+    // GM can see the live result in the Card Preview's System text.
+    if (field !== 'valuePrefix' && field !== 'valueSuffix') {
+      updateParamHeadInPlace(kind, idx);
+    }
     renderBuilderPreview();
   };
 
@@ -2260,7 +2297,10 @@
     // We DON'T full-rerender on every keystroke — the input is bound to
     // s[field] via the value attribute, but since we mutated s in place
     // the next user keystroke writes to the still-current input. The
-    // cost preview pill needs an update though.
+    // cost preview pill needs an update, and if the changed step IS the
+    // default one, the head summary changed too — patch it in place.
+    const defIdx = Number.isFinite(p.defaultStep) ? p.defaultStep : 0;
+    if (stepIdx === defIdx) updateParamHeadInPlace(kind, idx);
     renderBuilderPreview();
   };
 
