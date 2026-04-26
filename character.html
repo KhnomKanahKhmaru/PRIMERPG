@@ -6918,9 +6918,14 @@
     // iconUrl is the GM-uploaded icon; players don't author their own.
     // 48px on the left of the header, freeform shape (object-fit:contain
     // so SVGs and rectangles aren't squished). Hidden when no icon set.
+    //
+    // mix-blend-mode:screen drops pure-black pixels (most icons have a
+    // black background) so the icon reads as a glyph against the dark
+    // card. Combined with no border/background container, the icon
+    // floats cleanly without a hard rectangle frame around it.
     const iconImgHtml = (builder.iconUrl && builder.iconUrl.trim())
       ? `<img src="${escapeHtml(builder.iconUrl)}" alt=""
-              style="width:48px;height:48px;object-fit:contain;background:#0a0a06;border:1px solid #1a1a14;border-radius:5px;flex-shrink:0;">`
+              style="width:48px;height:48px;object-fit:contain;flex-shrink:0;mix-blend-mode:screen;">`
       : '';
 
     // Header text column — vertical stack, sits between the icon and
