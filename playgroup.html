@@ -314,7 +314,7 @@
           for (const mDoc of staffSnap.docs) {
             const r = mDoc.data().role;
             if (r === 'Leader' || r === 'Administrator') {
-              await createAlert(db, mDoc.data().uid, `**${myUsername}** left your playgroup **${pgData.name}**.`, `playgroup.html?id=${pgId}`);
+              await createAlert(db, mDoc.data().uid, `**${myUsername}** left your playgroup **${pgData.name}**.`, `playgroup.html?id=${pgId}`, pgId);
             }
           }
           window.location.href = 'my-playgroups.html';
@@ -608,7 +608,7 @@
       for (const mDoc of staffSnap.docs) {
         const r = mDoc.data().role;
         if ((r === 'Leader' || r === 'Administrator') && mDoc.data().uid !== myUid) {
-          await createAlert(db, mDoc.data().uid, `**${myUsername}** joined your playgroup **${pgData.name}**.`, `playgroup.html?id=${pgId}`);
+          await createAlert(db, mDoc.data().uid, `**${myUsername}** joined your playgroup **${pgData.name}**.`, `playgroup.html?id=${pgId}`, pgId);
         }
       }
 
@@ -812,7 +812,7 @@
     if (!confirm(`Promote ${name} to Administrator?`)) return;
     try {
       await updateDoc(doc(db, 'memberships', uid + '_' + pgId), { role: 'Administrator' });
-      await createAlert(db, uid, `You were promoted to **Administrator** in **${pgData.name}**.`, `playgroup.html?id=${pgId}`);
+      await createAlert(db, uid, `You were promoted to **Administrator** in **${pgData.name}**.`, `playgroup.html?id=${pgId}`, pgId);
       await createPlaygroupNews(db, pgId, pgData.name, `**${name}** was promoted to Administrator.`);
       await loadPeople(); await loadNews();
     } catch (e) { alert('Failed: ' + e.message); }
@@ -822,7 +822,7 @@
     if (!confirm(`Demote ${name} to Member?`)) return;
     try {
       await updateDoc(doc(db, 'memberships', uid + '_' + pgId), { role: 'Member' });
-      await createAlert(db, uid, `You were demoted to **Member** in **${pgData.name}**.`, `playgroup.html?id=${pgId}`);
+      await createAlert(db, uid, `You were demoted to **Member** in **${pgData.name}**.`, `playgroup.html?id=${pgId}`, pgId);
       await createPlaygroupNews(db, pgId, pgData.name, `**${name}** was demoted to Member.`);
       await loadPeople(); await loadNews();
     } catch (e) { alert('Failed: ' + e.message); }
@@ -836,7 +836,7 @@
       await updateDoc(doc(db, 'memberships', uid + '_' + pgId), { role: 'Leader' });
       await updateDoc(doc(db, 'memberships', myUid + '_' + pgId), { role: 'Administrator' });
       await updateDoc(doc(db, 'playgroups', pgId), { leader: uid });
-      await createAlert(db, uid, `The **Leader** role of **${pgData.name}** was transferred to you.`, `playgroup.html?id=${pgId}`);
+      await createAlert(db, uid, `The **Leader** role of **${pgData.name}** was transferred to you.`, `playgroup.html?id=${pgId}`, pgId);
       await createPlaygroupNews(db, pgId, pgData.name, `**${name}** is now the Leader of the playgroup.`);
       window.location.reload();
     } catch (e) { alert('Failed: ' + e.message); }
@@ -847,7 +847,7 @@
     try {
       await unlinkUserCharacters(uid);
       await deleteDoc(doc(db, 'memberships', uid + '_' + pgId));
-      await createAlert(db, uid, `You were kicked from the playgroup **${pgData.name}**.`, null);
+      await createAlert(db, uid, `You were kicked from the playgroup **${pgData.name}**.`, null, pgId);
       await createPlaygroupNews(db, pgId, pgData.name, `**${name}** was removed from the playgroup.`);
       await loadPeople(); await loadNews();
     } catch (e) { alert('Failed: ' + e.message); }
@@ -859,7 +859,7 @@
       await unlinkUserCharacters(uid);
       await deleteDoc(doc(db, 'memberships', uid + '_' + pgId));
       await updateDoc(doc(db, 'playgroups', pgId), { bannedUids: arrayUnion(uid) });
-      await createAlert(db, uid, `You were banned from the playgroup **${pgData.name}**.`, null);
+      await createAlert(db, uid, `You were banned from the playgroup **${pgData.name}**.`, null, pgId);
       await createPlaygroupNews(db, pgId, pgData.name, `**${name}** was removed from the playgroup.`);
       const fresh = await getDoc(doc(db, 'playgroups', pgId));
       pgData = fresh.data();
