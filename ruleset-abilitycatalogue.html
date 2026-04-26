@@ -265,20 +265,16 @@
     .ability-tile-head {
       display: flex; align-items: flex-start; gap: 10px;
     }
-    /* Icons may have a near-black baked-in border that screen-blend
-       can't fully drop. Scaling the inner image past 100% combined
-       with overflow:hidden on a flex-centered container clips that
-       outer ring off cleanly. */
-    .ability-tile-icon-wrap {
+    /* Icons: lighten blend drops anything darker than the page bg
+       (handles pure-black AND near-black baked-in borders). Image
+       fills the slot at its natural aspect ratio via object-fit:contain
+       — no scaling-to-crop, so the icon's actual content is fully
+       preserved. */
+    .ability-tile-icon {
       flex: 0 0 auto;
       width: 36px; height: 36px;
-      overflow: hidden;
-      display: flex; align-items: center; justify-content: center;
-    }
-    .ability-tile-icon {
-      width: 120%; height: 120%;
       object-fit: contain;
-      mix-blend-mode: screen;
+      mix-blend-mode: lighten;
     }
     .ability-tile-headtext {
       flex: 1; min-width: 0;
@@ -345,10 +341,10 @@
       background: #0a0a06;
     }
     .bldr-head-icon img {
-      width: 120%; height: 120%;
+      width: 100%; height: 100%;
       object-fit: contain;
       display: block;
-      mix-blend-mode: screen;
+      mix-blend-mode: lighten;
     }
     .bldr-head-icon-empty {
       font-size: 24px; color: #555; font-weight: 300;
@@ -441,16 +437,11 @@
       margin-bottom: 4px;
     }
     .bldr-card-head-row .bldr-card-name { margin-bottom: 0; flex: 1; min-width: 0; }
-    .bldr-card-icon-wrap {
+    .bldr-card-icon {
       flex: 0 0 auto;
       width: 48px; height: 48px;
-      overflow: hidden;
-      display: flex; align-items: center; justify-content: center;
-    }
-    .bldr-card-icon {
-      width: 120%; height: 120%;
       object-fit: contain;
-      mix-blend-mode: screen;
+      mix-blend-mode: lighten;
     }
     .bldr-card-tagline {
       font-size: 13px; font-style: italic; color: #aaa;
@@ -1573,7 +1564,7 @@
           // contain so freeform shapes (rectangles, SVGs) don't get
           // squished. No icon ⇒ row collapses gracefully.
           const iconThumb = (builder.iconUrl && builder.iconUrl.trim())
-            ? `<div class="ability-tile-icon-wrap"><img class="ability-tile-icon" src="${escapeHtmlAttr(builder.iconUrl)}" alt=""></div>`
+            ? `<img class="ability-tile-icon" src="${escapeHtmlAttr(builder.iconUrl)}" alt="">`
             : '';
 
           const nameHtml = builder.name
@@ -2685,7 +2676,7 @@
     // Icon + Name row at the top. Icon ~48px on the left, name beside
     // it. Mirrors the player-facing Card on character.html.
     const iconImg = (b.iconUrl && b.iconUrl.trim())
-      ? `<div class="bldr-card-icon-wrap"><img class="bldr-card-icon" src="${escapeHtmlAttr(b.iconUrl)}" alt=""></div>`
+      ? `<img class="bldr-card-icon" src="${escapeHtmlAttr(b.iconUrl)}" alt="">`
       : '';
     const nameInner = b.name
       ? escapeHtml(b.name)
