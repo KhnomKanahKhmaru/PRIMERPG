@@ -7019,22 +7019,29 @@
     }
     // Per-feature/flaw custom field — when the GM enabled it AND the
     // player filled in a value, render an extra indented line below
-    // the description: "<Label>: <player value>". Slightly muted so
-    // the eye treats it as a sub-clause of the feature, not a
-    // separate item.
+    // the description showing the player's value. The label is dropped
+    // here (since the Name on the first line already labels what this
+    // is); the second line just shows the player's value, italicized
+    // and indented so the eye reads it as a sub-clause.
     const cfValues = (abl.customFieldValues && typeof abl.customFieldValues === 'object') ? abl.customFieldValues : {};
     function customFieldHtml(f, kind) {
       const cf = (f && f.customField && typeof f.customField === 'object') ? f.customField : null;
       if (!cf || !cf.enabled) return '';
       const val = cfValues[f.id];
       if (typeof val !== 'string' || !val.trim()) return '';
-      const labelColor = (kind === 'feature') ? '#6a8a6a' : '#8a6a6a';
-      return `
-        <div style="margin-top:2px;margin-left:14px;font-size:12px;line-height:1.5;">
-          <span style="color:${labelColor};font-weight:600;">${escapeHtml(cf.label || 'Note')}:</span>
-          <span style="color:#bbb;"> ${escapeHtml(val)}</span>
-        </div>
-      `;
+      const labelColor = (kind === 'feature') ? '#7aaf7a' : '#af7a7a';
+      // If the GM gave the custom field a label that's DIFFERENT from
+      // the feature/flaw name, show that label in front of the value
+      // (so e.g. "Limited Use: 3/day" still reads with its own term).
+      // If they're the same, skip the label — the Name on line 1 is
+      // already that label.
+      const fname = (f && typeof f.name === 'string') ? f.name.trim() : '';
+      const cfLabel = (cf.label || '').trim();
+      const showLabel = cfLabel && cfLabel.toLowerCase() !== fname.toLowerCase();
+      const labelHtml = showLabel
+        ? `<span style="color:${labelColor};font-weight:600;">${escapeHtml(cfLabel)}:</span> `
+        : '';
+      return `<div style="margin-top:3px;margin-left:14px;font-size:12px;line-height:1.5;font-style:italic;color:#cfcfcf;">${labelHtml}${escapeHtml(val.trim())}</div>`;
     }
 
     let ffListHtml = '';
