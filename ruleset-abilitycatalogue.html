@@ -498,6 +498,13 @@
   let currentTypeKey  = null;     // null when home
   let openedBuilder   = null;     // { ci, bi, typeKey } when builder open
 
+  // Tracks which Parameter cards in the Builder editor are expanded
+  // (showing their step editor inline). Hoisted to the top alongside
+  // the other view-state vars so renderBuilderEditor can read it from
+  // initUI() without hitting a temporal dead zone.
+  // Keys are "primary:idx" / "secondary:idx" — see paramKey() below.
+  const expandedParamKeys = new Set();
+
   // ── ESCAPE HELPERS ──
   // Used everywhere in the legacy ported render code. Both names point
   // to the same five-char substitution; the distinction was conventional
@@ -1287,8 +1294,9 @@
   // is the position in the corresponding array. We use this rather than
   // param.id because it survives kind-conversion and array reordering
   // is not implemented.
-
-  const expandedParamKeys = new Set();
+  // (expandedParamKeys is declared at the top of the module alongside
+  // the other view-state vars to avoid a temporal-dead-zone crash when
+  // initUI() fires renderBuilderEditor before this point in source order.)
 
   function paramKey(kind, idx) { return kind + ':' + idx; }
 
