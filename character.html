@@ -6913,14 +6913,14 @@
     // packs four pieces of info into a scannable column:
     //
     //   1. Name (bold)  +  Tagline (italic, inline)
-    //   2. Description (Builder.description — GM catalogue blurb)
-    //   3. Visual (abl.visual — Player-authored, in quotes)
+    //   2. Visual (abl.visual — Player-authored, in quotes)
+    //   3. Description (Builder.description — GM catalogue blurb)
     //
-    // Description and Visual are each clamped to 2 lines max so a
-    // verbose entry doesn't blow up the card, but a GM browsing 30+
-    // abilities still sees the start of each. Icon + cost pill stay
-    // vertically centered against the column's center via the outer
-    // flexbox's align-items:center.
+    // Visual sits above Description so the player's flavor anchors the
+    // ability first, then the rules-y description rounds out what the
+    // power actually does. Each is clamped to 2 lines max so a verbose
+    // entry doesn't blow up the card. Icon + cost pill stay vertically
+    // centered against the column's center via align-items:center.
     const collapsedDescHtml = (builder.description && builder.description.trim())
       ? `<div style="font-size:12px;color:#aaa;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${escapeHtml(builder.description)}</div>`
       : '';
@@ -6937,8 +6937,8 @@
             <span style="font-weight:700;color:#e6e0cc;font-size:16px;">${escapeHtml(displayName)}</span>
             ${abl.tagline ? `<span style="font-size:13px;font-style:italic;color:#999;">${escapeHtml(abl.tagline)}</span>` : ''}
           </div>
-          ${collapsedDescHtml}
           ${collapsedVisualHtml}
+          ${collapsedDescHtml}
         </div>
         <span style="padding:5px 12px;background:${costBg};border:1px solid ${costBorder};border-radius:4px;font-size:12px;color:${costColor};font-family:monospace;flex-shrink:0;font-weight:700;">${cost} AP</span>
         <span style="color:#666;font-size:11px;width:12px;text-align:center;flex-shrink:0;">${caretChar}</span>
