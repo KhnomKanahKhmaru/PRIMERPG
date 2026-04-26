@@ -7441,6 +7441,12 @@
     const n = parseFloat(value);
     if (Number.isFinite(n)) inst.paramValues[paramId] = n;
     else delete inst.paramValues[paramId];
+    // Surgical updates — touching only the text content of the delta
+    // indicator span and (for linear mode) the live preview span next
+    // to the input. We DON'T re-render the row or the input itself,
+    // since that would destroy whatever the user is typing into and
+    // steal focus.
+    updatePrimaryParamRowText(paramId);
     renderAbilitiesBuilderCostPreview();
     renderAbilitiesBuilderSystemText();
   };
@@ -7451,9 +7457,71 @@
     if (!inst.paramValues || typeof inst.paramValues !== 'object') inst.paramValues = {};
     const n = parseInt(stepIdx);
     if (Number.isFinite(n)) inst.paramValues[paramId] = n;
+    updateSecondaryParamRowText(paramId);
     renderAbilitiesBuilderCostPreview();
     renderAbilitiesBuilderSystemText();
   };
+
+  // Surgical updaters for per-row delta + preview spans. Find the
+  // spans by id and patch their textContent — no row re-render, so
+  // the input the user is typing into stays mounted and focused.
+  function updatePrimaryParamRowText(paramId) {
+    if (!abilitiesBuilderSession) return;
+    const inst = abilitiesBuilderSession.instance;
+    const ref = charAbilities.findBuilderById(activeRuleset, inst.builderId);
+    if (!ref) return;
+    const params = Array.isArray(ref.builder.primaryParams) ? ref.builder.primaryParams : [];
+    const p = params.find(pp => pp && pp.id === paramId);
+    if (!p) return;
+    const safeId = paramId.replace(/[^a-zA-Z0-9_]/g, '_');
+    const deltaEl   = document.getElementById('abil-pp-delta-'   + safeId);
+    const previewEl = document.getElementById('abil-pp-preview-' + safeId);
+    if (p.mode === 'linear') {
+      const lc = (p.linearConfig && typeof p.linearConfig === 'object') ? p.linearConfig : {};
+      const def    = Number.isFinite(lc.defaultValue) ? lc.defaultValue : 0;
+      const ap     = Number.isFinite(lc.apPerStep)    ? lc.apPerStep    : 1;
+      const pre    = typeof lc.valuePrefix === 'string' ? lc.valuePrefix : '';
+      const suf    = typeof lc.valueSuffix === 'string' ? lc.valueSuffix : '';
+      const cur    = Number.isFinite(inst.paramValues && inst.paramValues[paramId]) ? inst.paramValues[paramId] : def;
+      const delta  = (cur - def) * ap;
+      const deltaStr   = delta === 0 ? 'baseline' : (delta > 0 ? `+${delta} AP` : `${delta} AP`);
+      const deltaColor = delta === 0 ? '#888' : (delta > 0 ? '#d8a060' : '#88c080');
+      if (deltaEl)   { deltaEl.textContent = deltaStr; deltaEl.style.color = deltaColor; }
+      if (previewEl) previewEl.textContent = pre + String(cur) + suf;
+    } else {
+      // Manual mode — recompute delta from the picked step's cost.
+      const steps = Array.isArray(p.steps) ? p.steps : [];
+      const defaultIdx = Number.isFinite(p.defaultStep) ? p.defaultStep : 0;
+      const curIdx = Number.isFinite(inst.paramValues && inst.paramValues[paramId]) ? inst.paramValues[paramId] : defaultIdx;
+      const curStep = (curIdx >= 0 && curIdx < steps.length) ? steps[curIdx] : null;
+      const curCost = curStep && Number.isFinite(parseFloat(curStep.cost)) ? parseFloat(curStep.cost) : 0;
+      const defStep = (defaultIdx >= 0 && defaultIdx < steps.length) ? steps[defaultIdx] : null;
+      const defCost = defStep && Number.isFinite(parseFloat(defStep.cost)) ? parseFloat(defStep.cost) : 0;
+      const delta   = curCost - defCost;
+      const deltaStr   = delta === 0 ? 'baseline' : (delta > 0 ? `+${delta} AP` : `${delta} AP`);
+      const deltaColor = delta === 0 ? '#888' : (delta > 0 ? '#d8a060' : '#88c080');
+      if (deltaEl) { deltaEl.textContent = deltaStr; deltaEl.style.color = deltaColor; }
+    }
+  }
+  function updateSecondaryParamRowText(paramId) {
+    if (!abilitiesBuilderSession) return;
+    const inst = abilitiesBuilderSession.instance;
+    const ref = charAbilities.findBuilderById(activeRuleset, inst.builderId);
+    if (!ref) return;
+    const params = Array.isArray(ref.builder.secondaryParams) ? ref.builder.secondaryParams : [];
+    const p = params.find(pp => pp && pp.id === paramId);
+    if (!p) return;
+    const steps = Array.isArray(p.steps) ? p.steps : [];
+    const defaultIdx = Number.isFinite(p.defaultStepIndex) ? p.defaultStepIndex : 0;
+    const curIdx = Number.isFinite(inst.paramValues && inst.paramValues[paramId]) ? inst.paramValues[paramId] : defaultIdx;
+    const curStep = (curIdx >= 0 && curIdx < steps.length) ? steps[curIdx] : null;
+    const curMult = curStep && Number.isFinite(curStep.multiplier) ? curStep.multiplier : 1;
+    const multStr   = curMult === 1 ? 'baseline ×1.0' : `×${curMult.toFixed(2)}`;
+    const multColor = curMult === 1 ? '#888' : (curMult > 1 ? '#d8a060' : '#88c080');
+    const safeId = paramId.replace(/[^a-zA-Z0-9_]/g, '_');
+    const multEl = document.getElementById('abil-sp-mult-' + safeId);
+    if (multEl) { multEl.textContent = multStr; multEl.style.color = multColor; }
+  }
 
   window.abilitiesBuilderToggleFeature = function(featureId) {
     if (!abilitiesBuilderSession) return;
@@ -7766,9 +7834,9 @@
               <input type="number" min="${min}" max="${max}" step="${vstep}" value="${cur}"
                      style="background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:13px;padding:7px 10px;border-radius:4px;outline:none;flex:1;min-width:0;"
                      oninput="abilitiesBuilderSetPrimaryParam('${escapeHtml(p.id)}',this.value)">
-              <span style="font-size:11px;color:#888;font-family:'Consolas','Courier New',monospace;flex-shrink:0;">${escapeHtml(renders)}</span>
+              <span id="abil-pp-preview-${escapeHtml(p.id.replace(/[^a-zA-Z0-9_]/g,'_'))}" style="font-size:11px;color:#888;font-family:'Consolas','Courier New',monospace;flex-shrink:0;">${escapeHtml(renders)}</span>
             </div>
-            <span style="color:${deltaColor};font-family:monospace;font-size:12px;text-align:right;">${deltaStr}</span>
+            <span id="abil-pp-delta-${escapeHtml(p.id.replace(/[^a-zA-Z0-9_]/g,'_'))}" style="color:${deltaColor};font-family:monospace;font-size:12px;text-align:right;">${deltaStr}</span>
           </div>
         `;
         return;
@@ -7801,7 +7869,7 @@
           </div>
           <select style="background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:13px;padding:7px 10px;border-radius:4px;outline:none;width:100%;"
                   onchange="abilitiesBuilderSetPrimaryParam('${escapeHtml(p.id)}',this.value)">${optsHtml || '<option>(no steps configured)</option>'}</select>
-          <span style="color:${deltaColor};font-family:monospace;font-size:12px;text-align:right;">${deltaStr}</span>
+          <span id="abil-pp-delta-${escapeHtml(p.id.replace(/[^a-zA-Z0-9_]/g,'_'))}" style="color:${deltaColor};font-family:monospace;font-size:12px;text-align:right;">${deltaStr}</span>
         </div>
       `;
     });
@@ -7843,7 +7911,7 @@
           </div>
           <select style="background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:13px;padding:7px 10px;border-radius:4px;outline:none;width:100%;"
                   onchange="abilitiesBuilderSetSecondaryParam('${escapeHtml(p.id)}',this.value)">${optsHtml || '<option>(no steps configured)</option>'}</select>
-          <span style="color:${multColor};font-family:monospace;font-size:12px;text-align:right;">${multStr}</span>
+          <span id="abil-sp-mult-${escapeHtml(p.id.replace(/[^a-zA-Z0-9_]/g,'_'))}" style="color:${multColor};font-family:monospace;font-size:12px;text-align:right;">${multStr}</span>
         </div>
       `;
     });
