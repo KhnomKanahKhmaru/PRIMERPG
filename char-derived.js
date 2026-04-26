@@ -1206,6 +1206,36 @@ export function computeDerivedStats(character, ruleset) {
     };
   }
 
+  // ─── EXH → BODY BRIDGE ──────────────────────────────────────────────
+  //
+  // Passing out from exhaustion drops Body status to Unconscious as well.
+  // Body's "Unconscious" was previously triggered ONLY by head-disable —
+  // now EXH knockout reaches the same flag/label.
+  //
+  // Priority interleave matches the existing Body status ladder:
+  //   • Already Dead/Destroyed/Incapacitated → bridge is a no-op
+  //     (those states are strictly worse than Unconscious — don't
+  //     downgrade them)
+  //   • Already Paralyzed (torso disabled) + EXH-unconscious →
+  //     promote to Incapacitated, which is the canonical
+  //     "Unconscious AND Paralyzed" combined state
+  //   • Otherwise → set body.unconscious + statusLabel = Unconscious
+  //
+  // Doing this as a post-pass (rather than threading EXH state into the
+  // Body block above) keeps the Body section's own status logic
+  // self-contained and easier to read; the bridge is a single
+  // localized edit you can grep for.
+  if (exh && exh.status === 'unconscious' && body
+      && !body.dead && !body.destroyed && !body.incapacitated) {
+    body.unconscious = true;
+    if (body.paralyzed) {
+      body.incapacitated = true;
+      body.statusLabel = 'Incapacitated';
+    } else {
+      body.statusLabel = 'Unconscious';
+    }
+  }
+
   // ─── INJURIES ───
   //
   // Injuries are free-floating wounds with their own base severity, location,
