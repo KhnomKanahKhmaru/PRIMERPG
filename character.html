@@ -7737,24 +7737,70 @@
       return html;
     }
     params.forEach(p => {
-      const def = Number.isFinite(p.defaultValue) ? p.defaultValue : 0;
-      const min = Number.isFinite(p.minValue) ? p.minValue : 0;
-      const max = Number.isFinite(p.maxValue) ? p.maxValue : 100;
-      const stepCost = Number.isFinite(p.stepCost) ? p.stepCost : 1;
-      const cur = Number.isFinite(inst.paramValues && inst.paramValues[p.id]) ? inst.paramValues[p.id] : def;
-      const delta = (cur - def) * stepCost;
-      const deltaStr = delta === 0 ? 'baseline' : (delta > 0 ? `+${delta} AP` : `${delta} AP`);
+      // ── Linear mode ──
+      // Player picks any value in [min, max]; cost is computed live as
+      // (value - default) × apPerStep. The token in System text renders
+      // as "<prefix><value><suffix>" (e.g. "3d6") via renderSystemText.
+      if (p.mode === 'linear') {
+        const lc = (p.linearConfig && typeof p.linearConfig === 'object') ? p.linearConfig : {};
+        const def    = Number.isFinite(lc.defaultValue) ? lc.defaultValue : 0;
+        const min    = Number.isFinite(lc.minValue)     ? lc.minValue     : 0;
+        const max    = Number.isFinite(lc.maxValue)     ? lc.maxValue     : 100;
+        const ap     = Number.isFinite(lc.apPerStep)    ? lc.apPerStep    : 1;
+        const vstep  = Number.isFinite(lc.valueStep)    ? lc.valueStep    : 1;
+        const pre    = typeof lc.valuePrefix === 'string' ? lc.valuePrefix : '';
+        const suf    = typeof lc.valueSuffix === 'string' ? lc.valueSuffix : '';
+        const cur    = Number.isFinite(inst.paramValues && inst.paramValues[p.id]) ? inst.paramValues[p.id] : def;
+        const delta  = (cur - def) * ap;
+        const deltaStr   = delta === 0 ? 'baseline' : (delta > 0 ? `+${delta} AP` : `${delta} AP`);
+        const deltaColor = delta === 0 ? '#888' : (delta > 0 ? '#d8a060' : '#88c080');
+        const renders    = pre + String(cur) + suf;
+        html += `
+          <div style="display:grid;grid-template-columns:1fr 200px 100px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;">
+            <div>
+              <div style="font-weight:500;color:#ddd;font-size:13px;">${escapeHtml(p.name || 'Parameter')}</div>
+              ${p.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(p.description)}</div>` : ''}
+              <div style="font-size:10px;color:#666;margin-top:2px;">Default: ${pre}${def}${suf} · ${ap} AP/step · range ${min}–${max}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <input type="number" min="${min}" max="${max}" step="${vstep}" value="${cur}"
+                     style="background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:13px;padding:7px 10px;border-radius:4px;outline:none;flex:1;min-width:0;"
+                     oninput="abilitiesBuilderSetPrimaryParam('${escapeHtml(p.id)}',this.value)">
+              <span style="font-size:11px;color:#888;font-family:'Consolas','Courier New',monospace;flex-shrink:0;">${escapeHtml(renders)}</span>
+            </div>
+            <span style="color:${deltaColor};font-family:monospace;font-size:12px;text-align:right;">${deltaStr}</span>
+          </div>
+        `;
+        return;
+      }
+      // ── Manual mode (default) ──
+      // The Builder authored an explicit step list. Player picks one
+      // step via a dropdown; cost = that step's `cost` value.
+      const steps = Array.isArray(p.steps) ? p.steps : [];
+      const defaultIdx = Number.isFinite(p.defaultStep)
+        ? p.defaultStep
+        : (Number.isFinite(p.defaultStepIndex) ? p.defaultStepIndex : 0);
+      const curIdx = Number.isFinite(inst.paramValues && inst.paramValues[p.id]) ? inst.paramValues[p.id] : defaultIdx;
+      const curStep = (curIdx >= 0 && curIdx < steps.length) ? steps[curIdx] : null;
+      const curCost = curStep && Number.isFinite(parseFloat(curStep.cost)) ? parseFloat(curStep.cost) : 0;
+      const defStep = (defaultIdx >= 0 && defaultIdx < steps.length) ? steps[defaultIdx] : null;
+      const defCost = defStep && Number.isFinite(parseFloat(defStep.cost)) ? parseFloat(defStep.cost) : 0;
+      const delta   = curCost - defCost;
+      const deltaStr   = delta === 0 ? 'baseline' : (delta > 0 ? `+${delta} AP` : `${delta} AP`);
       const deltaColor = delta === 0 ? '#888' : (delta > 0 ? '#d8a060' : '#88c080');
+      const optsHtml = steps.map((s, si) => {
+        const cost = Number.isFinite(parseFloat(s.cost)) ? parseFloat(s.cost) : 0;
+        const display = s.label || (s.value !== '' ? String(s.value) : `(step ${si + 1})`);
+        return `<option value="${si}"${si === curIdx ? ' selected' : ''}>${escapeHtml(display)} (${cost} AP)</option>`;
+      }).join('');
       html += `
         <div style="display:grid;grid-template-columns:1fr 200px 100px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;">
           <div>
-            <div style="font-weight:500;color:#ddd;font-size:13px;">${escapeHtml(p.name || 'Parameter')}${p.displayUnit ? ` <span style="color:#888;font-weight:400;">(${escapeHtml(p.displayUnit)})</span>` : ''}</div>
+            <div style="font-weight:500;color:#ddd;font-size:13px;">${escapeHtml(p.name || 'Parameter')}</div>
             ${p.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(p.description)}</div>` : ''}
-            <div style="font-size:10px;color:#666;margin-top:2px;">Default: ${def}${p.displayUnit ? ' ' + escapeHtml(p.displayUnit) : ''} · ${stepCost} AP/step</div>
           </div>
-          <input type="number" min="${min}" max="${max}" step="any" value="${cur}"
-                 style="background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:13px;padding:7px 10px;border-radius:4px;outline:none;width:100%;"
-                 oninput="abilitiesBuilderSetPrimaryParam('${escapeHtml(p.id)}',this.value)">
+          <select style="background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:13px;padding:7px 10px;border-radius:4px;outline:none;width:100%;"
+                  onchange="abilitiesBuilderSetPrimaryParam('${escapeHtml(p.id)}',this.value)">${optsHtml || '<option>(no steps configured)</option>'}</select>
           <span style="color:${deltaColor};font-family:monospace;font-size:12px;text-align:right;">${deltaStr}</span>
         </div>
       `;
