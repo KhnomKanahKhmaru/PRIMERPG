@@ -2627,7 +2627,6 @@
     if (!b) return;
     const cat = state.abilityCatalogue || {};
     const tiers = cat.canonicalTiers || {};
-
     // Default-tuned instance — every param at its default step, no
     // features/flaws selected. The card preview shows the cost a Player
     // pays just by picking this Builder before any tuning of their own.
@@ -2831,6 +2830,10 @@
       ${extraTab}
     `;
   }
+  // Expose on window so inline oninput="...renderBuilderPreview()"
+  // handlers in generated HTML strings can reach it. Module-scoped
+  // functions aren't visible to inline event attributes.
+  window.renderBuilderPreview = renderBuilderPreview;
 
   // System box toggle on the Builder preview — mirrors the player Card.
   // Stored on window for the same TDZ-immunity reasons as bldrPreviewExtraOpen.
