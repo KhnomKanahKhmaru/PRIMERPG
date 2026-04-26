@@ -36,35 +36,86 @@
 // the containing Category so callers that want to display "Offensive →
 // Fire Bolt" have the path on hand. Returns null if not found OR if
 // the ruleset has no catalogue / catalogue is disabled.
+//
+// The catalogue has a types-wrapper (Ability, Artifact, etc.) — we
+// walk every type's categories, since BuilderIds are unique across
+// types and callers don't know (or care) which type a Builder lives in.
+// The returned object adds `typeKey` so UI that wants to show "Ability →
+// Offensive → Fire Bolt" can.
+//
+// Backward-compat: an older shape with cat.categories at the top level
+// is supported by the normalizer (migrates on read), but we also fall
+// back to scanning cat.categories here so a not-yet-normalized payload
+// doesn't break.
 export function findBuilderById(ruleset, builderId) {
   if (!ruleset || !builderId) return null;
   const cat = ruleset.abilityCatalogue;
-  if (!cat || cat.enabled === false || !Array.isArray(cat.categories)) return null;
-  for (const category of cat.categories) {
-    if (!category || !Array.isArray(category.builders)) continue;
-    const builder = category.builders.find(b => b && b.id === builderId);
-    if (builder) {
-      return { builder, category, catalogue: cat };
+  if (!cat || cat.enabled === false) return null;
+
+  // New shape: cat.types.{typeKey}.categories[].builders[]
+  if (cat.types && typeof cat.types === 'object') {
+    for (const typeKey of Object.keys(cat.types)) {
+      const t = cat.types[typeKey];
+      if (!t || !Array.isArray(t.categories)) continue;
+      for (const category of t.categories) {
+        if (!category || !Array.isArray(category.builders)) continue;
+        const builder = category.builders.find(b => b && b.id === builderId);
+        if (builder) {
+          return { builder, category, catalogue: cat, typeKey, type: t };
+        }
+      }
     }
   }
+
+  // Legacy shape fallback — pre-migration data
+  if (Array.isArray(cat.categories)) {
+    for (const category of cat.categories) {
+      if (!category || !Array.isArray(category.builders)) continue;
+      const builder = category.builders.find(b => b && b.id === builderId);
+      if (builder) {
+        return { builder, category, catalogue: cat, typeKey: 'ability', type: null };
+      }
+    }
+  }
+
   return null;
 }
 
 // Convenience — list every builder in the catalogue, flattened, with
 // category path attached. Useful for search UIs and the catalogue
-// browser.
+// browser. Walks all types.
 export function listAllBuilders(ruleset) {
   const out = [];
   if (!ruleset || !ruleset.abilityCatalogue) return out;
   const cat = ruleset.abilityCatalogue;
-  if (cat.enabled === false || !Array.isArray(cat.categories)) return out;
-  cat.categories.forEach(category => {
-    if (!category || !Array.isArray(category.builders)) return;
-    category.builders.forEach(builder => {
-      if (!builder) return;
-      out.push({ builder, category, catalogue: cat });
+  if (cat.enabled === false) return out;
+
+  // New shape
+  if (cat.types && typeof cat.types === 'object') {
+    Object.keys(cat.types).forEach(typeKey => {
+      const t = cat.types[typeKey];
+      if (!t || !Array.isArray(t.categories)) return;
+      t.categories.forEach(category => {
+        if (!category || !Array.isArray(category.builders)) return;
+        category.builders.forEach(builder => {
+          if (!builder) return;
+          out.push({ builder, category, catalogue: cat, typeKey, type: t });
+        });
+      });
     });
-  });
+    return out;
+  }
+
+  // Legacy shape fallback
+  if (Array.isArray(cat.categories)) {
+    cat.categories.forEach(category => {
+      if (!category || !Array.isArray(category.builders)) return;
+      category.builders.forEach(builder => {
+        if (!builder) return;
+        out.push({ builder, category, catalogue: cat, typeKey: 'ability', type: null });
+      });
+    });
+  }
   return out;
 }
 
