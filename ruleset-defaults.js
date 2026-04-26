@@ -1515,11 +1515,16 @@ window.normalizeRuleset = function(rs) {
     // Extra sections of their Ability instance card. Legacy field
     // names (visualPrompt / extra) are migrated on read so old data
     // doesn't disappear.
+    //
+    // iconUrl is the public download URL of the Builder's icon image
+    // stored in Firebase Storage at rulesets/{rulesetId}/builderIcons/
+    // {builderId}. Empty string when no icon is set.
     const builder = {
       id:           (typeof b.id === 'string' && b.id.trim()) ? b.id : synthId('bld'),
       name:         typeof b.name === 'string' ? b.name : 'Untitled Ability',
       description:  typeof b.description === 'string' ? b.description : '',
       baseCost:     Number.isFinite(b.baseCost) ? Math.max(0, b.baseCost) : 0,
+      iconUrl:      typeof b.iconUrl === 'string' ? b.iconUrl : '',
       systemTextTemplate: typeof b.systemTextTemplate === 'string' ? b.systemTextTemplate : '',
       visualGuideline: typeof b.visualGuideline === 'string' ? b.visualGuideline
                      : typeof b.visualPrompt === 'string'    ? b.visualPrompt
