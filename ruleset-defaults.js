@@ -1506,6 +1506,33 @@ window.normalizeRuleset = function(rs) {
   // content where the editor didn't assign one). Uses a deterministic
   // seed so the same input produces the same output across loads.
 
+  // Normalize a Builder's activationRoll config. Strict whitelisting of
+  // mode strings so a typo in saved data doesn't break the resolver.
+  // Slot 1 is always a STAT; slot 2 can be a STAT or SKILL.
+  //
+  // Slot modes:
+  //   slot 1: 'fixed-stat' | 'any-stat'
+  //   slot 2: 'fixed-stat' | 'fixed-skill' | 'any-stat' | 'any-skill' | 'any'
+  function normalizeActivationRoll(ar) {
+    ar = (ar && typeof ar === 'object') ? ar : {};
+    const s1 = (ar.slot1 && typeof ar.slot1 === 'object') ? ar.slot1 : {};
+    const s2 = (ar.slot2 && typeof ar.slot2 === 'object') ? ar.slot2 : {};
+    const slot1Modes = ['fixed-stat', 'any-stat'];
+    const slot2Modes = ['fixed-stat', 'fixed-skill', 'any-stat', 'any-skill', 'any'];
+    return {
+      enabled: !!ar.enabled,
+      slot1: {
+        mode: slot1Modes.includes(s1.mode) ? s1.mode : 'any-stat',
+        fixedStat: typeof s1.fixedStat === 'string' ? s1.fixedStat : ''
+      },
+      slot2: {
+        mode: slot2Modes.includes(s2.mode) ? s2.mode : 'any',
+        fixedStat:  typeof s2.fixedStat  === 'string' ? s2.fixedStat  : '',
+        fixedSkill: typeof s2.fixedSkill === 'string' ? s2.fixedSkill : ''
+      }
+    };
+  }
+
   // Normalize a single Builder. Coerces all fields, generates missing
   // ids, filters malformed entries. Used both by initial normalization
   // and by character-side snapshot validation.
@@ -1519,6 +1546,12 @@ window.normalizeRuleset = function(rs) {
     // iconUrl is the public download URL of the Builder's icon image
     // stored in Firebase Storage at rulesets/{rulesetId}/builderIcons/
     // {builderId}. Empty string when no icon is set.
+    //
+    // activationRoll: when enabled, this Ability is rolled to activate.
+    // Slot 1 is always a STAT, Slot 2 is a STAT or SKILL. Each slot
+    // can be FIXED to a specific value (GM-locked) or PLAYER-CHOSEN
+    // from a kind (any-stat / any-skill / any). The {ACTIVATION_ROLL}
+    // token in the System template renders to the resolved pool name.
     const builder = {
       id:           (typeof b.id === 'string' && b.id.trim()) ? b.id : synthId('bld'),
       name:         typeof b.name === 'string' ? b.name : 'Untitled Ability',
@@ -1532,6 +1565,7 @@ window.normalizeRuleset = function(rs) {
       extraGuideline:  typeof b.extraGuideline === 'string' ? b.extraGuideline
                      : typeof b.extra === 'string'           ? b.extra
                      : '',
+      activationRoll:  normalizeActivationRoll(b.activationRoll),
       primaryParams:   Array.isArray(b.primaryParams)   ? b.primaryParams   : [],
       secondaryParams: Array.isArray(b.secondaryParams) ? b.secondaryParams : [],
       features:        Array.isArray(b.features)        ? b.features        : [],
