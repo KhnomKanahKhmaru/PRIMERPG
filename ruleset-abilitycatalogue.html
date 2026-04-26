@@ -611,11 +611,28 @@
   }
 
   // Top-level catalogue settings handlers — own (not from legacy port).
-  // ensureCat() is declared further down in the ported legacy block; it
-  // wraps state.abilityCatalogue with seeding fallback. JS hoists `function`
-  // declarations to the top of their module scope so it's safe to call
-  // ensureCat from these handlers even though it appears below in source
-  // order.
+  // ensureCat() seeds state.abilityCatalogue with a default skeleton if
+  // it's somehow missing or malformed. Defensive — the normalizer should
+  // always create this on load, but if a legacy ruleset slipped through
+  // empty, this prevents crash-on-first-mutation.
+  function ensureCat() {
+    if (!state.abilityCatalogue || typeof state.abilityCatalogue !== 'object') {
+      // Prefer normalizeRuleset for the seeded defaults — it produces
+      // the same shape the rest of the page expects (types wrapper,
+      // canonicalTiers, etc). Fallback to a minimal skeleton if the
+      // normalizer somehow isn't loaded.
+      if (typeof window.normalizeRuleset === 'function') {
+        state.abilityCatalogue = window.normalizeRuleset({}).abilityCatalogue;
+      } else {
+        state.abilityCatalogue = {
+          enabled: true, name: 'Catalogue', description: '',
+          canonicalTiers: { featureCosts: {}, flawRefunds: {} },
+          types: {}
+        };
+      }
+    }
+    return state.abilityCatalogue;
+  }
 
   window.catToggleEnabled = function(v) { ensureCat().enabled = !!v; };
   window.catSetName       = function(v) { ensureCat().name = String(v || ''); };
