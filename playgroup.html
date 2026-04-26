@@ -706,9 +706,15 @@
         const m = mDoc.data();
         const uDoc = await getDoc(doc(db, 'users', m.uid));
         const username = uDoc.exists() ? uDoc.data().username : 'Unknown';
-        const charsQ = query(collection(db, 'characters'), where('uid', '==', m.uid));
+        const charsQ = query(collection(db, 'characters'),
+          where('uid', '==', m.uid),
+          where('playgroupId', '==', pgId));
         const charsSnap = await getDocs(charsQ);
-        const filtered = charsSnap.docs.filter(c => c.data().playgroupId === pgId);
+        // Query already filters by playgroupId — keep `filtered` as the
+        // returned docs for compatibility with the rendering loop below.
+        // (Previous version filtered client-side; that read other-playgroup
+        // characters which the security rules now correctly block.)
+        const filtered = charsSnap.docs;
         let charsHtml = '';
         if (filtered.length > 0) {
           const links = filtered.map(c =>
