@@ -2024,33 +2024,54 @@
       ? `<div class="bldr-card-section-body" style="background:transparent;border:none;padding:0;">${escapeHtml(systemText)}</div>`
       : `<div class="bldr-card-section-body bldr-card-placeholder" style="background:transparent;border:none;padding:0;">(System text — fill in via the System textarea below using {token} placeholders)</div>`;
 
+    // Helper: format a feature/flaw line as "(Tier · ±N AP) text".
+    // Same format as the player-facing Card on character.html — these
+    // two views must stay visually identical.
+    const featureCosts = (tiers.featureCosts || {});
+    const flawRefunds  = (tiers.flawRefunds  || {});
+    function ffLineText(f) {
+      const name = (f && typeof f.name === 'string') ? f.name.trim() : '';
+      const desc = (f && typeof f.description === 'string') ? f.description.trim() : '';
+      if (name && desc && name !== desc) return name + ': ' + desc;
+      return desc || name || '(unnamed)';
+    }
+    function tierPrefix(f, kind) {
+      const tier = (f && f.tier) ? f.tier : 'minor';
+      const tierLabel = tier[0].toUpperCase() + tier.slice(1);
+      const tierCostTable = (kind === 'feature') ? featureCosts : flawRefunds;
+      const ap = Number.isFinite(tierCostTable[tier]) ? tierCostTable[tier] : 0;
+      const sign = (kind === 'feature') ? '+' : '−';
+      return `(${tierLabel} · ${sign}${ap} AP)`;
+    }
+
     let ffListHtml = '';
     if (systemExpanded && hasFFContent) {
-      ffListHtml += `<div style="margin-top:12px;padding-top:10px;border-top:1px solid #2a2a20;display:flex;flex-direction:column;gap:8px;">`;
-      const tierName = (t) => (t ? t[0].toUpperCase() + t.slice(1) : 'Minor');
+      ffListHtml += `<div style="margin-top:12px;padding-top:10px;border-top:1px solid #2a2a20;display:flex;flex-direction:column;gap:10px;">`;
       if (features.length > 0) {
-        ffListHtml += `<div style="font-size:10px;color:#806040;letter-spacing:.08em;text-transform:uppercase;font-weight:700;">Features (all)</div>`;
+        ffListHtml += `<div style="font-size:10px;color:#6a8a6a;letter-spacing:.1em;text-transform:uppercase;font-weight:700;">Features</div>`;
+        ffListHtml += `<div style="display:flex;flex-direction:column;gap:4px;">`;
         features.forEach(f => {
           ffListHtml += `
-            <div style="font-size:12px;color:#d8a060;line-height:1.5;">
-              <span style="font-weight:700;">${escapeHtml(f.name || tierName(f.tier) + ' Feature')}</span>
-              <span style="color:#806040;font-size:10px;text-transform:uppercase;letter-spacing:.06em;margin-left:6px;">${escapeHtml(tierName(f.tier))}</span>
-              ${f.description && f.description !== f.name ? `<div style="color:#aa8050;font-size:12px;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
+            <div style="font-size:12px;color:#9aaf9a;line-height:1.55;">
+              <span style="color:#6a8a6a;">${tierPrefix(f, 'feature')}</span>
+              ${escapeHtml(ffLineText(f))}
             </div>
           `;
         });
+        ffListHtml += `</div>`;
       }
       if (flaws.length > 0) {
-        ffListHtml += `<div style="font-size:10px;color:#608060;letter-spacing:.08em;text-transform:uppercase;font-weight:700;${features.length > 0 ? 'margin-top:6px;' : ''}">Flaws (all)</div>`;
+        ffListHtml += `<div style="font-size:10px;color:#8a6a6a;letter-spacing:.1em;text-transform:uppercase;font-weight:700;${features.length > 0 ? 'margin-top:4px;' : ''}">Flaws</div>`;
+        ffListHtml += `<div style="display:flex;flex-direction:column;gap:4px;">`;
         flaws.forEach(f => {
           ffListHtml += `
-            <div style="font-size:12px;color:#88c080;line-height:1.5;">
-              <span style="font-weight:700;">${escapeHtml(f.name || tierName(f.tier) + ' Flaw')}</span>
-              <span style="color:#608060;font-size:10px;text-transform:uppercase;letter-spacing:.06em;margin-left:6px;">${escapeHtml(tierName(f.tier))}</span>
-              ${f.description && f.description !== f.name ? `<div style="color:#7aa67a;font-size:12px;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
+            <div style="font-size:12px;color:#af9a9a;line-height:1.55;">
+              <span style="color:#8a6a6a;">${tierPrefix(f, 'flaw')}</span>
+              ${escapeHtml(ffLineText(f))}
             </div>
           `;
         });
+        ffListHtml += `</div>`;
       }
       ffListHtml += '</div>';
     } else if (systemExpanded && !hasFFContent) {
