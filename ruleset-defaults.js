@@ -1599,6 +1599,25 @@ window.normalizeRuleset = function(rs) {
       };
     };
 
+    // Linear-mode config for a Primary parameter — used when
+    // p.mode === 'linear' instead of authoring a steps[] list. Cost
+    // is computed as (playerValue - defaultValue) × apPerStep,
+    // letting GMs price open-ended numeric ranges (damage dice, range
+    // in feet, duration in turns, etc.) without authoring 100 explicit
+    // steps. valuePrefix/valueSuffix wrap the numeric value in the
+    // System text token (e.g. value=3, suffix='d6' → renders as "3d6").
+    function normalizeLinearConfig(lc) {
+      lc = (lc && typeof lc === 'object') ? lc : {};
+      return {
+        apPerStep:    Number.isFinite(lc.apPerStep)    ? lc.apPerStep    : 1,
+        defaultValue: Number.isFinite(lc.defaultValue) ? lc.defaultValue : 0,
+        minValue:     Number.isFinite(lc.minValue)     ? lc.minValue     : 0,
+        maxValue:     Number.isFinite(lc.maxValue)     ? lc.maxValue     : 100,
+        valueStep:    Number.isFinite(lc.valueStep)    ? lc.valueStep    : 1,
+        valuePrefix:  typeof lc.valuePrefix === 'string' ? lc.valuePrefix : '',
+        valueSuffix:  typeof lc.valueSuffix === 'string' ? lc.valueSuffix : ''
+      };
+    }
     builder.primaryParams = builder.primaryParams
       .filter(p => p && typeof p === 'object')
       .map(p => {
@@ -1610,6 +1629,8 @@ window.normalizeRuleset = function(rs) {
           name:        typeof p.name === 'string' ? p.name : 'Parameter',
           token:       typeof p.token === 'string' ? p.token : '',
           description: typeof p.description === 'string' ? p.description : '',
+          mode:        p.mode === 'linear' ? 'linear' : 'manual',
+          linearConfig: normalizeLinearConfig(p.linearConfig),
           steps,
           defaultStep: Number.isFinite(p.defaultStep) ? p.defaultStep : 0
         };
