@@ -196,6 +196,27 @@ export function computeAbilityCost(builder, instance, tiers) {
   // step structures impossible.
   const primaryParams = Array.isArray(builder.primaryParams) ? builder.primaryParams : [];
   primaryParams.forEach(param => {
+    // Linear mode: paramValues[id] is the player's chosen NUMERIC value
+    // (not a step index). Cost = (value - defaultValue) × apPerStep.
+    if (param.mode === 'linear') {
+      const lc = (param.linearConfig && typeof param.linearConfig === 'object') ? param.linearConfig : {};
+      const apPerStep    = Number.isFinite(lc.apPerStep)    ? lc.apPerStep    : 1;
+      const defaultValue = Number.isFinite(lc.defaultValue) ? lc.defaultValue : 0;
+      const selectedRaw  = paramValues[param.id];
+      const value        = Number.isFinite(selectedRaw) ? selectedRaw : defaultValue;
+      const cost = (value - defaultValue) * apPerStep;
+      result.primaryDelta += cost;
+      result.breakdown.primary.push({
+        paramId: param.id,
+        paramName: param.name || 'Parameter',
+        mode: 'linear',
+        defaultValue,
+        selectedValue: value,
+        cost
+      });
+      return;
+    }
+    // Manual (default) mode — paramValues[id] is the chosen step index.
     const steps = Array.isArray(param.steps) ? param.steps : [];
     const defaultIdx = Number.isFinite(param.defaultStep) ? param.defaultStep : 0;
     const selectedRaw = paramValues[param.id];
@@ -206,6 +227,7 @@ export function computeAbilityCost(builder, instance, tiers) {
     result.breakdown.primary.push({
       paramId: param.id,
       paramName: param.name || 'Parameter',
+      mode: 'manual',
       defaultStepIndex: defaultIdx,
       selectedStepIndex: selectedIdx,
       stepValue: step ? step.value : null,
@@ -514,14 +536,34 @@ export function renderSystemText(builder, instance, context) {
     if (k) normTokens[k] = val;
   }
 
+  // Resolve a parameter's token-display value. Branches on mode:
+  //   • linear  — paramValues[id] is the player's numeric value;
+  //               render as "<prefix><value><suffix>" (e.g. "3d6")
+  //   • manual  — paramValues[id] is the chosen step index; render
+  //               via stepDisplay on the resolved step
+  function resolveParamDisplay(p) {
+    if (!p) return null;
+    if (p.mode === 'linear') {
+      const lc = (p.linearConfig && typeof p.linearConfig === 'object') ? p.linearConfig : {};
+      const def = Number.isFinite(lc.defaultValue) ? lc.defaultValue : 0;
+      const raw = paramValues[p.id];
+      const value = Number.isFinite(raw) ? raw : def;
+      const prefix = typeof lc.valuePrefix === 'string' ? lc.valuePrefix : '';
+      const suffix = typeof lc.valueSuffix === 'string' ? lc.valueSuffix : '';
+      return prefix + String(value) + suffix;
+    }
+    const step = resolveStep(p);
+    return stepDisplay(step);
+  }
+
   (Array.isArray(builder.primaryParams) ? builder.primaryParams : []).forEach(p => {
     if (!p || !p.token) return;
-    const disp = stepDisplay(resolveStep(p));
+    const disp = resolveParamDisplay(p);
     if (disp != null) setToken(p.token, disp);
   });
   (Array.isArray(builder.secondaryParams) ? builder.secondaryParams : []).forEach(p => {
     if (!p || !p.token) return;
-    const disp = stepDisplay(resolveStep(p));
+    const disp = resolveParamDisplay(p);
     if (disp != null) setToken(p.token, disp);
   });
 
@@ -650,14 +692,28 @@ export function renderSystemTextHtml(builder, instance, context) {
     const k = normalizeTokenKey(name);
     if (k) normTokens[k] = val;
   }
+  function resolveParamDisplay(p) {
+    if (!p) return null;
+    if (p.mode === 'linear') {
+      const lc = (p.linearConfig && typeof p.linearConfig === 'object') ? p.linearConfig : {};
+      const def = Number.isFinite(lc.defaultValue) ? lc.defaultValue : 0;
+      const raw = paramValues[p.id];
+      const value = Number.isFinite(raw) ? raw : def;
+      const prefix = typeof lc.valuePrefix === 'string' ? lc.valuePrefix : '';
+      const suffix = typeof lc.valueSuffix === 'string' ? lc.valueSuffix : '';
+      return prefix + String(value) + suffix;
+    }
+    const step = resolveStep(p);
+    return stepDisplay(step);
+  }
   (Array.isArray(builder.primaryParams) ? builder.primaryParams : []).forEach(p => {
     if (!p || !p.token) return;
-    const disp = stepDisplay(resolveStep(p));
+    const disp = resolveParamDisplay(p);
     if (disp != null) setToken(p.token, disp);
   });
   (Array.isArray(builder.secondaryParams) ? builder.secondaryParams : []).forEach(p => {
     if (!p || !p.token) return;
-    const disp = stepDisplay(resolveStep(p));
+    const disp = resolveParamDisplay(p);
     if (disp != null) setToken(p.token, disp);
   });
   const ar = builder.activationRoll;
