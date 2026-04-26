@@ -1510,12 +1510,23 @@ window.normalizeRuleset = function(rs) {
   // ids, filters malformed entries. Used both by initial normalization
   // and by character-side snapshot validation.
   function normalizeBuilder(b, synthId) {
+    // visualGuideline + extraGuideline are GM-authored hints that
+    // tell the Player what to write in the Player-authored Visual /
+    // Extra sections of their Ability instance card. Legacy field
+    // names (visualPrompt / extra) are migrated on read so old data
+    // doesn't disappear.
     const builder = {
       id:           (typeof b.id === 'string' && b.id.trim()) ? b.id : synthId('bld'),
       name:         typeof b.name === 'string' ? b.name : 'Untitled Ability',
       description:  typeof b.description === 'string' ? b.description : '',
       baseCost:     Number.isFinite(b.baseCost) ? Math.max(0, b.baseCost) : 0,
       systemTextTemplate: typeof b.systemTextTemplate === 'string' ? b.systemTextTemplate : '',
+      visualGuideline: typeof b.visualGuideline === 'string' ? b.visualGuideline
+                     : typeof b.visualPrompt === 'string'    ? b.visualPrompt
+                     : '',
+      extraGuideline:  typeof b.extraGuideline === 'string' ? b.extraGuideline
+                     : typeof b.extra === 'string'           ? b.extra
+                     : '',
       primaryParams:   Array.isArray(b.primaryParams)   ? b.primaryParams   : [],
       secondaryParams: Array.isArray(b.secondaryParams) ? b.secondaryParams : [],
       features:        Array.isArray(b.features)        ? b.features        : [],
