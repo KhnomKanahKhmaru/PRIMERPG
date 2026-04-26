@@ -1614,6 +1614,15 @@
   // latest). Closed by setting back to null.
   let openedBuilder = null;
 
+  // Catalogue view-state. Hoisted up here (alongside openedBuilder)
+  // because renderAbilTab fires from initUI() which runs BEFORE the
+  // PHASE A block declares them in source order — `let` would throw
+  // a temporal-dead-zone ReferenceError otherwise.
+  //   catalogueView  : 'home' | 'type' | 'builder'
+  //   currentTypeKey : 'ability' | 'artifact' | … | null (when home)
+  let catalogueView  = 'home';
+  let currentTypeKey = null;
+
   // Fixed category codes — display labels can change but the stored code never does.
   const AD_CATEGORIES = [
     { code: 'physical',   label: 'Physical'   },
@@ -3730,7 +3739,11 @@
   //   • 'type'    — categories grid (the old editor, scoped to one type)
   //   • 'builder' — full Builder editor (unchanged from the old impl)
   //
-  // currentTypeKey is the type-world we're inside when view !== 'home'.
+  // catalogueView and currentTypeKey are declared earlier in the file
+  // (next to openedBuilder) so renderAbilTab — called from initUI(),
+  // which runs before this point in source order — can read them
+  // without hitting a temporal dead zone.
+  //
   // openedBuilder gains a typeKey field (back-compat: missing field
   // defaults to 'ability' so old builders don't get lost).
   //
@@ -3741,8 +3754,6 @@
   //
   // The hash sync runs on every transition; popstate listens for browser
   // back/forward.
-  let catalogueView   = 'home';   // 'home' | 'type' | 'builder'
-  let currentTypeKey  = null;     // 'ability' | 'artifact' | etc. (null when home)
 
   // Returns the live Categories array for the active type. All old
   // editor functions that used to read `cat.categories` go through
