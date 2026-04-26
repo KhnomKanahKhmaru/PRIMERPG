@@ -529,6 +529,7 @@ export function createOverviewSection(ctx) {
     else               pctColor = '#e07878';
     const painPct   = (pain && pain.finalPercent) || 0;
     const stressPct = (stress && stress.finalPercent) || 0;
+    const exhPct    = penalty.exhPercent || 0;
     const encPct    = penalty.encumbrancePercent || 0;
     const otherPct  = penalty.otherPercent || 0;
 
@@ -614,6 +615,10 @@ export function createOverviewSection(ctx) {
         <div class="state-penalty-row">
           <span class="state-penalty-k">Stress</span>
           <span class="state-penalty-v">${stressPct}%</span>
+        </div>
+        <div class="state-penalty-row">
+          <span class="state-penalty-k">Exhaustion</span>
+          <span class="state-penalty-v">${exhPct}%</span>
         </div>
         <div class="state-penalty-row state-penalty-row-locked" title="${escapeHtml(encTip)}">
           <span class="state-penalty-k">Encumbrance <span class="state-penalty-lock">🔒</span></span>
