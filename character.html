@@ -6899,9 +6899,18 @@
     // (Tagline if any) + AP Cost pill. Caret on the right indicates
     // collapse state.
     const caretChar = cardCollapsed ? '▸' : '▾';
+    // Icon — pulled from the Builder, NOT the instance. The Builder's
+    // iconUrl is the GM-uploaded icon; players don't author their own.
+    // 48px on the left of the header, freeform shape (object-fit:contain
+    // so SVGs and rectangles aren't squished). Hidden when no icon set.
+    const iconImgHtml = (builder.iconUrl && builder.iconUrl.trim())
+      ? `<img src="${escapeHtml(builder.iconUrl)}" alt=""
+              style="width:48px;height:48px;object-fit:contain;background:#0a0a06;border:1px solid #1a1a14;border-radius:5px;flex-shrink:0;">`
+      : '';
     const headerHtml = `
       <div class="abil-card-header" onclick="abilitiesToggleCardCollapse('${escapeHtml(abl.id)}')"
            style="display:flex;align-items:center;gap:14px;padding:14px 16px;cursor:pointer;${cardCollapsed ? '' : 'border-bottom:1px solid #1a1a1a;'}">
+        ${iconImgHtml}
         <div style="flex:1;min-width:0;">
           <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
             <span style="font-weight:700;color:#e6e0cc;font-size:16px;">${escapeHtml(displayName)}</span>
