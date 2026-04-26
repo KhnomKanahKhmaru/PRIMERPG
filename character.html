@@ -7073,26 +7073,9 @@
       </div>
     `;
 
-    // ─── VISUAL BOX ───
-    // Always visible. Player-authored content; falls back to GM
-    // guideline (italicized) if player hasn't written one. Not
-    // interactive — clicking does nothing.
-    const visualGuide = builder.visualGuideline || builder.visualPrompt || '';
-    let visualBody;
-    if (abl.visual && abl.visual.trim()) {
-      visualBody = `<div style="font-size:13px;color:#cfcfcf;line-height:1.55;white-space:pre-wrap;">${escapeHtml(abl.visual)}</div>`;
-    } else if (visualGuide) {
-      visualBody = `<div style="font-size:13px;color:#666;line-height:1.55;font-style:italic;">${escapeHtml(visualGuide)}</div>`;
-    } else {
-      visualBody = `<div style="font-size:13px;color:#555;line-height:1.55;font-style:italic;">(No visual described.)</div>`;
-    }
-
-    const visualBoxHtml = `
-      <div style="margin:10px 16px 0;padding:12px 14px;background:#080808;border:1px solid #1a1a1a;border-radius:4px;">
-        <div style="font-size:10px;color:#888;letter-spacing:.1em;text-transform:uppercase;font-weight:700;margin-bottom:8px;">Visual</div>
-        ${visualBody}
-      </div>
-    `;
+    // (Visual section removed — the visual is already shown in the
+    // collapsed card header right beneath the title, so showing it
+    // again as a dedicated box when expanded is redundant.)
 
     // ─── EXTRA TAB + EXPANDED SECTION ───
     // Small clickable tab at the bottom. Click toggles. Player
@@ -7136,7 +7119,6 @@
         ${headerHtml}
         ${descHtml}
         ${systemBoxHtml}
-        ${visualBoxHtml}
         ${extraSectionHtml}
         ${extraTabHtml}
         ${actionsHtml}
@@ -7568,9 +7550,13 @@
       arr.forEach(s => { if (s && typeof s.name === 'string' && s.name) arSkills.push(s.name); });
     });
 
+    // Inline dark styling so the selects match the rest of the
+    // sheet (not browser-default white). Same look as .field select.
+    const selectStyle = 'background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:13px;padding:7px 10px;border-radius:4px;outline:none;';
+
     function statDropdown(slotKey, currentVal) {
       return `
-        <select onchange="abilitiesBuilderSetActivationChoice('${slotKey}',this.value)">
+        <select style="${selectStyle}" onchange="abilitiesBuilderSetActivationChoice('${slotKey}',this.value)">
           <option value="">— pick STAT —</option>
           ${arStats.map(c => `<option value="${escapeHtml(c)}"${currentVal === c ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')}
         </select>
@@ -7578,7 +7564,7 @@
     }
     function skillDropdown(slotKey, currentVal) {
       return `
-        <select onchange="abilitiesBuilderSetActivationChoice('${slotKey}',this.value)">
+        <select style="${selectStyle}" onchange="abilitiesBuilderSetActivationChoice('${slotKey}',this.value)">
           <option value="">— pick SKILL —</option>
           ${arSkills.map(n => `<option value="${escapeHtml(n)}"${currentVal === n ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('')}
         </select>
@@ -7586,7 +7572,7 @@
     }
     function statOrSkillDropdown(slotKey, currentVal) {
       return `
-        <select onchange="abilitiesBuilderSetActivationChoice('${slotKey}',this.value)">
+        <select style="${selectStyle}" onchange="abilitiesBuilderSetActivationChoice('${slotKey}',this.value)">
           <option value="">— pick STAT or SKILL —</option>
           <optgroup label="Stats">
             ${arStats.map(c => `<option value="${escapeHtml(c)}"${currentVal === c ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')}
@@ -7703,7 +7689,8 @@
             <div style="font-weight:500;color:#ddd;font-size:13px;">${escapeHtml(p.name || 'Parameter')}${p.displayUnit ? ` <span style="color:#888;font-weight:400;">(${escapeHtml(p.displayUnit)})</span>` : ''}</div>
             ${p.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(p.description)}</div>` : ''}
           </div>
-          <select onchange="abilitiesBuilderSetSecondaryParam('${escapeHtml(p.id)}',this.value)">${optsHtml || '<option>(no steps configured)</option>'}</select>
+          <select style="background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:13px;padding:7px 10px;border-radius:4px;outline:none;width:100%;"
+                  onchange="abilitiesBuilderSetSecondaryParam('${escapeHtml(p.id)}',this.value)">${optsHtml || '<option>(no steps configured)</option>'}</select>
           <span style="color:${multColor};font-family:monospace;font-size:12px;text-align:right;">${multStr}</span>
         </div>
       `;
