@@ -6945,34 +6945,61 @@
       : `<div style="font-size:13px;color:#555;line-height:1.55;font-style:italic;">(No system text — ask your GM to fill in the System template on the Builder.)</div>`;
 
     // Features/Flaws list — only when System is expanded AND there's content to show.
+    // Helper: format a feature/flaw line as "(Tier · ±N AP) text".
+    // The text is joined as "name: description" if both exist, otherwise
+    // whichever is set. Single-line wrapping prose, no bold weight beyond
+    // the tier prefix, monochromatic per Features/Flaws.
+    //
+    // Tier AP cost/refund comes from canonicalTiers (set on the
+    // catalogue, same table the GM editor uses).
+    const featureCosts = (tiers.featureCosts || {});
+    const flawRefunds  = (tiers.flawRefunds  || {});
+
+    function ffLineText(f) {
+      const name = (f && typeof f.name === 'string') ? f.name.trim() : '';
+      const desc = (f && typeof f.description === 'string') ? f.description.trim() : '';
+      if (name && desc && name !== desc) return name + ': ' + desc;
+      return desc || name || '(unnamed)';
+    }
+    function tierPrefix(f, kind) {
+      const tier = (f && f.tier) ? f.tier : 'minor';
+      const tierLabel = tier[0].toUpperCase() + tier.slice(1);
+      const tierCostTable = (kind === 'feature') ? featureCosts : flawRefunds;
+      const ap = Number.isFinite(tierCostTable[tier]) ? tierCostTable[tier] : 0;
+      const sign = (kind === 'feature') ? '+' : '−';
+      return `(${tierLabel} · ${sign}${ap} AP)`;
+    }
+
     let ffListHtml = '';
     if (systemExpanded && hasFFContent) {
-      ffListHtml += `<div style="margin-top:12px;padding-top:10px;border-top:1px solid #2a2a20;display:flex;flex-direction:column;gap:8px;">`;
+      ffListHtml += `<div style="margin-top:12px;padding-top:10px;border-top:1px solid #2a2a20;display:flex;flex-direction:column;gap:10px;">`;
       if (selFeatures.length > 0) {
-        ffListHtml += `<div style="font-size:10px;color:#806040;letter-spacing:.08em;text-transform:uppercase;font-weight:700;">Features</div>`;
+        // Section header — same muted green as the lines, just smaller
+        // and uppercase. No bold yellow/orange anymore.
+        ffListHtml += `<div style="font-size:10px;color:#6a8a6a;letter-spacing:.1em;text-transform:uppercase;font-weight:700;">Features</div>`;
+        ffListHtml += `<div style="display:flex;flex-direction:column;gap:4px;">`;
         selFeatures.forEach(f => {
-          const tierLabel = (f.tier ? f.tier[0].toUpperCase() + f.tier.slice(1) : 'Minor');
           ffListHtml += `
-            <div style="font-size:12px;color:#d8a060;line-height:1.5;">
-              <span style="font-weight:700;">${escapeHtml(f.name || tierLabel + ' Feature')}</span>
-              <span style="color:#806040;font-size:10px;text-transform:uppercase;letter-spacing:.06em;margin-left:6px;">${escapeHtml(tierLabel)}</span>
-              ${f.description && f.description !== f.name ? `<div style="color:#aa8050;font-size:12px;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
+            <div style="font-size:12px;color:#9aaf9a;line-height:1.55;">
+              <span style="color:#6a8a6a;">${tierPrefix(f, 'feature')}</span>
+              ${escapeHtml(ffLineText(f))}
             </div>
           `;
         });
+        ffListHtml += `</div>`;
       }
       if (selFlaws.length > 0) {
-        ffListHtml += `<div style="font-size:10px;color:#608060;letter-spacing:.08em;text-transform:uppercase;font-weight:700;${selFeatures.length > 0 ? 'margin-top:6px;' : ''}">Flaws</div>`;
+        ffListHtml += `<div style="font-size:10px;color:#8a6a6a;letter-spacing:.1em;text-transform:uppercase;font-weight:700;${selFeatures.length > 0 ? 'margin-top:4px;' : ''}">Flaws</div>`;
+        ffListHtml += `<div style="display:flex;flex-direction:column;gap:4px;">`;
         selFlaws.forEach(f => {
-          const tierLabel = (f.tier ? f.tier[0].toUpperCase() + f.tier.slice(1) : 'Minor');
           ffListHtml += `
-            <div style="font-size:12px;color:#88c080;line-height:1.5;">
-              <span style="font-weight:700;">${escapeHtml(f.name || tierLabel + ' Flaw')}</span>
-              <span style="color:#608060;font-size:10px;text-transform:uppercase;letter-spacing:.06em;margin-left:6px;">${escapeHtml(tierLabel)}</span>
-              ${f.description && f.description !== f.name ? `<div style="color:#7aa67a;font-size:12px;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
+            <div style="font-size:12px;color:#af9a9a;line-height:1.55;">
+              <span style="color:#8a6a6a;">${tierPrefix(f, 'flaw')}</span>
+              ${escapeHtml(ffLineText(f))}
             </div>
           `;
         });
+        ffListHtml += `</div>`;
       }
       ffListHtml += '</div>';
     } else if (systemExpanded && !hasFFContent) {
