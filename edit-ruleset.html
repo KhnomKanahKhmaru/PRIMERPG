@@ -1533,17 +1533,17 @@
         </div>
       </div>
 
-      <!-- CATEGORIES + BUILDERS -->
-      <div class="section">
+      <!-- CATALOGUE BODY — view-state-driven. Three views render into
+           #abil-body in turn: 'home' (type tiles), 'type' (categories
+           grid for chosen type — the old editor), 'builder' (full
+           Builder editor — opened from inside 'type'). Phase A: shell
+           + view swap; Phase B will redesign the Builder editor. -->
+      <div class="section" id="abil-body-section">
         <div class="section-header">
-          <div class="section-title">Categories &amp; Builders</div>
-          <button class="btn small" onclick="abilAddCategory()" type="button">+ Add Category</button>
+          <div class="section-title" id="abil-body-title">Catalogue</div>
+          <div id="abil-body-actions"></div>
         </div>
-        <p class="hint">
-          Categories group related Builders for browsing. Each Category contains its own list of Builders.
-          Click a Builder name to open its full editor (Parameters, Features, Flaws, system text).
-        </p>
-        <div id="abil-categories"></div>
+        <div id="abil-body"></div>
       </div>
 
     </div><!-- /top-panel-abil -->
@@ -1781,6 +1781,13 @@
     refreshCategorySelects();
 
     // Abilities tab
+    // Initialize view-state from URL hash so deep links (e.g.
+    // #catalogue/ability or #catalogue/ability/<builderId>) land directly
+    // in the right view. The hashchange handler does the parsing — we
+    // dispatch a synthetic event here rather than duplicate the logic.
+    if (window.location.hash && window.location.hash.startsWith('#catalogue')) {
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    }
     renderAbilTab();
 
     renderScaleSummary();
@@ -3679,7 +3686,7 @@
     const descInp = document.getElementById('abil-desc');
     if (descInp) descInp.value = cat.description || '';
     renderAbilTierTables();
-    renderAbilCategories();
+    renderAbilCategoriesArea();
   }
 
   // Tier cost tables — two-column grid of tier name + numeric input.
@@ -3716,24 +3723,223 @@
     renderTable('abil-tier-flaws',    flawRefunds,  'flawRefunds');
   }
 
-  // Categories list — collapsible groups of Builders. Each category has
-  // its own header (rename / delete / add-builder) and an expandable
-  // body listing builders. Inline editing for category name; click
-  // "edit" on a builder to open its full editor.
+  // ── PHASE A: VIEW STATE & TYPE ROUTING ──
   //
-  // When a Builder is opened (openedBuilder set), this function
-  // delegates to renderAbilBuilderEditor instead — same DOM target,
-  // different content. This way the editor takes over the "Categories
-  // & Builders" section visually rather than overlaying as a modal.
-  function renderAbilCategories() {
-    if (openedBuilder) {
+  // The Catalogue editor is now a three-view shell:
+  //   • 'home'    — type tiles (Ability / Artifact / Asm / ConsumableAsm)
+  //   • 'type'    — categories grid (the old editor, scoped to one type)
+  //   • 'builder' — full Builder editor (unchanged from the old impl)
+  //
+  // currentTypeKey is the type-world we're inside when view !== 'home'.
+  // openedBuilder gains a typeKey field (back-compat: missing field
+  // defaults to 'ability' so old builders don't get lost).
+  //
+  // URL hash mirrors the view state so reload + back-button work:
+  //   #catalogue                   → home
+  //   #catalogue/ability           → type=ability
+  //   #catalogue/ability/<bid>     → builder open under ability type
+  //
+  // The hash sync runs on every transition; popstate listens for browser
+  // back/forward.
+  let catalogueView   = 'home';   // 'home' | 'type' | 'builder'
+  let currentTypeKey  = null;     // 'ability' | 'artifact' | etc. (null when home)
+
+  // Returns the live Categories array for the active type. All old
+  // editor functions that used to read `cat.categories` go through
+  // this so they automatically scope to the current type-world.
+  function getActiveCategories(cat) {
+    if (!cat || !currentTypeKey) return [];
+    if (!cat.types || !cat.types[currentTypeKey]) return [];
+    if (!Array.isArray(cat.types[currentTypeKey].categories)) {
+      cat.types[currentTypeKey].categories = [];
+    }
+    return cat.types[currentTypeKey].categories;
+  }
+
+  // Sync the URL hash to the current view. Pure side-effect — no
+  // re-rendering. Use replaceState for view-internal transitions and
+  // pushState only for view-changing transitions, so a single editor
+  // session doesn't pollute history with dozens of entries.
+  function syncCatalogueHash(replace) {
+    let hash = '#catalogue';
+    if (catalogueView === 'type' && currentTypeKey) {
+      hash += '/' + currentTypeKey;
+    } else if (catalogueView === 'builder' && currentTypeKey && openedBuilder) {
+      const cat  = state.abilityCatalogue || {};
+      const cats = getActiveCategories(cat);
+      const c    = cats[openedBuilder.ci];
+      const b    = c && Array.isArray(c.builders) ? c.builders[openedBuilder.bi] : null;
+      hash += '/' + currentTypeKey + (b && b.id ? '/' + b.id : '');
+    }
+    if (replace) history.replaceState(null, '', hash);
+    else         history.pushState(null, '', hash);
+  }
+
+  window.addEventListener('hashchange', () => {
+    // Parse hash and update view state. Only trigger re-render when we
+    // detect an actual change — avoids loop with our own pushState calls.
+    const h = window.location.hash || '';
+    const m = h.match(/^#catalogue(?:\/([^\/]+)(?:\/([^\/]+))?)?$/);
+    if (!m) return;
+    const newType = m[1] || null;
+    const newBld  = m[2] || null;
+    let changed = false;
+    if (!newType) {
+      if (catalogueView !== 'home') { catalogueView = 'home'; currentTypeKey = null; openedBuilder = null; changed = true; }
+    } else if (!newBld) {
+      if (catalogueView !== 'type' || currentTypeKey !== newType) {
+        catalogueView = 'type'; currentTypeKey = newType; openedBuilder = null; changed = true;
+      }
+    } else {
+      // Builder-open via hash. Resolve newBld → ci/bi within the type.
+      const cat  = state && state.abilityCatalogue;
+      if (cat && cat.types && cat.types[newType]) {
+        const cats = cat.types[newType].categories || [];
+        let foundCi = -1, foundBi = -1;
+        cats.forEach((c, ci) => {
+          if (foundCi !== -1) return;
+          (c.builders || []).forEach((b, bi) => {
+            if (foundCi === -1 && b && b.id === newBld) { foundCi = ci; foundBi = bi; }
+          });
+        });
+        if (foundCi !== -1) {
+          catalogueView = 'builder'; currentTypeKey = newType; openedBuilder = { ci: foundCi, bi: foundBi, typeKey: newType }; changed = true;
+        }
+      }
+    }
+    if (changed) renderAbilCategoriesArea();
+  });
+
+  // Top-level view-state dispatcher. Replaces the old direct
+  // renderAbilCategories call from renderAbilTab. Picks the right
+  // sub-renderer based on catalogueView and updates header chrome
+  // (title + action buttons) accordingly.
+  function renderAbilCategoriesArea() {
+    syncCatalogueHash(true);
+    const titleEl   = document.getElementById('abil-body-title');
+    const actionsEl = document.getElementById('abil-body-actions');
+    if (titleEl)   titleEl.textContent = '';
+    if (actionsEl) actionsEl.innerHTML = '';
+
+    if (catalogueView === 'home') {
+      if (titleEl) titleEl.textContent = 'Catalogue';
+      renderAbilHomeView();
+      return;
+    }
+    if (catalogueView === 'type') {
+      if (openedBuilder) { renderAbilBuilderEditor(); return; }
+      renderAbilTypeView();
+      return;
+    }
+    if (catalogueView === 'builder') {
+      // Legacy renderAbilBuilderEditor renders into #abil-categories — keep
+      // that contract by seeding the container in our body. Phase B will
+      // own the builder editor entirely and we'll drop this hop.
+      const body = document.getElementById('abil-body');
+      if (body) body.innerHTML = `<div id="abil-categories"></div>`;
+      // Title shows breadcrumbs back through the type. We don't have an
+      // action button at this level — close-via-back-link lives in the
+      // builder editor's own header.
+      const cat = state.abilityCatalogue || {};
+      const tk  = (openedBuilder && openedBuilder.typeKey) || currentTypeKey;
+      const t   = cat.types && tk && cat.types[tk];
+      if (titleEl && t) {
+        titleEl.innerHTML = `
+          <span style="cursor:pointer;color:#888;font-weight:400;font-size:13px;" onclick="abilGoHome()">← Catalogue</span>
+          <span style="margin:0 6px;color:#444;">/</span>
+          <span style="cursor:pointer;color:#888;font-weight:400;font-size:13px;" onclick="abilOpenType('${tk}')">${escapeHtml(t.label || tk)}</span>
+          <span style="margin:0 6px;color:#444;">/</span>
+          <span>Builder</span>
+        `;
+      }
       renderAbilBuilderEditor();
       return;
     }
+  }
+
+  // Phase A home view — four type tiles. Three are 'In design' until
+  // their mechanics are designed (per ruleset-defaults `inDesign` flag).
+  function renderAbilHomeView() {
+    const body = document.getElementById('abil-body');
+    if (!body) return;
+    const cat = state.abilityCatalogue || {};
+    const types = (cat.types && typeof cat.types === 'object') ? cat.types : {};
+    // Ordered display — Ability first since it's the only one ready;
+    // remaining types in stable design order.
+    const order = ['ability', 'artifact', 'artifactAssembly', 'consumableAssembly'];
+    body.innerHTML = `
+      <p class="hint" style="margin-top:0;">
+        Choose a type to author Categories and Builders. Each type is its own world —
+        Categories and Builders inside Ability don't appear inside Artifact, and vice versa.
+      </p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-top:8px;">
+        ${order.map(tk => {
+          const t = types[tk];
+          if (!t) return '';
+          const isReady = !t.inDesign;
+          const builderCount = (t.categories || []).reduce((a, c) => a + ((c.builders || []).length), 0);
+          const categoryCount = (t.categories || []).length;
+          const styleBox = isReady
+            ? 'background:#0d0d0d;border:1px solid #2a2a2a;cursor:pointer;'
+            : 'background:#0a0a0a;border:1px dashed #2a2a2a;opacity:0.55;cursor:not-allowed;';
+          const click = isReady ? `onclick="abilOpenType('${tk}')"` : '';
+          const badge = isReady
+            ? `<div style="font-size:11px;color:#888;margin-top:6px;">${categoryCount} categor${categoryCount === 1 ? 'y' : 'ies'} · ${builderCount} builder${builderCount === 1 ? '' : 's'}</div>`
+            : `<div style="font-size:11px;color:#888;margin-top:6px;letter-spacing:.04em;text-transform:uppercase;">In design — coming soon</div>`;
+          return `
+            <div ${click} style="${styleBox}border-radius:4px;padding:14px;transition:border-color .15s;"
+                 ${isReady ? `onmouseover="this.style.borderColor='#3a3a3a'" onmouseout="this.style.borderColor='#2a2a2a'"` : ''}>
+              <div style="font-size:15px;font-weight:600;color:#e8e8e8;">${escapeHtml(t.label || tk)}</div>
+              <div style="font-size:12px;color:#999;margin-top:4px;line-height:1.4;">${escapeHtml(t.description || '')}</div>
+              ${badge}
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
+  // Type view — replaces the old `renderAbilCategories` body with a
+  // header (← back, type label, + Category) and the same categories
+  // listing the previous editor used. We delegate the categories
+  // listing itself to the legacy renderer (renamed to renderAbilCategoryList)
+  // because Phase A's job is the SHELL only — the per-category cards
+  // and builder rows are unchanged from the old editor and will be
+  // redesigned in Phase B.
+  function renderAbilTypeView() {
+    const body      = document.getElementById('abil-body');
+    const titleEl   = document.getElementById('abil-body-title');
+    const actionsEl = document.getElementById('abil-body-actions');
+    if (!body) return;
+    const cat = state.abilityCatalogue || {};
+    const t = cat.types && cat.types[currentTypeKey];
+    if (!t) {
+      // Defensive — shouldn't happen but if it does, route home.
+      catalogueView = 'home'; currentTypeKey = null; renderAbilCategoriesArea();
+      return;
+    }
+    if (titleEl) {
+      titleEl.innerHTML = `
+        <span style="cursor:pointer;color:#888;font-weight:400;font-size:13px;" onclick="abilGoHome()">← Catalogue</span>
+        <span style="margin:0 6px;color:#444;">/</span>
+        <span>${escapeHtml(t.label || currentTypeKey)}</span>
+      `;
+    }
+    if (actionsEl) {
+      actionsEl.innerHTML = `<button class="btn small" onclick="abilAddCategory()" type="button">+ Add Category</button>`;
+    }
+    body.innerHTML = `<div id="abil-categories"></div>`;
+    renderAbilCategoryList();
+  }
+
+  // Renamed wrapper for the old per-type categories list. Kept
+  // separate from renderAbilCategoriesArea so Phase B can replace
+  // this without touching the dispatcher.
+  function renderAbilCategoryList() {
     const el = document.getElementById('abil-categories');
     if (!el) return;
     const cat = state.abilityCatalogue || {};
-    const cats = Array.isArray(cat.categories) ? cat.categories : [];
+    const cats = getActiveCategories(cat);
     if (cats.length === 0) {
       el.innerHTML = `<div class="hint" style="padding:12px;text-align:center;color:#666;">No categories yet. Click "+ Add Category" above to start.</div>`;
       return;
@@ -3822,9 +4028,10 @@
     if (!el) return;
     const b = getOpenedBuilder();
     if (!b) {
-      // Builder went away — return to list.
+      // Builder went away — return to type's category list.
       openedBuilder = null;
-      renderAbilCategories();
+      catalogueView = 'type';
+      renderAbilCategoriesArea();
       return;
     }
 
@@ -4190,19 +4397,19 @@
 
   window.abilAddCategory = function() {
     const cat = ensureAbilCat();
-    if (!Array.isArray(cat.categories)) cat.categories = [];
-    cat.categories.push({
+    const cats = getActiveCategories(cat);
+    cats.push({
       id: 'acat_' + Math.random().toString(36).slice(2, 10),
       name: '',
       description: '',
       builders: []
     });
-    renderAbilCategories();
+    renderAbilCategoryList();
   };
 
   window.abilDeleteCategory = function(ci) {
     const cat = ensureAbilCat();
-    const cats = Array.isArray(cat.categories) ? cat.categories : [];
+    const cats = getActiveCategories(cat);
     if (!cats[ci]) return;
     const name = cats[ci].name || 'this category';
     const builders = Array.isArray(cats[ci].builders) ? cats[ci].builders : [];
@@ -4212,12 +4419,12 @@
       if (!confirm(`Delete "${name}"?`)) return;
     }
     cats.splice(ci, 1);
-    renderAbilCategories();
+    renderAbilCategoryList();
   };
 
   window.abilSetCategoryField = function(ci, field, value) {
     const cat = ensureAbilCat();
-    const c = (cat.categories || [])[ci];
+    const c = getActiveCategories(cat)[ci];
     if (!c) return;
     c[field] = String(value || '');
     // Don't full-rerender (would lose focus). Just update the badge
@@ -4227,7 +4434,7 @@
 
   window.abilAddBuilder = function(ci) {
     const cat = ensureAbilCat();
-    const c = (cat.categories || [])[ci];
+    const c = getActiveCategories(cat)[ci];
     if (!c) return;
     if (!Array.isArray(c.builders)) c.builders = [];
     c.builders.push({
@@ -4241,58 +4448,89 @@
       features: [],
       flaws: []
     });
-    renderAbilCategories();
+    renderAbilCategoryList();
   };
 
   window.abilDeleteBuilder = function(ci, bi) {
     const cat = ensureAbilCat();
-    const c = (cat.categories || [])[ci];
+    const c = getActiveCategories(cat)[ci];
     if (!c || !Array.isArray(c.builders) || !c.builders[bi]) return;
     const name = c.builders[bi].name || 'this builder';
     if (!confirm(`Delete "${name}"? This will be reflected on every Character Ability that references it.`)) return;
     c.builders.splice(bi, 1);
-    renderAbilCategories();
+    renderAbilCategoryList();
   };
 
   window.abilSetBuilderField = function(ci, bi, field, value) {
     const cat = ensureAbilCat();
-    const c = (cat.categories || [])[ci];
+    const c = getActiveCategories(cat)[ci];
     if (!c || !Array.isArray(c.builders) || !c.builders[bi]) return;
     c.builders[bi][field] = String(value || '');
   };
 
   // Open the full Builder editor. Stores the path on `openedBuilder`
-  // and re-renders the Categories panel — when openedBuilder is set,
-  // renderAbilCategories switches to renderAbilBuilderEditor instead.
-  // Path-based addressing (ci/bi) means we always look up the live
-  // Builder; mutations stay in sync with state.
+  // (now including typeKey for the multi-type world) and switches the
+  // view to 'builder'. The dispatcher handles the actual render swap.
   window.abilOpenBuilder = function(ci, bi) {
     const cat = ensureAbilCat();
-    const c = (cat.categories || [])[ci];
+    const c = getActiveCategories(cat)[ci];
     if (!c || !Array.isArray(c.builders) || !c.builders[bi]) return;
-    openedBuilder = { ci, bi };
-    renderAbilCategories();
+    openedBuilder = { ci, bi, typeKey: currentTypeKey };
+    catalogueView = 'builder';
+    syncCatalogueHash(false);  // pushState — entering a builder is a new history entry
+    renderAbilCategoriesArea();
     // Scroll to top of editor for visibility — the panel can be tall.
-    const panel = document.getElementById('abil-categories');
+    const panel = document.getElementById('abil-body');
     if (panel && panel.scrollIntoView) panel.scrollIntoView({ block: 'start', behavior: 'smooth' });
   };
 
-  // Close Builder editor — return to category list.
+  // Close Builder editor — return to the type's category list.
   window.abilCloseBuilder = function() {
     openedBuilder = null;
-    renderAbilCategories();
+    catalogueView = 'type';
+    syncCatalogueHash(false);
+    renderAbilCategoriesArea();
+  };
+
+  // Type view nav — entered from a home tile, exited via the back link
+  // in the type view header. Both push a history entry so the browser
+  // back button traverses the view hierarchy naturally.
+  window.abilOpenType = function(typeKey) {
+    const cat = ensureAbilCat();
+    if (!cat.types || !cat.types[typeKey]) return;
+    if (cat.types[typeKey].inDesign) return;  // defensive — UI shouldn't allow
+    currentTypeKey = typeKey;
+    catalogueView = 'type';
+    openedBuilder = null;
+    syncCatalogueHash(false);
+    renderAbilCategoriesArea();
+  };
+
+  window.abilGoHome = function() {
+    currentTypeKey = null;
+    catalogueView = 'home';
+    openedBuilder = null;
+    syncCatalogueHash(false);
+    renderAbilCategoriesArea();
   };
 
   // ── BUILDER FIELD HANDLERS ──
-  // These edit the OPENED builder via openedBuilder.{ci,bi} so the UI
+  // These edit the OPENED builder via openedBuilder.{ci,bi,typeKey} so the UI
   // doesn't have to thread indices into every input. Always re-renders
   // either the modal as a whole (for structural changes — adding
   // params, features, flaws) or just the cost preview (for value
   // changes — names, defaults, etc).
+  //
+  // Resolves against openedBuilder.typeKey (not currentTypeKey) so that
+  // if URL hash navigation lands us directly into a builder, the lookup
+  // still works even before currentTypeKey is set.
   function getOpenedBuilder() {
     if (!openedBuilder) return null;
     const cat = ensureAbilCat();
-    const c = (cat.categories || [])[openedBuilder.ci];
+    const tk = openedBuilder.typeKey || currentTypeKey;
+    if (!tk || !cat.types || !cat.types[tk]) return null;
+    const cats = Array.isArray(cat.types[tk].categories) ? cat.types[tk].categories : [];
+    const c = cats[openedBuilder.ci];
     if (!c || !Array.isArray(c.builders)) return null;
     const b = c.builders[openedBuilder.bi];
     return b || null;
