@@ -2004,8 +2004,9 @@
   };
 
   window.importPreview = function() {
-    const json = document.getElementById('imp-json').value;
-    const scope = document.getElementById('imp-scope').value;
+    const jsonEl = document.getElementById('imp-json');
+    const scopeEl = document.getElementById('imp-scope');
+    const json = jsonEl.value;
     const previewEl = document.getElementById('imp-preview');
     const confirmBtn = document.getElementById('imp-confirm');
     const msg = document.getElementById('imp-msg');
@@ -2015,17 +2016,39 @@
       confirmBtn.disabled = true;
       return;
     }
+    // Auto-detect scope from envelope if it doesn't match the dropdown.
+    // Catalogue page supports ruleset / abilityCatalogue / builder. If
+    // the export's kind matches one of these but the dropdown is on
+    // a different one, switch silently — but call updateImpScopeUI()
+    // to flip the Builder-target panel visibility along with it.
+    let autoSwitchedFrom = null;
+    const availableScopes = Array.from(scopeEl.options).map(o => o.value);
+    try {
+      const peek = JSON.parse(json);
+      const envKind = peek && peek._export && peek._export.kind;
+      if (typeof envKind === 'string' && envKind !== scopeEl.value && availableScopes.includes(envKind)) {
+        autoSwitchedFrom = scopeEl.value;
+        scopeEl.value = envKind;
+        if (typeof window.updateImpScopeUI === 'function') window.updateImpScopeUI();
+      }
+    } catch (_) { /* let parseAndValidate surface real error */ }
+    const scope = scopeEl.value;
     try {
       const result = rulesetImport.parseAndValidate(json, scope);
       const env = result.envelope;
       const lines = [];
+      if (autoSwitchedFrom) {
+        lines.push(`<span style="color:#88c0e8;">↻ Auto-switched scope from "${autoSwitchedFrom}" to "${scope}" to match the imported file.</span>`);
+      }
       lines.push(`Kind: ${env.kind}`);
       if (result.parsed.rulesetName) lines.push(`From ruleset: ${result.parsed.rulesetName}`);
       if (result.parsed.builderName) lines.push(`Builder: ${result.parsed.builderName}`);
       if (result.parsed.catalogueName) lines.push(`Catalogue: ${result.parsed.catalogueName}`);
       if (env.exportedAt) lines.push(`Exported at: ${new Date(env.exportedAt).toLocaleString()}`);
       previewEl.style.color = '#888';
-      previewEl.innerHTML = lines.map(l => `<div>${l.replace(/</g,'&lt;')}</div>`).join('');
+      previewEl.innerHTML = lines.map(l =>
+        l.startsWith('<span') ? `<div>${l}</div>` : `<div>${l.replace(/</g,'&lt;')}</div>`
+      ).join('');
       confirmBtn.disabled = false;
     } catch (err) {
       previewEl.style.color = '#ff9966';
