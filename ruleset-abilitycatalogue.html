@@ -1792,11 +1792,21 @@
     arSection.innerHTML = renderActivationRollSection(b);
     wrap.appendChild(arSection);
 
+    // Contested Roll — the target's resistance side. Toggle + a list
+    // of allowed contests (derived stat or "Reaction") that the player
+    // picks from at edit time. The chosen contest's display label is
+    // what {CONTESTED_ROLL} substitutes to in System text.
+    const crSection = document.createElement('div');
+    crSection.className = 'bldr-textarea-section';
+    crSection.id = 'bldr-contested-section';
+    crSection.innerHTML = renderContestedRollSection(b);
+    wrap.appendChild(crSection);
+
     // System template
     const sysSection = document.createElement('div');
     sysSection.className = 'bldr-textarea-section';
     sysSection.innerHTML = `
-      <div class="bldr-panel-title">System <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— rules text. Use {paramId} placeholders to substitute parameter values. Use {ACTIVATION_ROLL} to insert the roll pool when Activation Roll is enabled.</span></div>
+      <div class="bldr-panel-title">System <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— rules text. Use {paramId} placeholders to substitute parameter values. Use {ACTIVATION_ROLL} to insert the roll pool when Activation Roll is enabled. Use {CONTESTED_ROLL} for the chosen contest.</span></div>
       <textarea rows="3"
                 placeholder="e.g. Spend an Action and {activationCost}; deal {damage} fire damage to a target within {range}."
                 oninput="catBldrSetField('systemTextTemplate',this.value);renderBuilderPreview();">${escapeHtml(b.systemTextTemplate || '')}</textarea>
@@ -2612,6 +2622,165 @@
     if (!slot) return;
     slot[field] = String(value || '');
     refreshActivationSection();
+    renderBuilderPreview();
+  };
+
+  // ── CONTESTED ROLL ──
+  //
+  // Catalogue-author UI: toggle + a list of contests the target can be
+  // asked to roll. Each row is one option (derived stat or "Reaction").
+  // The Player picks one of these at edit time on their sheet; the
+  // chosen option's display label is what {CONTESTED_ROLL} substitutes
+  // to in System text. We don't compute anything player-side beyond
+  // showing the picked label — the contest itself is rolled by the
+  // target, not the caster.
+
+  // Display label for an option in the editor list / player dropdown.
+  // Derived stats look up the ruleset's `name` field by code; the
+  // legacy 'reaction' kind always shows "Reaction".
+  function contestOptionLabel(opt) {
+    if (!opt || typeof opt !== 'object') return '';
+    if (opt.kind === 'reaction') return 'Reaction';
+    if (opt.kind === 'derived') {
+      const list = (state.derivedStats || []);
+      const found = list.find(d => d && d.code === opt.code);
+      return found && found.name ? found.name : (opt.code || '');
+    }
+    return '';
+  }
+
+  // The list of available derived stats to pick from in the editor's
+  // "Add derived stat" dropdown. Sourced live from the ruleset.
+  function derivedStatChoices() {
+    return Array.isArray(state.derivedStats) ? state.derivedStats.slice() : [];
+  }
+
+  function renderContestedRollSection(b) {
+    const cr = b.contestedRoll || { enabled: false, options: [] };
+    const opts = Array.isArray(cr.options) ? cr.options : [];
+
+    const toggleRow = `
+      <div class="bldr-panel-title" style="margin-bottom:12px;">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#888;margin:0;">
+          <input type="checkbox" ${cr.enabled ? 'checked' : ''}
+                 onchange="bldrToggleContestedRoll(this.checked)">
+          <span>Contested Roll</span>
+        </label>
+        <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;margin-left:8px;">— if on, the target rolls a chosen contest. Player picks one option from the list. Use {CONTESTED_ROLL} in System text.</span>
+      </div>
+    `;
+
+    if (!cr.enabled) return toggleRow;
+
+    // Existing options list
+    const rowsHtml = opts.length === 0
+      ? `<div style="font-size:11px;color:#888;font-style:italic;padding:8px 0;">No contests yet. Add at least one option below for the player to pick from.</div>`
+      : opts.map((opt, idx) => {
+          const label = contestOptionLabel(opt) || '(unknown)';
+          const kindLabel = opt.kind === 'reaction' ? 'Reaction' : 'Derived stat';
+          return `
+            <div style="display:grid;grid-template-columns:90px 1fr auto;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;">
+              <span style="font-size:10px;color:#888;letter-spacing:.08em;text-transform:uppercase;">${escapeHtml(kindLabel)}</span>
+              <span style="font-size:13px;color:#ddd;">${escapeHtml(label)}</span>
+              <button class="row-x" type="button" title="Remove option"
+                      onclick="bldrContestedRemoveOption(${idx})">×</button>
+            </div>
+          `;
+        }).join('');
+
+    // Add-option controls. Two flavors: derived-stat (pick from
+    // ruleset's list) and Reaction (single button, since there's only
+    // one). Hide the derived-stat add UI if the ruleset has no
+    // derived stats configured.
+    const derived = derivedStatChoices();
+    const usedDerivedCodes = new Set(opts.filter(o => o.kind === 'derived').map(o => o.code));
+    const availableDerived = derived.filter(d => d.code && !usedDerivedCodes.has(d.code));
+    const hasReaction = opts.some(o => o.kind === 'reaction');
+
+    const addDerivedHtml = availableDerived.length > 0 ? `
+      <div style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+        <select id="bldr-contested-add-derived" style="flex:1;">
+          <option value="">— add derived stat —</option>
+          ${availableDerived.map(d =>
+            `<option value="${escapeHtmlAttr(d.code)}">${escapeHtml(d.name || d.code)}</option>`
+          ).join('')}
+        </select>
+        <button class="btn small" type="button"
+                onclick="bldrContestedAddDerived(document.getElementById('bldr-contested-add-derived').value)">+ Add</button>
+      </div>
+    ` : '';
+
+    const addReactionHtml = !hasReaction ? `
+      <div style="margin-top:8px;">
+        <button class="btn small" type="button" onclick="bldrContestedAddReaction()">+ Add Reaction option</button>
+      </div>
+    ` : '';
+
+    return `
+      ${toggleRow}
+      <div style="margin-top:6px;">
+        ${rowsHtml}
+        ${addDerivedHtml}
+        ${addReactionHtml}
+      </div>
+    `;
+  }
+
+  function refreshContestedSection() {
+    const el = document.getElementById('bldr-contested-section');
+    if (!el) return;
+    const b = getOpenedBuilder();
+    if (!b) return;
+    el.innerHTML = renderContestedRollSection(b);
+  }
+
+  // Ensure the contestedRoll object exists on the builder so handlers
+  // can mutate it without null checks. Idempotent.
+  function ensureContestedRoll(b) {
+    if (!b.contestedRoll || typeof b.contestedRoll !== 'object') {
+      b.contestedRoll = { enabled: false, options: [] };
+    }
+    if (!Array.isArray(b.contestedRoll.options)) b.contestedRoll.options = [];
+    return b.contestedRoll;
+  }
+
+  window.bldrToggleContestedRoll = function(checked) {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const cr = ensureContestedRoll(b);
+    cr.enabled = !!checked;
+    refreshContestedSection();
+    renderBuilderPreview();
+  };
+
+  window.bldrContestedAddDerived = function(code) {
+    if (!code) return;
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const cr = ensureContestedRoll(b);
+    // Don't add a duplicate code.
+    if (cr.options.some(o => o.kind === 'derived' && o.code === code)) return;
+    cr.options.push({ kind: 'derived', code: String(code) });
+    refreshContestedSection();
+    renderBuilderPreview();
+  };
+
+  window.bldrContestedAddReaction = function() {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const cr = ensureContestedRoll(b);
+    if (cr.options.some(o => o.kind === 'reaction')) return;
+    cr.options.push({ kind: 'reaction' });
+    refreshContestedSection();
+    renderBuilderPreview();
+  };
+
+  window.bldrContestedRemoveOption = function(idx) {
+    const b = getOpenedBuilder();
+    if (!b || !b.contestedRoll || !Array.isArray(b.contestedRoll.options)) return;
+    if (idx < 0 || idx >= b.contestedRoll.options.length) return;
+    b.contestedRoll.options.splice(idx, 1);
+    refreshContestedSection();
     renderBuilderPreview();
   };
 
