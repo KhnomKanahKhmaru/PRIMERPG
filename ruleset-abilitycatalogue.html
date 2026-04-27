@@ -2135,6 +2135,12 @@
         <span class="bldr-param-caret">▶</span>
         <span class="bldr-param-name${p.name ? '' : ' bldr-param-name-empty'}" id="bldr-param-name-${kind}-${idx}">${escapeHtml(p.name || '(Unnamed parameter)')}</span>
         <span class="bldr-param-summary" id="bldr-param-summary-${kind}-${idx}">${kind === 'primary' ? (isLinear ? 'linear' : 'flat') : 'mult'} · ${escapeHtml(summary)}</span>
+        <button class="row-x" type="button" title="Insert new parameter above"
+                style="margin-right:2px;color:#888;"
+                onclick="event.stopPropagation();bldrInsertParamAt('${kind}', ${idx});">↑</button>
+        <button class="row-x" type="button" title="Insert new parameter below"
+                style="margin-right:6px;color:#888;"
+                onclick="event.stopPropagation();bldrInsertParamAt('${kind}', ${idx + 1});">↓</button>
         <button class="row-x" type="button" title="Delete parameter"
                 onclick="event.stopPropagation();bldrDeleteParam('${kind}', ${idx});">×</button>
       </div>
@@ -2309,6 +2315,64 @@
     });
     const newIdx = b.primaryParams.length - 1;
     expandedParamKeys.add(paramKey('primary', newIdx));
+    renderBldrParamsList();
+    renderBuilderPreview();
+  };
+
+  // Insert a new parameter at a specific position within primaryParams
+  // OR secondaryParams (kind dictates which array). Indices in the
+  // expandedParamKeys Set get shifted so cards that were already open
+  // stay open. Auto-expands the newly-inserted card so the GM can
+  // start filling it in.
+  //
+  // Called from the ↑ / ↓ buttons on each param card head:
+  //   ↑ inserts at idx (pushes the anchor card down by one)
+  //   ↓ inserts at idx+1 (the anchor card stays where it is)
+  window.bldrInsertParamAt = function(kind, idx) {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const key = (kind === 'primary') ? 'primaryParams' : 'secondaryParams';
+    if (!Array.isArray(b[key])) b[key] = [];
+    const arr = b[key];
+    const insertIdx = Math.max(0, Math.min(idx, arr.length));
+
+    // Shape the new param to match its kind. Primary defaults to manual
+    // mode with one empty step (matching bldrAddParam's shape).
+    // Secondary defaults to a single 1.0× step.
+    let newParam;
+    if (kind === 'primary') {
+      newParam = {
+        id: 'pp_' + Math.random().toString(36).slice(2, 10),
+        name: '', token: '', description: '',
+        steps: [{ label: '', value: '', cost: 0 }],
+        defaultStep: 0
+      };
+    } else {
+      newParam = {
+        id: 'sp_' + Math.random().toString(36).slice(2, 10),
+        name: '', token: '', description: '',
+        steps: [{ label: '', value: '', cost: 1 }],
+        defaultStep: 0
+      };
+    }
+    arr.splice(insertIdx, 0, newParam);
+
+    // Shift expandedParamKeys: any key whose kind matches AND whose
+    // index is >= insertIdx needs +1 so it still points at the same
+    // param. Keys for the OTHER kind are untouched (separate array).
+    const newSet = new Set();
+    expandedParamKeys.forEach(k => {
+      const [keyKind, keyIdxStr] = k.split(':');
+      const keyIdx = parseInt(keyIdxStr, 10);
+      if (keyKind !== kind) { newSet.add(k); return; }
+      if (keyIdx < insertIdx) { newSet.add(k); return; }
+      newSet.add(paramKey(keyKind, keyIdx + 1));
+    });
+    // Auto-expand the new card.
+    newSet.add(paramKey(kind, insertIdx));
+    expandedParamKeys.clear();
+    newSet.forEach(k => expandedParamKeys.add(k));
+
     renderBldrParamsList();
     renderBuilderPreview();
   };
