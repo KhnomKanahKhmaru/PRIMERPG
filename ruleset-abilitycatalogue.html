@@ -2364,6 +2364,12 @@
                        onchange="bldrSetFFCustomField('${kind}', ${idx}, 'enabled', this.checked)">
                 <span>Custom field</span>
               </label>
+              <label style="display:flex;align-items:center;gap:5px;cursor:pointer;flex-shrink:0;"
+                     title="${kind === 'feature' ? 'Allow players to take this feature multiple times. Cost stacks per pick.' : 'Allow players to take this flaw multiple times. Refund stacks per pick.'}">
+                <input type="checkbox" ${it.stackable ? 'checked' : ''}
+                       onchange="bldrSetFFStackable('${kind}', ${idx}, this.checked)">
+                <span>Stackable</span>
+              </label>
               ${labelInputHtml}
             </div>
           </div>
@@ -3057,6 +3063,20 @@
   window.bldrSetFFField = function(kind, idx, field, value) {
     if (kind === 'feature') window.catBldrSetFeature(idx, field, value);
     else                    window.catBldrSetFlaw(idx, field, value);
+  };
+
+  // Toggle the per-feature/flaw stackable flag. Pure data mutation —
+  // no row re-render needed (the label "Stackable" doesn't change),
+  // but renderBuilderPreview is called so the cost pill stays in sync
+  // (though stackable alone doesn't change baseline cost; an instance's
+  // cost only changes when the player picks count > 1 in their editor).
+  window.bldrSetFFStackable = function(kind, idx, value) {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const arr = (kind === 'feature') ? b.features : b.flaws;
+    if (!Array.isArray(arr) || !arr[idx]) return;
+    arr[idx].stackable = !!value;
+    renderBuilderPreview();
   };
 
   // Toggle/edit the per-feature/flaw customField config. When enabling,
