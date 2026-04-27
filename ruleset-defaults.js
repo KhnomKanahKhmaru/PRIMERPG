@@ -630,15 +630,21 @@ window.RULESET_DEFAULTS = {
         mythical:   10
       },
       // Flaw tiers — Player GAINS this AP back when taking a Flaw.
-      // Half of the Feature equivalent at each tier.
+      // Equal to the Feature tier at the same level: a Minor flaw is
+      // assumed to be the same magnitude of "bad" as a Minor feature
+      // is "good." This trusts the GM to enforce flaws at the table
+      // (rather than baking the suspicion into the math via a half-
+      // refund tax). Earlier drafts halved these; we now treat
+      // features and flaws as equal-and-opposite tradeoffs and let
+      // the GM judge whether a stacked flaw is genuinely impactful.
       flawRefunds: {
-        minor:      0.5,
-        moderate:   1,
-        major:      1.5,
-        massive:    2,
-        monumental: 3,
-        mega:       4,
-        mythical:   5
+        minor:       1,
+        moderate:    2,
+        major:       3,
+        massive:     4,
+        monumental:  6,
+        mega:        8,
+        mythical:   10
       }
     },
     // Catalogue-level default Features/Flaws. Same shape as a Builder's
