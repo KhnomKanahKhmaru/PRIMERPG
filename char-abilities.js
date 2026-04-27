@@ -852,6 +852,91 @@ export function renderSystemText(builder, instance, context) {
     }
   }
 
+  // ── FEATURE / FLAW TOKEN REGISTRATION ──
+  //
+  // Each selected feature/flaw with a non-empty `token` field exposes
+  // a token to the System / Visual / Extra text. Multiple selections
+  // sharing the same token name aggregate (joined by '; ').
+  //
+  // Resolution per feature/flaw:
+  //   tokenValueMode:
+  //     'name'        — feature.name
+  //     'description' — feature.description
+  //     'customField' — the player's custom-field input (per stack)
+  //     'literal'     — feature.tokenLiteral
+  //
+  // Stackable features can have multiple stacks selected (each with
+  // its own custom-field value). Each stack contributes its own
+  // resolved value to the token aggregate. So if "Conditional" is
+  // taken 3 times with custom fields ["daylight","vs humans","with sword"]
+  // and tokenValueMode='customField', the {Condition} token resolves
+  // to "daylight; vs humans; with sword".
+  {
+    const ruleset  = (context && context.ruleset)  ? context.ruleset  : null;
+    if (ruleset) {
+      try {
+        const fSel  = Array.isArray(inst.selectedFeatureIds) ? inst.selectedFeatureIds : [];
+        const lSel  = Array.isArray(inst.selectedFlawIds)    ? inst.selectedFlawIds    : [];
+        const fCounts = (inst.featureCounts && typeof inst.featureCounts === 'object') ? inst.featureCounts : {};
+        const lCounts = (inst.flawCounts    && typeof inst.flawCounts    === 'object') ? inst.flawCounts    : {};
+        const fFields = (inst.featureFieldsByStack && typeof inst.featureFieldsByStack === 'object') ? inst.featureFieldsByStack : {};
+        const lFields = (inst.flawFieldsByStack    && typeof inst.flawFieldsByStack    === 'object') ? inst.flawFieldsByStack    : {};
+        const cfValues = (inst.customFieldValues && typeof inst.customFieldValues === 'object') ? inst.customFieldValues : {};
+        const allFeatures = resolveBuilderFeatures(ruleset, builder);
+        const allFlaws    = resolveBuilderFlaws   (ruleset, builder);
+        // Aggregate buffer keyed by normalized token name.
+        const featureTokenAggregate = {};
+        function addToAggregate(tokenKey, value) {
+          if (!tokenKey || !value) return;
+          if (!featureTokenAggregate[tokenKey]) featureTokenAggregate[tokenKey] = [];
+          featureTokenAggregate[tokenKey].push(value);
+        }
+        function processFF(allList, selIds, counts, fieldsByStack, kind) {
+          allList.forEach(item => {
+            if (!item || !item.token || typeof item.token !== 'string') return;
+            if (!selIds.includes(item.id)) return;
+            const tokenKey = normalizeTokenKey(item.token);
+            if (!tokenKey) return;
+            // Determine number of stacks (1 if non-stackable).
+            let stackCount = 1;
+            if (item.stackable) {
+              const raw = parseInt(counts[item.id], 10);
+              if (Number.isFinite(raw) && raw >= 1) stackCount = raw;
+            }
+            const stackFields = Array.isArray(fieldsByStack[item.id]) ? fieldsByStack[item.id] : [];
+            const mode = item.tokenValueMode || 'description';
+            for (let s = 0; s < stackCount; s++) {
+              let val;
+              switch (mode) {
+                case 'name':        val = item.name || ''; break;
+                case 'description': val = item.description || ''; break;
+                case 'customField':
+                  // Per-stack value if available; fall back to the
+                  // legacy single customFieldValues map for stack 0
+                  // (which is how non-stack picks store their input).
+                  val = (typeof stackFields[s] === 'string' && stackFields[s])
+                      ? stackFields[s]
+                      : (s === 0 && typeof cfValues[item.id] === 'string' ? cfValues[item.id] : '');
+                  break;
+                case 'literal':     val = item.tokenLiteral || ''; break;
+                default:            val = item.description || '';
+              }
+              if (val) addToAggregate(tokenKey, val);
+            }
+          });
+        }
+        processFF(allFeatures, fSel, fCounts, fFields, 'feature');
+        processFF(allFlaws,    lSel, lCounts, lFields, 'flaw');
+        // Commit aggregated values.
+        Object.keys(featureTokenAggregate).forEach(k => {
+          setToken(k, featureTokenAggregate[k].join('; '));
+        });
+      } catch (e) {
+        // Don't break ability rendering on a bad feature token.
+      }
+    }
+  }
+
   // Substitute. Match anything-between-single-braces. The captured text
   // is normalized the same way as token keys so {Foo Bar}, {foo_bar},
   // and {FOOBAR} all map to the same lookup. Unknown tokens are left
@@ -1043,6 +1128,65 @@ export function renderSystemTextHtml(builder, instance, context) {
         setToken('CONTESTED_ROLL', crDesc);
         setToken('CONTESTEDROLL',  crDesc);
       }
+    }
+  }
+
+  // ── FEATURE / FLAW TOKEN REGISTRATION (see renderSystemText for notes) ──
+  {
+    const ruleset  = (context && context.ruleset)  ? context.ruleset  : null;
+    if (ruleset) {
+      try {
+        const fSel  = Array.isArray(inst.selectedFeatureIds) ? inst.selectedFeatureIds : [];
+        const lSel  = Array.isArray(inst.selectedFlawIds)    ? inst.selectedFlawIds    : [];
+        const fCounts = (inst.featureCounts && typeof inst.featureCounts === 'object') ? inst.featureCounts : {};
+        const lCounts = (inst.flawCounts    && typeof inst.flawCounts    === 'object') ? inst.flawCounts    : {};
+        const fFields = (inst.featureFieldsByStack && typeof inst.featureFieldsByStack === 'object') ? inst.featureFieldsByStack : {};
+        const lFields = (inst.flawFieldsByStack    && typeof inst.flawFieldsByStack    === 'object') ? inst.flawFieldsByStack    : {};
+        const cfValues = (inst.customFieldValues && typeof inst.customFieldValues === 'object') ? inst.customFieldValues : {};
+        const allFeatures = resolveBuilderFeatures(ruleset, builder);
+        const allFlaws    = resolveBuilderFlaws   (ruleset, builder);
+        const featureTokenAggregate = {};
+        function addToAggregate(tokenKey, value) {
+          if (!tokenKey || !value) return;
+          if (!featureTokenAggregate[tokenKey]) featureTokenAggregate[tokenKey] = [];
+          featureTokenAggregate[tokenKey].push(value);
+        }
+        function processFF(allList, selIds, counts, fieldsByStack) {
+          allList.forEach(item => {
+            if (!item || !item.token || typeof item.token !== 'string') return;
+            if (!selIds.includes(item.id)) return;
+            const tokenKey = normalizeTokenKey(item.token);
+            if (!tokenKey) return;
+            let stackCount = 1;
+            if (item.stackable) {
+              const raw = parseInt(counts[item.id], 10);
+              if (Number.isFinite(raw) && raw >= 1) stackCount = raw;
+            }
+            const stackFields = Array.isArray(fieldsByStack[item.id]) ? fieldsByStack[item.id] : [];
+            const mode = item.tokenValueMode || 'description';
+            for (let s = 0; s < stackCount; s++) {
+              let val;
+              switch (mode) {
+                case 'name':        val = item.name || ''; break;
+                case 'description': val = item.description || ''; break;
+                case 'customField':
+                  val = (typeof stackFields[s] === 'string' && stackFields[s])
+                      ? stackFields[s]
+                      : (s === 0 && typeof cfValues[item.id] === 'string' ? cfValues[item.id] : '');
+                  break;
+                case 'literal':     val = item.tokenLiteral || ''; break;
+                default:            val = item.description || '';
+              }
+              if (val) addToAggregate(tokenKey, val);
+            }
+          });
+        }
+        processFF(allFeatures, fSel, fCounts, fFields);
+        processFF(allFlaws,    lSel, lCounts, lFields);
+        Object.keys(featureTokenAggregate).forEach(k => {
+          setToken(k, featureTokenAggregate[k].join('; '));
+        });
+      } catch (e) { /* ignore */ }
     }
   }
 
