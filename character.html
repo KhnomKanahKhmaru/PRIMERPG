@@ -6917,15 +6917,12 @@
     // Icon — pulled from the Builder, NOT the instance. The Builder's
     // iconUrl is the GM-uploaded icon; players don't author their own.
     //
-    // Circular frame mirrors the Stat icons but rounded to 50%. The
-    // box has a subtle dark fill + border; the icon fills the inner
-    // area and the circular clip hides any baked-in PNG corners. No
-    // mix-blend tricks needed — the user reads the circle edge as
-    // the icon boundary.
+    // Square frame mirrors the Stat icons. Subtle dark fill + border,
+    // small radius. The user reads the box edge as the icon boundary.
     const iconImgHtml = (builder.iconUrl && builder.iconUrl.trim())
-      ? `<div style="width:48px;height:48px;flex-shrink:0;background:#151515;border:1px solid #252525;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+      ? `<div style="width:48px;height:48px;flex-shrink:0;background:#151515;border:1px solid #252525;border-radius:4px;overflow:hidden;display:flex;align-items:center;justify-content:center;">
            <img src="${escapeHtml(builder.iconUrl)}" alt=""
-                style="width:46px;height:46px;object-fit:contain;display:block;border-radius:50%;">
+                style="width:46px;height:46px;object-fit:contain;display:block;">
          </div>`
       : '';
 
