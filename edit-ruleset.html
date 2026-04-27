@@ -1516,7 +1516,8 @@
     <div class="footer-actions">
       <button class="btn primary" id="submit-btn" onclick="saveRuleset()">Save</button>
       <button class="btn" onclick="window.location.href='my-rulesets.html'">Cancel</button>
-      <button class="btn" id="export-btn" onclick="exportRulesetUI()" title="Export ruleset as JSON (copy to clipboard or download)">Export…</button>
+      <button class="btn" id="export-btn" onclick="exportRulesetUI()" title="Export ruleset as JSON">Export…</button>
+      <button class="btn" id="import-btn" onclick="importRulesetUI()" title="Import a JSON ruleset (Replace or Merge)">Import…</button>
       <button class="btn danger" id="delete-btn" onclick="deleteRuleset()" style="display:none">Delete Ruleset</button>
       <span class="save-msg" id="save-msg"></span>
     </div>
@@ -1535,6 +1536,7 @@
   // itemCatalogue, or a single Builder. Used by the "Export…" button
   // in the page footer.
   import * as rulesetExport from './ruleset-export.js';
+  import * as rulesetImport from './ruleset-import.js';
 
   // Note: the Ability Catalogue editing UI used to live on this page,
   // but the catalogue is its own workspace and got moved to
@@ -3616,6 +3618,284 @@
     }
   };
 
+  // ─── IMPORT (JSON) ───
+  // Modal-based: pick scope (ruleset or ability catalogue), paste JSON
+  // or upload a file, choose Replace or Merge, see a preview of what
+  // will change, confirm. After import, an Undo toast appears that
+  // restores pre-import state — disabled once the GM clicks Save.
+  //
+  // The whole-ruleset Import button on this page handles ruleset and
+  // abilityCatalogue scopes only. Builder import lives on the
+  // ability-catalogue page (where the Category-picker is).
+  let __preImportSnapshot = null;
+  let __saveLockedAfterImport = false;
+
+  window.importRulesetUI = function() {
+    if (!state) { alert('Ruleset not loaded yet.'); return; }
+    let m = document.getElementById('import-modal');
+    if (!m) {
+      m = document.createElement('div');
+      m.id = 'import-modal';
+      m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;';
+      document.body.appendChild(m);
+    }
+    m.innerHTML = `
+      <div style="background:#0e0e0e;border:1px solid #2a2a2a;border-radius:6px;padding:24px;width:560px;max-width:92vw;max-height:90vh;overflow:auto;color:#ccc;">
+        <div style="font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#aaa;margin-bottom:14px;">Import</div>
+        <p style="font-size:12px;color:#888;margin:0 0 16px 0;line-height:1.5;">
+          Paste JSON below or upload a <code style="color:#bbb;">.json</code> file. Pick the scope and mode, then Import.
+          The page state changes immediately but doesn't persist until you click Save — you can Undo before saving.
+        </p>
+
+        <div style="display:flex;gap:14px;margin-bottom:12px;">
+          <div style="flex:1;">
+            <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">Scope</label>
+            <select id="imp-scope" style="width:100%;background:#111;border:1px solid #222;color:#e0e0e0;padding:6px 8px;border-radius:3px;">
+              <option value="ruleset">Whole ruleset</option>
+              <option value="abilityCatalogue">Ability Catalogue</option>
+            </select>
+          </div>
+          <div style="flex:1;">
+            <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">Mode</label>
+            <select id="imp-mode" style="width:100%;background:#111;border:1px solid #222;color:#e0e0e0;padding:6px 8px;border-radius:3px;">
+              <option value="replace" selected>Replace</option>
+              <option value="merge">Merge</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="margin-bottom:12px;">
+          <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">JSON</label>
+          <textarea id="imp-json" rows="8"
+                    placeholder="Paste exported JSON here…"
+                    style="width:100%;background:#111;border:1px solid #222;color:#e0e0e0;padding:8px;border-radius:3px;font-family:Consolas,monospace;font-size:11px;resize:vertical;"></textarea>
+          <div style="margin-top:6px;">
+            <input type="file" id="imp-file" accept=".json,application/json" style="font-size:11px;color:#888;">
+          </div>
+        </div>
+
+        <div id="imp-preview" style="font-size:11px;color:#888;background:#1a1a1a;padding:10px;border-radius:4px;margin-bottom:12px;min-height:32px;">
+          Preview will appear here once JSON is loaded.
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:8px;">
+          <button class="btn" onclick="closeImportModal()">Cancel</button>
+          <button class="btn primary" id="imp-confirm" onclick="importDo()" disabled>Import</button>
+        </div>
+        <div id="imp-msg" style="font-size:11px;color:#66ff99;margin-top:12px;min-height:16px;"></div>
+      </div>
+    `;
+    m.style.display = 'flex';
+
+    // Wire file upload → textarea
+    document.getElementById('imp-file').addEventListener('change', async (ev) => {
+      const f = ev.target.files && ev.target.files[0];
+      if (!f) return;
+      try {
+        const text = await f.text();
+        document.getElementById('imp-json').value = text;
+        importPreview();
+      } catch (err) {
+        document.getElementById('imp-msg').textContent = 'Failed to read file: ' + err.message;
+        document.getElementById('imp-msg').style.color = '#ff6666';
+      }
+    });
+    document.getElementById('imp-json').addEventListener('input', importPreview);
+    document.getElementById('imp-scope').addEventListener('change', importPreview);
+  };
+
+  function importPreview() {
+    const json = document.getElementById('imp-json').value;
+    const scope = document.getElementById('imp-scope').value;
+    const previewEl = document.getElementById('imp-preview');
+    const confirmBtn = document.getElementById('imp-confirm');
+    const msg = document.getElementById('imp-msg');
+    msg.textContent = '';
+    if (!json.trim()) {
+      previewEl.textContent = 'Paste JSON or upload a file to preview.';
+      confirmBtn.disabled = true;
+      return;
+    }
+    try {
+      const result = rulesetImport.parseAndValidate(json, scope);
+      const env = result.envelope;
+      const lines = [];
+      lines.push(`Kind: ${env.kind}`);
+      if (result.parsed.rulesetName) lines.push(`From ruleset: ${result.parsed.rulesetName}`);
+      if (result.parsed.catalogueName) lines.push(`Catalogue: ${result.parsed.catalogueName}`);
+      if (env.exportedAt) lines.push(`Exported at: ${new Date(env.exportedAt).toLocaleString()}`);
+      // Quick pre-stats
+      if (scope === 'ruleset' && result.parsed.ruleset) {
+        const rs = result.parsed.ruleset;
+        const nStats = Array.isArray(rs.stats) ? rs.stats.length : 0;
+        const nSkills = Array.isArray(rs.skills) ? rs.skills.length : 0;
+        lines.push(`Will affect: ${nStats} stats, ${nSkills} skills, plus catalogue`);
+      } else if (scope === 'abilityCatalogue' && result.parsed.abilityCatalogue) {
+        const cat = result.parsed.abilityCatalogue;
+        const nDefF = (cat.defaultFeatures || []).length;
+        const nDefL = (cat.defaultFlaws || []).length;
+        lines.push(`Defaults: ${nDefF} features, ${nDefL} flaws`);
+      }
+      previewEl.style.color = '#888';
+      previewEl.innerHTML = lines.map(l => `<div>${l.replace(/</g,'&lt;')}</div>`).join('');
+      confirmBtn.disabled = false;
+    } catch (err) {
+      previewEl.style.color = '#ff9966';
+      previewEl.textContent = err.message;
+      confirmBtn.disabled = true;
+    }
+  }
+  window.importPreview = importPreview;
+
+  window.closeImportModal = function() {
+    const m = document.getElementById('import-modal');
+    if (m) m.style.display = 'none';
+  };
+
+  window.importDo = function() {
+    const json = document.getElementById('imp-json').value;
+    const scope = document.getElementById('imp-scope').value;
+    const mode = document.getElementById('imp-mode').value;
+    const msg = document.getElementById('imp-msg');
+    if (!json.trim()) return;
+    if (mode === 'replace') {
+      const confirmTxt = scope === 'ruleset'
+        ? 'This will replace your entire ruleset (stats, skills, catalogue, everything) with the imported data. You can Undo before saving. Continue?'
+        : 'This will replace your entire Ability Catalogue with the imported data. You can Undo before saving. Continue?';
+      if (!confirm(confirmTxt)) return;
+    }
+    let result;
+    try {
+      if (scope === 'ruleset') {
+        result = rulesetImport.importRuleset(state, json, mode);
+      } else {
+        result = rulesetImport.importAbilityCatalogue(state, json, mode);
+      }
+    } catch (err) {
+      msg.textContent = 'Import failed: ' + err.message;
+      msg.style.color = '#ff6666';
+      return;
+    }
+    // Stash undo snapshot
+    __preImportSnapshot = JSON.parse(JSON.stringify(state));
+    __saveLockedAfterImport = false;
+    // Apply
+    Object.keys(result.applied).forEach(k => { state[k] = result.applied[k]; });
+    // Drop unset keys that the imported state doesn't have? Only for
+    // 'replace' mode on whole ruleset — otherwise we keep existing.
+    if (scope === 'ruleset' && mode === 'replace') {
+      Object.keys(state).forEach(k => {
+        if (!(k in result.applied)) delete state[k];
+      });
+    }
+    closeImportModal();
+    // Re-render the page from the new state. Easiest: reload form fields
+    // from state. Since this page has many form fields, easiest is a
+    // full page-data refresh — call the page's existing populate
+    // function if it exists. As a fallback, reload the page (but that
+    // discards our undo snapshot, so we don't do that).
+    if (typeof window.refreshAllFromState === 'function') {
+      window.refreshAllFromState();
+    } else {
+      // No central refresh function — fall back to rebuilding the
+      // major sections individually via the function names we know
+      // exist on this page. Some may be no-ops if the page hasn't
+      // defined them yet.
+      ['renderStats','renderSkills','renderWeapons','renderDerivedStats','renderPowerLevels'].forEach(fn => {
+        if (typeof window[fn] === 'function') {
+          try { window[fn](); } catch (err) { console.warn(fn + ' failed:', err); }
+        }
+      });
+      // Top-level fields
+      const nameEl = document.getElementById('rs-name');
+      if (nameEl && typeof state.name === 'string') nameEl.value = state.name;
+      const descEl = document.getElementById('rs-description');
+      if (descEl && typeof state.description === 'string') descEl.value = state.description;
+    }
+    showImportToast(result.summary, result.warnings);
+  };
+
+  function showImportToast(summary, warnings) {
+    let t = document.getElementById('import-toast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'import-toast';
+      t.style.cssText = `
+        position:fixed; top:18px; right:18px; z-index:10000;
+        background:#3a2a14; color:#ffcc88;
+        border:1px solid #5a4424;
+        font-size:12px; padding:14px 16px; border-radius:4px;
+        font-family:'Open Sans',sans-serif;
+        box-shadow:0 4px 12px rgba(0,0,0,0.5);
+        max-width:380px;
+      `;
+      document.body.appendChild(t);
+    }
+    const warnHtml = (warnings && warnings.length)
+      ? `<div style="margin-top:6px;font-size:10px;color:#ddaa66;">⚠ ${warnings.length} warning${warnings.length > 1 ? 's' : ''}: ${warnings[0].replace(/</g,'&lt;')}${warnings.length > 1 ? ` (+${warnings.length - 1} more)` : ''}</div>`
+      : '';
+    t.innerHTML = `
+      <div style="font-weight:600;margin-bottom:4px;">Imported</div>
+      <div style="font-size:11px;color:#ffe0b0;line-height:1.4;">${summary.replace(/</g,'&lt;')}</div>
+      ${warnHtml}
+      <div style="margin-top:10px;display:flex;gap:8px;">
+        <button class="btn small" onclick="undoImport()">Undo</button>
+        <button class="btn small" onclick="dismissImportToast()">Dismiss</button>
+      </div>
+      <div style="font-size:10px;color:#aa8855;margin-top:6px;">Click Save to commit. Undo expires once you save.</div>
+    `;
+    t.style.display = 'block';
+  }
+
+  window.dismissImportToast = function() {
+    const t = document.getElementById('import-toast');
+    if (t) t.style.display = 'none';
+  };
+
+  window.undoImport = function() {
+    if (!__preImportSnapshot) {
+      alert('Nothing to undo.');
+      return;
+    }
+    if (__saveLockedAfterImport) {
+      alert('Already saved — Undo no longer available.');
+      return;
+    }
+    // Restore. Wipe state's keys, re-apply snapshot's keys.
+    Object.keys(state).forEach(k => { delete state[k]; });
+    Object.keys(__preImportSnapshot).forEach(k => { state[k] = __preImportSnapshot[k]; });
+    __preImportSnapshot = null;
+    if (typeof window.refreshAllFromState === 'function') {
+      window.refreshAllFromState();
+    } else {
+      ['renderStats','renderSkills','renderWeapons','renderDerivedStats','renderPowerLevels'].forEach(fn => {
+        if (typeof window[fn] === 'function') {
+          try { window[fn](); } catch (err) {}
+        }
+      });
+      const nameEl = document.getElementById('rs-name');
+      if (nameEl && typeof state.name === 'string') nameEl.value = state.name;
+      const descEl = document.getElementById('rs-description');
+      if (descEl && typeof state.description === 'string') descEl.value = state.description;
+    }
+    dismissImportToast();
+  };
+
+  // Lock undo when the user saves — Save persists the post-import
+  // state to Firestore, so an Undo afterwards would restore in-memory
+  // state that doesn't match what's on disk. The Save button itself
+  // wraps saveRuleset to set this flag.
+  function lockUndoAfterSave() {
+    __saveLockedAfterImport = true;
+    const t = document.getElementById('import-toast');
+    if (t && t.style.display !== 'none') {
+      // Replace toast with a soft "saved, undo gone" notice for ~3s.
+      t.innerHTML = `<div style="color:#88cc88;">Saved — Undo no longer available.</div>`;
+      setTimeout(() => { if (t) t.style.display = 'none'; }, 2500);
+    }
+  }
+  window.lockUndoAfterSave = lockUndoAfterSave;
+
   window.saveRuleset = async function() {
     const msg = document.getElementById('save-msg');
     const btn = document.getElementById('submit-btn');
@@ -3700,11 +3980,13 @@
         payload.playgroupId = state.playgroupId || null;
         payload.createdAt = new Date();
         await addDoc(collection(db, 'rulesets'), payload);
+        if (typeof lockUndoAfterSave === 'function') lockUndoAfterSave();
         msg.textContent = 'Created!'; msg.style.color = '#66ff99';
         setTimeout(() => window.location.href = 'my-rulesets.html', 700);
       } else {
         if (!existingDoc.isBasicSet) payload.playgroupId = state.playgroupId || null;
         await updateDoc(doc(db, 'rulesets', rulesetId), payload);
+        if (typeof lockUndoAfterSave === 'function') lockUndoAfterSave();
         msg.textContent = 'Saved!'; msg.style.color = '#66ff99';
         btn.disabled = false; btn.textContent = originalBtnText;
         setTimeout(() => { msg.textContent = ''; }, 2000);
