@@ -4118,6 +4118,10 @@ export function createCombatSection(ctx) {
     setPowerColor:    power.setPowerColor,
     setPowerName:     power.setPowerName,
     powerPoolXpDelta: power.powerPoolXpDelta,
+    // Renders just the Power Bar (no section header, no Power Pool
+    // purchase UI). Called by the Ability tab to put the same bar
+    // at the top of its content.
+    renderPowerBarOnly: power.renderBarOnly,
     toggleEditMode, addModifier, updateModifier, deleteModifier,
     // Injuries / Traumas
     toggleInjurySection, toggleInjuryExpand, toggleInjuryLocation,
