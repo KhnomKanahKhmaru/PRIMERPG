@@ -6917,16 +6917,16 @@
     // Icon — pulled from the Builder, NOT the instance. The Builder's
     // iconUrl is the GM-uploaded icon; players don't author their own.
     //
-    // mix-blend-mode:lighten compares each pixel to the page background
-    // and shows whichever is brighter. Dark pixels in the icon (pure
-    // black, near-black borders, dark backgrounds) get replaced by the
-    // page bg — invisible. Only lighter pixels (the glyph itself) show
-    // through. Stronger than `screen` for icons that have near-black
-    // baked-in borders, while still preserving the icon's actual
-    // colored/light content.
+    // Circular frame mirrors the Stat icons but rounded to 50%. The
+    // box has a subtle dark fill + border; the icon fills the inner
+    // area and the circular clip hides any baked-in PNG corners. No
+    // mix-blend tricks needed — the user reads the circle edge as
+    // the icon boundary.
     const iconImgHtml = (builder.iconUrl && builder.iconUrl.trim())
-      ? `<img src="${escapeHtml(builder.iconUrl)}" alt=""
-              style="width:48px;height:48px;object-fit:contain;flex-shrink:0;mix-blend-mode:lighten;">`
+      ? `<div style="width:48px;height:48px;flex-shrink:0;background:#151515;border:1px solid #252525;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+           <img src="${escapeHtml(builder.iconUrl)}" alt=""
+                style="width:46px;height:46px;object-fit:contain;display:block;border-radius:50%;">
+         </div>`
       : '';
 
     // Header text column — vertical stack, sits between the icon and
