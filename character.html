@@ -7694,6 +7694,126 @@
     renderAbilitiesBuilderSystemText();
   };
 
+  // ─── STACKABLE FF: ADD / REMOVE / SET-FIELD ───
+  //
+  // Stackable features and flaws appear as a list of independent
+  // pick-rows on the player's edit modal. Each row has its own
+  // custom-field value (per stack) — taking "Conditional" three times
+  // means three separate condition descriptions.
+  //
+  // Storage shape:
+  //   inst.featureCounts[id]            — total count when > 1 (1 omitted)
+  //   inst.featureFieldsByStack[id][s]  — array of strings, one per stack
+  //   (same for flaw counterparts)
+  //
+  // The id stays in inst.selectedFeatureIds when count >= 1; removed
+  // entirely when count drops to 0.
+  function _stackHelpers(kind) {
+    const inst = abilitiesBuilderSession.instance;
+    if (kind === 'feature') {
+      if (!Array.isArray(inst.selectedFeatureIds)) inst.selectedFeatureIds = [];
+      if (!inst.featureCounts || typeof inst.featureCounts !== 'object') inst.featureCounts = {};
+      if (!inst.featureFieldsByStack || typeof inst.featureFieldsByStack !== 'object') inst.featureFieldsByStack = {};
+      return { sel: inst.selectedFeatureIds, counts: inst.featureCounts, fields: inst.featureFieldsByStack };
+    } else {
+      if (!Array.isArray(inst.selectedFlawIds)) inst.selectedFlawIds = [];
+      if (!inst.flawCounts || typeof inst.flawCounts !== 'object') inst.flawCounts = {};
+      if (!inst.flawFieldsByStack || typeof inst.flawFieldsByStack !== 'object') inst.flawFieldsByStack = {};
+      return { sel: inst.selectedFlawIds, counts: inst.flawCounts, fields: inst.flawFieldsByStack };
+    }
+  }
+  function _stackRefresh(kind) {
+    if (kind === 'feature') refreshAbilitiesBuilderFeatures();
+    else                    refreshAbilitiesBuilderFlaws();
+    renderAbilitiesBuilderCostPreview();
+    renderAbilitiesBuilderSystemText();
+  }
+
+  window.abilitiesBuilderAddStack = function(kind, id) {
+    if (!abilitiesBuilderSession) return;
+    const h = _stackHelpers(kind);
+    // Make sure the id is in selectedIds.
+    if (h.sel.indexOf(id) < 0) h.sel.push(id);
+    // Bump count.
+    const cur = parseInt(h.counts[id], 10);
+    const newCount = (Number.isFinite(cur) && cur >= 1) ? cur + 1 : 2;
+    // count of 1 isn't persisted — we leave the entry off counts and rely
+    // on selectedIds membership. count of 2+ is persisted.
+    if (newCount === 1) delete h.counts[id];
+    else                h.counts[id] = newCount;
+    // For first-pick (when no entry existed at all), we need count=1
+    // semantics — id in sel, no entry in counts. The "newCount=2" branch
+    // above handles "first explicit Add when nothing was selected" by
+    // treating the implicit count-of-1 (selectedFeatureIds membership)
+    // as already being there. Actually, no — when `cur` is NaN that
+    // means there was no count entry. If id was ALSO not in sel before
+    // this call, we treat the click as "first take, count=1." If id WAS
+    // in sel already (count=1 implicit), we treat as "second take,
+    // count=2." Distinguish:
+    if (!Number.isFinite(cur)) {
+      // Was id pre-existing in sel? If so, this is the second pick.
+      // We pushed id above, but we need to detect pre-existence. Easier
+      // to recompute from the sel array — count occurrences of id, but
+      // since sel is a Set-like array of unique ids, that doesn't help.
+      // Instead: check if there's already a stackField array for it.
+      const existing = Array.isArray(h.fields[id]) ? h.fields[id].length : 0;
+      if (existing === 0) {
+        // First pick — count=1, no counts entry, no fields entry yet.
+        delete h.counts[id];
+      } else {
+        // Already had stacks via fields array (e.g. count=1 with one
+        // customField filled in). Bump to count = existing+1.
+        h.counts[id] = existing + 1;
+      }
+    }
+    _stackRefresh(kind);
+  };
+
+  window.abilitiesBuilderRemoveStack = function(kind, id, stackIdx) {
+    if (!abilitiesBuilderSession) return;
+    const h = _stackHelpers(kind);
+    if (h.sel.indexOf(id) < 0) return;
+    const curCount = (Number.isFinite(parseInt(h.counts[id], 10)) && parseInt(h.counts[id], 10) >= 1)
+      ? parseInt(h.counts[id], 10)
+      : 1;
+    if (curCount <= 1) {
+      // Removing the last (and only) stack — drop the entire selection.
+      const i = h.sel.indexOf(id);
+      if (i >= 0) h.sel.splice(i, 1);
+      delete h.counts[id];
+      delete h.fields[id];
+    } else {
+      // Remove the specific stack. Splice from the fields array if
+      // present, decrement the count.
+      if (Array.isArray(h.fields[id]) && stackIdx >= 0 && stackIdx < h.fields[id].length) {
+        h.fields[id].splice(stackIdx, 1);
+      }
+      const newCount = curCount - 1;
+      if (newCount === 1) delete h.counts[id];
+      else                h.counts[id] = newCount;
+      // Trim trailing empty entries.
+      if (Array.isArray(h.fields[id])) {
+        while (h.fields[id].length > 0 && !h.fields[id][h.fields[id].length - 1]) {
+          h.fields[id].pop();
+        }
+        if (h.fields[id].length === 0) delete h.fields[id];
+      }
+    }
+    _stackRefresh(kind);
+  };
+
+  window.abilitiesBuilderSetStackField = function(kind, id, stackIdx, value) {
+    if (!abilitiesBuilderSession) return;
+    const h = _stackHelpers(kind);
+    if (!Array.isArray(h.fields[id])) h.fields[id] = [];
+    // Pad with empty strings if needed so stackIdx is reachable.
+    while (h.fields[id].length <= stackIdx) h.fields[id].push('');
+    h.fields[id][stackIdx] = String(value == null ? '' : value);
+    // Don't refresh the FF list (would lose focus). Just sync the
+    // tokens / system text in case this field feeds a feature-token.
+    renderAbilitiesBuilderSystemText();
+  };
+
   // Set the player's value for a feature/flaw's custom field. Stored
   // by feature/flaw id on instance.customFieldValues. No re-render —
   // the input is bound in place; we just mutate the working copy and
@@ -8223,25 +8343,61 @@
         // number input shouldn't toggle anything else. Non-stackable
         // features keep the original checkbox behavior.
         if (f.stackable) {
+          // Stackable mode: render ONE ROW PER STACK plus a "+ Add another"
+          // button below. Each stack-row has its own custom-field input
+          // (when customField is enabled), independent from the others —
+          // so the player can take "Conditional" three times and write
+          // "in daylight", "vs humans", "with sword" as three separate
+          // condition descriptions.
           const counts = (inst.featureCounts && typeof inst.featureCounts === 'object') ? inst.featureCounts : {};
+          const stackFields = (inst.featureFieldsByStack && typeof inst.featureFieldsByStack === 'object' && Array.isArray(inst.featureFieldsByStack[f.id]))
+            ? inst.featureFieldsByStack[f.id]
+            : [];
           const count = isOn ? (Number.isFinite(parseInt(counts[f.id], 10)) ? parseInt(counts[f.id], 10) : 1) : 0;
-          const lineCost = cost * (count || 0);
-          html += `
-            <div style="display:grid;grid-template-columns:64px 1fr 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;">
-              <input type="number" min="0" step="1" value="${count}"
-                     title="How many times to take this feature"
-                     onclick="event.stopPropagation();"
-                     oninput="abilitiesBuilderSetFeatureCount('${escapeHtml(f.id)}',this.value)"
-                     style="width:100%;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:13px;padding:6px 8px;border-radius:3px;outline:none;text-align:center;">
-              <div>
-                <div style="font-weight:500;color:#ddd;font-size:13px;">
-                  ${escapeHtml(f.name || 'Feature')}
-                  <span style="font-size:10px;color:#888;font-weight:400;font-style:italic;margin-left:6px;">stackable</span>
-                </div>
-                ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
+          for (let s = 0; s < count; s++) {
+            const stackVal = (typeof stackFields[s] === 'string') ? stackFields[s]
+                           : (s === 0 && typeof cfValues[f.id] === 'string') ? cfValues[f.id]
+                           : '';
+            const stackCfHtml = (f.customField && f.customField.enabled) ? `
+              <div style="grid-column:2 / span 2;margin-top:4px;display:flex;align-items:center;gap:8px;font-size:12px;color:#bbb;">
+                <span style="color:#d8a060;font-weight:600;flex-shrink:0;">${escapeHtml(f.customField.label || 'Custom field')}:</span>
+                <input type="text"
+                       placeholder="e.g. Requires heavy moisture"
+                       value="${escapeHtml(stackVal)}"
+                       onclick="event.stopPropagation();"
+                       oninput="event.stopPropagation();abilitiesBuilderSetStackField('feature','${escapeHtml(f.id)}',${s},this.value)"
+                       style="flex:1;background:#111;border:1px solid #2a2a2a;color:#e0e0e0;font-family:inherit;font-size:12px;padding:5px 8px;border-radius:3px;outline:none;">
               </div>
-              <span style="color:${isOn ? '#d8a060' : '#666'};font-family:monospace;font-size:12px;text-align:right;">+${lineCost} AP</span>
-              ${cfInputHtml}
+            ` : '';
+            html += `
+              <div style="display:grid;grid-template-columns:28px 1fr 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;">
+                <button title="Remove this pick" type="button"
+                        onclick="abilitiesBuilderRemoveStack('feature','${escapeHtml(f.id)}',${s})"
+                        style="background:transparent;border:1px solid #2a2a2a;color:#c66;font-size:13px;cursor:pointer;border-radius:3px;height:24px;line-height:1;">×</button>
+                <div>
+                  <div style="font-weight:500;color:#ddd;font-size:13px;">
+                    ${escapeHtml(f.name || 'Feature')}${count > 1 ? ` <span style="font-size:10px;color:#888;font-weight:400;">#${s + 1}</span>` : ''}
+                    <span style="font-size:10px;color:#888;font-weight:400;font-style:italic;margin-left:6px;">stackable</span>
+                  </div>
+                  ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
+                </div>
+                <span style="color:#d8a060;font-family:monospace;font-size:12px;text-align:right;">+${cost} AP</span>
+                ${stackCfHtml}
+              </div>
+            `;
+          }
+          // "+ Add" button — appears whether or not any stacks exist.
+          // Disabled visually with a + symbol when none are taken yet,
+          // labeled "Take" so it reads as the entry point. Once at least
+          // one stack exists, it becomes "+ Add another".
+          const addLabel = count === 0 ? `+ Take "${escapeHtml(f.name || 'Feature')}"` : `+ Add another`;
+          html += `
+            <div style="padding:4px 0 8px 38px;">
+              <button type="button"
+                      onclick="abilitiesBuilderAddStack('feature','${escapeHtml(f.id)}')"
+                      style="background:transparent;border:1px dashed #2a2a2a;color:#888;font-size:11px;padding:4px 12px;border-radius:3px;cursor:pointer;font-family:inherit;">
+                ${addLabel}
+              </button>
             </div>
           `;
           return;
@@ -8316,25 +8472,53 @@
         ` : '';
 
         if (f.stackable) {
+          // Stackable mode: see Features section for full rationale.
+          // Each stack-row has its own independent custom-field value.
           const counts = (inst.flawCounts && typeof inst.flawCounts === 'object') ? inst.flawCounts : {};
+          const stackFields = (inst.flawFieldsByStack && typeof inst.flawFieldsByStack === 'object' && Array.isArray(inst.flawFieldsByStack[f.id]))
+            ? inst.flawFieldsByStack[f.id]
+            : [];
           const count = isOn ? (Number.isFinite(parseInt(counts[f.id], 10)) ? parseInt(counts[f.id], 10) : 1) : 0;
-          const lineRefund = refund * (count || 0);
-          html += `
-            <div style="display:grid;grid-template-columns:64px 1fr 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;">
-              <input type="number" min="0" step="1" value="${count}"
-                     title="How many times to take this flaw"
-                     onclick="event.stopPropagation();"
-                     oninput="abilitiesBuilderSetFlawCount('${escapeHtml(f.id)}',this.value)"
-                     style="width:100%;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:13px;padding:6px 8px;border-radius:3px;outline:none;text-align:center;">
-              <div>
-                <div style="font-weight:500;color:#ddd;font-size:13px;">
-                  ${escapeHtml(f.name || 'Flaw')}
-                  <span style="font-size:10px;color:#888;font-weight:400;font-style:italic;margin-left:6px;">stackable</span>
-                </div>
-                ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
+          for (let s = 0; s < count; s++) {
+            const stackVal = (typeof stackFields[s] === 'string') ? stackFields[s]
+                           : (s === 0 && typeof cfValues[f.id] === 'string') ? cfValues[f.id]
+                           : '';
+            const stackCfHtml = (f.customField && f.customField.enabled) ? `
+              <div style="grid-column:2 / span 2;margin-top:4px;display:flex;align-items:center;gap:8px;font-size:12px;color:#bbb;">
+                <span style="color:#88c080;font-weight:600;flex-shrink:0;">${escapeHtml(f.customField.label || 'Custom field')}:</span>
+                <input type="text"
+                       placeholder="e.g. Requires heavy moisture"
+                       value="${escapeHtml(stackVal)}"
+                       onclick="event.stopPropagation();"
+                       oninput="event.stopPropagation();abilitiesBuilderSetStackField('flaw','${escapeHtml(f.id)}',${s},this.value)"
+                       style="flex:1;background:#111;border:1px solid #2a2a2a;color:#e0e0e0;font-family:inherit;font-size:12px;padding:5px 8px;border-radius:3px;outline:none;">
               </div>
-              <span style="color:${isOn ? '#88c080' : '#666'};font-family:monospace;font-size:12px;text-align:right;">−${lineRefund} AP</span>
-              ${cfInputHtml}
+            ` : '';
+            html += `
+              <div style="display:grid;grid-template-columns:28px 1fr 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;">
+                <button title="Remove this pick" type="button"
+                        onclick="abilitiesBuilderRemoveStack('flaw','${escapeHtml(f.id)}',${s})"
+                        style="background:transparent;border:1px solid #2a2a2a;color:#c66;font-size:13px;cursor:pointer;border-radius:3px;height:24px;line-height:1;">×</button>
+                <div>
+                  <div style="font-weight:500;color:#ddd;font-size:13px;">
+                    ${escapeHtml(f.name || 'Flaw')}${count > 1 ? ` <span style="font-size:10px;color:#888;font-weight:400;">#${s + 1}</span>` : ''}
+                    <span style="font-size:10px;color:#888;font-weight:400;font-style:italic;margin-left:6px;">stackable</span>
+                  </div>
+                  ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
+                </div>
+                <span style="color:#88c080;font-family:monospace;font-size:12px;text-align:right;">−${refund} AP</span>
+                ${stackCfHtml}
+              </div>
+            `;
+          }
+          const addLabel = count === 0 ? `+ Take "${escapeHtml(f.name || 'Flaw')}"` : `+ Add another`;
+          html += `
+            <div style="padding:4px 0 8px 38px;">
+              <button type="button"
+                      onclick="abilitiesBuilderAddStack('flaw','${escapeHtml(f.id)}')"
+                      style="background:transparent;border:1px dashed #2a2a2a;color:#888;font-size:11px;padding:4px 12px;border-radius:3px;cursor:pointer;font-family:inherit;">
+                ${addLabel}
+              </button>
             </div>
           `;
           return;
