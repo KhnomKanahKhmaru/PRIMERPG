@@ -7540,7 +7540,17 @@
     const defaultIdx = Number.isFinite(p.defaultStepIndex) ? p.defaultStepIndex : 0;
     const curIdx = Number.isFinite(inst.paramValues && inst.paramValues[paramId]) ? inst.paramValues[paramId] : defaultIdx;
     const curStep = (curIdx >= 0 && curIdx < steps.length) ? steps[curIdx] : null;
-    const curMult = curStep && Number.isFinite(curStep.multiplier) ? curStep.multiplier : 1;
+    // Same step.cost-then-multiplier fallback as the section render
+    // and the cost engine — keeps GM-authored % values displayed.
+    let curMult = 1;
+    if (curStep) {
+      const fromCost = (curStep.cost !== undefined && curStep.cost !== null && curStep.cost !== '') ? parseFloat(curStep.cost) : NaN;
+      if (Number.isFinite(fromCost)) curMult = fromCost;
+      else {
+        const fromMult = parseFloat(curStep.multiplier);
+        if (Number.isFinite(fromMult)) curMult = fromMult;
+      }
+    }
     const multStr   = curMult === 1 ? 'baseline ×1.0' : `×${curMult.toFixed(2)}`;
     const multColor = curMult === 1 ? '#888' : (curMult > 1 ? '#d8a060' : '#88c080');
     const safeId = paramId.replace(/[^a-zA-Z0-9_]/g, '_');
@@ -7919,11 +7929,23 @@
       const defaultIdx = Number.isFinite(p.defaultStepIndex) ? p.defaultStepIndex : 0;
       const curIdx = Number.isFinite(inst.paramValues && inst.paramValues[p.id]) ? inst.paramValues[p.id] : defaultIdx;
       const curStep = (curIdx >= 0 && curIdx < steps.length) ? steps[curIdx] : null;
-      const curMult = curStep && Number.isFinite(curStep.multiplier) ? curStep.multiplier : 1;
+      // Read multiplier from step.cost (current schema) with fallback
+      // to legacy step.multiplier — mirrors what computeAbilityCost
+      // does. Without this fallback, % values authored in the GM
+      // catalogue editor (which writes to step.cost) wouldn't show
+      // their multipliers in the player's dropdown.
+      const readMult = (s) => {
+        if (!s) return 1;
+        const fromCost = (s.cost !== undefined && s.cost !== null && s.cost !== '') ? parseFloat(s.cost) : NaN;
+        if (Number.isFinite(fromCost)) return fromCost;
+        const fromMult = parseFloat(s.multiplier);
+        return Number.isFinite(fromMult) ? fromMult : 1;
+      };
+      const curMult = readMult(curStep);
       const multStr = curMult === 1 ? 'baseline ×1.0' : `×${curMult.toFixed(2)}`;
       const multColor = curMult === 1 ? '#888' : (curMult > 1 ? '#d8a060' : '#88c080');
       const optsHtml = steps.map((s, si) => {
-        const sm = Number.isFinite(s.multiplier) ? s.multiplier : 1;
+        const sm = readMult(s);
         const display = s.label || (typeof s.value === 'string' ? s.value : `${s.value}${p.displayUnit ? ' ' + p.displayUnit : ''}`);
         const tag = sm === 1 ? '×1.0' : `×${sm.toFixed(2)}`;
         return `<option value="${si}"${si === curIdx ? ' selected' : ''}>${escapeHtml(display)} (${tag})</option>`;
