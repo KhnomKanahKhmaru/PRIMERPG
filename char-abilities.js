@@ -153,7 +153,83 @@ export function listAllBuilders(ruleset) {
 //     },
 //     warnings: [...]      — orphan ids, missing tier costs, etc.
 //   }
-export function computeAbilityCost(builder, instance, tiers) {
+// ─── DEFAULTS MERGE ───
+//
+// A Builder's effective Features and Flaws are NOT just builder.features/
+// builder.flaws — they're the union of:
+//   (a) Catalogue-level defaultFeatures / defaultFlaws (which apply to
+//       every Builder in the catalogue), as modified per-Builder by
+//       defaultFeatureOverrides / defaultFlawOverrides.
+//   (b) The Builder's OWN features / flaws array.
+//
+// Defaults that this Builder has SUPPRESSED (override.suppressed === true)
+// are dropped. Defaults with partial overrides have those fields swapped
+// in over the catalogue's values; unset override fields still inherit.
+// This keeps catalogue renames flowing to every Builder that hasn't
+// explicitly overridden the renamed field.
+//
+// Both arrays are returned in [defaults..., builderOwn...] order. Caller
+// can rely on ids being unique across the merged list (defaults use
+// 'deffeat_*' / 'defflaw_*' prefixes; Builder ids use 'feat_*' / 'flaw_*').
+//
+// Tagging: each merged item gets a non-enumerable __source field on the
+// object: 'default' for defaults (whether overridden or not) and 'builder'
+// for the Builder's own. The GM editor uses this to render rows
+// differently. Cost engine ignores it.
+function applyOverride(def, override) {
+  if (!override || typeof override !== 'object') return def;
+  const out = Object.assign({}, def);
+  // String fields: only replace if override has a non-undefined value.
+  // Empty string IS allowed as a deliberate "blank this out" override.
+  if (typeof override.name        === 'string') out.name        = override.name;
+  if (typeof override.description === 'string') out.description = override.description;
+  if (typeof override.tier        === 'string') out.tier        = override.tier;
+  if (typeof override.stackable   === 'boolean') out.stackable   = override.stackable;
+  if (override.customField && typeof override.customField === 'object') {
+    out.customField = Object.assign({}, def.customField || { enabled: false, label: '' }, override.customField);
+  }
+  return out;
+}
+
+export function resolveBuilderFeatures(ruleset, builder) {
+  if (!builder) return [];
+  const cat = ruleset && ruleset.abilityCatalogue;
+  const defaults = (cat && Array.isArray(cat.defaultFeatures)) ? cat.defaultFeatures : [];
+  const ovs      = (builder.defaultFeatureOverrides && typeof builder.defaultFeatureOverrides === 'object') ? builder.defaultFeatureOverrides : {};
+  const merged = [];
+  defaults.forEach(def => {
+    const o = ovs[def.id];
+    if (o && o.suppressed) return;
+    const eff = applyOverride(def, o);
+    merged.push(Object.assign({}, eff, { __source: 'default' }));
+  });
+  (Array.isArray(builder.features) ? builder.features : []).forEach(f => {
+    if (!f || !f.id) return;
+    merged.push(Object.assign({}, f, { __source: 'builder' }));
+  });
+  return merged;
+}
+
+export function resolveBuilderFlaws(ruleset, builder) {
+  if (!builder) return [];
+  const cat = ruleset && ruleset.abilityCatalogue;
+  const defaults = (cat && Array.isArray(cat.defaultFlaws)) ? cat.defaultFlaws : [];
+  const ovs      = (builder.defaultFlawOverrides && typeof builder.defaultFlawOverrides === 'object') ? builder.defaultFlawOverrides : {};
+  const merged = [];
+  defaults.forEach(def => {
+    const o = ovs[def.id];
+    if (o && o.suppressed) return;
+    const eff = applyOverride(def, o);
+    merged.push(Object.assign({}, eff, { __source: 'default' }));
+  });
+  (Array.isArray(builder.flaws) ? builder.flaws : []).forEach(f => {
+    if (!f || !f.id) return;
+    merged.push(Object.assign({}, f, { __source: 'builder' }));
+  });
+  return merged;
+}
+
+export function computeAbilityCost(builder, instance, tiers, ruleset) {
   const result = {
     computedCost: 1,
     baseCost: 0,
@@ -313,7 +389,7 @@ export function computeAbilityCost(builder, instance, tiers) {
   // entry says otherwise — the schema is the source of truth, not
   // the instance.
   const featureCounts = (inst.featureCounts && typeof inst.featureCounts === 'object') ? inst.featureCounts : {};
-  const builderFeatures = Array.isArray(builder.features) ? builder.features : [];
+  const builderFeatures = resolveBuilderFeatures(ruleset, builder);
   const featureIndex = new Map(builderFeatures.filter(f => f && f.id).map(f => [f.id, f]));
   featureIds.forEach(fid => {
     const feature = featureIndex.get(fid);
@@ -347,7 +423,7 @@ export function computeAbilityCost(builder, instance, tiers) {
   // Stored as positive numbers in flawRefunds; we negate when applying.
   // Stackable flaws follow the same count-based rule as features.
   const flawCounts = (inst.flawCounts && typeof inst.flawCounts === 'object') ? inst.flawCounts : {};
-  const builderFlaws = Array.isArray(builder.flaws) ? builder.flaws : [];
+  const builderFlaws = resolveBuilderFlaws(ruleset, builder);
   const flawIndex = new Map(builderFlaws.filter(f => f && f.id).map(f => [f.id, f]));
   flawIds.forEach(fid => {
     const flaw = flawIndex.get(fid);
