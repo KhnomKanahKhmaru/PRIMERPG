@@ -539,7 +539,7 @@
     /* Step row inside the param body. Compact horizontal layout. */
     .bldr-step-row, .bldr-step-row-head {
       display: grid;
-      grid-template-columns: 24px 1fr 1fr 90px 32px;
+      grid-template-columns: 18px 24px 1fr 1fr 90px 32px;
       gap: 8px; align-items: center; margin-bottom: 5px;
     }
     .bldr-step-row-head {
@@ -564,6 +564,34 @@
       border-radius: 3px;
     }
     .bldr-step-row .row-x:hover { border-color: #4a2a2a; color: #f88; }
+
+    /* ── Drag-handle and drop indicators (shared across param cards,
+       step rows, Feature/Flaw rows, Builder tiles). The handle is a
+       small ⋮⋮ glyph that's the ONLY drag-initiator — clicking the
+       row body does NOT start a drag, so accidental drags don't
+       happen when the GM clicks an input. */
+    .drag-handle {
+      cursor: grab;
+      color: #555;
+      font-size: 14px;
+      line-height: 1;
+      user-select: none;
+      padding: 2px 0;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .drag-handle:hover { color: #888; }
+    .drag-handle:active { cursor: grabbing; }
+    /* When a draggable row is being dragged, we dim it so the user
+       sees where they grabbed from. */
+    .drag-source { opacity: 0.35; }
+    /* When another draggable is being hovered above/below this row,
+       show a thin colored bar at the relevant edge to preview where
+       it'll land on drop. Implementing as :before/:after pseudo-
+       elements positioned outside the row's box so the row's height
+       doesn't jump while dragging. */
+    .drop-above { box-shadow: inset 0 2px 0 0 #d8a060; }
+    .drop-below { box-shadow: inset 0 -2px 0 0 #d8a060; }
 
     /* ───── Features / Flaws panels ─────
        Tier-banded structure. Each tier band has a small header (tier
@@ -2130,8 +2158,14 @@
     const defIdx    = Number.isFinite(p.defaultStep) ? p.defaultStep : 0;
     const summary   = paramHeadSummary(p, kind);
 
+    const paramGroupKey = `param:${kind}`;
     const head = `
       <div class="bldr-param-head" onclick="bldrToggleParam('${kind}', ${idx})">
+        <span class="drag-handle" draggable="true"
+              title="Drag to reorder · ↑/↓ to insert"
+              onclick="event.stopPropagation();"
+              ondragstart="bldrDragStart(event, '${paramGroupKey}', ${idx})"
+              ondragend="bldrDragEnd()">⋮⋮</span>
         <span class="bldr-param-caret">▶</span>
         <span class="bldr-param-name${p.name ? '' : ' bldr-param-name-empty'}" id="bldr-param-name-${kind}-${idx}">${escapeHtml(p.name || '(Unnamed parameter)')}</span>
         <span class="bldr-param-summary" id="bldr-param-summary-${kind}-${idx}">${kind === 'primary' ? (isLinear ? 'linear' : 'flat') : 'mult'} · ${escapeHtml(summary)}</span>
@@ -2151,9 +2185,11 @@
     // Manual: full step-list editor (current behavior). Used by all
     // Secondary params and by Primary params with mode === 'manual'.
     function manualBody() {
+      const stepGroupKey = `step:${p.id || key}`;
       return `
         <label style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#888;display:block;margin-top:10px;margin-bottom:6px;">Steps</label>
         <div class="bldr-step-row-head">
+          <div></div>
           <div style="text-align:center;">Def</div>
           <div>Label</div>
           <div>Value</div>
@@ -2161,7 +2197,14 @@
           <div></div>
         </div>
         ${steps.map((s, si) => `
-          <div class="bldr-step-row">
+          <div class="bldr-step-row" data-drag-row
+               ondragover="bldrDragOver(event, '${stepGroupKey}', ${si})"
+               ondragleave="bldrDragLeave(event)"
+               ondrop="bldrDrop(event, 'reorderStep', '${stepGroupKey}', ${si})">
+            <div class="drag-handle" draggable="true"
+                 title="Drag to reorder · click ↑/↓ to insert"
+                 ondragstart="bldrDragStart(event, '${stepGroupKey}', ${si})"
+                 ondragend="bldrDragEnd()">⋮⋮</div>
             <div class="step-default-radio">
               <input type="radio" name="bldr-default-${escapeHtmlAttr(p.id || key)}"${si === defIdx ? ' checked' : ''}
                      onchange="bldrParamSetField('${kind}', ${idx}, 'defaultStep', ${si})">
@@ -2175,8 +2218,14 @@
             <input type="number" step="0.5" placeholder="${kind === 'primary' ? '0' : '1.0'}"
                    value="${(s.cost !== undefined && s.cost !== null && s.cost !== '') ? s.cost : (kind === 'primary' ? 0 : 1)}"
                    oninput="bldrStepSetField('${kind}', ${idx}, ${si}, 'cost', this.value)">
-            <button class="row-x" type="button" title="Delete step"
-                    onclick="bldrStepDelete('${kind}', ${idx}, ${si})">×</button>
+            <div style="display:flex;gap:2px;">
+              <button class="row-x" type="button" title="Insert step above" style="color:#888;"
+                      onclick="bldrStepInsertAt('${kind}', ${idx}, ${si})">↑</button>
+              <button class="row-x" type="button" title="Insert step below" style="color:#888;"
+                      onclick="bldrStepInsertAt('${kind}', ${idx}, ${si + 1})">↓</button>
+              <button class="row-x" type="button" title="Delete step"
+                      onclick="bldrStepDelete('${kind}', ${idx}, ${si})">×</button>
+            </div>
           </div>
         `).join('')}
         <button class="btn small" type="button" style="margin-top:6px;width:100%;"
@@ -2285,7 +2334,10 @@
       </div>
     ` : '';
 
-    return `<div class="bldr-param-card${expanded ? ' expanded' : ''}">${head}${body}</div>`;
+    return `<div class="bldr-param-card${expanded ? ' expanded' : ''}" data-drag-row
+      ondragover="bldrDragOver(event, '${paramGroupKey}', ${idx})"
+      ondragleave="bldrDragLeave(event)"
+      ondrop="bldrDrop(event, 'reorderParam', '${paramGroupKey}', ${idx})">${head}${body}</div>`;
   }
 
   // ── PARAMETER WINDOW HANDLERS ──
@@ -2517,6 +2569,125 @@
     renderBuilderPreview();
   };
 
+  // Insert a new step at a specific index within a parameter's step
+  // list. The defaultStep index is shifted up by 1 if the insertion
+  // happens at or before the current default, so the same step stays
+  // marked as default.
+  window.bldrStepInsertAt = function(kind, idx, insertIdx) {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const arr = kind === 'primary' ? b.primaryParams : b.secondaryParams;
+    if (!Array.isArray(arr) || !arr[idx]) return;
+    const p = arr[idx];
+    if (!Array.isArray(p.steps)) p.steps = [];
+    const at = Math.max(0, Math.min(insertIdx, p.steps.length));
+    p.steps.splice(at, 0, { label: '', value: '', cost: kind === 'primary' ? 0 : 1 });
+    if (typeof p.defaultStep === 'number' && at <= p.defaultStep) {
+      p.defaultStep += 1;
+    }
+    renderBldrParamsList();
+    renderBuilderPreview();
+  };
+
+  // Reorder handler for Feature/Flaw rows. Group key is "ff:feature"
+  // or "ff:flaw". Moves within the Builder's own features/flaws array
+  // (catalogue defaults are handled separately and don't drag).
+  registerDragReorder('reorderFF', function(groupKey, fromIdx, toIdx) {
+    const kind = groupKey.replace(/^ff:/, '');
+    if (kind !== 'feature' && kind !== 'flaw') return;
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const arrKey = (kind === 'feature') ? 'features' : 'flaws';
+    const arr = b[arrKey];
+    if (!Array.isArray(arr) || fromIdx < 0 || fromIdx >= arr.length) return;
+    const moved = arr.splice(fromIdx, 1)[0];
+    arr.splice(Math.max(0, Math.min(toIdx, arr.length)), 0, moved);
+    if (kind === 'feature') renderBldrFeaturesList();
+    else                    renderBldrFlawsList();
+    renderBuilderPreview();
+  });
+
+  // Reorder handler for parameter cards, keyed by group "param:primary"
+  // or "param:secondary". Mutates the corresponding array on the
+  // currently-opened Builder. Also shifts expandedParamKeys so the
+  // visual expanded state of every param row tracks its new index.
+  registerDragReorder('reorderParam', function(groupKey, fromIdx, toIdx) {
+    const kind = groupKey.replace(/^param:/, '');
+    if (kind !== 'primary' && kind !== 'secondary') return;
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const arrKey = (kind === 'primary') ? 'primaryParams' : 'secondaryParams';
+    const arr = b[arrKey];
+    if (!Array.isArray(arr) || fromIdx < 0 || fromIdx >= arr.length) return;
+    const moved = arr.splice(fromIdx, 1)[0];
+    const dest = Math.max(0, Math.min(toIdx, arr.length));
+    arr.splice(dest, 0, moved);
+    // Re-key expandedParamKeys for the reordered kind. Build a mapping
+    // oldIdx → newIdx so any expanded card stays expanded after the
+    // move (otherwise the GM's open card snaps closed mid-drag).
+    const oldToNew = new Map();
+    arr.forEach((_, newIdx) => {
+      // Compute what was the old index of the param now at newIdx.
+      // If we moved fromIdx → dest:
+      //   • indices < min(fromIdx, dest) unchanged
+      //   • indices > max(fromIdx, dest) unchanged
+      //   • the moved one: oldIdx fromIdx, newIdx dest
+      //   • shifted ones in between
+      // Simpler: tag with id, then re-derive after.
+    });
+    // Easier: just walk the arr by id and find each old index.
+    // Build a reverse lookup from previous order is harder since we
+    // mutated. Cleanest approach — clear expanded state for this
+    // kind and re-add only `dest`. Param expansion is cosmetic; this
+    // is acceptable.
+    const newSet = new Set();
+    expandedParamKeys.forEach(k => {
+      const [keyKind] = k.split(':');
+      if (keyKind !== kind) newSet.add(k);
+    });
+    newSet.add(paramKey(kind, dest));
+    expandedParamKeys.clear();
+    newSet.forEach(k => expandedParamKeys.add(k));
+    renderBldrParamsList();
+    renderBuilderPreview();
+  });
+
+  // The handler is registered once at module load; the inline drag
+  // attributes on each step row reference it by name. We parse the
+  // paramId out of the groupKey to find the right param to mutate.
+  registerDragReorder('reorderStep', function(groupKey, fromIdx, toIdx) {
+    const paramId = groupKey.replace(/^step:/, '');
+    const b = getOpenedBuilder();
+    if (!b) return;
+    // Search both primary and secondary for the param by id.
+    let p = null;
+    let kind = null;
+    ['primary', 'secondary'].forEach(k => {
+      const arr = (k === 'primary') ? b.primaryParams : b.secondaryParams;
+      if (Array.isArray(arr)) {
+        const found = arr.find(pp => pp && pp.id === paramId);
+        if (found) { p = found; kind = k; }
+      }
+    });
+    if (!p || !Array.isArray(p.steps)) return;
+    if (fromIdx < 0 || fromIdx >= p.steps.length) return;
+    const moved = p.steps.splice(fromIdx, 1)[0];
+    const dest = Math.max(0, Math.min(toIdx, p.steps.length));
+    p.steps.splice(dest, 0, moved);
+    // Adjust defaultStep so the SAME step stays marked default.
+    if (typeof p.defaultStep === 'number') {
+      if (p.defaultStep === fromIdx) {
+        p.defaultStep = dest;
+      } else if (fromIdx < p.defaultStep && dest >= p.defaultStep) {
+        p.defaultStep -= 1;
+      } else if (fromIdx > p.defaultStep && dest <= p.defaultStep) {
+        p.defaultStep += 1;
+      }
+    }
+    renderBldrParamsList();
+    renderBuilderPreview();
+  });
+
   window.bldrStepDelete = function(kind, idx, stepIdx) {
     const b = getOpenedBuilder();
     if (!b) return;
@@ -2740,6 +2911,7 @@
 
       // Builder-specific item rows (existing UI — name/desc inputs +
       // tier dropdown + delete + custom field + stackable).
+      const ffGroupKey = `ff:${kind}`;
       const ownRowHtml = ownHere.map(({it, idx}) => {
         const cf = (it.customField && typeof it.customField === 'object') ? it.customField : { enabled: false, label: '' };
         const labelInputHtml = cf.enabled
@@ -2749,8 +2921,15 @@
                     style="flex:1;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:12px;padding:5px 8px;border-radius:3px;outline:none;">`
           : '';
         return `
-          <div class="bldr-ff-row" style="flex-direction:column;gap:5px;align-items:stretch;">
+          <div class="bldr-ff-row" style="flex-direction:column;gap:5px;align-items:stretch;" data-drag-row
+               ondragover="bldrDragOver(event, '${ffGroupKey}', ${idx})"
+               ondragleave="bldrDragLeave(event)"
+               ondrop="bldrDrop(event, 'reorderFF', '${ffGroupKey}', ${idx})">
             <div style="display:flex;gap:6px;align-items:center;">
+              <span class="drag-handle" draggable="true"
+                    title="Drag to reorder"
+                    ondragstart="bldrDragStart(event, '${ffGroupKey}', ${idx})"
+                    ondragend="bldrDragEnd()">⋮⋮</span>
               <input type="text" placeholder="${kind === 'feature' ? 'Feature name (e.g. Conditional)' : 'Flaw name (e.g. Conditional)'}"
                      value="${escapeHtmlAttr(it.name || '')}"
                      oninput="bldrSetFFField('${kind}', ${idx}, 'name', this.value)"
@@ -2842,6 +3021,131 @@
     el.style.height = (el.scrollHeight) + 'px';
   }
   window.autoGrow = autoGrow;
+
+  // ═════════ GENERIC DRAG-AND-DROP REORDERING ═════════
+  //
+  // Used by parameter cards, step rows within a parameter, Builder
+  // tiles in a category, and feature/flaw rows in a tier band.
+  //
+  // Architecture:
+  //   • The handle (⋮⋮ glyph) initiates drag via dragstart. We stash
+  //     the source's "reorder key" on the dataTransfer.
+  //   • Every row in the same group declares the same group key.
+  //     dragover allows the drop and computes whether the cursor is
+  //     in the upper or lower half of the row, painting a top or
+  //     bottom indicator (CSS .drop-above / .drop-below).
+  //   • drop fires the registered handler on the SOURCE side, passing
+  //     the destination's index and which-half flag. The handler
+  //     mutates the underlying array and re-renders.
+  //
+  // Group keys look like "param:primary", "step:bld_xxx:primary:0",
+  // "ff:feature:bld_xxx", "builder:cat_xxx" etc. Any unique string
+  // works — same group key = drop target accepts the source.
+  //
+  // The reorder action is registered by name on dragReorderHandlers;
+  // bldrInit + the param/step/etc. renderers register their handlers
+  // there once. Inline ondragstart/ondragover/ondrop attribs reference
+  // those names plus the group + index for that row.
+
+  const dragReorderHandlers = {};
+  // Track current drop indicator so we can clean up on dragleave/drop.
+  let currentDropTarget = null;
+  function clearDropIndicator() {
+    if (currentDropTarget) {
+      currentDropTarget.classList.remove('drop-above', 'drop-below');
+      currentDropTarget = null;
+    }
+  }
+
+  // Register a reorder action. Handler signature:
+  //   (groupKey, fromIdx, toIdx) → void
+  // toIdx is the desired NEW index AFTER the move (so [0,1,2,3] with
+  // a move from 0 → 2 means the moved item ends up at index 2 and
+  // the elements at 1,2 shift to 0,1).
+  window.registerDragReorder = function(name, handler) {
+    dragReorderHandlers[name] = handler;
+  };
+
+  window.bldrDragStart = function(ev, groupKey, idx) {
+    if (!ev || !ev.dataTransfer) return;
+    ev.dataTransfer.effectAllowed = 'move';
+    ev.dataTransfer.setData('text/plain', `${groupKey}|${idx}`);
+    // Mark the source row visually. Walk up to the row container —
+    // we tag the row, not the handle.
+    const row = ev.currentTarget && ev.currentTarget.closest('[data-drag-row]');
+    if (row) row.classList.add('drag-source');
+    // Stash the source for cleanup on dragend (some browsers don't
+    // fire drop on every dragstart, e.g. drop outside any target).
+    window.__dragSourceRow = row;
+  };
+
+  window.bldrDragEnd = function() {
+    const row = window.__dragSourceRow;
+    if (row) row.classList.remove('drag-source');
+    window.__dragSourceRow = null;
+    clearDropIndicator();
+  };
+
+  window.bldrDragOver = function(ev, groupKey, idx) {
+    if (!ev || !ev.dataTransfer) return;
+    // Only accept drops from the same group. The dataTransfer payload
+    // isn't readable in dragover (browser security), so we always
+    // allow during dragover and validate at drop time.
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = 'move';
+    const row = ev.currentTarget && ev.currentTarget.closest('[data-drag-row]');
+    if (!row) return;
+    // Decide whether we're in the upper or lower half of the row.
+    const rect = row.getBoundingClientRect();
+    const above = (ev.clientY - rect.top) < (rect.height / 2);
+    if (currentDropTarget && currentDropTarget !== row) {
+      currentDropTarget.classList.remove('drop-above', 'drop-below');
+    }
+    row.classList.toggle('drop-above', above);
+    row.classList.toggle('drop-below', !above);
+    currentDropTarget = row;
+  };
+
+  window.bldrDragLeave = function(ev) {
+    // We only clear if we're leaving the row entirely (not a child).
+    const row = ev && ev.currentTarget && ev.currentTarget.closest('[data-drag-row]');
+    if (!row) return;
+    if (ev.relatedTarget && row.contains(ev.relatedTarget)) return;
+    row.classList.remove('drop-above', 'drop-below');
+    if (currentDropTarget === row) currentDropTarget = null;
+  };
+
+  window.bldrDrop = function(ev, handlerName, groupKey, destIdx) {
+    if (!ev || !ev.dataTransfer) return;
+    ev.preventDefault();
+    const payload = ev.dataTransfer.getData('text/plain') || '';
+    const sepIdx = payload.lastIndexOf('|');
+    if (sepIdx < 0) { clearDropIndicator(); return; }
+    const sourceGroup = payload.slice(0, sepIdx);
+    const sourceIdxStr = payload.slice(sepIdx + 1);
+    if (sourceGroup !== groupKey) { clearDropIndicator(); return; }
+    const fromIdx = parseInt(sourceIdxStr, 10);
+    if (!Number.isFinite(fromIdx)) { clearDropIndicator(); return; }
+
+    // Compute toIdx based on which half of destIdx we're hovering.
+    const row = ev.currentTarget && ev.currentTarget.closest('[data-drag-row]');
+    const rect = row ? row.getBoundingClientRect() : null;
+    const above = rect ? (ev.clientY - rect.top) < (rect.height / 2) : true;
+    let toIdx = above ? destIdx : destIdx + 1;
+    // No-op if we're dropping the source onto itself or its own edge.
+    if (fromIdx === toIdx || fromIdx + 1 === toIdx) {
+      clearDropIndicator();
+      window.bldrDragEnd();
+      return;
+    }
+    // After the splice-out, dest indices > fromIdx shift down by 1.
+    if (fromIdx < toIdx) toIdx -= 1;
+
+    clearDropIndicator();
+    const handler = dragReorderHandlers[handlerName];
+    if (typeof handler === 'function') handler(groupKey, fromIdx, toIdx);
+    window.bldrDragEnd();
+  };
 
   // ═════════ LIVE PREVIEW CARD ═════════
   //
