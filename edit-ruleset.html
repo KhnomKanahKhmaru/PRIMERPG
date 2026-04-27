@@ -1760,6 +1760,13 @@
     document.getElementById('loading').style.display = 'none';
     document.getElementById('content').style.display = 'block';
   }
+  // Expose initUI as a generic "repaint everything from state" hook
+  // so the Import / Undo flows have a single, complete refresh entry
+  // point. initUI is idempotent (it overwrites form values and re-
+  // assigns oninput handlers rather than addEventListener'ing), so
+  // calling it after a state mutation safely rebuilds every visible
+  // section to match the new state.
+  window.refreshAllFromState = initUI;
 
   // ── TAB SWITCHING ──
   window.switchTopTab = function(which) {
@@ -3789,28 +3796,11 @@
       });
     }
     closeImportModal();
-    // Re-render the page from the new state. Easiest: reload form fields
-    // from state. Since this page has many form fields, easiest is a
-    // full page-data refresh — call the page's existing populate
-    // function if it exists. As a fallback, reload the page (but that
-    // discards our undo snapshot, so we don't do that).
+    // Repaint every visible section from the new state. refreshAllFromState
+    // is bound to initUI() which is idempotent and covers all form fields,
+    // tier tables, lists, and tabs.
     if (typeof window.refreshAllFromState === 'function') {
       window.refreshAllFromState();
-    } else {
-      // No central refresh function — fall back to rebuilding the
-      // major sections individually via the function names we know
-      // exist on this page. Some may be no-ops if the page hasn't
-      // defined them yet.
-      ['renderStats','renderSkills','renderWeapons','renderDerivedStats','renderPowerLevels'].forEach(fn => {
-        if (typeof window[fn] === 'function') {
-          try { window[fn](); } catch (err) { console.warn(fn + ' failed:', err); }
-        }
-      });
-      // Top-level fields
-      const nameEl = document.getElementById('rs-name');
-      if (nameEl && typeof state.name === 'string') nameEl.value = state.name;
-      const descEl = document.getElementById('rs-description');
-      if (descEl && typeof state.description === 'string') descEl.value = state.description;
     }
     showImportToast(result.summary, result.warnings);
   };
@@ -3867,16 +3857,6 @@
     __preImportSnapshot = null;
     if (typeof window.refreshAllFromState === 'function') {
       window.refreshAllFromState();
-    } else {
-      ['renderStats','renderSkills','renderWeapons','renderDerivedStats','renderPowerLevels'].forEach(fn => {
-        if (typeof window[fn] === 'function') {
-          try { window[fn](); } catch (err) {}
-        }
-      });
-      const nameEl = document.getElementById('rs-name');
-      if (nameEl && typeof state.name === 'string') nameEl.value = state.name;
-      const descEl = document.getElementById('rs-description');
-      if (descEl && typeof state.description === 'string') descEl.value = state.description;
     }
     dismissImportToast();
   };
