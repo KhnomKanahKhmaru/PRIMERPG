@@ -7043,13 +7043,27 @@
       if (name && desc && name !== desc) return name + ': ' + desc;
       return desc || name || '(unnamed)';
     }
+    // Resolve the count of a stackable feature/flaw on this saved
+    // instance. Non-stackable always counts as 1. Missing entries also
+    // count as 1 (the legacy "selected, exactly once" representation).
+    const ablFeatureCounts = (abl.featureCounts && typeof abl.featureCounts === 'object') ? abl.featureCounts : {};
+    const ablFlawCounts    = (abl.flawCounts    && typeof abl.flawCounts    === 'object') ? abl.flawCounts    : {};
+    function ffCount(f, kind) {
+      if (!f || !f.stackable) return 1;
+      const tbl = (kind === 'feature') ? ablFeatureCounts : ablFlawCounts;
+      const n = parseInt(tbl[f.id], 10);
+      return Number.isFinite(n) && n >= 1 ? n : 1;
+    }
     function tierPrefix(f, kind) {
       const tier = (f && f.tier) ? f.tier : 'minor';
       const tierLabel = tier[0].toUpperCase() + tier.slice(1);
       const tierCostTable = (kind === 'feature') ? featureCosts : flawRefunds;
       const ap = Number.isFinite(tierCostTable[tier]) ? tierCostTable[tier] : 0;
       const sign = (kind === 'feature') ? '+' : '−';
-      return `(${tierLabel} · ${sign}${ap} AP)`;
+      const count = ffCount(f, kind);
+      const total = ap * count;
+      const stackTag = (count > 1) ? ` × ${count}` : '';
+      return `(${tierLabel}${stackTag} · ${sign}${total} AP)`;
     }
     // Per-feature/flaw custom field — when the GM enabled it AND the
     // player filled in a value, render an extra indented line below
@@ -7631,6 +7645,53 @@
     renderAbilitiesBuilderSystemText();
   };
 
+  // Set the count for a stackable feature. Count >= 1 keeps the
+  // feature selected (so selectedFeatureIds membership is implicit
+  // when count > 0). 0 or empty removes it entirely. We also remove
+  // a featureCounts entry when count is exactly 1 — that's the
+  // "default" representation, no need to persist 1s.
+  window.abilitiesBuilderSetFeatureCount = function(featureId, value) {
+    if (!abilitiesBuilderSession) return;
+    const inst = abilitiesBuilderSession.instance;
+    if (!Array.isArray(inst.selectedFeatureIds)) inst.selectedFeatureIds = [];
+    if (!inst.featureCounts || typeof inst.featureCounts !== 'object') inst.featureCounts = {};
+    const n = parseInt(value, 10);
+    if (!Number.isFinite(n) || n <= 0) {
+      // Remove from selection entirely
+      const i = inst.selectedFeatureIds.indexOf(featureId);
+      if (i >= 0) inst.selectedFeatureIds.splice(i, 1);
+      delete inst.featureCounts[featureId];
+    } else {
+      // Add to selection if not already there
+      if (inst.selectedFeatureIds.indexOf(featureId) < 0) inst.selectedFeatureIds.push(featureId);
+      if (n === 1) delete inst.featureCounts[featureId];
+      else         inst.featureCounts[featureId] = n;
+    }
+    refreshAbilitiesBuilderFeatures();
+    renderAbilitiesBuilderCostPreview();
+    renderAbilitiesBuilderSystemText();
+  };
+
+  window.abilitiesBuilderSetFlawCount = function(flawId, value) {
+    if (!abilitiesBuilderSession) return;
+    const inst = abilitiesBuilderSession.instance;
+    if (!Array.isArray(inst.selectedFlawIds)) inst.selectedFlawIds = [];
+    if (!inst.flawCounts || typeof inst.flawCounts !== 'object') inst.flawCounts = {};
+    const n = parseInt(value, 10);
+    if (!Number.isFinite(n) || n <= 0) {
+      const i = inst.selectedFlawIds.indexOf(flawId);
+      if (i >= 0) inst.selectedFlawIds.splice(i, 1);
+      delete inst.flawCounts[flawId];
+    } else {
+      if (inst.selectedFlawIds.indexOf(flawId) < 0) inst.selectedFlawIds.push(flawId);
+      if (n === 1) delete inst.flawCounts[flawId];
+      else         inst.flawCounts[flawId] = n;
+    }
+    refreshAbilitiesBuilderFlaws();
+    renderAbilitiesBuilderCostPreview();
+    renderAbilitiesBuilderSystemText();
+  };
+
   // Set the player's value for a feature/flaw's custom field. Stored
   // by feature/flaw id on instance.customFieldValues. No re-render —
   // the input is bound in place; we just mutate the working copy and
@@ -8153,6 +8214,37 @@
                    style="flex:1;background:#111;border:1px solid #2a2a2a;color:#e0e0e0;font-family:inherit;font-size:12px;padding:5px 8px;border-radius:3px;outline:none;">
           </div>
         ` : '';
+
+        // Stackable features show a small number stepper in place of
+        // the binary checkbox. The whole row is no longer a clickable
+        // <label> wrapping a checkbox, since clicking inside the
+        // number input shouldn't toggle anything else. Non-stackable
+        // features keep the original checkbox behavior.
+        if (f.stackable) {
+          const counts = (inst.featureCounts && typeof inst.featureCounts === 'object') ? inst.featureCounts : {};
+          const count = isOn ? (Number.isFinite(parseInt(counts[f.id], 10)) ? parseInt(counts[f.id], 10) : 1) : 0;
+          const lineCost = cost * (count || 0);
+          html += `
+            <div style="display:grid;grid-template-columns:64px 1fr 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;">
+              <input type="number" min="0" step="1" value="${count}"
+                     title="How many times to take this feature"
+                     onclick="event.stopPropagation();"
+                     oninput="abilitiesBuilderSetFeatureCount('${escapeHtml(f.id)}',this.value)"
+                     style="width:100%;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:13px;padding:6px 8px;border-radius:3px;outline:none;text-align:center;">
+              <div>
+                <div style="font-weight:500;color:#ddd;font-size:13px;">
+                  ${escapeHtml(f.name || 'Feature')}
+                  <span style="font-size:10px;color:#888;font-weight:400;font-style:italic;margin-left:6px;">stackable</span>
+                </div>
+                ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
+              </div>
+              <span style="color:${isOn ? '#d8a060' : '#666'};font-family:monospace;font-size:12px;text-align:right;">+${lineCost} AP</span>
+              ${cfInputHtml}
+            </div>
+          `;
+          return;
+        }
+
         html += `
           <label style="display:grid;grid-template-columns:24px 1fr 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;cursor:pointer;">
             <input type="checkbox" ${isOn ? 'checked' : ''} onchange="abilitiesBuilderToggleFeature('${escapeHtml(f.id)}')">
@@ -8220,6 +8312,32 @@
                    style="flex:1;background:#111;border:1px solid #2a2a2a;color:#e0e0e0;font-family:inherit;font-size:12px;padding:5px 8px;border-radius:3px;outline:none;">
           </div>
         ` : '';
+
+        if (f.stackable) {
+          const counts = (inst.flawCounts && typeof inst.flawCounts === 'object') ? inst.flawCounts : {};
+          const count = isOn ? (Number.isFinite(parseInt(counts[f.id], 10)) ? parseInt(counts[f.id], 10) : 1) : 0;
+          const lineRefund = refund * (count || 0);
+          html += `
+            <div style="display:grid;grid-template-columns:64px 1fr 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;">
+              <input type="number" min="0" step="1" value="${count}"
+                     title="How many times to take this flaw"
+                     onclick="event.stopPropagation();"
+                     oninput="abilitiesBuilderSetFlawCount('${escapeHtml(f.id)}',this.value)"
+                     style="width:100%;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:13px;padding:6px 8px;border-radius:3px;outline:none;text-align:center;">
+              <div>
+                <div style="font-weight:500;color:#ddd;font-size:13px;">
+                  ${escapeHtml(f.name || 'Flaw')}
+                  <span style="font-size:10px;color:#888;font-weight:400;font-style:italic;margin-left:6px;">stackable</span>
+                </div>
+                ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
+              </div>
+              <span style="color:${isOn ? '#88c080' : '#666'};font-family:monospace;font-size:12px;text-align:right;">−${lineRefund} AP</span>
+              ${cfInputHtml}
+            </div>
+          `;
+          return;
+        }
+
         html += `
           <label style="display:grid;grid-template-columns:24px 1fr 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;cursor:pointer;">
             <input type="checkbox" ${isOn ? 'checked' : ''} onchange="abilitiesBuilderToggleFlaw('${escapeHtml(f.id)}')">
