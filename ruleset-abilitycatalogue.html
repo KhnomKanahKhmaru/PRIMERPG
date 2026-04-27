@@ -886,6 +886,7 @@
     <div class="footer-actions">
       <button class="btn primary" id="save-btn" onclick="saveCatalogue()">Save</button>
       <button class="btn" onclick="goBackToRuleset()">Done</button>
+      <button class="btn" onclick="exportCatalogueUI()" title="Export ability catalogue as JSON">Export…</button>
       <span class="save-msg" id="save-msg"></span>
     </div>
   </div>
@@ -906,6 +907,11 @@
   window.computeAbilityCost = charAbilities.computeAbilityCost;
   window.renderSystemTextForBuilder = charAbilities.renderSystemText;
   window.renderSystemTextHtmlForBuilder = charAbilities.renderSystemTextHtml;
+
+  // Export utilities — JSON export of full ruleset, abilityCatalogue,
+  // or a single Builder. Used by the "Export…" button in the page
+  // footer and the Export button in the Builder editor header.
+  import * as rulesetExport from './ruleset-export.js';
 
   const firebaseConfig = {
     apiKey: "AIzaSyCf94yLvAtJ9pLgJ3FsV7ir4Qh9XXm3nHg",
@@ -1756,6 +1762,135 @@
     renderCatalogueBodyArea();
   };
 
+  // ─── EXPORT (JSON) ───
+  // Reusable modal for exporting catalogue scopes. Three buttons:
+  //   • Whole ruleset       — full document (everything)
+  //   • Ability Catalogue   — just abilityCatalogue
+  //   • Item Catalogue      — disabled until itemCatalogue exists
+  // Plus, when a Builder is open, an additional row to export it.
+  window.exportCatalogueUI = function() {
+    if (!state) { alert('Catalogue not loaded yet.'); return; }
+    let m = document.getElementById('export-modal');
+    if (!m) {
+      m = document.createElement('div');
+      m.id = 'export-modal';
+      m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;';
+      m.innerHTML = `
+        <div style="background:#0e0e0e;border:1px solid #2a2a2a;border-radius:6px;padding:24px;width:480px;max-width:92vw;color:#ccc;">
+          <div style="font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#aaa;margin-bottom:16px;">Export</div>
+          <p style="font-size:12px;color:#888;margin:0 0 14px 0;line-height:1.5;">
+            Pick what to export. <strong>Copy</strong> puts JSON in your clipboard
+            (paste it to Claude or save it). <strong>Download</strong> writes a
+            <code style="color:#bbb;">.json</code> file.
+          </p>
+          <div id="export-modal-body" style="display:flex;flex-direction:column;gap:8px;"></div>
+          <div style="display:flex;justify-content:flex-end;margin-top:18px;">
+            <button class="btn" onclick="closeExportModal()">Close</button>
+          </div>
+          <div id="export-modal-msg" style="font-size:11px;color:#66ff99;margin-top:12px;min-height:16px;"></div>
+        </div>
+      `;
+      document.body.appendChild(m);
+    }
+    const body = m.querySelector('#export-modal-body');
+    const hasItems = !!(state.itemCatalogue && typeof state.itemCatalogue === 'object');
+    // Builder-export row only when a Builder is currently opened in
+    // the editor. We use the same getOpenedBuilder() helper used by
+    // the Builder editor itself.
+    const openedB = (typeof getOpenedBuilder === 'function') ? getOpenedBuilder() : null;
+    const builderRow = openedB
+      ? exportRow(`Open Builder: <strong>${escapeHtml(openedB.name || 'Untitled')}</strong>`, 'builder', false, '')
+      : '';
+    body.innerHTML = `
+      ${exportRow('Whole ruleset',          'ruleset')}
+      ${exportRow('Ability Catalogue',      'ability')}
+      ${exportRow('Item Catalogue',         'item', !hasItems, hasItems ? '' : 'no items yet')}
+      ${builderRow}
+    `;
+    document.getElementById('export-modal-msg').textContent = '';
+    m.style.display = 'flex';
+  };
+
+  function exportRow(label, kind, disabled, hint) {
+    const dis = disabled ? 'opacity:0.4;pointer-events:none;' : '';
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#1a1a1a;border-radius:4px;${dis}">
+        <span style="flex:1;font-size:13px;color:#ddd;">${label}${hint ? ` <span style="color:#666;font-size:11px;font-style:italic;">(${hint})</span>` : ''}</span>
+        <button class="btn small" onclick="exportDo('${kind}','copy')">Copy</button>
+        <button class="btn small" onclick="exportDo('${kind}','download')">Download</button>
+      </div>
+    `;
+  }
+
+  window.closeExportModal = function() {
+    const m = document.getElementById('export-modal');
+    if (m) m.style.display = 'none';
+  };
+
+  window.exportDo = async function(kind, action) {
+    const msg = document.getElementById('export-modal-msg');
+    if (msg) { msg.textContent = ''; msg.style.color = '#66ff99'; }
+    // Inline fallback toast — shown when the modal isn't open (e.g.
+    // the Builder editor's direct Export button bypasses the modal).
+    function reportInline(text, isError) {
+      if (msg) {
+        msg.textContent = text;
+        msg.style.color = isError ? '#ff6666' : '#66ff99';
+        return;
+      }
+      // No modal — pop a tiny ephemeral toast in the top-right of the
+      // viewport so the GM gets feedback without a blocking alert.
+      const t = document.createElement('div');
+      t.textContent = text;
+      t.style.cssText = `
+        position:fixed; top:18px; right:18px; z-index:10000;
+        background:${isError ? '#3a1414' : '#143a14'};
+        color:${isError ? '#ff9999' : '#99ff99'};
+        border:1px solid ${isError ? '#5a2424' : '#245a24'};
+        font-size:12px; padding:8px 14px; border-radius:4px;
+        font-family:'Open Sans',sans-serif;
+        box-shadow:0 4px 12px rgba(0,0,0,0.5);
+      `;
+      document.body.appendChild(t);
+      setTimeout(() => { t.style.transition = 'opacity 0.4s'; t.style.opacity = '0'; }, 1800);
+      setTimeout(() => t.remove(), 2400);
+    }
+    let json, fname;
+    try {
+      if (kind === 'ruleset') {
+        json = rulesetExport.exportRuleset(state);
+        fname = `ruleset-${state.name || 'untitled'}.json`;
+      } else if (kind === 'ability') {
+        json = rulesetExport.exportAbilityCatalogue(state);
+        fname = `ability-catalogue-${state.name || 'untitled'}.json`;
+      } else if (kind === 'item') {
+        json = rulesetExport.exportItemCatalogue(state);
+        fname = `item-catalogue-${state.name || 'untitled'}.json`;
+      } else if (kind === 'builder') {
+        const b = (typeof getOpenedBuilder === 'function') ? getOpenedBuilder() : null;
+        if (!b) throw new Error('No Builder is currently open.');
+        json = rulesetExport.exportBuilder(state, b, null);
+        fname = `builder-${b.name || 'untitled'}.json`;
+      } else {
+        throw new Error('Unknown export kind: ' + kind);
+      }
+    } catch (err) {
+      reportInline('Export failed: ' + err.message, true);
+      return;
+    }
+    if (action === 'copy') {
+      const ok = await rulesetExport.copyToClipboard(json);
+      reportInline(
+        ok ? 'Copied to clipboard.'
+           : 'Copy failed — your browser blocked clipboard access. Use Download instead.',
+        !ok
+      );
+    } else if (action === 'download') {
+      rulesetExport.downloadJson(json, fname);
+      reportInline('Downloaded ' + fname, false);
+    }
+  };
+
   // Save — partial update of just the abilityCatalogue field.
   // This is intentional: the Catalogue page should never overwrite
   // other ruleset fields (stats, skills, weapons), so a stale state
@@ -2056,6 +2191,7 @@
              value="${escapeHtmlAttr(b.name || '')}"
              oninput="catBldrSetField('name',this.value);renderBuilderPreview();">
       <span class="bldr-head-cost" id="bldr-cost-pill">… AP</span>
+      <button class="btn small" type="button" onclick="exportDo('builder','copy')" title="Copy this Builder as JSON to clipboard">Export…</button>
     `;
     wrap.appendChild(head);
 
