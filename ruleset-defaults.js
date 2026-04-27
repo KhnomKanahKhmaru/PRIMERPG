@@ -1752,10 +1752,25 @@ window.normalizeRuleset = function(rs) {
         // stackable: when true, the player can take this feature multiple
         // times on a single Ability — each instance adds the tier's AP
         // cost again (or refunds, for flaws). Defaults false: a feature
-        // is binary (taken or not), matching prior behavior. The player-
-        // side UI swaps the checkbox for a number input when stackable.
+        // is binary (taken or not), matching prior behavior. The player
+        // sees a "+ Add another" button when stackable that adds a new
+        // independent pick-row (each with its own custom field value).
         stackable:   !!f.stackable,
-        customField: normalizeCustomField(f.customField)
+        customField: normalizeCustomField(f.customField),
+        // token: optional case-insensitive identifier the GM exposes
+        // for use in System / Visual / Extra text. When the player has
+        // selected this feature, {Token} substitutes per tokenValueMode.
+        // Multiple selections sharing a token name aggregate (joined
+        // by '; '). Empty string = no token exposed.
+        token:       typeof f.token === 'string' ? f.token : '',
+        // tokenValueMode controls what the token resolves to when the
+        // feature is selected:
+        //   'name'        — feature name (e.g. "Conditional")
+        //   'description' — feature description text
+        //   'customField' — the player's custom-field input
+        //   'literal'     — a fixed string the GM authored
+        tokenValueMode: ['name','description','customField','literal'].includes(f.tokenValueMode) ? f.tokenValueMode : 'description',
+        tokenLiteral: typeof f.tokenLiteral === 'string' ? f.tokenLiteral : ''
       }));
 
     // Flaws — refund-AP additions. Same shape as Features but priced
@@ -1768,7 +1783,10 @@ window.normalizeRuleset = function(rs) {
         description: typeof f.description === 'string' ? f.description : '',
         tier:        VALID_TIERS.includes(f.tier) ? f.tier : 'minor',
         stackable:   !!f.stackable,
-        customField: normalizeCustomField(f.customField)
+        customField: normalizeCustomField(f.customField),
+        token:       typeof f.token === 'string' ? f.token : '',
+        tokenValueMode: ['name','description','customField','literal'].includes(f.tokenValueMode) ? f.tokenValueMode : 'description',
+        tokenLiteral: typeof f.tokenLiteral === 'string' ? f.tokenLiteral : ''
       }));
 
     return builder;
@@ -1828,7 +1846,10 @@ window.normalizeRuleset = function(rs) {
           description: typeof f.description === 'string' ? f.description : '',
           tier:        TIERS.includes(f.tier) ? f.tier : 'minor',
           stackable:   !!f.stackable,
-          customField: normCf(f.customField)
+          customField: normCf(f.customField),
+          token:       typeof f.token === 'string' ? f.token : '',
+          tokenValueMode: ['name','description','customField','literal'].includes(f.tokenValueMode) ? f.tokenValueMode : 'description',
+          tokenLiteral: typeof f.tokenLiteral === 'string' ? f.tokenLiteral : ''
         }));
     }
     cat.defaultFeatures = normalizeDefaultFF(cat.defaultFeatures, 'deffeat');
