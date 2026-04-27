@@ -265,18 +265,16 @@
     .ability-tile-head {
       display: flex; align-items: flex-start; gap: 10px;
     }
-    /* Icon frame mirrors the Stat icons: small dark box with subtle
-       border/radius. The icon's own edges/background are hidden by
-       the box, so any baked-in border on the source PNG doesn't
-       matter — the user reads the box edge as the icon boundary. */
+    /* Icons: lighten blend drops anything darker than the page bg
+       (handles pure-black AND near-black baked-in borders). Image
+       fills the slot at its natural aspect ratio via object-fit:contain
+       — no scaling-to-crop, so the icon's actual content is fully
+       preserved. */
     .ability-tile-icon {
       flex: 0 0 auto;
       width: 36px; height: 36px;
       object-fit: contain;
-      background: #151515;
-      border: 1px solid #252525;
-      border-radius: 4px;
-      padding: 1px;
+      mix-blend-mode: lighten;
     }
     .ability-tile-headtext {
       flex: 1; min-width: 0;
@@ -442,10 +440,7 @@
       flex: 0 0 auto;
       width: 48px; height: 48px;
       object-fit: contain;
-      background: #151515;
-      border: 1px solid #252525;
-      border-radius: 4px;
-      padding: 1px;
+      mix-blend-mode: lighten;
     }
     .bldr-card-tagline {
       font-size: 13px; font-style: italic; color: #aaa;
