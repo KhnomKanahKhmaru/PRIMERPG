@@ -304,6 +304,15 @@ export function computeAbilityCost(builder, instance, tiers) {
   // Selected features add their tier cost. Ids that don't match any
   // current feature on the Builder are silently dropped (graceful
   // degradation per live-reference spec).
+  //
+  // Stackable features: when feature.stackable is true on the Builder,
+  // the player may take this feature multiple times. Count is read
+  // from inst.featureCounts[id] with a fallback to 1 (matching the
+  // legacy "selected, exactly once" behavior). For non-stackable
+  // features, the count is FORCED to 1 even if a stale featureCounts
+  // entry says otherwise — the schema is the source of truth, not
+  // the instance.
+  const featureCounts = (inst.featureCounts && typeof inst.featureCounts === 'object') ? inst.featureCounts : {};
   const builderFeatures = Array.isArray(builder.features) ? builder.features : [];
   const featureIndex = new Map(builderFeatures.filter(f => f && f.id).map(f => [f.id, f]));
   featureIds.forEach(fid => {
@@ -316,18 +325,28 @@ export function computeAbilityCost(builder, instance, tiers) {
     if (!Number.isFinite(featureCosts[feature.tier])) {
       result.warnings.push(`Feature ${feature.name || fid} references unknown tier "${feature.tier}".`);
     }
-    result.featureCostTotal += tierCost;
+    let count = 1;
+    if (feature.stackable) {
+      const raw = parseInt(featureCounts[fid], 10);
+      if (Number.isFinite(raw) && raw >= 1) count = raw;
+    }
+    const lineCost = tierCost * count;
+    result.featureCostTotal += lineCost;
     result.breakdown.features.push({
       featureId: feature.id,
       featureName: feature.name || 'Feature',
       tier: feature.tier,
-      cost: tierCost
+      cost: lineCost,
+      count,
+      stackable: !!feature.stackable
     });
   });
 
   // ─ Flaws ─
   // Same shape as features but the values are refunds (subtracted).
   // Stored as positive numbers in flawRefunds; we negate when applying.
+  // Stackable flaws follow the same count-based rule as features.
+  const flawCounts = (inst.flawCounts && typeof inst.flawCounts === 'object') ? inst.flawCounts : {};
   const builderFlaws = Array.isArray(builder.flaws) ? builder.flaws : [];
   const flawIndex = new Map(builderFlaws.filter(f => f && f.id).map(f => [f.id, f]));
   flawIds.forEach(fid => {
@@ -340,12 +359,20 @@ export function computeAbilityCost(builder, instance, tiers) {
     if (!Number.isFinite(flawRefunds[flaw.tier])) {
       result.warnings.push(`Flaw ${flaw.name || fid} references unknown tier "${flaw.tier}".`);
     }
-    result.flawRefundTotal += refund;
+    let count = 1;
+    if (flaw.stackable) {
+      const raw = parseInt(flawCounts[fid], 10);
+      if (Number.isFinite(raw) && raw >= 1) count = raw;
+    }
+    const lineRefund = refund * count;
+    result.flawRefundTotal += lineRefund;
     result.breakdown.flaws.push({
       flawId: flaw.id,
       flawName: flaw.name || 'Flaw',
       tier: flaw.tier,
-      refund
+      refund: lineRefund,
+      count,
+      stackable: !!flaw.stackable
     });
   });
 
