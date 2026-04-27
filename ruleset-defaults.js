@@ -1506,6 +1506,46 @@ window.normalizeRuleset = function(rs) {
   // content where the editor didn't assign one). Uses a deterministic
   // seed so the same input produces the same output across loads.
 
+  // Normalize a Builder's contestedRoll config. When enabled, the
+  // Builder declares a list of "contests" the target rolls against
+  // when this Ability is used; the Player picks one at edit time.
+  // Each option is one of:
+  //   • { kind: 'derived', code: 'HP' }  — target rolls a derived stat
+  //                                        (resolved by code via ruleset.derivedStats)
+  //   • { kind: 'reaction' }             — target takes a Reaction roll
+  //                                        (the generic catch-all)
+  // Display labels come from the ruleset (derived stat's `name` field
+  // for kind:'derived', or the literal 'Reaction' for kind:'reaction').
+  // Storing only the kind+code keeps it ruleset-driven so renames in
+  // the ruleset propagate automatically.
+  //
+  // Defensive: malformed entries (missing kind, kind:'derived' with no
+  // code) are dropped silently. options:[] means "no choices configured
+  // yet" — the toggle can be enabled with no options, and the player
+  // sees a "no contests configured" hint until the GM adds some.
+  function normalizeContestedRoll(cr) {
+    cr = (cr && typeof cr === 'object') ? cr : {};
+    const rawOpts = Array.isArray(cr.options) ? cr.options : [];
+    const options = rawOpts
+      .map(o => (o && typeof o === 'object') ? o : null)
+      .filter(Boolean)
+      .map(o => {
+        if (o.kind === 'derived') {
+          const code = typeof o.code === 'string' ? o.code.trim() : '';
+          return code ? { kind: 'derived', code } : null;
+        }
+        if (o.kind === 'reaction') {
+          return { kind: 'reaction' };
+        }
+        return null;
+      })
+      .filter(Boolean);
+    return {
+      enabled: !!cr.enabled,
+      options
+    };
+  }
+
   // Normalize a Builder's activationRoll config. Strict whitelisting of
   // mode strings so a typo in saved data doesn't break the resolver.
   // Slot 1 is always a STAT; slot 2 can be a STAT or SKILL.
@@ -1566,6 +1606,7 @@ window.normalizeRuleset = function(rs) {
                      : typeof b.extra === 'string'           ? b.extra
                      : '',
       activationRoll:  normalizeActivationRoll(b.activationRoll),
+      contestedRoll:   normalizeContestedRoll(b.contestedRoll),
       primaryParams:   Array.isArray(b.primaryParams)   ? b.primaryParams   : [],
       secondaryParams: Array.isArray(b.secondaryParams) ? b.secondaryParams : [],
       features:        Array.isArray(b.features)        ? b.features        : [],
