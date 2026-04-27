@@ -1722,6 +1722,12 @@ window.normalizeRuleset = function(rs) {
         name:        typeof f.name === 'string' ? f.name : 'Untitled Feature',
         description: typeof f.description === 'string' ? f.description : '',
         tier:        VALID_TIERS.includes(f.tier) ? f.tier : 'minor',
+        // stackable: when true, the player can take this feature multiple
+        // times on a single Ability — each instance adds the tier's AP
+        // cost again (or refunds, for flaws). Defaults false: a feature
+        // is binary (taken or not), matching prior behavior. The player-
+        // side UI swaps the checkbox for a number input when stackable.
+        stackable:   !!f.stackable,
         customField: normalizeCustomField(f.customField)
       }));
 
@@ -1734,6 +1740,7 @@ window.normalizeRuleset = function(rs) {
         name:        typeof f.name === 'string' ? f.name : 'Untitled Flaw',
         description: typeof f.description === 'string' ? f.description : '',
         tier:        VALID_TIERS.includes(f.tier) ? f.tier : 'minor',
+        stackable:   !!f.stackable,
         customField: normalizeCustomField(f.customField)
       }));
 
