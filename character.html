@@ -6789,24 +6789,18 @@
     const catDesc = cat.description || '';
     const categoriesCount = flattenCatCategories(cat).length;
 
-    // Power Bar at the top of the Ability tab. Uses the same renderer
-    // as the Combat tab's bar, so the player's custom Power name and
-    // color flow through automatically. If the ruleset doesn't have a
-    // Power Pool, this returns '' and nothing renders.
-    let html = '';
-    const powerBarHtml = (combat && typeof combat.renderPowerBarOnly === 'function')
-      ? combat.renderPowerBarOnly()
-      : '';
-    if (powerBarHtml) {
-      html += `
-        <div class="combat-section" style="margin-bottom:14px;">
-          ${powerBarHtml}
-        </div>
-      `;
-    }
+    // Layout order in the Abilities tab:
+    //   1) Catalogue header (catalogue name, description, AP budget pill,
+    //      + Add Ability button) — the "what universe of abilities you
+    //      can choose from" anchor at the top.
+    //   2) Power Bar — the resource pool spent to activate abilities.
+    //      Sits between the catalogue header and the cards so the
+    //      player sees their available pool right next to the cards
+    //      that consume it.
+    //   3) Ability cards list — the player's actual abilities.
 
-    // Header — catalogue name + description + AP budget + add button.
-    html += `
+    // (1) Catalogue header
+    let html = `
       <div class="combat-section">
         <div class="combat-section-title">
           <span class="combat-section-title-text">${escapeHtml(catName)}</span>
@@ -6826,7 +6820,21 @@
       </div>
     `;
 
-    // Ability list — placeholder until Turn 6 implements Cards.
+    // (2) Power Bar — same renderer as the Combat tab's bar so the
+    // player's custom Power name and color flow through automatically.
+    // Empty string if the ruleset doesn't define a Power Pool.
+    const powerBarHtml = (combat && typeof combat.renderPowerBarOnly === 'function')
+      ? combat.renderPowerBarOnly()
+      : '';
+    if (powerBarHtml) {
+      html += `
+        <div class="combat-section" style="margin-top:14px;">
+          ${powerBarHtml}
+        </div>
+      `;
+    }
+
+    // (3) Ability cards list (or empty-state message)
     if (abilities.length === 0) {
       html += `
         <div class="combat-empty" style="margin-top:14px;">
