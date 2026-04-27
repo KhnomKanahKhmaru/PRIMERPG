@@ -176,8 +176,35 @@ export function listAllBuilders(ruleset) {
 // object: 'default' for defaults (whether overridden or not) and 'builder'
 // for the Builder's own. The GM editor uses this to render rows
 // differently. Cost engine ignores it.
+// Apply a per-Builder override on top of a catalogue default.
+//
+// Note on customField:
+//   The catalogue-level default's customField is treated as a "label
+//   template" — the GM is saying "this default has a notion of a
+//   per-instance custom field with this label". But the field is NOT
+//   actually shown to players unless the per-Builder override turns
+//   it on for that specific Builder. This way, a catalogue can ship
+//   a default like "Conditional" with a sensible label, but only the
+//   Builders that actually want to ask the player for that text
+//   opt in. Without this gating, every Builder using a default with
+//   customField.enabled would force the player to fill it in, which
+//   is rarely what the catalogue author intended.
+//
+//   Resolution rules:
+//   - override.customField.enabled === true  → enabled, label = override.label || def.label
+//   - override.customField.enabled === false → disabled, irrespective of def
+//   - override.customField missing entirely  → DISABLED (the player-side default)
+//                                              even if def.customField.enabled is true.
+//                                              The label still comes from def for display.
 function applyOverride(def, override) {
-  if (!override || typeof override !== 'object') return def;
+  if (!override || typeof override !== 'object') {
+    // No override at all — customField defaults to DISABLED with the
+    // canonical label (so if the GM later opts in, the label is right).
+    const out = Object.assign({}, def);
+    const defCf = (def && def.customField && typeof def.customField === 'object') ? def.customField : { enabled: false, label: '' };
+    out.customField = { enabled: false, label: typeof defCf.label === 'string' ? defCf.label : '' };
+    return out;
+  }
   const out = Object.assign({}, def);
   // String fields: only replace if override has a non-undefined value.
   // Empty string IS allowed as a deliberate "blank this out" override.
@@ -185,8 +212,19 @@ function applyOverride(def, override) {
   if (typeof override.description === 'string') out.description = override.description;
   if (typeof override.tier        === 'string') out.tier        = override.tier;
   if (typeof override.stackable   === 'boolean') out.stackable   = override.stackable;
+  // customField — REQUIRES per-Builder opt-in. The catalogue's value
+  // is treated only as a label hint, not a player-facing on-switch.
+  const defCf = (def && def.customField && typeof def.customField === 'object') ? def.customField : { enabled: false, label: '' };
   if (override.customField && typeof override.customField === 'object') {
-    out.customField = Object.assign({}, def.customField || { enabled: false, label: '' }, override.customField);
+    const ovCf = override.customField;
+    out.customField = {
+      enabled: !!ovCf.enabled,                                    // Builder explicitly chose
+      label:   typeof ovCf.label === 'string' ? ovCf.label
+             : typeof defCf.label === 'string' ? defCf.label
+             : ''
+    };
+  } else {
+    out.customField = { enabled: false, label: typeof defCf.label === 'string' ? defCf.label : '' };
   }
   return out;
 }
