@@ -887,6 +887,7 @@
       <button class="btn primary" id="save-btn" onclick="saveCatalogue()">Save</button>
       <button class="btn" onclick="goBackToRuleset()">Done</button>
       <button class="btn" onclick="exportCatalogueUI()" title="Export ability catalogue as JSON">Export…</button>
+      <button class="btn" onclick="importCatalogueUI()" title="Import a JSON catalogue or Builder">Import…</button>
       <span class="save-msg" id="save-msg"></span>
     </div>
   </div>
@@ -912,6 +913,7 @@
   // or a single Builder. Used by the "Export…" button in the page
   // footer and the Export button in the Builder editor header.
   import * as rulesetExport from './ruleset-export.js';
+  import * as rulesetImport from './ruleset-import.js';
 
   const firebaseConfig = {
     apiKey: "AIzaSyCf94yLvAtJ9pLgJ3FsV7ir4Qh9XXm3nHg",
@@ -1891,6 +1893,270 @@
     }
   };
 
+  // ─── IMPORT (JSON) ───
+  // Catalogue-page import supports:
+  //   • Whole ruleset      — replace or merge full document
+  //   • Ability Catalogue  — replace or merge just the catalogue
+  //   • Builder            — drop into a chosen Category
+  let __preImportSnapshot = null;
+  let __saveLockedAfterImport = false;
+
+  window.importCatalogueUI = function() {
+    if (!state) { alert('Catalogue not loaded yet.'); return; }
+    let m = document.getElementById('import-modal');
+    if (!m) {
+      m = document.createElement('div');
+      m.id = 'import-modal';
+      m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;';
+      document.body.appendChild(m);
+    }
+    // Build category picker options for Builder scope
+    const cat = state.abilityCatalogue || {};
+    const tBucket = (cat.types && cat.types.ability) || { categories: [] };
+    const cats = Array.isArray(tBucket.categories) ? tBucket.categories : [];
+    const catOptions = cats.map(c =>
+      `<option value="${escapeHtmlAttr(c.id)}">${escapeHtml(c.name || '(unnamed category)')}</option>`
+    ).join('');
+
+    m.innerHTML = `
+      <div style="background:#0e0e0e;border:1px solid #2a2a2a;border-radius:6px;padding:24px;width:580px;max-width:92vw;max-height:90vh;overflow:auto;color:#ccc;">
+        <div style="font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#aaa;margin-bottom:14px;">Import</div>
+        <p style="font-size:12px;color:#888;margin:0 0 16px 0;line-height:1.5;">
+          Paste JSON below or upload a file. State updates immediately but doesn't persist until Save — Undo before saving.
+        </p>
+
+        <div style="display:flex;gap:14px;margin-bottom:12px;">
+          <div style="flex:1;">
+            <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">Scope</label>
+            <select id="imp-scope" onchange="importPreview();updateImpScopeUI()" style="width:100%;background:#111;border:1px solid #222;color:#e0e0e0;padding:6px 8px;border-radius:3px;">
+              <option value="ruleset">Whole ruleset</option>
+              <option value="abilityCatalogue" selected>Ability Catalogue</option>
+              <option value="builder">Single Builder</option>
+            </select>
+          </div>
+          <div style="flex:1;">
+            <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">Mode</label>
+            <select id="imp-mode" style="width:100%;background:#111;border:1px solid #222;color:#e0e0e0;padding:6px 8px;border-radius:3px;">
+              <option value="replace" selected>Replace</option>
+              <option value="merge">Merge</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="imp-builder-target" style="display:none;margin-bottom:12px;padding:10px;background:#1a1a1a;border-radius:4px;">
+          <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">Target Category (Ability)</label>
+          <select id="imp-target-cat" style="width:100%;background:#111;border:1px solid #222;color:#e0e0e0;padding:6px 8px;border-radius:3px;">
+            ${catOptions}
+            <option value="__new__">— Create new category —</option>
+          </select>
+          <input type="text" id="imp-new-cat-name" placeholder="New category name" style="display:none;width:100%;margin-top:6px;background:#111;border:1px solid #222;color:#e0e0e0;padding:6px 8px;border-radius:3px;">
+        </div>
+
+        <div style="margin-bottom:12px;">
+          <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">JSON</label>
+          <textarea id="imp-json" rows="8"
+                    placeholder="Paste exported JSON here…"
+                    style="width:100%;background:#111;border:1px solid #222;color:#e0e0e0;padding:8px;border-radius:3px;font-family:Consolas,monospace;font-size:11px;resize:vertical;"></textarea>
+          <div style="margin-top:6px;">
+            <input type="file" id="imp-file" accept=".json,application/json" style="font-size:11px;color:#888;">
+          </div>
+        </div>
+
+        <div id="imp-preview" style="font-size:11px;color:#888;background:#1a1a1a;padding:10px;border-radius:4px;margin-bottom:12px;min-height:32px;">
+          Preview will appear here once JSON is loaded.
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:8px;">
+          <button class="btn" onclick="closeImportModal()">Cancel</button>
+          <button class="btn primary" id="imp-confirm" onclick="importDo()" disabled>Import</button>
+        </div>
+        <div id="imp-msg" style="font-size:11px;color:#66ff99;margin-top:12px;min-height:16px;"></div>
+      </div>
+    `;
+    m.style.display = 'flex';
+    updateImpScopeUI();
+    document.getElementById('imp-file').addEventListener('change', async (ev) => {
+      const f = ev.target.files && ev.target.files[0];
+      if (!f) return;
+      try {
+        const text = await f.text();
+        document.getElementById('imp-json').value = text;
+        importPreview();
+      } catch (err) {
+        document.getElementById('imp-msg').textContent = 'Failed to read file: ' + err.message;
+        document.getElementById('imp-msg').style.color = '#ff6666';
+      }
+    });
+    document.getElementById('imp-json').addEventListener('input', importPreview);
+    document.getElementById('imp-target-cat').addEventListener('change', () => {
+      const v = document.getElementById('imp-target-cat').value;
+      document.getElementById('imp-new-cat-name').style.display = (v === '__new__') ? 'block' : 'none';
+    });
+  };
+
+  window.updateImpScopeUI = function() {
+    const scope = document.getElementById('imp-scope').value;
+    document.getElementById('imp-builder-target').style.display = (scope === 'builder') ? 'block' : 'none';
+    // For Builder scope, mode is always effectively "merge" (replace-by-id).
+    // Hide the mode selector to avoid confusion.
+    const modeWrap = document.getElementById('imp-mode').parentElement;
+    if (modeWrap) modeWrap.style.opacity = (scope === 'builder') ? '0.4' : '1';
+  };
+
+  window.importPreview = function() {
+    const json = document.getElementById('imp-json').value;
+    const scope = document.getElementById('imp-scope').value;
+    const previewEl = document.getElementById('imp-preview');
+    const confirmBtn = document.getElementById('imp-confirm');
+    const msg = document.getElementById('imp-msg');
+    msg.textContent = '';
+    if (!json.trim()) {
+      previewEl.textContent = 'Paste JSON or upload a file to preview.';
+      confirmBtn.disabled = true;
+      return;
+    }
+    try {
+      const result = rulesetImport.parseAndValidate(json, scope);
+      const env = result.envelope;
+      const lines = [];
+      lines.push(`Kind: ${env.kind}`);
+      if (result.parsed.rulesetName) lines.push(`From ruleset: ${result.parsed.rulesetName}`);
+      if (result.parsed.builderName) lines.push(`Builder: ${result.parsed.builderName}`);
+      if (result.parsed.catalogueName) lines.push(`Catalogue: ${result.parsed.catalogueName}`);
+      if (env.exportedAt) lines.push(`Exported at: ${new Date(env.exportedAt).toLocaleString()}`);
+      previewEl.style.color = '#888';
+      previewEl.innerHTML = lines.map(l => `<div>${l.replace(/</g,'&lt;')}</div>`).join('');
+      confirmBtn.disabled = false;
+    } catch (err) {
+      previewEl.style.color = '#ff9966';
+      previewEl.textContent = err.message;
+      confirmBtn.disabled = true;
+    }
+  };
+
+  window.closeImportModal = function() {
+    const m = document.getElementById('import-modal');
+    if (m) m.style.display = 'none';
+  };
+
+  window.importDo = function() {
+    const json = document.getElementById('imp-json').value;
+    const scope = document.getElementById('imp-scope').value;
+    const mode = document.getElementById('imp-mode').value;
+    const msg = document.getElementById('imp-msg');
+    if (!json.trim()) return;
+    if (mode === 'replace' && (scope === 'ruleset' || scope === 'abilityCatalogue')) {
+      const what = (scope === 'ruleset') ? 'your entire ruleset' : 'your entire Ability Catalogue';
+      if (!confirm(`This will replace ${what} with the imported data. You can Undo before saving. Continue?`)) return;
+    }
+    let result;
+    try {
+      if (scope === 'ruleset') {
+        result = rulesetImport.importRuleset(state, json, mode);
+      } else if (scope === 'abilityCatalogue') {
+        result = rulesetImport.importAbilityCatalogue(state, json, mode);
+      } else {
+        // builder
+        const targetSel = document.getElementById('imp-target-cat');
+        const targetVal = targetSel ? targetSel.value : null;
+        let targetCategoryId = null;
+        let targetCategoryName = null;
+        if (targetVal === '__new__') {
+          const nameEl = document.getElementById('imp-new-cat-name');
+          targetCategoryName = (nameEl && nameEl.value.trim()) || 'Imported';
+        } else {
+          targetCategoryId = targetVal;
+        }
+        result = rulesetImport.importBuilder(state, json, 'merge', {
+          targetTypeKey: 'ability',
+          targetCategoryId,
+          targetCategoryName
+        });
+      }
+    } catch (err) {
+      msg.textContent = 'Import failed: ' + err.message;
+      msg.style.color = '#ff6666';
+      return;
+    }
+    // Stash undo
+    __preImportSnapshot = JSON.parse(JSON.stringify(state));
+    __saveLockedAfterImport = false;
+    // Apply
+    Object.keys(result.applied).forEach(k => { state[k] = result.applied[k]; });
+    if (scope === 'ruleset' && mode === 'replace') {
+      Object.keys(state).forEach(k => {
+        if (!(k in result.applied)) delete state[k];
+      });
+    }
+    closeImportModal();
+    // Re-render the catalogue page UI from new state.
+    if (typeof initUI === 'function') initUI();
+    showImportToast(result.summary, result.warnings);
+  };
+
+  function showImportToast(summary, warnings) {
+    let t = document.getElementById('import-toast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'import-toast';
+      t.style.cssText = `
+        position:fixed; top:18px; right:18px; z-index:10000;
+        background:#3a2a14; color:#ffcc88;
+        border:1px solid #5a4424;
+        font-size:12px; padding:14px 16px; border-radius:4px;
+        font-family:'Open Sans',sans-serif;
+        box-shadow:0 4px 12px rgba(0,0,0,0.5);
+        max-width:380px;
+      `;
+      document.body.appendChild(t);
+    }
+    const warnHtml = (warnings && warnings.length)
+      ? `<div style="margin-top:6px;font-size:10px;color:#ddaa66;">⚠ ${warnings.length} warning${warnings.length > 1 ? 's' : ''}: ${warnings[0].replace(/</g,'&lt;')}${warnings.length > 1 ? ` (+${warnings.length - 1} more)` : ''}</div>`
+      : '';
+    t.innerHTML = `
+      <div style="font-weight:600;margin-bottom:4px;">Imported</div>
+      <div style="font-size:11px;color:#ffe0b0;line-height:1.4;">${summary.replace(/</g,'&lt;')}</div>
+      ${warnHtml}
+      <div style="margin-top:10px;display:flex;gap:8px;">
+        <button class="btn small" onclick="undoImport()">Undo</button>
+        <button class="btn small" onclick="dismissImportToast()">Dismiss</button>
+      </div>
+      <div style="font-size:10px;color:#aa8855;margin-top:6px;">Click Save to commit. Undo expires once you save.</div>
+    `;
+    t.style.display = 'block';
+  }
+
+  window.dismissImportToast = function() {
+    const t = document.getElementById('import-toast');
+    if (t) t.style.display = 'none';
+  };
+
+  window.undoImport = function() {
+    if (!__preImportSnapshot) {
+      alert('Nothing to undo.');
+      return;
+    }
+    if (__saveLockedAfterImport) {
+      alert('Already saved — Undo no longer available.');
+      return;
+    }
+    Object.keys(state).forEach(k => { delete state[k]; });
+    Object.keys(__preImportSnapshot).forEach(k => { state[k] = __preImportSnapshot[k]; });
+    __preImportSnapshot = null;
+    if (typeof initUI === 'function') initUI();
+    dismissImportToast();
+  };
+
+  function lockUndoAfterSave() {
+    __saveLockedAfterImport = true;
+    const t = document.getElementById('import-toast');
+    if (t && t.style.display !== 'none') {
+      t.innerHTML = `<div style="color:#88cc88;">Saved — Undo no longer available.</div>`;
+      setTimeout(() => { if (t) t.style.display = 'none'; }, 2500);
+    }
+  }
+  window.lockUndoAfterSave = lockUndoAfterSave;
+
   // Save — partial update of just the abilityCatalogue field.
   // This is intentional: the Catalogue page should never overwrite
   // other ruleset fields (stats, skills, weapons), so a stale state
@@ -1907,6 +2173,7 @@
       await updateDoc(doc(db, 'rulesets', rulesetId), {
         abilityCatalogue: state.abilityCatalogue || null
       });
+      if (typeof lockUndoAfterSave === 'function') lockUndoAfterSave();
       msg.style.color = '#66ff99';
       msg.textContent = 'Saved!';
       setTimeout(() => { msg.textContent = ''; }, 1500);
