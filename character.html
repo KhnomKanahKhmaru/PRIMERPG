@@ -6707,14 +6707,14 @@
       if (extraAbility && extraAbility.id === abl.id) return;
       const ref = charAbilities.findBuilderById(activeRuleset, abl.builderId);
       if (!ref) return; // Orphaned Abilities don't count toward spend.
-      const result = charAbilities.computeAbilityCost(ref.builder, abl, tiers);
+      const result = charAbilities.computeAbilityCost(ref.builder, abl, tiers, activeRuleset);
       if (result && Number.isFinite(result.computedCost)) spent += result.computedCost;
     });
     let hypothetical = null;
     if (extraAbility) {
       const ref = charAbilities.findBuilderById(activeRuleset, extraAbility.builderId);
       if (ref) {
-        const result = charAbilities.computeAbilityCost(ref.builder, extraAbility, tiers);
+        const result = charAbilities.computeAbilityCost(ref.builder, extraAbility, tiers, activeRuleset);
         hypothetical = (result && Number.isFinite(result.computedCost)) ? result.computedCost : 0;
       }
     }
@@ -6904,7 +6904,7 @@
 
     const builder = ref.builder;
     const tiers = (activeRuleset.abilityCatalogue && activeRuleset.abilityCatalogue.canonicalTiers) || {};
-    const costRes = charAbilities.computeAbilityCost(builder, abl, tiers);
+    const costRes = charAbilities.computeAbilityCost(builder, abl, tiers, activeRuleset);
     const cost = costRes.computedCost;
     // Plain text used to check "is there any system text?" — and for
     // anything that needs the unstyled string. The HTML form is used
@@ -7014,11 +7014,13 @@
     // Always shows the System rules text. Clicking the box toggles
     // the Features/Flaws list visibility below. Cursor + caret reflect
     // toggle state.
+    const mergedFeatures = charAbilities.resolveBuilderFeatures(activeRuleset, builder);
+    const mergedFlaws    = charAbilities.resolveBuilderFlaws(activeRuleset, builder);
     const selFeatures = (abl.selectedFeatureIds || [])
-      .map(fid => (builder.features || []).find(f => f && f.id === fid))
+      .map(fid => mergedFeatures.find(f => f && f.id === fid))
       .filter(Boolean);
     const selFlaws = (abl.selectedFlawIds || [])
-      .map(fid => (builder.flaws || []).find(f => f && f.id === fid))
+      .map(fid => mergedFlaws.find(f => f && f.id === fid))
       .filter(Boolean);
     const hasFFContent = selFeatures.length > 0 || selFlaws.length > 0;
 
@@ -8161,7 +8163,7 @@
   }
 
   function renderAbilitiesBuilderFeaturesSection(builder, inst, tiers) {
-    const features = Array.isArray(builder.features) ? builder.features : [];
+    const features = charAbilities.resolveBuilderFeatures(activeRuleset, builder);
     if (features.length === 0) return '';
     const featureCosts = (tiers && tiers.featureCosts) || {};
     const selected = Array.isArray(inst.selectedFeatureIds) ? new Set(inst.selectedFeatureIds) : new Set();
@@ -8263,7 +8265,7 @@
   }
 
   function renderAbilitiesBuilderFlawsSection(builder, inst, tiers) {
-    const flaws = Array.isArray(builder.flaws) ? builder.flaws : [];
+    const flaws = charAbilities.resolveBuilderFlaws(activeRuleset, builder);
     if (flaws.length === 0) return '';
     const flawRefunds = (tiers && tiers.flawRefunds) || {};
     const selected = Array.isArray(inst.selectedFlawIds) ? new Set(inst.selectedFlawIds) : new Set();
@@ -8510,7 +8512,7 @@
     const ref = charAbilities.findBuilderById(activeRuleset, inst.builderId);
     if (!ref) return;
     const tiers = (activeRuleset.abilityCatalogue && activeRuleset.abilityCatalogue.canonicalTiers) || {};
-    const result = charAbilities.computeAbilityCost(ref.builder, inst, tiers);
+    const result = charAbilities.computeAbilityCost(ref.builder, inst, tiers, activeRuleset);
     const cost = Number.isFinite(result.computedCost) ? result.computedCost : 0;
     pill.textContent = `${cost} AP`;
     let bg = '#1a1a14', border = '#2a2a20', color = '#d8c060';
@@ -8567,7 +8569,7 @@
     const builderListHtml = builders.length === 0
       ? `<div class="combat-empty" style="padding:20px;">No builders in this category.</div>`
       : builders.map(b => {
-          const cost = charAbilities.computeAbilityCost(b, {}, tiers);
+          const cost = charAbilities.computeAbilityCost(b, {}, tiers, activeRuleset);
           return `
             <div style="padding:12px;border-bottom:1px solid #1a1a1a;display:flex;align-items:center;gap:12px;">
               <div style="flex:1;min-width:0;">
