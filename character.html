@@ -6193,10 +6193,15 @@
     setHitLocationDmg:    (trackKey, val)   => combat.setHitLocationDmg(trackKey, val),
     tickPowerPool:        (delta) => combat.tickPowerPool(delta),
     setPowerPool:         (val)   => combat.setPowerPool(val),
-    tickPower:            (delta) => combat.tickPower(delta),
-    setPower:             (val)   => combat.setPower(val),
-    setPowerColor:        (color) => combat.setPowerColor(color),
-    setPowerName:         (name)  => combat.setPowerName(name),
+    // Power resource bar — these can be triggered from EITHER the
+    // Combat tab's Power section OR the duplicate bar at the top of
+    // the Ability tab. The combat module's rerender repaints the
+    // Combat tab; we additionally repaint the Ability tab here so
+    // the bar stays in sync no matter which tab the player is on.
+    tickPower:            async (delta) => { await combat.tickPower(delta);  if (typeof renderAbilitiesTab === 'function') renderAbilitiesTab(); },
+    setPower:             async (val)   => { await combat.setPower(val);     if (typeof renderAbilitiesTab === 'function') renderAbilitiesTab(); },
+    setPowerColor:        async (color) => { await combat.setPowerColor(color); if (typeof renderAbilitiesTab === 'function') renderAbilitiesTab(); },
+    setPowerName:         async (name)  => { await combat.setPowerName(name);  if (typeof renderAbilitiesTab === 'function') renderAbilitiesTab(); },
     toggleHlModifierEdit: () => combat.toggleEditMode(),
     // SAN handlers
     tickSanDmg:           (delta) => combat.tickSanDmg(delta),
@@ -6783,8 +6788,24 @@
     const catDesc = cat.description || '';
     const categoriesCount = flattenCatCategories(cat).length;
 
+    // Power Bar at the top of the Ability tab. Uses the same renderer
+    // as the Combat tab's bar, so the player's custom Power name and
+    // color flow through automatically. If the ruleset doesn't have a
+    // Power Pool, this returns '' and nothing renders.
+    let html = '';
+    const powerBarHtml = (combat && typeof combat.renderPowerBarOnly === 'function')
+      ? combat.renderPowerBarOnly()
+      : '';
+    if (powerBarHtml) {
+      html += `
+        <div class="combat-section" style="margin-bottom:14px;">
+          ${powerBarHtml}
+        </div>
+      `;
+    }
+
     // Header — catalogue name + description + AP budget + add button.
-    let html = `
+    html += `
       <div class="combat-section">
         <div class="combat-section-title">
           <span class="combat-section-title-text">${escapeHtml(catName)}</span>
