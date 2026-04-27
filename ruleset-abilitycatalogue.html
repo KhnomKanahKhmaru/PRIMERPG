@@ -927,6 +927,108 @@
   // against any module-evaluation ordering surprises (TDZ-free).
   if (typeof window.bldrPreviewExtraOpen !== 'boolean') window.bldrPreviewExtraOpen = false;
 
+  // ═════════ GENERIC DRAG-AND-DROP REORDERING ═════════
+  //
+  // Used by parameter cards, step rows within a parameter, and
+  // feature/flaw rows in a tier band. Hoisted to the top of the
+  // module so registerDragReorder() calls in module-top-level code
+  // (param/step/FF reorder handler registrations) don't TDZ-error
+  // before the function is defined.
+  //
+  // Architecture:
+  //   • The handle (⋮⋮ glyph) initiates drag via dragstart. We stash
+  //     the source's "reorder key" on the dataTransfer.
+  //   • Every row in the same group declares the same group key.
+  //     dragover allows the drop and computes whether the cursor is
+  //     in the upper or lower half of the row, painting a top or
+  //     bottom indicator (CSS .drop-above / .drop-below).
+  //   • drop fires the registered handler on the SOURCE side, passing
+  //     the destination's index and which-half flag. The handler
+  //     mutates the underlying array and re-renders.
+
+  const dragReorderHandlers = {};
+  let currentDropTarget = null;
+  function clearDropIndicator() {
+    if (currentDropTarget) {
+      currentDropTarget.classList.remove('drop-above', 'drop-below');
+      currentDropTarget = null;
+    }
+  }
+
+  // Register a reorder action. Handler signature:
+  //   (groupKey, fromIdx, toIdx) → void
+  function registerDragReorder(name, handler) {
+    dragReorderHandlers[name] = handler;
+  }
+  window.registerDragReorder = registerDragReorder;
+
+  window.bldrDragStart = function(ev, groupKey, idx) {
+    if (!ev || !ev.dataTransfer) return;
+    ev.dataTransfer.effectAllowed = 'move';
+    ev.dataTransfer.setData('text/plain', `${groupKey}|${idx}`);
+    const row = ev.currentTarget && ev.currentTarget.closest('[data-drag-row]');
+    if (row) row.classList.add('drag-source');
+    window.__dragSourceRow = row;
+  };
+
+  window.bldrDragEnd = function() {
+    const row = window.__dragSourceRow;
+    if (row) row.classList.remove('drag-source');
+    window.__dragSourceRow = null;
+    clearDropIndicator();
+  };
+
+  window.bldrDragOver = function(ev, groupKey, idx) {
+    if (!ev || !ev.dataTransfer) return;
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = 'move';
+    const row = ev.currentTarget && ev.currentTarget.closest('[data-drag-row]');
+    if (!row) return;
+    const rect = row.getBoundingClientRect();
+    const above = (ev.clientY - rect.top) < (rect.height / 2);
+    if (currentDropTarget && currentDropTarget !== row) {
+      currentDropTarget.classList.remove('drop-above', 'drop-below');
+    }
+    row.classList.toggle('drop-above', above);
+    row.classList.toggle('drop-below', !above);
+    currentDropTarget = row;
+  };
+
+  window.bldrDragLeave = function(ev) {
+    const row = ev && ev.currentTarget && ev.currentTarget.closest('[data-drag-row]');
+    if (!row) return;
+    if (ev.relatedTarget && row.contains(ev.relatedTarget)) return;
+    row.classList.remove('drop-above', 'drop-below');
+    if (currentDropTarget === row) currentDropTarget = null;
+  };
+
+  window.bldrDrop = function(ev, handlerName, groupKey, destIdx) {
+    if (!ev || !ev.dataTransfer) return;
+    ev.preventDefault();
+    const payload = ev.dataTransfer.getData('text/plain') || '';
+    const sepIdx = payload.lastIndexOf('|');
+    if (sepIdx < 0) { clearDropIndicator(); return; }
+    const sourceGroup = payload.slice(0, sepIdx);
+    const sourceIdxStr = payload.slice(sepIdx + 1);
+    if (sourceGroup !== groupKey) { clearDropIndicator(); return; }
+    const fromIdx = parseInt(sourceIdxStr, 10);
+    if (!Number.isFinite(fromIdx)) { clearDropIndicator(); return; }
+    const row = ev.currentTarget && ev.currentTarget.closest('[data-drag-row]');
+    const rect = row ? row.getBoundingClientRect() : null;
+    const above = rect ? (ev.clientY - rect.top) < (rect.height / 2) : true;
+    let toIdx = above ? destIdx : destIdx + 1;
+    if (fromIdx === toIdx || fromIdx + 1 === toIdx) {
+      clearDropIndicator();
+      window.bldrDragEnd();
+      return;
+    }
+    if (fromIdx < toIdx) toIdx -= 1;
+    clearDropIndicator();
+    const handler = dragReorderHandlers[handlerName];
+    if (typeof handler === 'function') handler(groupKey, fromIdx, toIdx);
+    window.bldrDragEnd();
+  };
+
   // — Constants used by Phase B renderers —
   // Tier names + display labels for Features and Flaws.
   const TIER_ORDER = ['minor', 'moderate', 'major', 'massive', 'monumental', 'mega', 'mythical'];
@@ -3021,131 +3123,6 @@
     el.style.height = (el.scrollHeight) + 'px';
   }
   window.autoGrow = autoGrow;
-
-  // ═════════ GENERIC DRAG-AND-DROP REORDERING ═════════
-  //
-  // Used by parameter cards, step rows within a parameter, Builder
-  // tiles in a category, and feature/flaw rows in a tier band.
-  //
-  // Architecture:
-  //   • The handle (⋮⋮ glyph) initiates drag via dragstart. We stash
-  //     the source's "reorder key" on the dataTransfer.
-  //   • Every row in the same group declares the same group key.
-  //     dragover allows the drop and computes whether the cursor is
-  //     in the upper or lower half of the row, painting a top or
-  //     bottom indicator (CSS .drop-above / .drop-below).
-  //   • drop fires the registered handler on the SOURCE side, passing
-  //     the destination's index and which-half flag. The handler
-  //     mutates the underlying array and re-renders.
-  //
-  // Group keys look like "param:primary", "step:bld_xxx:primary:0",
-  // "ff:feature:bld_xxx", "builder:cat_xxx" etc. Any unique string
-  // works — same group key = drop target accepts the source.
-  //
-  // The reorder action is registered by name on dragReorderHandlers;
-  // bldrInit + the param/step/etc. renderers register their handlers
-  // there once. Inline ondragstart/ondragover/ondrop attribs reference
-  // those names plus the group + index for that row.
-
-  const dragReorderHandlers = {};
-  // Track current drop indicator so we can clean up on dragleave/drop.
-  let currentDropTarget = null;
-  function clearDropIndicator() {
-    if (currentDropTarget) {
-      currentDropTarget.classList.remove('drop-above', 'drop-below');
-      currentDropTarget = null;
-    }
-  }
-
-  // Register a reorder action. Handler signature:
-  //   (groupKey, fromIdx, toIdx) → void
-  // toIdx is the desired NEW index AFTER the move (so [0,1,2,3] with
-  // a move from 0 → 2 means the moved item ends up at index 2 and
-  // the elements at 1,2 shift to 0,1).
-  window.registerDragReorder = function(name, handler) {
-    dragReorderHandlers[name] = handler;
-  };
-
-  window.bldrDragStart = function(ev, groupKey, idx) {
-    if (!ev || !ev.dataTransfer) return;
-    ev.dataTransfer.effectAllowed = 'move';
-    ev.dataTransfer.setData('text/plain', `${groupKey}|${idx}`);
-    // Mark the source row visually. Walk up to the row container —
-    // we tag the row, not the handle.
-    const row = ev.currentTarget && ev.currentTarget.closest('[data-drag-row]');
-    if (row) row.classList.add('drag-source');
-    // Stash the source for cleanup on dragend (some browsers don't
-    // fire drop on every dragstart, e.g. drop outside any target).
-    window.__dragSourceRow = row;
-  };
-
-  window.bldrDragEnd = function() {
-    const row = window.__dragSourceRow;
-    if (row) row.classList.remove('drag-source');
-    window.__dragSourceRow = null;
-    clearDropIndicator();
-  };
-
-  window.bldrDragOver = function(ev, groupKey, idx) {
-    if (!ev || !ev.dataTransfer) return;
-    // Only accept drops from the same group. The dataTransfer payload
-    // isn't readable in dragover (browser security), so we always
-    // allow during dragover and validate at drop time.
-    ev.preventDefault();
-    ev.dataTransfer.dropEffect = 'move';
-    const row = ev.currentTarget && ev.currentTarget.closest('[data-drag-row]');
-    if (!row) return;
-    // Decide whether we're in the upper or lower half of the row.
-    const rect = row.getBoundingClientRect();
-    const above = (ev.clientY - rect.top) < (rect.height / 2);
-    if (currentDropTarget && currentDropTarget !== row) {
-      currentDropTarget.classList.remove('drop-above', 'drop-below');
-    }
-    row.classList.toggle('drop-above', above);
-    row.classList.toggle('drop-below', !above);
-    currentDropTarget = row;
-  };
-
-  window.bldrDragLeave = function(ev) {
-    // We only clear if we're leaving the row entirely (not a child).
-    const row = ev && ev.currentTarget && ev.currentTarget.closest('[data-drag-row]');
-    if (!row) return;
-    if (ev.relatedTarget && row.contains(ev.relatedTarget)) return;
-    row.classList.remove('drop-above', 'drop-below');
-    if (currentDropTarget === row) currentDropTarget = null;
-  };
-
-  window.bldrDrop = function(ev, handlerName, groupKey, destIdx) {
-    if (!ev || !ev.dataTransfer) return;
-    ev.preventDefault();
-    const payload = ev.dataTransfer.getData('text/plain') || '';
-    const sepIdx = payload.lastIndexOf('|');
-    if (sepIdx < 0) { clearDropIndicator(); return; }
-    const sourceGroup = payload.slice(0, sepIdx);
-    const sourceIdxStr = payload.slice(sepIdx + 1);
-    if (sourceGroup !== groupKey) { clearDropIndicator(); return; }
-    const fromIdx = parseInt(sourceIdxStr, 10);
-    if (!Number.isFinite(fromIdx)) { clearDropIndicator(); return; }
-
-    // Compute toIdx based on which half of destIdx we're hovering.
-    const row = ev.currentTarget && ev.currentTarget.closest('[data-drag-row]');
-    const rect = row ? row.getBoundingClientRect() : null;
-    const above = rect ? (ev.clientY - rect.top) < (rect.height / 2) : true;
-    let toIdx = above ? destIdx : destIdx + 1;
-    // No-op if we're dropping the source onto itself or its own edge.
-    if (fromIdx === toIdx || fromIdx + 1 === toIdx) {
-      clearDropIndicator();
-      window.bldrDragEnd();
-      return;
-    }
-    // After the splice-out, dest indices > fromIdx shift down by 1.
-    if (fromIdx < toIdx) toIdx -= 1;
-
-    clearDropIndicator();
-    const handler = dragReorderHandlers[handlerName];
-    if (typeof handler === 'function') handler(groupKey, fromIdx, toIdx);
-    window.bldrDragEnd();
-  };
 
   // ═════════ LIVE PREVIEW CARD ═════════
   //
