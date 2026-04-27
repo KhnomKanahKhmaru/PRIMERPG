@@ -409,8 +409,14 @@ export function createOverviewSection(ctx) {
 
     // Head is compact — label + numbers only. Body is inline: bar on
     // the left taking most of the width, status pill on the right.
+    // Label uses the player's custom Power name (set inline on the
+    // Combat tab's bar, e.g. "Mana") so this tile stays in sync with
+    // the rest of the sheet. Falls back to "Power" if no name set.
+    const labelText = (power.name && typeof power.name === 'string' && power.name.trim())
+      ? power.name
+      : 'Power';
     const headInner = `
-      <span class="state-tile-label">Power</span>
+      <span class="state-tile-label">${escapeHtml(labelText)}</span>
       <span class="state-tile-nums">${fmt(current)}<span class="sep">/</span><span class="max">${fmt(max)}</span></span>`;
     const bodyHtml = `
       <div class="state-tile-power-row">
@@ -529,7 +535,6 @@ export function createOverviewSection(ctx) {
     else               pctColor = '#e07878';
     const painPct   = (pain && pain.finalPercent) || 0;
     const stressPct = (stress && stress.finalPercent) || 0;
-    const exhPct    = penalty.exhPercent || 0;
     const encPct    = penalty.encumbrancePercent || 0;
     const otherPct  = penalty.otherPercent || 0;
 
@@ -615,10 +620,6 @@ export function createOverviewSection(ctx) {
         <div class="state-penalty-row">
           <span class="state-penalty-k">Stress</span>
           <span class="state-penalty-v">${stressPct}%</span>
-        </div>
-        <div class="state-penalty-row">
-          <span class="state-penalty-k">Exhaustion</span>
-          <span class="state-penalty-v">${exhPct}%</span>
         </div>
         <div class="state-penalty-row state-penalty-row-locked" title="${escapeHtml(encTip)}">
           <span class="state-penalty-k">Encumbrance <span class="state-penalty-lock">🔒</span></span>
