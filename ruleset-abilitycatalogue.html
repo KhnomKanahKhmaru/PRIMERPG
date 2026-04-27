@@ -2534,13 +2534,34 @@
     // current effective values when the override editor is collapsed.
     function effectiveOfDefault(def) {
       const ov = overrides[def.id] || {};
+      // customField gating: the catalogue's enabled is just a label
+      // hint; the actual "show custom field on player Ability" switch
+      // requires the Builder to opt in via override.customField.enabled.
+      // When the Builder hasn't touched it, customField is OFF here
+      // (matching what the player will see) but the label is seeded
+      // from the catalogue so flipping it on shows the right label.
+      const defCf = (def.customField && typeof def.customField === 'object') ? def.customField : { enabled: false, label: '' };
+      let effCf;
+      if (ov.customField && typeof ov.customField === 'object') {
+        effCf = {
+          enabled: !!ov.customField.enabled,
+          label:   typeof ov.customField.label === 'string' ? ov.customField.label
+                 : typeof defCf.label === 'string'           ? defCf.label
+                 : ''
+        };
+      } else {
+        effCf = {
+          enabled: false,
+          label:   typeof defCf.label === 'string' ? defCf.label : ''
+        };
+      }
       return {
         id:          def.id,
         name:        (typeof ov.name        === 'string')  ? ov.name        : (def.name || ''),
         description: (typeof ov.description === 'string')  ? ov.description : (def.description || ''),
         tier:        (typeof ov.tier        === 'string')  ? ov.tier        : (def.tier || 'minor'),
         stackable:   (typeof ov.stackable   === 'boolean') ? ov.stackable   : !!def.stackable,
-        customField: (ov.customField && typeof ov.customField === 'object') ? ov.customField : (def.customField || { enabled: false, label: '' }),
+        customField: effCf,
         suppressed:  !!ov.suppressed,
         hasAnyOverride: !!(ov.suppressed || typeof ov.name === 'string' || typeof ov.description === 'string' || typeof ov.tier === 'string' || typeof ov.stackable === 'boolean' || (ov.customField && typeof ov.customField === 'object'))
       };
@@ -3509,19 +3530,25 @@
     const map = getOverrideMap(b, kind);
     if (!map[defId] || typeof map[defId] !== 'object') map[defId] = {};
     if (!map[defId].customField || typeof map[defId].customField !== 'object') {
-      // Seed override.customField from the canonical default's value
-      // so we don't lose unrelated fields when the GM toggles enabled.
+      // Seed override.customField with the player-side default state
+      // (DISABLED) and the catalogue's label as a starting point. The
+      // catalogue's enabled is intentionally NOT inherited — the
+      // Builder must explicitly opt in for the player to see the field.
       const seed = (def.customField && typeof def.customField === 'object') ? def.customField : { enabled: false, label: '' };
-      map[defId].customField = { enabled: !!seed.enabled, label: typeof seed.label === 'string' ? seed.label : '' };
+      map[defId].customField = { enabled: false, label: typeof seed.label === 'string' ? seed.label : '' };
     }
     if (field === 'enabled') map[defId].customField.enabled = !!value;
     else                     map[defId].customField.label   = String(value || '');
 
-    // If the override.customField now matches the canonical default
-    // exactly, drop the override so the value flows through cleanly.
+    // If the override now matches the player-side default state (enabled
+    // false, label same as catalogue), drop it so the catalogue's label
+    // continues to flow through cleanly. Note: matching `enabled:false`
+    // is the new clean state — we DON'T match `enabled:true` against
+    // the catalogue's `enabled` value, since that's no longer the
+    // player-side default.
     const defCf = (def.customField && typeof def.customField === 'object') ? def.customField : { enabled: false, label: '' };
     const ovCf  = map[defId].customField;
-    if (!!ovCf.enabled === !!defCf.enabled && (ovCf.label || '') === (defCf.label || '')) {
+    if (!ovCf.enabled && (ovCf.label || '') === (defCf.label || '')) {
       delete map[defId].customField;
     }
     pruneOverrideEntry(map, defId);
