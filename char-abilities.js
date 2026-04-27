@@ -666,6 +666,51 @@ export function renderSystemText(builder, instance, context) {
     setToken('ACTIVATIONROLL',  arDesc);
   }
 
+  // {CONTESTED_ROLL} token — when the Builder declares a contested
+  // roll, this resolves to the display label of the option the player
+  // picked at edit time. For derived-stat options, the label is the
+  // ruleset's derivedStats[].name (e.g. "Health" for code "HP"); for
+  // reaction options, always "Reaction". If the Builder has it
+  // disabled, or the player hasn't picked yet, or the picked code
+  // refers to a stat that no longer exists in the ruleset, the token
+  // gracefully resolves to a sensible fallback rather than breaking.
+  {
+    const cr = builder && builder.contestedRoll;
+    if (cr && cr.enabled) {
+      const choice = (inst && inst.contestedRollChoice && typeof inst.contestedRollChoice === 'object')
+        ? inst.contestedRollChoice
+        : null;
+      let crDesc = '';
+      if (choice) {
+        if (choice.kind === 'reaction') {
+          crDesc = 'Reaction';
+        } else if (choice.kind === 'derived' && choice.code) {
+          const ruleset = (context && context.ruleset) ? context.ruleset : null;
+          const derived = ruleset && Array.isArray(ruleset.derivedStats) ? ruleset.derivedStats : [];
+          const found = derived.find(d => d && d.code === choice.code);
+          crDesc = (found && found.name) ? found.name : choice.code;
+        }
+      }
+      // No choice yet — fall back to the FIRST authored option's label
+      // so System text reads sensibly in the editor preview / before
+      // the player has tuned their instance.
+      if (!crDesc && Array.isArray(cr.options) && cr.options[0]) {
+        const first = cr.options[0];
+        if (first.kind === 'reaction') crDesc = 'Reaction';
+        else if (first.kind === 'derived' && first.code) {
+          const ruleset = (context && context.ruleset) ? context.ruleset : null;
+          const derived = ruleset && Array.isArray(ruleset.derivedStats) ? ruleset.derivedStats : [];
+          const found = derived.find(d => d && d.code === first.code);
+          crDesc = (found && found.name) ? found.name : first.code;
+        }
+      }
+      if (crDesc) {
+        setToken('CONTESTED_ROLL', crDesc);
+        setToken('CONTESTEDROLL',  crDesc);
+      }
+    }
+  }
+
   // Substitute. Match anything-between-single-braces. The captured text
   // is normalized the same way as token keys so {Foo Bar}, {foo_bar},
   // and {FOOBAR} all map to the same lookup. Unknown tokens are left
@@ -829,6 +874,35 @@ export function renderSystemTextHtml(builder, instance, context) {
     }
     setToken('ACTIVATION_ROLL', arDesc);
     setToken('ACTIVATIONROLL',  arDesc);
+  }
+
+  // {CONTESTED_ROLL} — see renderSystemText for full notes.
+  {
+    const cr = builder && builder.contestedRoll;
+    if (cr && cr.enabled) {
+      const choice = (inst && inst.contestedRollChoice && typeof inst.contestedRollChoice === 'object')
+        ? inst.contestedRollChoice
+        : null;
+      const labelFor = (opt) => {
+        if (!opt) return '';
+        if (opt.kind === 'reaction') return 'Reaction';
+        if (opt.kind === 'derived' && opt.code) {
+          const ruleset = (context && context.ruleset) ? context.ruleset : null;
+          const derived = ruleset && Array.isArray(ruleset.derivedStats) ? ruleset.derivedStats : [];
+          const found = derived.find(d => d && d.code === opt.code);
+          return (found && found.name) ? found.name : opt.code;
+        }
+        return '';
+      };
+      let crDesc = labelFor(choice);
+      if (!crDesc && Array.isArray(cr.options) && cr.options[0]) {
+        crDesc = labelFor(cr.options[0]);
+      }
+      if (crDesc) {
+        setToken('CONTESTED_ROLL', crDesc);
+        setToken('CONTESTEDROLL',  crDesc);
+      }
+    }
   }
 
   // Walk the template, replacing tokens with bolded HTML.
