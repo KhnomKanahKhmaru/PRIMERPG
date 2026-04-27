@@ -3547,6 +3547,28 @@
               </label>
               ${labelInputHtml}
             </div>
+            <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:#888;flex-wrap:wrap;"
+                 title="Optional token name — when this ${kind} is selected, {TokenName} in System / Visual / Extra text resolves to the chosen value.">
+              <span style="flex-shrink:0;">Token:</span>
+              <input type="text" placeholder="e.g. CONDITION (leave blank for none)"
+                     value="${escapeHtmlAttr(it.token || '')}"
+                     oninput="bldrSetFFField('${kind}', ${idx}, 'token', this.value)"
+                     style="flex:1;min-width:120px;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:4px 8px;border-radius:3px;outline:none;">
+              <span style="flex-shrink:0;">→</span>
+              <select onchange="bldrSetFFField('${kind}', ${idx}, 'tokenValueMode', this.value);refreshFFRowTokenLiteral('${kind}', ${idx});"
+                      style="background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:4px 6px;border-radius:3px;flex-shrink:0;">
+                <option value="description"${(it.tokenValueMode || 'description') === 'description' ? ' selected' : ''}>Description</option>
+                <option value="name"${it.tokenValueMode === 'name' ? ' selected' : ''}>Name</option>
+                <option value="customField"${it.tokenValueMode === 'customField' ? ' selected' : ''}>Custom-field input</option>
+                <option value="literal"${it.tokenValueMode === 'literal' ? ' selected' : ''}>Literal text</option>
+              </select>
+              ${it.tokenValueMode === 'literal' ? `
+                <input type="text" placeholder="Literal text"
+                       value="${escapeHtmlAttr(it.tokenLiteral || '')}"
+                       oninput="bldrSetFFField('${kind}', ${idx}, 'tokenLiteral', this.value)"
+                       style="flex:1;min-width:140px;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:4px 8px;border-radius:3px;outline:none;">
+              ` : ''}
+            </div>
           </div>
         `;
       }).join('');
@@ -4513,6 +4535,17 @@
     if (!Array.isArray(arr) || !arr[idx]) return;
     arr[idx].stackable = !!value;
     renderBuilderPreview();
+  };
+
+  // After a tokenValueMode change, re-render the FF list so the
+  // literal-text input either appears (when mode is 'literal') or
+  // disappears. The handler bldrSetFFField stores the new value
+  // without redrawing — this is the redraw step. Called as a
+  // separate inline step from the <select onchange> so we don't
+  // re-render on every keystroke in unrelated inputs.
+  window.refreshFFRowTokenLiteral = function(kind, idx) {
+    if (kind === 'feature') renderBldrFeaturesList();
+    else                    renderBldrFlawsList();
   };
 
   // Toggle/edit the per-feature/flaw customField config. When enabling,
