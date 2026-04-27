@@ -780,6 +780,28 @@
           </div>
         </div>
       </div>
+
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Default Features</div>
+        </div>
+        <p class="hint">
+          Features that auto-populate every Builder in this catalogue. On each Builder, the GM
+          can suppress an individual default or override its name/description/tier/stackable.
+        </p>
+        <div id="cat-default-features"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Default Flaws</div>
+        </div>
+        <p class="hint">
+          Flaws that auto-populate every Builder in this catalogue. Same override rules as
+          Default Features.
+        </p>
+        <div id="cat-default-flaws"></div>
+      </div>
     </div>
 
     <!-- ── Catalogue tab ── (visible by default — the player-mirror view) -->
@@ -1007,6 +1029,7 @@
     document.getElementById('cat-name').value      = cat.name || '';
     document.getElementById('cat-desc').value      = cat.description || '';
     renderCatTierTables();
+    renderCatDefaultFFSection();
     renderCatalogueBodyArea();
   }
 
@@ -1173,6 +1196,165 @@
     renderTable('cat-tier-features', featureCosts, 'featureCosts');
     renderTable('cat-tier-flaws',    flawRefunds,  'flawRefunds');
   }
+
+  // ── DEFAULT FEATURES / FLAWS — Catalogue Settings page ──
+  // Reuses tier ordering and the same row layout as the Builder
+  // editor's per-Builder feature/flaw rows. Mutations write to
+  // state.abilityCatalogue.defaultFeatures / defaultFlaws.
+  function renderCatDefaultFFSection() {
+    const cat = state.abilityCatalogue || {};
+    const TIER_ORDER  = ['minor','moderate','major','massive','monumental','mega','mythical'];
+    const TIER_LABELS = { minor:'Minor', moderate:'Moderate', major:'Major', massive:'Massive', monumental:'Monumental', mega:'Mega', mythical:'Mythical' };
+
+    function renderInto(containerId, kind) {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      const arr = (kind === 'feature') ? (cat.defaultFeatures || []) : (cat.defaultFlaws || []);
+      const tierTable = (kind === 'feature')
+        ? ((cat.canonicalTiers && cat.canonicalTiers.featureCosts) || {})
+        : ((cat.canonicalTiers && cat.canonicalTiers.flawRefunds) || {});
+
+      // Group by tier in canonical order.
+      const byTier = {};
+      arr.forEach((it, idx) => {
+        const t = (it && it.tier) ? it.tier : 'minor';
+        if (!byTier[t]) byTier[t] = [];
+        byTier[t].push({ it, idx });
+      });
+
+      let html = '';
+      TIER_ORDER.forEach(tier => {
+        const rows = byTier[tier] || [];
+        const tierCost = Number.isFinite(tierTable[tier]) ? tierTable[tier] : 0;
+        const costLabel = kind === 'feature' ? `+${tierCost} AP each` : `−${tierCost} AP each`;
+        const rowHtml = rows.map(({it, idx}) => {
+          const cf = (it.customField && typeof it.customField === 'object') ? it.customField : { enabled: false, label: '' };
+          const labelInputHtml = cf.enabled
+            ? `<input type="text" placeholder="Custom field label"
+                      value="${escapeHtmlAttr(cf.label || '')}"
+                      oninput="catDefaultFFSetCustomField('${kind}', ${idx}, 'label', this.value)"
+                      style="flex:1;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:12px;padding:5px 8px;border-radius:3px;outline:none;">`
+            : '';
+          return `
+            <div class="bldr-ff-row" style="flex-direction:column;gap:5px;align-items:stretch;">
+              <div style="display:flex;gap:6px;align-items:center;">
+                <input type="text" placeholder="${kind === 'feature' ? 'Feature name' : 'Flaw name'}"
+                       value="${escapeHtmlAttr(it.name || '')}"
+                       oninput="catDefaultFFSetField('${kind}', ${idx}, 'name', this.value)"
+                       style="flex:1;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:13px;font-weight:600;padding:6px 10px;border-radius:3px;outline:none;">
+                <select class="ff-tier-move" title="Change tier"
+                        onchange="catDefaultFFSetField('${kind}', ${idx}, 'tier', this.value)">
+                  ${TIER_ORDER.map(t => `<option value="${t}"${t === tier ? ' selected' : ''}>${TIER_LABELS[t]}</option>`).join('')}
+                </select>
+                <button class="row-x" type="button" title="Delete"
+                        onclick="catDefaultFFRemove('${kind}', ${idx})">×</button>
+              </div>
+              <textarea rows="2"
+                        placeholder="Description (what this ${kind} does mechanically)"
+                        oninput="catDefaultFFSetField('${kind}', ${idx}, 'description', this.value);autoGrow(this);"
+                        style="width:100%;">${escapeHtml(it.description || '')}</textarea>
+              <div style="display:flex;gap:8px;align-items:center;font-size:11px;color:#888;">
+                <label style="display:flex;align-items:center;gap:5px;cursor:pointer;flex-shrink:0;">
+                  <input type="checkbox" ${cf.enabled ? 'checked' : ''}
+                         onchange="catDefaultFFSetCustomField('${kind}', ${idx}, 'enabled', this.checked)">
+                  <span>Custom field</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:5px;cursor:pointer;flex-shrink:0;">
+                  <input type="checkbox" ${it.stackable ? 'checked' : ''}
+                         onchange="catDefaultFFSetField('${kind}', ${idx}, 'stackable', this.checked)">
+                  <span>Stackable</span>
+                </label>
+                ${labelInputHtml}
+              </div>
+            </div>
+          `;
+        }).join('');
+        html += `
+          <div class="bldr-tier-band">
+            <div class="bldr-tier-band-head">
+              <span class="bldr-tier-band-name">${TIER_LABELS[tier]}</span>
+              <span class="bldr-tier-band-cost">${costLabel}</span>
+            </div>
+            ${rowHtml}
+            <button class="btn small" type="button" style="width:100%;margin-top:2px;"
+                    onclick="catDefaultFFAdd('${kind}', '${tier}')">+ Add ${TIER_LABELS[tier]} Default ${kind === 'feature' ? 'Feature' : 'Flaw'}</button>
+          </div>
+        `;
+      });
+      el.innerHTML = html;
+    }
+    renderInto('cat-default-features', 'feature');
+    renderInto('cat-default-flaws',    'flaw');
+  }
+
+  // Synth a fresh id for new defaults.
+  function synthDefaultFFId(kind) {
+    return (kind === 'feature' ? 'deffeat_' : 'defflaw_') + Math.random().toString(36).slice(2, 10);
+  }
+  function getDefaultFFArr(kind) {
+    const cat = state.abilityCatalogue || (state.abilityCatalogue = {});
+    if (kind === 'feature') {
+      if (!Array.isArray(cat.defaultFeatures)) cat.defaultFeatures = [];
+      return cat.defaultFeatures;
+    } else {
+      if (!Array.isArray(cat.defaultFlaws)) cat.defaultFlaws = [];
+      return cat.defaultFlaws;
+    }
+  }
+
+  window.catDefaultFFAdd = function(kind, tier) {
+    const arr = getDefaultFFArr(kind);
+    arr.push({
+      id: synthDefaultFFId(kind),
+      name: '',
+      description: '',
+      tier: tier || 'minor',
+      stackable: false,
+      customField: { enabled: false, label: '' }
+    });
+    renderCatDefaultFFSection();
+  };
+
+  window.catDefaultFFRemove = function(kind, idx) {
+    const arr = getDefaultFFArr(kind);
+    if (idx >= 0 && idx < arr.length) arr.splice(idx, 1);
+    renderCatDefaultFFSection();
+  };
+
+  window.catDefaultFFSetField = function(kind, idx, field, value) {
+    const arr = getDefaultFFArr(kind);
+    if (idx < 0 || idx >= arr.length) return;
+    const it = arr[idx];
+    if (field === 'stackable') {
+      it.stackable = !!value;
+      // No re-render needed — checkbox is bound, label "Stackable" doesn't move.
+    } else if (field === 'tier') {
+      it.tier = String(value || 'minor');
+      // Tier moves the row to a different band → re-render.
+      renderCatDefaultFFSection();
+    } else if (field === 'name') {
+      it.name = String(value || '');
+      // Name change doesn't move the row → no re-render (input bound in place).
+    } else {
+      it[field] = String(value || '');
+      // Description changes don't restructure — no re-render.
+    }
+  };
+
+  window.catDefaultFFSetCustomField = function(kind, idx, field, value) {
+    const arr = getDefaultFFArr(kind);
+    if (idx < 0 || idx >= arr.length) return;
+    const it = arr[idx];
+    if (!it.customField || typeof it.customField !== 'object') {
+      it.customField = { enabled: false, label: '' };
+    }
+    if (field === 'enabled') {
+      it.customField.enabled = !!value;
+      renderCatDefaultFFSection(); // toggling shows/hides label input
+    } else {
+      it.customField.label = String(value || '');
+    }
+  };
 
   // Helper — every legacy mutation handler reads cat.categories. We
   // route through this so they automatically scope to the active type.
@@ -1545,7 +1727,7 @@
           let cost = null;
           try {
             const result = window.computeAbilityCost
-              ? window.computeAbilityCost(builder, {}, tiers)
+              ? window.computeAbilityCost(builder, {}, tiers, state)
               : null;
             cost = result && Number.isFinite(result.computedCost) ? result.computedCost : null;
           } catch (e) { cost = null; }
@@ -2320,19 +2502,153 @@
 
   function renderTierGrouped(b, kind) {
     // kind: 'feature' or 'flaw'
+    //
+    // Builder-editor view of features/flaws. Two strata:
+    //   1) Catalogue defaults — each rendered with a header tag, an
+    //      "On" toggle (so this Builder can suppress an individual
+    //      default), and an "Edit override" affordance that lets the
+    //      GM tweak THIS Builder's copy of the default's name /
+    //      description / tier / stackable / customField.
+    //   2) Builder-specific items — added with the per-tier "+ Add"
+    //      button. These behave like before (no override layer; the
+    //      GM is editing the canonical record).
+    //
+    // Both groups live in the same per-tier band — each band's tier
+    // is determined by the EFFECTIVE tier (override.tier if set, else
+    // the default's tier; for own items, just item.tier). That way
+    // moving a default to a higher tier via override visually moves
+    // it between bands, matching what the player will see.
     const list = (kind === 'feature' ? b.features : b.flaws) || [];
     const cat = state.abilityCatalogue || {};
     const tiers = cat.canonicalTiers || {};
     const tierTable = (kind === 'feature' ? tiers.featureCosts : tiers.flawRefunds) || {};
+
+    // Catalogue-level defaults + per-Builder overrides for them.
+    const defaults = (kind === 'feature' ? (cat.defaultFeatures || []) : (cat.defaultFlaws || []));
+    const overrides = (kind === 'feature'
+      ? (b.defaultFeatureOverrides || (b.defaultFeatureOverrides = {}))
+      : (b.defaultFlawOverrides    || (b.defaultFlawOverrides    = {})));
+
+    // Effective view of a default (override merged on top). Used both
+    // for placing the row in the right tier band and for showing the
+    // current effective values when the override editor is collapsed.
+    function effectiveOfDefault(def) {
+      const ov = overrides[def.id] || {};
+      return {
+        id:          def.id,
+        name:        (typeof ov.name        === 'string')  ? ov.name        : (def.name || ''),
+        description: (typeof ov.description === 'string')  ? ov.description : (def.description || ''),
+        tier:        (typeof ov.tier        === 'string')  ? ov.tier        : (def.tier || 'minor'),
+        stackable:   (typeof ov.stackable   === 'boolean') ? ov.stackable   : !!def.stackable,
+        customField: (ov.customField && typeof ov.customField === 'object') ? ov.customField : (def.customField || { enabled: false, label: '' }),
+        suppressed:  !!ov.suppressed,
+        hasAnyOverride: !!(ov.suppressed || typeof ov.name === 'string' || typeof ov.description === 'string' || typeof ov.tier === 'string' || typeof ov.stackable === 'boolean' || (ov.customField && typeof ov.customField === 'object'))
+      };
+    }
+
     return TIER_ORDER.map(tier => {
-      const rows = list
+      // Defaults that resolve to THIS tier (post-override).
+      const defaultsHere = defaults
+        .map(def => ({ def, eff: effectiveOfDefault(def) }))
+        .filter(({eff}) => eff.tier === tier);
+
+      // Own items at this tier.
+      const ownHere = list
         .map((it, idx) => ({ it, idx }))
         .filter(({it}) => it && it.tier === tier);
+
       const tierCost = Number.isFinite(tierTable[tier]) ? tierTable[tier] : 0;
       const costLabel = kind === 'feature' ? `+${tierCost} AP` : `−${tierCost} AP`;
-      const rowHtml = rows.map(({it, idx}) => {
-        // Defensive fallbacks — old data has only `name`/`description`,
-        // and customField may be missing entirely.
+
+      // Default row — compact display with override controls. When
+      // expanded, full editor for the Builder's per-Builder override
+      // copy (the canonical default itself can only be edited from
+      // Catalogue Settings).
+      const defaultRowHtml = defaultsHere.map(({def, eff}) => {
+        const expanded = bldrDefaultOverrideExpanded.has(def.id);
+        const cf = eff.customField || { enabled: false, label: '' };
+        const opacityStyle = eff.suppressed ? 'opacity:0.45;' : '';
+        const headRight = `
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+            <span style="font-size:9px;color:#888;letter-spacing:.08em;text-transform:uppercase;${eff.hasAnyOverride && !eff.suppressed ? 'color:#d8a060;' : ''}">${eff.suppressed ? 'OFF' : (eff.hasAnyOverride ? 'OVERRIDDEN' : 'DEFAULT')}</span>
+            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px;color:#888;">
+              <input type="checkbox" ${eff.suppressed ? '' : 'checked'}
+                     onchange="bldrToggleDefaultSuppress('${kind}', '${escapeHtmlAttr(def.id)}', !this.checked)">
+              <span>On</span>
+            </label>
+            <button class="btn small" type="button"
+                    onclick="bldrToggleDefaultOverride('${kind}', '${escapeHtmlAttr(def.id)}')">
+              ${expanded ? 'Done' : 'Edit'}
+            </button>
+            ${eff.hasAnyOverride
+              ? `<button class="btn small" type="button" title="Reset to catalogue default"
+                         onclick="bldrResetDefaultOverride('${kind}', '${escapeHtmlAttr(def.id)}')">Reset</button>`
+              : ''}
+          </div>
+        `;
+        const compactHead = `
+          <div style="display:flex;gap:6px;align-items:center;${opacityStyle}">
+            <span style="flex:1;font-size:13px;font-weight:600;color:#ddd;">
+              ${escapeHtml(eff.name || '(unnamed default)')}
+              ${eff.stackable ? ' <span style="font-size:10px;color:#888;font-weight:400;font-style:italic;">stackable</span>' : ''}
+            </span>
+            ${headRight}
+          </div>
+        `;
+        if (!expanded) {
+          // Collapsed — just show the effective name + override controls.
+          return `<div class="bldr-ff-row" style="flex-direction:column;gap:5px;align-items:stretch;">
+            ${compactHead}
+            ${eff.description ? `<div style="font-size:11px;color:#888;font-style:italic;${opacityStyle}">${escapeHtml(eff.description)}</div>` : ''}
+          </div>`;
+        }
+        // Expanded — full editor on the Builder's override copy.
+        // Inputs read from the EFFECTIVE values (override.X or default.X).
+        // Tier dropdown uses TIER_ORDER. Custom field has the same
+        // enabled / label split as the catalogue default editor.
+        const labelInputHtml = cf.enabled
+          ? `<input type="text" placeholder="Custom field label"
+                    value="${escapeHtmlAttr(cf.label || '')}"
+                    oninput="bldrSetDefaultOverrideCustomField('${kind}', '${escapeHtmlAttr(def.id)}', 'label', this.value)"
+                    style="flex:1;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:12px;padding:5px 8px;border-radius:3px;outline:none;">`
+          : '';
+        return `
+          <div class="bldr-ff-row" style="flex-direction:column;gap:5px;align-items:stretch;border:1px solid #2a1f1a;background:#100c08;">
+            ${compactHead}
+            <div style="display:flex;gap:6px;align-items:center;">
+              <input type="text" placeholder="Name (overrides default for this Builder only)"
+                     value="${escapeHtmlAttr(eff.name || '')}"
+                     oninput="bldrSetDefaultOverrideField('${kind}', '${escapeHtmlAttr(def.id)}', 'name', this.value)"
+                     style="flex:1;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:13px;font-weight:600;padding:6px 10px;border-radius:3px;outline:none;">
+              <select class="ff-tier-move" title="Change tier"
+                      onchange="bldrSetDefaultOverrideField('${kind}', '${escapeHtmlAttr(def.id)}', 'tier', this.value)">
+                ${TIER_ORDER.map(t => `<option value="${t}"${t === eff.tier ? ' selected' : ''}>${TIER_LABELS[t]}</option>`).join('')}
+              </select>
+            </div>
+            <textarea rows="2"
+                      placeholder="Description (overrides default for this Builder only)"
+                      oninput="bldrSetDefaultOverrideField('${kind}', '${escapeHtmlAttr(def.id)}', 'description', this.value);autoGrow(this);"
+                      style="width:100%;">${escapeHtml(eff.description || '')}</textarea>
+            <div style="display:flex;gap:8px;align-items:center;font-size:11px;color:#888;">
+              <label style="display:flex;align-items:center;gap:5px;cursor:pointer;flex-shrink:0;">
+                <input type="checkbox" ${cf.enabled ? 'checked' : ''}
+                       onchange="bldrSetDefaultOverrideCustomField('${kind}', '${escapeHtmlAttr(def.id)}', 'enabled', this.checked)">
+                <span>Custom field</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:5px;cursor:pointer;flex-shrink:0;">
+                <input type="checkbox" ${eff.stackable ? 'checked' : ''}
+                       onchange="bldrSetDefaultOverrideField('${kind}', '${escapeHtmlAttr(def.id)}', 'stackable', this.checked)">
+                <span>Stackable</span>
+              </label>
+              ${labelInputHtml}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Builder-specific item rows (existing UI — name/desc inputs +
+      // tier dropdown + delete + custom field + stackable).
+      const ownRowHtml = ownHere.map(({it, idx}) => {
         const cf = (it.customField && typeof it.customField === 'object') ? it.customField : { enabled: false, label: '' };
         const labelInputHtml = cf.enabled
           ? `<input type="text" placeholder="Custom field label (e.g. Conditional)"
@@ -2375,13 +2691,29 @@
           </div>
         `;
       }).join('');
+
+      // Skip empty bands (no defaults, no own items at this tier).
+      if (!defaultRowHtml && !ownRowHtml) {
+        return `
+          <div class="bldr-tier-band">
+            <div class="bldr-tier-band-head">
+              <span class="bldr-tier-band-name">${TIER_LABELS[tier]}</span>
+              <span class="bldr-tier-band-cost">${costLabel}</span>
+            </div>
+            <button class="btn small" type="button" style="width:100%;margin-top:2px;"
+                    onclick="bldrAddFF('${kind}', '${tier}')">+ Add ${TIER_LABELS[tier]} ${kind === 'feature' ? 'Feature' : 'Flaw'}</button>
+          </div>
+        `;
+      }
+
       return `
         <div class="bldr-tier-band">
           <div class="bldr-tier-band-head">
             <span class="bldr-tier-band-name">${TIER_LABELS[tier]}</span>
             <span class="bldr-tier-band-cost">${costLabel}</span>
           </div>
-          ${rowHtml}
+          ${defaultRowHtml}
+          ${ownRowHtml}
           <button class="btn small" type="button" style="width:100%;margin-top:2px;"
                   onclick="bldrAddFF('${kind}', '${tier}')">+ Add ${TIER_LABELS[tier]} ${kind === 'feature' ? 'Feature' : 'Flaw'}</button>
         </div>
@@ -2806,7 +3138,7 @@
     let cost = null, systemText = '', systemTextHtml = '';
     try {
       const result = window.computeAbilityCost
-        ? window.computeAbilityCost(b, inst, tiers)
+        ? window.computeAbilityCost(b, inst, tiers, state)
         : null;
       cost = result && Number.isFinite(result.computedCost) ? result.computedCost : null;
     } catch (e) { cost = null; }
@@ -3063,6 +3395,153 @@
   window.bldrSetFFField = function(kind, idx, field, value) {
     if (kind === 'feature') window.catBldrSetFeature(idx, field, value);
     else                    window.catBldrSetFlaw(idx, field, value);
+  };
+
+  // ── PER-BUILDER OVERRIDES OF CATALOGUE DEFAULTS ──
+  //
+  // The catalogue defines `defaultFeatures` / `defaultFlaws` once.
+  // Each Builder gets a defaultFeatureOverrides / defaultFlawOverrides
+  // map keyed by the default's id. Each entry can:
+  //   • { suppressed: true }  — turn this default OFF for this Builder
+  //   • { name: '…' }         — rename for this Builder only
+  //   • { description: '…' }  — re-describe
+  //   • { tier: 'major' }     — re-tier (changes its band + AP cost)
+  //   • { stackable: true }   — flip stackable on/off
+  //   • { customField: {...} } — change custom-field config
+  // Multiple overrides can coexist on one entry (e.g. a renamed +
+  // re-tiered default). Removing all override fields (or pressing
+  // Reset) deletes the entry, which makes that default flow through
+  // unmodified again.
+
+  // Track which default rows in the Builder editor are currently
+  // expanded (showing the override editor inline). Stored as a Set
+  // on the module so re-renders preserve which ones are open.
+  if (!window.__bldrDefaultOverrideExpanded) window.__bldrDefaultOverrideExpanded = new Set();
+  const bldrDefaultOverrideExpanded = window.__bldrDefaultOverrideExpanded;
+
+  function getOverrideMap(b, kind) {
+    const key = (kind === 'feature') ? 'defaultFeatureOverrides' : 'defaultFlawOverrides';
+    if (!b[key] || typeof b[key] !== 'object') b[key] = {};
+    return b[key];
+  }
+
+  // Drop empty override entries — keep the map clean. An entry is
+  // empty if it has no own fields (so it would behave identically
+  // to "no entry"). Called after every override mutation.
+  function pruneOverrideEntry(map, defId) {
+    const ov = map[defId];
+    if (!ov || typeof ov !== 'object') return;
+    const has =
+      !!ov.suppressed ||
+      typeof ov.name === 'string' ||
+      typeof ov.description === 'string' ||
+      typeof ov.tier === 'string' ||
+      typeof ov.stackable === 'boolean' ||
+      (ov.customField && typeof ov.customField === 'object');
+    if (!has) delete map[defId];
+  }
+
+  window.bldrToggleDefaultOverride = function(kind, defId) {
+    if (bldrDefaultOverrideExpanded.has(defId)) bldrDefaultOverrideExpanded.delete(defId);
+    else                                         bldrDefaultOverrideExpanded.add(defId);
+    if (kind === 'feature') renderBldrFeaturesList();
+    else                    renderBldrFlawsList();
+  };
+
+  window.bldrToggleDefaultSuppress = function(kind, defId, suppressed) {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const map = getOverrideMap(b, kind);
+    if (!map[defId] || typeof map[defId] !== 'object') map[defId] = {};
+    if (suppressed) map[defId].suppressed = true;
+    else            delete map[defId].suppressed;
+    pruneOverrideEntry(map, defId);
+    if (kind === 'feature') renderBldrFeaturesList();
+    else                    renderBldrFlawsList();
+    renderBuilderPreview();
+  };
+
+  window.bldrSetDefaultOverrideField = function(kind, defId, field, value) {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const cat = state.abilityCatalogue || {};
+    const defs = (kind === 'feature' ? (cat.defaultFeatures || []) : (cat.defaultFlaws || []));
+    const def = defs.find(d => d && d.id === defId);
+    if (!def) return;
+    const map = getOverrideMap(b, kind);
+    if (!map[defId] || typeof map[defId] !== 'object') map[defId] = {};
+
+    if (field === 'stackable') {
+      // Boolean override; if it matches the default, clear the override.
+      const v = !!value;
+      if (v === !!def.stackable) delete map[defId].stackable;
+      else                       map[defId].stackable = v;
+    } else if (field === 'tier') {
+      const v = String(value || 'minor');
+      if (v === (def.tier || 'minor')) delete map[defId].tier;
+      else                              map[defId].tier = v;
+    } else {
+      // Text fields — name, description.
+      const v = String(value == null ? '' : value);
+      const defVal = (typeof def[field] === 'string') ? def[field] : '';
+      if (v === defVal) delete map[defId][field];
+      else              map[defId][field] = v;
+    }
+    pruneOverrideEntry(map, defId);
+
+    // tier change moves the row between bands → re-render the list.
+    // stackable change updates the small italic tag → re-render too.
+    // name/description edits stay in the input (don't re-render).
+    if (field === 'tier' || field === 'stackable') {
+      if (kind === 'feature') renderBldrFeaturesList();
+      else                    renderBldrFlawsList();
+    }
+    renderBuilderPreview();
+  };
+
+  window.bldrSetDefaultOverrideCustomField = function(kind, defId, field, value) {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const cat = state.abilityCatalogue || {};
+    const defs = (kind === 'feature' ? (cat.defaultFeatures || []) : (cat.defaultFlaws || []));
+    const def = defs.find(d => d && d.id === defId);
+    if (!def) return;
+    const map = getOverrideMap(b, kind);
+    if (!map[defId] || typeof map[defId] !== 'object') map[defId] = {};
+    if (!map[defId].customField || typeof map[defId].customField !== 'object') {
+      // Seed override.customField from the canonical default's value
+      // so we don't lose unrelated fields when the GM toggles enabled.
+      const seed = (def.customField && typeof def.customField === 'object') ? def.customField : { enabled: false, label: '' };
+      map[defId].customField = { enabled: !!seed.enabled, label: typeof seed.label === 'string' ? seed.label : '' };
+    }
+    if (field === 'enabled') map[defId].customField.enabled = !!value;
+    else                     map[defId].customField.label   = String(value || '');
+
+    // If the override.customField now matches the canonical default
+    // exactly, drop the override so the value flows through cleanly.
+    const defCf = (def.customField && typeof def.customField === 'object') ? def.customField : { enabled: false, label: '' };
+    const ovCf  = map[defId].customField;
+    if (!!ovCf.enabled === !!defCf.enabled && (ovCf.label || '') === (defCf.label || '')) {
+      delete map[defId].customField;
+    }
+    pruneOverrideEntry(map, defId);
+
+    if (field === 'enabled') {
+      if (kind === 'feature') renderBldrFeaturesList();
+      else                    renderBldrFlawsList();
+    }
+    renderBuilderPreview();
+  };
+
+  window.bldrResetDefaultOverride = function(kind, defId) {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const map = getOverrideMap(b, kind);
+    if (map[defId]) delete map[defId];
+    bldrDefaultOverrideExpanded.delete(defId);
+    if (kind === 'feature') renderBldrFeaturesList();
+    else                    renderBldrFlawsList();
+    renderBuilderPreview();
   };
 
   // Toggle the per-feature/flaw stackable flag. Pure data mutation —
