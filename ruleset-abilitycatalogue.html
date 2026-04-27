@@ -3385,11 +3385,16 @@
   // (re)build panels/tier bands. Cheap — querySelectorAll on a small
   // surface, only runs after explicit re-renders.
   function restoreBldrCollapseState(rootEl) {
+    // Read from window.__bldrCollapsedKeys directly — the const alias
+    // declared further down in the module would TDZ-error if this
+    // runs during page init (called by renderBuilderEditor).
+    if (!window.__bldrCollapsedKeys) window.__bldrCollapsedKeys = new Set();
+    const keys = window.__bldrCollapsedKeys;
     const root = rootEl || document;
     const elements = root.querySelectorAll('[data-collapse-key]');
     elements.forEach(el => {
       const key = el.getAttribute('data-collapse-key');
-      if (bldrCollapsedKeys.has(key)) {
+      if (keys.has(key)) {
         el.setAttribute('data-bldr-collapsed', '1');
       } else {
         el.removeAttribute('data-bldr-collapsed');
