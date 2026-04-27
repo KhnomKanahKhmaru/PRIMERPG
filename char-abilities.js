@@ -536,6 +536,25 @@ export function renderSystemText(builder, instance, context) {
     if (k) normTokens[k] = val;
   }
 
+  // Resolve built-in tokens that can appear INSIDE a parameter's
+  // step labels, prefix, or suffix (not just at the top level of
+  // the System text). Currently this is just {POWER_NAME} — when a
+  // GM authors a Linear param's suffix as " {POWER_NAME}" or a step
+  // label as "5 {POWER_NAME}", the player's custom Power name gets
+  // substituted at the point the parameter resolves to a display
+  // string. Returns the input unchanged if no built-in tokens match.
+  function resolveBuiltins(s) {
+    if (typeof s !== 'string' || s.indexOf('{') < 0) return s;
+    const charData = (context && context.charData) ? context.charData : null;
+    const rawName = (charData && typeof charData.powerName === 'string') ? charData.powerName.trim() : '';
+    const powerName = rawName || 'Power';
+    return s.replace(/\{([^{}]+)\}/g, (match, key) => {
+      const norm = normalizeTokenKey(key);
+      if (norm === 'powername') return powerName;
+      return match;
+    });
+  }
+
   // Resolve a parameter's token-display value. Branches on mode:
   //   • linear  — paramValues[id] is the player's numeric value;
   //               render as "<prefix><value><suffix>" (e.g. "3d6")
@@ -548,12 +567,13 @@ export function renderSystemText(builder, instance, context) {
       const def = Number.isFinite(lc.defaultValue) ? lc.defaultValue : 0;
       const raw = paramValues[p.id];
       const value = Number.isFinite(raw) ? raw : def;
-      const prefix = typeof lc.valuePrefix === 'string' ? lc.valuePrefix : '';
-      const suffix = typeof lc.valueSuffix === 'string' ? lc.valueSuffix : '';
+      const prefix = resolveBuiltins(typeof lc.valuePrefix === 'string' ? lc.valuePrefix : '');
+      const suffix = resolveBuiltins(typeof lc.valueSuffix === 'string' ? lc.valueSuffix : '');
       return prefix + String(value) + suffix;
     }
     const step = resolveStep(p);
-    return stepDisplay(step);
+    const disp = stepDisplay(step);
+    return disp != null ? resolveBuiltins(disp) : disp;
   }
 
   (Array.isArray(builder.primaryParams) ? builder.primaryParams : []).forEach(p => {
@@ -608,6 +628,21 @@ export function renderSystemText(builder, instance, context) {
     }
     setToken('ACTIVATION_ROLL', arDesc);
     setToken('ACTIVATIONROLL',  arDesc);
+  }
+
+  // {POWER_NAME} token — resolves to the player's custom Power name
+  // (set inline on the Power Bar, e.g. "Mana", "Vitae", "Stamina") so
+  // GMs can author parameter labels and System text that follow the
+  // player's chosen theme automatically. Falls back to "Power" if no
+  // name is set, matching what the bar shows. Registered with both
+  // {POWER_NAME} and {POWERNAME} aliases; the token-key normalizer
+  // makes case and underscore variants match either way.
+  {
+    const charData = (context && context.charData) ? context.charData : null;
+    const rawName = (charData && typeof charData.powerName === 'string') ? charData.powerName.trim() : '';
+    const powerName = rawName || 'Power';
+    setToken('POWER_NAME', powerName);
+    setToken('POWERNAME',  powerName);
   }
 
   // Substitute. Match anything-between-single-braces. The captured text
@@ -692,6 +727,20 @@ export function renderSystemTextHtml(builder, instance, context) {
     const k = normalizeTokenKey(name);
     if (k) normTokens[k] = val;
   }
+  // See renderSystemText for full notes — resolves built-in tokens
+  // ({POWER_NAME} for now) inside parameter strings before they're
+  // returned as display values.
+  function resolveBuiltins(s) {
+    if (typeof s !== 'string' || s.indexOf('{') < 0) return s;
+    const charData = (context && context.charData) ? context.charData : null;
+    const rawName = (charData && typeof charData.powerName === 'string') ? charData.powerName.trim() : '';
+    const powerName = rawName || 'Power';
+    return s.replace(/\{([^{}]+)\}/g, (match, key) => {
+      const norm = normalizeTokenKey(key);
+      if (norm === 'powername') return powerName;
+      return match;
+    });
+  }
   function resolveParamDisplay(p) {
     if (!p) return null;
     if (p.mode === 'linear') {
@@ -699,12 +748,13 @@ export function renderSystemTextHtml(builder, instance, context) {
       const def = Number.isFinite(lc.defaultValue) ? lc.defaultValue : 0;
       const raw = paramValues[p.id];
       const value = Number.isFinite(raw) ? raw : def;
-      const prefix = typeof lc.valuePrefix === 'string' ? lc.valuePrefix : '';
-      const suffix = typeof lc.valueSuffix === 'string' ? lc.valueSuffix : '';
+      const prefix = resolveBuiltins(typeof lc.valuePrefix === 'string' ? lc.valuePrefix : '');
+      const suffix = resolveBuiltins(typeof lc.valueSuffix === 'string' ? lc.valueSuffix : '');
       return prefix + String(value) + suffix;
     }
     const step = resolveStep(p);
-    return stepDisplay(step);
+    const disp = stepDisplay(step);
+    return disp != null ? resolveBuiltins(disp) : disp;
   }
   (Array.isArray(builder.primaryParams) ? builder.primaryParams : []).forEach(p => {
     if (!p || !p.token) return;
@@ -742,6 +792,15 @@ export function renderSystemTextHtml(builder, instance, context) {
     }
     setToken('ACTIVATION_ROLL', arDesc);
     setToken('ACTIVATIONROLL',  arDesc);
+  }
+
+  // {POWER_NAME} built-in — see renderSystemText for full notes.
+  {
+    const charData = (context && context.charData) ? context.charData : null;
+    const rawName = (charData && typeof charData.powerName === 'string') ? charData.powerName.trim() : '';
+    const powerName = rawName || 'Power';
+    setToken('POWER_NAME', powerName);
+    setToken('POWERNAME',  powerName);
   }
 
   // Walk the template, replacing tokens with bolded HTML.
