@@ -351,8 +351,31 @@ export function createPowerSection(ctx) {
     return powerPoolXpCost(level, ruleset);
   }
 
+  // Render just the Power Bar block — no section wrapper, no Power
+  // Pool purchase UI. Used by the Ability tab so it can show the
+  // same bar at the top of its content. Returns '' if the ruleset
+  // doesn't define a Power Pool or if computeDerivedStats didn't
+  // produce a power result (e.g. no POWER stat configured).
+  //
+  // The same bar code paints, so the player's chosen powerName and
+  // powerColor flow through automatically — no extra wiring needed.
+  // Edits made via the inline name input or color picker on EITHER
+  // bar (Combat tab or Ability tab) trigger rerender() which paints
+  // the Combat tab; the Ability tab is repainted by character.html
+  // separately when needed.
+  function renderBarOnly() {
+    const charData = getCharData();
+    const ruleset  = getRuleset();
+    const pp = ruleset && ruleset.powerPool;
+    if (!pp || !pp.enabled) return '';
+    const result = computeDerivedStats(charData, ruleset);
+    if (!result || !result.power) return '';
+    return renderPowerBar(result.power, getCanEdit());
+  }
+
   return {
     renderSection,
+    renderBarOnly,
     // Handlers (exposed so combat.js can re-export them for window wiring)
     tickPowerPool, setPowerPool,
     tickPower, setPower, setPowerColor, setPowerName,
