@@ -7289,6 +7289,7 @@
     if (sectionKey === 'features')        refreshAbilitiesBuilderFeatures();
     else if (sectionKey === 'flaws')      refreshAbilitiesBuilderFlaws();
     else if (sectionKey === 'activation') refreshAbilitiesBuilderActivation();
+    else if (sectionKey === 'contested')  refreshAbilitiesBuilderContested();
     else if (sectionKey === 'systemtext') renderAbilitiesBuilderSystemText();
     else                                   renderAbilitiesBuilderUI();
   };
@@ -7467,6 +7468,45 @@
     renderAbilitiesBuilderCostPreview();
     renderAbilitiesBuilderSystemText();
   };
+
+  // Player picks a contested-roll option. The dropdown carries a
+  // "kind|code" key (see optionKey in renderAbilitiesBuilderContestedSection)
+  // which we decompose back into a {kind, code?} object. Empty string
+  // (the placeholder option) clears the choice.
+  window.abilitiesBuilderSetContestedChoice = function(value) {
+    if (!abilitiesBuilderSession) return;
+    const inst = abilitiesBuilderSession.instance;
+    const v = String(value || '');
+    if (!v) {
+      delete inst.contestedRollChoice;
+    } else {
+      const sepIdx = v.indexOf('|');
+      const kind = sepIdx >= 0 ? v.slice(0, sepIdx) : v;
+      const code = sepIdx >= 0 ? v.slice(sepIdx + 1) : '';
+      if (kind === 'reaction') {
+        inst.contestedRollChoice = { kind: 'reaction' };
+      } else if (kind === 'derived' && code) {
+        inst.contestedRollChoice = { kind: 'derived', code };
+      } else {
+        delete inst.contestedRollChoice;
+      }
+    }
+    refreshAbilitiesBuilderContested();
+    renderAbilitiesBuilderSystemText();
+  };
+
+  // In-place re-render of just the Contested section so the dropdown
+  // selection persists without rebuilding the whole modal (would lose
+  // input focus elsewhere).
+  function refreshAbilitiesBuilderContested() {
+    if (!abilitiesBuilderSession) return;
+    const inst = abilitiesBuilderSession.instance;
+    const ref = charAbilities.findBuilderById(activeRuleset, inst.builderId);
+    if (!ref) return;
+    const host = document.getElementById('abil-builder-contested-host');
+    if (!host) return;
+    host.innerHTML = renderAbilitiesBuilderContestedSection(ref.builder, inst);
+  }
 
   window.abilitiesBuilderSetPrimaryParam = function(paramId, value) {
     if (!abilitiesBuilderSession) return;
@@ -7680,6 +7720,7 @@
           ${builder.description ? `<div style="font-size:12px;color:#888;font-style:italic;border-left:2px solid #2a2a2a;padding-left:10px;">${escapeHtml(builder.description)}</div>` : ''}
           ${renderAbilitiesBuilderIdentitySection(inst)}
           <div id="abil-builder-activation-host">${renderAbilitiesBuilderActivationSection(builder, inst)}</div>
+          <div id="abil-builder-contested-host">${renderAbilitiesBuilderContestedSection(builder, inst)}</div>
           ${renderAbilitiesBuilderPrimarySection(builder, inst)}
           ${renderAbilitiesBuilderSecondarySection(builder, inst)}
           <div id="abil-builder-features-host">${renderAbilitiesBuilderFeaturesSection(builder, inst, tiers)}</div>
@@ -7831,6 +7872,89 @@
     return `
       <div style="border:1px solid #1f1f1f;border-radius:4px;padding:12px;background:#0d0d0d;">
         ${sectionHeaderHtml('activation', 'Activation Roll', '')}
+        ${body}
+      </div>
+    `;
+  }
+
+  // Contested Roll player UI. The Builder declared zero or more
+  // contests the target rolls (derived stats by code, or the generic
+  // 'reaction'); we present a dropdown of those options for the
+  // player to pick. The chosen kind+code is stored on the instance
+  // as inst.contestedRollChoice = { kind, code? }, which feeds the
+  // {CONTESTED_ROLL} token in System text.
+  //
+  // Rendering rules:
+  //   • Builder doesn't declare contestedRoll OR it's disabled → ''
+  //     (whole section hidden, no host visible)
+  //   • Enabled but options:[] → show a hint that the GM hasn't
+  //     finished configuring contests yet
+  //   • Enabled with options → dropdown of labels
+  //
+  // If the player hasn't picked yet, the dropdown defaults to the
+  // first option, but we DON'T silently write that to instance — we
+  // wait for the player's explicit pick. The token resolver in
+  // char-abilities falls back to the first authored option's label
+  // for display purposes when no choice is set.
+  function renderAbilitiesBuilderContestedSection(builder, inst) {
+    const cr = builder && builder.contestedRoll;
+    if (!cr || !cr.enabled) return '';
+    const collapsed = abilitiesBuilderIsCollapsed('contested');
+
+    const optionLabel = (opt) => {
+      if (!opt) return '';
+      if (opt.kind === 'reaction') return 'Reaction';
+      if (opt.kind === 'derived' && opt.code) {
+        const list = (activeRuleset && Array.isArray(activeRuleset.derivedStats)) ? activeRuleset.derivedStats : [];
+        const found = list.find(d => d && d.code === opt.code);
+        return (found && found.name) ? found.name : opt.code;
+      }
+      return '';
+    };
+    // Encode an option to a "kind|code" string the dropdown can carry
+    // through onchange. Reactions use 'reaction|' (no code).
+    const optionKey = (opt) => {
+      if (!opt) return '';
+      if (opt.kind === 'reaction') return 'reaction|';
+      if (opt.kind === 'derived' && opt.code) return 'derived|' + opt.code;
+      return '';
+    };
+
+    const opts = Array.isArray(cr.options) ? cr.options : [];
+    const choice = (inst && inst.contestedRollChoice) || null;
+    const currentKey = choice ? optionKey(choice) : '';
+
+    let body = '';
+    if (collapsed) {
+      // collapsed; nothing in body
+    } else if (opts.length === 0) {
+      body = `
+        <div style="font-size:12px;color:#888;font-style:italic;padding:8px 0;">
+          The catalogue author hasn't configured any contests yet.
+        </div>
+      `;
+    } else {
+      const optsHtml = opts.map(opt => {
+        const key = optionKey(opt);
+        const lbl = optionLabel(opt);
+        if (!key || !lbl) return '';
+        return `<option value="${escapeHtml(key)}"${key === currentKey ? ' selected' : ''}>${escapeHtml(lbl)}</option>`;
+      }).join('');
+      body = `
+        <div style="display:grid;grid-template-columns:1fr 200px;gap:10px;align-items:center;padding:6px 0;">
+          <div style="font-size:13px;color:#ccc;">Target rolls:</div>
+          <select style="background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:13px;padding:7px 10px;border-radius:4px;outline:none;width:100%;"
+                  onchange="abilitiesBuilderSetContestedChoice(this.value)">
+            ${currentKey ? '' : '<option value="">— pick a contest —</option>'}
+            ${optsHtml}
+          </select>
+        </div>
+      `;
+    }
+
+    return `
+      <div style="border:1px solid #1f1f1f;border-radius:4px;padding:12px;background:#0d0d0d;">
+        ${sectionHeaderHtml('contested', 'Contested Roll', '')}
         ${body}
       </div>
     `;
