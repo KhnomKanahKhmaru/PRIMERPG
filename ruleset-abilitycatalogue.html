@@ -401,9 +401,31 @@
       text-transform: uppercase; color: #888;
       margin-bottom: 14px;
       display: flex; align-items: center; gap: 12px;
+      cursor: pointer; user-select: none;
     }
+    .bldr-panel-title:hover { color: #ccc; }
     .bldr-panel-title .panel-actions {
       margin-left: auto;
+    }
+    /* Caret glyph injected before the title text. Rotates when the
+       parent .bldr-panel or .bldr-textarea-section is collapsed. */
+    .bldr-panel-title::before {
+      content: '▾';
+      font-size: 10px; color: #555; flex-shrink: 0;
+      transition: transform 0.1s ease-out;
+      transform-origin: 50% 55%;
+    }
+    [data-bldr-collapsed="1"] > .bldr-panel-title::before,
+    [data-bldr-collapsed="1"] .bldr-panel-title::before {
+      transform: rotate(-90deg);
+    }
+    /* Hide everything below the title when collapsed.
+       Children that ARE the title are kept visible. */
+    [data-bldr-collapsed="1"] > *:not(.bldr-panel-title) {
+      display: none !important;
+    }
+    [data-bldr-collapsed="1"] > .bldr-panel-title {
+      margin-bottom: 0;
     }
 
     /* ───── Live Ability Card preview ─────
@@ -604,10 +626,28 @@
       display: flex; align-items: center; justify-content: space-between;
       padding: 4px 0 6px 0; margin-bottom: 6px;
       border-bottom: 1px solid #1a1a1a;
+      cursor: pointer; user-select: none;
     }
+    .bldr-tier-band-head:hover { border-bottom-color: #2f2f2f; }
     .bldr-tier-band-name {
       font-size: 11px; font-weight: 700; letter-spacing: .1em;
       text-transform: uppercase; color: #aaa;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .bldr-tier-band-name::before {
+      content: '▾';
+      font-size: 10px; color: #555; flex-shrink: 0;
+      transition: transform 0.1s ease-out;
+    }
+    [data-bldr-collapsed="1"] .bldr-tier-band-name::before {
+      transform: rotate(-90deg);
+    }
+    .bldr-tier-band[data-bldr-collapsed="1"] > *:not(.bldr-tier-band-head) {
+      display: none !important;
+    }
+    .bldr-tier-band[data-bldr-collapsed="1"] > .bldr-tier-band-head {
+      margin-bottom: 0;
+      border-bottom: none;
     }
     .bldr-tier-band-cost {
       font-size: 10px; color: #666;
@@ -2027,10 +2067,10 @@
         <div class="bldr-panel-title">Ability Card Preview</div>
         <div id="bldr-card-preview" class="bldr-card-preview"></div>
       </div>
-      <div class="bldr-panel">
-        <div class="bldr-panel-title">
+      <div class="bldr-panel" data-collapse-key="bldr:params">
+        <div class="bldr-panel-title" onclick="toggleBldrCollapse(event)">
           <span>Parameters</span>
-          <button class="btn small" type="button" onclick="bldrAddParam()">+ Add Parameter</button>
+          <button class="btn small" type="button" onclick="event.stopPropagation();bldrAddParam()">+ Add Parameter</button>
         </div>
         <div id="bldr-params-list"></div>
         <div class="hint" style="margin:8px 0 0 0;font-size:11px;">
@@ -2045,12 +2085,12 @@
     midGrid.className = 'bldr-grid-mid';
     midGrid.style.marginTop = '14px';
     midGrid.innerHTML = `
-      <div class="bldr-panel">
-        <div class="bldr-panel-title">Features <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— player pays AP to take</span></div>
+      <div class="bldr-panel" data-collapse-key="bldr:features">
+        <div class="bldr-panel-title" onclick="toggleBldrCollapse(event)">Features <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— player pays AP to take</span></div>
         <div id="bldr-features-list"></div>
       </div>
-      <div class="bldr-panel">
-        <div class="bldr-panel-title">Flaws <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— player gets AP back</span></div>
+      <div class="bldr-panel" data-collapse-key="bldr:flaws">
+        <div class="bldr-panel-title" onclick="toggleBldrCollapse(event)">Flaws <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— player gets AP back</span></div>
         <div id="bldr-flaws-list"></div>
       </div>
     `;
@@ -2074,8 +2114,9 @@
     const descSection = document.createElement('div');
     descSection.className = 'bldr-textarea-section';
     descSection.style.marginTop = '14px';
+    descSection.setAttribute('data-collapse-key', 'bldr:description');
     descSection.innerHTML = `
-      <div class="bldr-panel-title">Description <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— shown to players in the catalogue browser</span></div>
+      <div class="bldr-panel-title" onclick="toggleBldrCollapse(event)">Description <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— shown to players in the catalogue browser</span></div>
       <textarea rows="2"
                 placeholder="Short description of what this Ability does. Players see this when picking the Builder."
                 oninput="catBldrSetField('description',this.value)">${escapeHtml(b.description || '')}</textarea>
@@ -2101,6 +2142,7 @@
     const arSection = document.createElement('div');
     arSection.className = 'bldr-textarea-section';
     arSection.id = 'bldr-activation-section';
+    arSection.setAttribute('data-collapse-key', 'bldr:activation');
     arSection.innerHTML = renderActivationRollSection(b);
     wrap.appendChild(arSection);
 
@@ -2111,14 +2153,16 @@
     const crSection = document.createElement('div');
     crSection.className = 'bldr-textarea-section';
     crSection.id = 'bldr-contested-section';
+    crSection.setAttribute('data-collapse-key', 'bldr:contested');
     crSection.innerHTML = renderContestedRollSection(b);
     wrap.appendChild(crSection);
 
     // System template
     const sysSection = document.createElement('div');
     sysSection.className = 'bldr-textarea-section';
+    sysSection.setAttribute('data-collapse-key', 'bldr:system');
     sysSection.innerHTML = `
-      <div class="bldr-panel-title">System <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— rules text. Use {paramId} placeholders to substitute parameter values. Use {ACTIVATION_ROLL} to insert the roll pool when Activation Roll is enabled. Use {CONTESTED_ROLL} for the chosen contest.</span></div>
+      <div class="bldr-panel-title" onclick="toggleBldrCollapse(event)">System <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— rules text. Use {paramId} placeholders to substitute parameter values. Use {ACTIVATION_ROLL} to insert the roll pool when Activation Roll is enabled. Use {CONTESTED_ROLL} for the chosen contest.</span></div>
       <textarea rows="3"
                 placeholder="e.g. Spend an Action and {activationCost}; deal {damage} fire damage to a target within {range}."
                 oninput="catBldrSetField('systemTextTemplate',this.value);renderBuilderPreview();">${escapeHtml(b.systemTextTemplate || '')}</textarea>
@@ -2132,8 +2176,9 @@
     // hint text when the Player hasn't written anything yet.
     const visSection = document.createElement('div');
     visSection.className = 'bldr-textarea-section';
+    visSection.setAttribute('data-collapse-key', 'bldr:visual');
     visSection.innerHTML = `
-      <div class="bldr-panel-title">Visual Guideline <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— GM hint: what the Player should depict for this Ability's visual</span></div>
+      <div class="bldr-panel-title" onclick="toggleBldrCollapse(event)">Visual Guideline <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— GM hint: what the Player should depict for this Ability's visual</span></div>
       <textarea rows="2"
                 placeholder="e.g. The icon of a flame appearing in the Player's hand. Players will write the actual visual description on their own Ability."
                 oninput="catBldrSetField('visualGuideline',this.value)">${escapeHtml(b.visualGuideline || b.visualPrompt || '')}</textarea>
@@ -2145,8 +2190,9 @@
     // their Ability instance.
     const extraSection = document.createElement('div');
     extraSection.className = 'bldr-textarea-section';
+    extraSection.setAttribute('data-collapse-key', 'bldr:extra');
     extraSection.innerHTML = `
-      <div class="bldr-panel-title">Extra Guideline <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— GM hint: what the Player should write in the Extra section (lore, metapsychic, background, etc.)</span></div>
+      <div class="bldr-panel-title" onclick="toggleBldrCollapse(event)">Extra Guideline <span class="hint" style="font-weight:400;letter-spacing:0;text-transform:none;color:#666;">— GM hint: what the Player should write in the Extra section (lore, metapsychic, background, etc.)</span></div>
       <textarea rows="3"
                 placeholder="e.g. Describe the metapsychic resonance this Ability creates. Players will fill this in on their own Ability."
                 oninput="catBldrSetField('extraGuideline',this.value)">${escapeHtml(b.extraGuideline || b.extra || '')}</textarea>
@@ -2162,6 +2208,11 @@
     renderBldrFeaturesList();
     renderBldrFlawsList();
     renderBuilderPreview();
+    // Restore any previously-collapsed panels/tier bands in the
+    // newly-rendered editor. Without this, opening a Builder always
+    // starts with everything expanded — even sections the GM had
+    // collapsed in another Builder during the same session.
+    restoreBldrCollapseState(el);
   }
 
   // ── PARAMETERS LIST (Phase B v2 — inline expand) ──
@@ -3068,8 +3119,8 @@
       // Skip empty bands (no defaults, no own items at this tier).
       if (!defaultRowHtml && !ownRowHtml) {
         return `
-          <div class="bldr-tier-band">
-            <div class="bldr-tier-band-head">
+          <div class="bldr-tier-band" data-collapse-key="bldr:tier:${kind}:${tier}">
+            <div class="bldr-tier-band-head" onclick="toggleBldrCollapse(event)">
               <span class="bldr-tier-band-name">${TIER_LABELS[tier]}</span>
               <span class="bldr-tier-band-cost">${costLabel}</span>
             </div>
@@ -3080,8 +3131,8 @@
       }
 
       return `
-        <div class="bldr-tier-band">
-          <div class="bldr-tier-band-head">
+        <div class="bldr-tier-band" data-collapse-key="bldr:tier:${kind}:${tier}">
+          <div class="bldr-tier-band-head" onclick="toggleBldrCollapse(event)">
             <span class="bldr-tier-band-name">${TIER_LABELS[tier]}</span>
             <span class="bldr-tier-band-cost">${costLabel}</span>
           </div>
@@ -3101,6 +3152,7 @@
     if (!b) { el.innerHTML = ''; return; }
     el.innerHTML = renderTierGrouped(b, 'feature');
     el.querySelectorAll('textarea').forEach(autoGrow);
+    if (typeof window.restoreBldrCollapseState === 'function') window.restoreBldrCollapseState(el);
   }
 
   function renderBldrFlawsList() {
@@ -3110,6 +3162,7 @@
     if (!b) { el.innerHTML = ''; return; }
     el.innerHTML = renderTierGrouped(b, 'flaw');
     el.querySelectorAll('textarea').forEach(autoGrow);
+    if (typeof window.restoreBldrCollapseState === 'function') window.restoreBldrCollapseState(el);
   }
 
   // Auto-grow a textarea to fit its content. Called on every input
@@ -3123,6 +3176,91 @@
     el.style.height = (el.scrollHeight) + 'px';
   }
   window.autoGrow = autoGrow;
+
+  // ═════════ COLLAPSIBLE SECTIONS ═════════
+  //
+  // Panels (Features, Flaws, Description, System, Visual, Extra,
+  // Activation Roll, Contested Roll, Parameters) and tier bands inside
+  // Features/Flaws (Minor → Mythical) are collapsible to reduce visual
+  // noise while authoring. Click the header → flips data-bldr-collapsed
+  // on the wrapper. CSS hides everything but the header.
+  //
+  // State is in-memory only (a Set keyed by section identifier). It
+  // resets on page reload by design — full-collapse-everything-and-
+  // navigate-back-and-find-it-collapsed-again UX would need persistence,
+  // and the GM authoring flow is "open Builder, expand what you need,
+  // close Builder" so per-session is the right scope.
+  //
+  // The `+ Add` buttons inside catalogue-settings panel titles need
+  // event.stopPropagation() on their onclick so clicking them doesn't
+  // ALSO toggle the panel — toggleBldrCollapse only fires when the
+  // outer header (or the title text itself) is clicked.
+  if (!window.__bldrCollapsedKeys) window.__bldrCollapsedKeys = new Set();
+  const bldrCollapsedKeys = window.__bldrCollapsedKeys;
+
+  // Find the nearest ancestor (or the element itself) carrying a
+  // [data-collapse-key] attribute. That ancestor is the "wrapper"
+  // we toggle data-bldr-collapsed on. Returns null if none found.
+  function findCollapseWrapper(start) {
+    let el = start;
+    while (el && el.nodeType === 1) {
+      if (el.hasAttribute && el.hasAttribute('data-collapse-key')) return el;
+      el = el.parentElement;
+    }
+    return null;
+  }
+
+  // Click handler for any element with onclick="toggleBldrCollapse(event)".
+  // Walks up to find the nearest [data-collapse-key] wrapper, flips
+  // its data-bldr-collapsed, and persists the new state in the Set
+  // so subsequent re-renders (which rebuild the DOM) restore it.
+  window.toggleBldrCollapse = function(ev) {
+    if (!ev) return;
+    // Don't toggle if the click originated from an interactive child
+    // (a button, input, label, select, anchor). The header has its
+    // own onclick, but clicks on +Add or × inside it shouldn't bubble
+    // here. We do this defensively in case a button forgot to
+    // stopPropagation.
+    let t = ev.target;
+    while (t && t !== ev.currentTarget) {
+      const tag = t.tagName;
+      if (tag === 'BUTTON' || tag === 'INPUT' || tag === 'LABEL' ||
+          tag === 'SELECT' || tag === 'A' || tag === 'TEXTAREA') {
+        return;
+      }
+      t = t.parentElement;
+    }
+    const wrap = findCollapseWrapper(ev.currentTarget);
+    if (!wrap) return;
+    const key = wrap.getAttribute('data-collapse-key');
+    const wasCollapsed = wrap.getAttribute('data-bldr-collapsed') === '1';
+    if (wasCollapsed) {
+      wrap.removeAttribute('data-bldr-collapsed');
+      bldrCollapsedKeys.delete(key);
+    } else {
+      wrap.setAttribute('data-bldr-collapsed', '1');
+      bldrCollapsedKeys.add(key);
+    }
+  };
+
+  // Restore collapse state after a re-render. Walks the document for
+  // any [data-collapse-key] elements and sets data-bldr-collapsed if
+  // their key is in the Set. Called from the renderers after they
+  // (re)build panels/tier bands. Cheap — querySelectorAll on a small
+  // surface, only runs after explicit re-renders.
+  function restoreBldrCollapseState(rootEl) {
+    const root = rootEl || document;
+    const elements = root.querySelectorAll('[data-collapse-key]');
+    elements.forEach(el => {
+      const key = el.getAttribute('data-collapse-key');
+      if (bldrCollapsedKeys.has(key)) {
+        el.setAttribute('data-bldr-collapsed', '1');
+      } else {
+        el.removeAttribute('data-bldr-collapsed');
+      }
+    });
+  }
+  window.restoreBldrCollapseState = restoreBldrCollapseState;
 
   // ═════════ LIVE PREVIEW CARD ═════════
   //
@@ -3229,7 +3367,7 @@
     const skills = activationSkillList();
 
     const toggleRow = `
-      <div class="bldr-panel-title" style="margin-bottom:12px;">
+      <div class="bldr-panel-title" style="margin-bottom:12px;" onclick="toggleBldrCollapse(event)">
         <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#888;margin:0;">
           <input type="checkbox" ${ar.enabled ? 'checked' : ''}
                  onchange="bldrToggleActivationRoll(this.checked)">
@@ -3371,7 +3509,7 @@
     const opts = Array.isArray(cr.options) ? cr.options : [];
 
     const toggleRow = `
-      <div class="bldr-panel-title" style="margin-bottom:12px;">
+      <div class="bldr-panel-title" style="margin-bottom:12px;" onclick="toggleBldrCollapse(event)">
         <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#888;margin:0;">
           <input type="checkbox" ${cr.enabled ? 'checked' : ''}
                  onchange="bldrToggleContestedRoll(this.checked)">
