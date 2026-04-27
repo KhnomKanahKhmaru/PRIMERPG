@@ -641,6 +641,16 @@ window.RULESET_DEFAULTS = {
         mythical:   5
       }
     },
+    // Catalogue-level default Features/Flaws. Same shape as a Builder's
+    // own features/flaws array — { id, name, description, tier,
+    // stackable, customField }. When a Builder has its `useDefaultFeatures`
+    // / `useDefaultFlaws` toggles enabled, these flow through to the
+    // player's Edit modal and Card identically to Builder-defined ones.
+    // Per-Builder overrides live on the Builder's `defaultOverrides`
+    // map and let a single Builder disable, rename, or retier a
+    // specific default without affecting other Builders.
+    defaultFeatures: [],
+    defaultFlaws: [],
     // Four parallel type-worlds. Categories+Builders for each are
     // identical in shape; mechanics may diverge later (Artifacts get
     // durability, Consumables get charges, etc.) — at which point we
@@ -1610,7 +1620,18 @@ window.normalizeRuleset = function(rs) {
       primaryParams:   Array.isArray(b.primaryParams)   ? b.primaryParams   : [],
       secondaryParams: Array.isArray(b.secondaryParams) ? b.secondaryParams : [],
       features:        Array.isArray(b.features)        ? b.features        : [],
-      flaws:           Array.isArray(b.flaws)           ? b.flaws           : []
+      flaws:           Array.isArray(b.flaws)           ? b.flaws           : [],
+      // Per-Builder overrides for catalogue-level defaultFeatures /
+      // defaultFlaws. Map of defaultId → partial override:
+      //   { suppressed?: true, name?, description?, tier?,
+      //     stackable?, customField? }
+      // Empty / missing entry = inherit everything from the catalogue
+      // default. suppressed:true = this default is OFF for this
+      // Builder. Any other field present overrides only THAT field —
+      // unset fields still inherit. So renames at the catalogue level
+      // propagate to all non-overriding Builders automatically.
+      defaultFeatureOverrides: (b.defaultFeatureOverrides && typeof b.defaultFeatureOverrides === 'object') ? b.defaultFeatureOverrides : {},
+      defaultFlawOverrides:    (b.defaultFlawOverrides    && typeof b.defaultFlawOverrides    === 'object') ? b.defaultFlawOverrides    : {}
     };
 
     // Primary + Secondary parameters share the same step-list shape:
@@ -1774,6 +1795,38 @@ window.normalizeRuleset = function(rs) {
           ? cat.canonicalTiers.flawRefunds : {}
       );
     }
+
+    // ── DEFAULT FEATURES / DEFAULT FLAWS ──
+    // Catalogue-level defaults that flow into every Builder. Each Builder
+    // can opt out per-default (suppressed) or override individual fields
+    // (name/description/tier/stackable/customField). Same shape as a
+    // Builder feature/flaw row. Stored at catalogue level so adding a
+    // new default propagates to every Builder automatically.
+    function normalizeDefaultFF(arr, idPrefix) {
+      if (!Array.isArray(arr)) return [];
+      const TIERS = ['minor','moderate','major','massive','monumental','mega','mythical'];
+      const normCf = (cf) => {
+        cf = (cf && typeof cf === 'object') ? cf : {};
+        return {
+          enabled: !!cf.enabled,
+          label:   typeof cf.label === 'string' ? cf.label : ''
+        };
+      };
+      let synth = 0;
+      const synthDefId = () => `${idPrefix}_${Date.now().toString(36)}_${(synth++).toString(36)}`;
+      return arr
+        .filter(f => f && typeof f === 'object')
+        .map(f => ({
+          id:          (typeof f.id === 'string' && f.id.trim()) ? f.id : synthDefId(),
+          name:        typeof f.name === 'string' ? f.name : 'Untitled',
+          description: typeof f.description === 'string' ? f.description : '',
+          tier:        TIERS.includes(f.tier) ? f.tier : 'minor',
+          stackable:   !!f.stackable,
+          customField: normCf(f.customField)
+        }));
+    }
+    cat.defaultFeatures = normalizeDefaultFF(cat.defaultFeatures, 'deffeat');
+    cat.defaultFlaws    = normalizeDefaultFF(cat.defaultFlaws,    'defflaw');
 
     // ── MIGRATION: old shape → new types-wrapped shape ──
     // Old: cat.categories (flat array directly under cat)
