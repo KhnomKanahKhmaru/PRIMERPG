@@ -2001,6 +2001,15 @@
     // Hide the mode selector to avoid confusion.
     const modeWrap = document.getElementById('imp-mode').parentElement;
     if (modeWrap) modeWrap.style.opacity = (scope === 'builder') ? '0.4' : '1';
+    // Sync the new-category-name field visibility to the current
+    // target dropdown value. Without this, opening the modal when
+    // the only option is "Create new" leaves the name field hidden
+    // until the user manually re-selects it.
+    const targetSel = document.getElementById('imp-target-cat');
+    const nameEl = document.getElementById('imp-new-cat-name');
+    if (targetSel && nameEl) {
+      nameEl.style.display = (targetSel.value === '__new__') ? 'block' : 'none';
+    }
   };
 
   window.importPreview = function() {
