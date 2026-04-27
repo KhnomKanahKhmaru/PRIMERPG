@@ -932,7 +932,30 @@ export function renderSystemTextHtml(builder, instance, context) {
     }
   }
 
-  // Walk the template, replacing tokens with bolded HTML.
+  // Apply Markdown-style emphasis to a plain text segment. Order
+  // matters: **bold** first (consumes its asterisks), then leftover
+  // single-asterisks become *italic*. We DON'T want to match across
+  // newlines (per-paragraph emphasis only) and we use the lazy form
+  // to keep "**a** **b**" from collapsing into one big bolded run.
+  // Input is HTML-escaped (so any literal < > & in the source has
+  // already been neutralized) — the `*` characters survive escaping
+  // unchanged because they aren't HTML-special. So we run regex on
+  // the escaped string directly and the resulting <strong>/<em> tags
+  // pass through to the rendered card untouched.
+  function applyMarkdownEmphasis(escapedText) {
+    return escapedText
+      // Bold: **text** — pair of double-asterisks. Lazy so the inner
+      // capture doesn't span across multiple **bold** spans.
+      .replace(/\*\*([^*\n][^*\n]*?)\*\*/g, '<strong>$1</strong>')
+      // Italic: *text* — single asterisks. Same laziness rule.
+      // Runs AFTER bold so the leftover singletons aren't consumed.
+      .replace(/\*([^*\n][^*\n]*?)\*/g, '<em>$1</em>');
+  }
+
+  // Walk the template, replacing tokens with bolded HTML and
+  // applying Markdown-style **bold** / *italic* emphasis to plain
+  // text segments. Token-rendered values are NOT re-processed for
+  // markdown — their content is treated as literal display text.
   return tpl.replace(/\{([^{}]+)\}|([^{]+)/g, (match, tokenKey, plainText) => {
     if (tokenKey !== undefined) {
       const norm = normalizeTokenKey(tokenKey);
@@ -942,7 +965,7 @@ export function renderSystemTextHtml(builder, instance, context) {
       // Unknown token — render as escaped literal so GM can spot typos
       return escapeForHtml(match);
     }
-    return escapeForHtml(plainText);
+    return applyMarkdownEmphasis(escapeForHtml(plainText));
   });
 }
 
