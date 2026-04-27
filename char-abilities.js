@@ -6,6 +6,9 @@
 // Ability. Both the Ruleset Editor (preview as designer tunes a Builder)
 // and the Character Sheet (live cost on Player Ability cards) call into
 // here so the math is identical across surfaces.
+
+import { buildSymbolTable } from './char-derived.js';
+
 //
 // LIVE REFERENCE MODEL: a Player Ability stores only a builderId plus
 // their tuned paramValues + selectedFeatureIds + selectedFlawIds. At
@@ -536,22 +539,55 @@ export function renderSystemText(builder, instance, context) {
     if (k) normTokens[k] = val;
   }
 
-  // Resolve built-in tokens that can appear INSIDE a parameter's
-  // step labels, prefix, or suffix (not just at the top level of
-  // the System text). Currently this is just {POWER_NAME} — when a
-  // GM authors a Linear param's suffix as " {POWER_NAME}" or a step
-  // label as "5 {POWER_NAME}", the player's custom Power name gets
-  // substituted at the point the parameter resolves to a display
-  // string. Returns the input unchanged if no built-in tokens match.
+  // ── BUILT-IN TOKEN REGISTRATION ──
+  //
+  // These are registered up front (before parameter tokens) so they
+  // can also be resolved INSIDE parameter strings (step labels,
+  // linear-mode prefix/suffix) via the resolveBuiltins helper below.
+  //
+  // Stats + statmods + derived stats come straight from the ruleset
+  // symbol table — same data char-derived.js evaluates formulas
+  // against. So {STR}, {STRMOD}, {SIZE}, {SIZEMOD}, {HP}, {FORT},
+  // {POWERPOOL}, etc. all work, and any custom stat/derived stat
+  // codes a homebrew ruleset adds are picked up automatically.
+  // Player edits to stats propagate live because we read charData
+  // each render.
+  //
+  // {POWER_NAME} is special-cased — it's a string label, not a
+  // numeric. Used so GMs can author parameter labels like "Activation
+  // Cost" with suffix " {POWER_NAME}", and a player who renamed their
+  // bar to "Mana" sees "5 Mana".
+  {
+    const charData = (context && context.charData) ? context.charData : null;
+    const ruleset  = (context && context.ruleset)  ? context.ruleset  : null;
+    if (charData && ruleset) {
+      try {
+        const symbols = buildSymbolTable(charData, ruleset);
+        Object.keys(symbols).forEach(key => {
+          const v = symbols[key];
+          if (typeof v === 'number') setToken(key, String(v));
+        });
+      } catch (e) {
+        // Symbol table failures (bad ruleset, missing fields) shouldn't
+        // break ability rendering — just skip the stat tokens.
+      }
+    }
+    const rawName = (charData && typeof charData.powerName === 'string') ? charData.powerName.trim() : '';
+    setToken('POWER_NAME', rawName || 'Power');
+    setToken('POWERNAME',  rawName || 'Power');
+  }
+
+  // Resolve built-in tokens that can appear INSIDE a parameter's step
+  // labels, prefix, or suffix (not just at the top level of the System
+  // text). Consults the same normTokens table — but only the built-ins
+  // are present at this point (parameter tokens are added afterward),
+  // which is the desired scope: a parameter's own label shouldn't be
+  // able to recursively reference other parameters' tokens.
   function resolveBuiltins(s) {
     if (typeof s !== 'string' || s.indexOf('{') < 0) return s;
-    const charData = (context && context.charData) ? context.charData : null;
-    const rawName = (charData && typeof charData.powerName === 'string') ? charData.powerName.trim() : '';
-    const powerName = rawName || 'Power';
     return s.replace(/\{([^{}]+)\}/g, (match, key) => {
       const norm = normalizeTokenKey(key);
-      if (norm === 'powername') return powerName;
-      return match;
+      return Object.prototype.hasOwnProperty.call(normTokens, norm) ? normTokens[norm] : match;
     });
   }
 
@@ -628,21 +664,6 @@ export function renderSystemText(builder, instance, context) {
     }
     setToken('ACTIVATION_ROLL', arDesc);
     setToken('ACTIVATIONROLL',  arDesc);
-  }
-
-  // {POWER_NAME} token — resolves to the player's custom Power name
-  // (set inline on the Power Bar, e.g. "Mana", "Vitae", "Stamina") so
-  // GMs can author parameter labels and System text that follow the
-  // player's chosen theme automatically. Falls back to "Power" if no
-  // name is set, matching what the bar shows. Registered with both
-  // {POWER_NAME} and {POWERNAME} aliases; the token-key normalizer
-  // makes case and underscore variants match either way.
-  {
-    const charData = (context && context.charData) ? context.charData : null;
-    const rawName = (charData && typeof charData.powerName === 'string') ? charData.powerName.trim() : '';
-    const powerName = rawName || 'Power';
-    setToken('POWER_NAME', powerName);
-    setToken('POWERNAME',  powerName);
   }
 
   // Substitute. Match anything-between-single-braces. The captured text
@@ -727,18 +748,34 @@ export function renderSystemTextHtml(builder, instance, context) {
     const k = normalizeTokenKey(name);
     if (k) normTokens[k] = val;
   }
-  // See renderSystemText for full notes — resolves built-in tokens
-  // ({POWER_NAME} for now) inside parameter strings before they're
-  // returned as display values.
+  // ── BUILT-IN TOKEN REGISTRATION (see renderSystemText for notes) ──
+  // Stats, statmods, derived stats from buildSymbolTable; plus the
+  // string-valued {POWER_NAME}.
+  {
+    const charData = (context && context.charData) ? context.charData : null;
+    const ruleset  = (context && context.ruleset)  ? context.ruleset  : null;
+    if (charData && ruleset) {
+      try {
+        const symbols = buildSymbolTable(charData, ruleset);
+        Object.keys(symbols).forEach(key => {
+          const v = symbols[key];
+          if (typeof v === 'number') setToken(key, String(v));
+        });
+      } catch (e) { /* ignore */ }
+    }
+    const rawName = (charData && typeof charData.powerName === 'string') ? charData.powerName.trim() : '';
+    setToken('POWER_NAME', rawName || 'Power');
+    setToken('POWERNAME',  rawName || 'Power');
+  }
+  // Resolves built-in tokens inside parameter strings. Same approach
+  // as renderSystemText: consult the normTokens table directly. Only
+  // built-ins are present at this point — parameter tokens get added
+  // afterward, which is correct (params shouldn't recurse).
   function resolveBuiltins(s) {
     if (typeof s !== 'string' || s.indexOf('{') < 0) return s;
-    const charData = (context && context.charData) ? context.charData : null;
-    const rawName = (charData && typeof charData.powerName === 'string') ? charData.powerName.trim() : '';
-    const powerName = rawName || 'Power';
     return s.replace(/\{([^{}]+)\}/g, (match, key) => {
       const norm = normalizeTokenKey(key);
-      if (norm === 'powername') return powerName;
-      return match;
+      return Object.prototype.hasOwnProperty.call(normTokens, norm) ? normTokens[norm] : match;
     });
   }
   function resolveParamDisplay(p) {
@@ -792,15 +829,6 @@ export function renderSystemTextHtml(builder, instance, context) {
     }
     setToken('ACTIVATION_ROLL', arDesc);
     setToken('ACTIVATIONROLL',  arDesc);
-  }
-
-  // {POWER_NAME} built-in — see renderSystemText for full notes.
-  {
-    const charData = (context && context.charData) ? context.charData : null;
-    const rawName = (charData && typeof charData.powerName === 'string') ? charData.powerName.trim() : '';
-    const powerName = rawName || 'Power';
-    setToken('POWER_NAME', powerName);
-    setToken('POWERNAME',  powerName);
   }
 
   // Walk the template, replacing tokens with bolded HTML.
