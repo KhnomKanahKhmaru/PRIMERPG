@@ -2586,7 +2586,14 @@
       // copy (the canonical default itself can only be edited from
       // Catalogue Settings).
       const defaultRowHtml = defaultsHere.map(({def, eff}) => {
-        const expanded = bldrDefaultOverrideExpanded.has(def.id);
+        // Lazy-read the expansion Set — it's declared further down in
+        // the module file (with the override handlers), so referencing
+        // the module-scoped `const` here would TDZ-error during init.
+        // Reading from window.__bldrDefaultOverrideExpanded sidesteps
+        // that since the Set is created on first access either by this
+        // path or by the const declaration below, whichever runs first.
+        if (!window.__bldrDefaultOverrideExpanded) window.__bldrDefaultOverrideExpanded = new Set();
+        const expanded = window.__bldrDefaultOverrideExpanded.has(def.id);
         const cf = eff.customField || { enabled: false, label: '' };
         const opacityStyle = eff.suppressed ? 'opacity:0.45;' : '';
         const headRight = `
