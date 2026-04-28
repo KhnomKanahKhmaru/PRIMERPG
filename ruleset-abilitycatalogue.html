@@ -1523,6 +1523,12 @@
                           title="Add a token: when this default ${kind} is selected on a character, {TokenName} in the Builder's System / Visual / Extra text resolves to a value of your choice."
                           style="background:transparent;border:1px dashed #2a2a2a;color:#666;font-size:10px;padding:2px 8px;border-radius:3px;cursor:pointer;font-family:inherit;flex-shrink:0;">+ Token</button>
                 ` : ''}
+                ${(it.extendedSystem || '').trim() === '' && !isCatDefExtendedExpanded(kind, idx) ? `
+                  <button type="button"
+                          onclick="catDefFFExpandExtended('${kind}', ${idx})"
+                          title="Add Extended System: long-form rules clarifications, examples, and edge cases. Players see a click-to-expand affordance on the row."
+                          style="background:transparent;border:1px dashed #2a2a2a;color:#666;font-size:10px;padding:2px 8px;border-radius:3px;cursor:pointer;font-family:inherit;flex-shrink:0;">+ Extended System</button>
+                ` : ''}
               </div>
               ${(it.token || '').trim() !== '' || isCatDefTokenExpanded(kind, idx) ? `
                 <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:#888;flex-wrap:wrap;"
@@ -1550,6 +1556,19 @@
                           onclick="catDefFFCollapseToken('${kind}', ${idx})"
                           title="Remove token"
                           style="background:transparent;border:none;color:#c66;cursor:pointer;font-size:13px;padding:0 4px;line-height:1;flex-shrink:0;">×</button>
+                </div>
+              ` : ''}
+              ${(it.extendedSystem || '').trim() !== '' || isCatDefExtendedExpanded(kind, idx) ? `
+                <div style="display:flex;gap:6px;align-items:flex-start;font-size:11px;color:#888;">
+                  <span style="flex-shrink:0;padding-top:6px;">Extended:</span>
+                  <textarea rows="2"
+                            placeholder="Long-form rules clarifications, examples, edge cases. Tokens like {Damage} or {POWER_NAME} resolve here. Players see this when they click the ⓘ on the row."
+                            oninput="catDefaultFFSetField('${kind}', ${idx}, 'extendedSystem', this.value);autoGrow(this);"
+                            style="flex:1;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:6px 8px;border-radius:3px;outline:none;resize:vertical;line-height:1.5;">${escapeHtml(it.extendedSystem || '')}</textarea>
+                  <button type="button"
+                          onclick="catDefFFCollapseExtended('${kind}', ${idx})"
+                          title="Remove Extended System"
+                          style="background:transparent;border:none;color:#c66;cursor:pointer;font-size:13px;padding:0 4px;line-height:1;flex-shrink:0;margin-top:4px;">×</button>
                 </div>
               ` : ''}
               ${renderRequiresExcludesUI(it.id, it.requires, it.excludes, idx, kind)}
@@ -1666,6 +1685,30 @@
     if (idx >= 0 && idx < arr.length) {
       arr[idx].token = '';
       arr[idx].tokenLiteral = '';
+    }
+    renderCatDefaultFFSection();
+  };
+
+  // ── EXTENDED SYSTEM EXPAND/COLLAPSE (catalogue defaults) ──
+  // Same pattern as the token row above and the per-Builder
+  // bldrFFExpandExtended / bldrFFCollapseExtended pair. Per-row UI
+  // flag in window.__catDefFFExtendedExpanded, click × clears both
+  // flag and stored content.
+  function isCatDefExtendedExpanded(kind, idx) {
+    if (!window.__catDefFFExtendedExpanded) window.__catDefFFExtendedExpanded = new Set();
+    return window.__catDefFFExtendedExpanded.has(`${kind}:${idx}`);
+  }
+  window.catDefFFExpandExtended = function(kind, idx) {
+    if (!window.__catDefFFExtendedExpanded) window.__catDefFFExtendedExpanded = new Set();
+    window.__catDefFFExtendedExpanded.add(`${kind}:${idx}`);
+    renderCatDefaultFFSection();
+  };
+  window.catDefFFCollapseExtended = function(kind, idx) {
+    if (!window.__catDefFFExtendedExpanded) window.__catDefFFExtendedExpanded = new Set();
+    window.__catDefFFExtendedExpanded.delete(`${kind}:${idx}`);
+    const arr = getDefaultFFArr(kind);
+    if (idx >= 0 && idx < arr.length) {
+      arr[idx].extendedSystem = '';
     }
     renderCatDefaultFFSection();
   };
@@ -3846,6 +3889,12 @@
                         title="Add a token: when this ${kind} is selected, {TokenName} in the Builder's System / Visual / Extra text resolves to a value of your choice."
                         style="background:transparent;border:1px dashed #2a2a2a;color:#666;font-size:10px;padding:2px 8px;border-radius:3px;cursor:pointer;font-family:inherit;flex-shrink:0;">+ Token</button>
               ` : ''}
+              ${(it.extendedSystem || '').trim() === '' && !isFFExtendedExpanded(kind, idx) ? `
+                <button type="button"
+                        onclick="bldrFFExpandExtended('${kind}', ${idx})"
+                        title="Add Extended System: long-form rules clarifications, examples, and edge cases. Players see a click-to-expand affordance on the row."
+                        style="background:transparent;border:1px dashed #2a2a2a;color:#666;font-size:10px;padding:2px 8px;border-radius:3px;cursor:pointer;font-family:inherit;flex-shrink:0;">+ Extended System</button>
+              ` : ''}
             </div>
             ${(it.token || '').trim() !== '' || isFFTokenExpanded(kind, idx) ? `
               <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:#888;flex-wrap:wrap;"
@@ -3873,6 +3922,19 @@
                         onclick="bldrFFCollapseToken('${kind}', ${idx})"
                         title="Remove token"
                         style="background:transparent;border:none;color:#c66;cursor:pointer;font-size:13px;padding:0 4px;line-height:1;flex-shrink:0;">×</button>
+              </div>
+            ` : ''}
+            ${(it.extendedSystem || '').trim() !== '' || isFFExtendedExpanded(kind, idx) ? `
+              <div style="display:flex;gap:6px;align-items:flex-start;font-size:11px;color:#888;">
+                <span style="flex-shrink:0;padding-top:6px;">Extended:</span>
+                <textarea rows="2"
+                          placeholder="Long-form rules clarifications, examples, edge cases. Tokens like {Damage} or {POWER_NAME} resolve here. Players see this when they click the ⓘ on the row."
+                          oninput="bldrSetFFField('${kind}', ${idx}, 'extendedSystem', this.value);autoGrow(this);"
+                          style="flex:1;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:6px 8px;border-radius:3px;outline:none;resize:vertical;line-height:1.5;">${escapeHtml(it.extendedSystem || '')}</textarea>
+                <button type="button"
+                        onclick="bldrFFCollapseExtended('${kind}', ${idx})"
+                        title="Remove Extended System"
+                        style="background:transparent;border:none;color:#c66;cursor:pointer;font-size:13px;padding:0 4px;line-height:1;flex-shrink:0;margin-top:4px;">×</button>
               </div>
             ` : ''}
             ${renderRequiresExcludesUI(it.id, it.requires, it.excludes, idx)}
@@ -4886,6 +4948,35 @@
       if (Array.isArray(arr) && arr[idx]) {
         arr[idx].token = '';
         arr[idx].tokenLiteral = '';
+      }
+    }
+    if (kind === 'feature') renderBldrFeaturesList();
+    else                    renderBldrFlawsList();
+    renderBuilderPreview();
+  };
+
+  // ── EXTENDED SYSTEM EXPAND/COLLAPSE ──
+  // Same pattern as the token row above. Per-row UI flag; click × on
+  // the expanded row clears both flag and stored content. Click "+ Extended
+  // System" to expand and reveal the textarea.
+  function isFFExtendedExpanded(kind, idx) {
+    if (!window.__bldrFFExtendedExpanded) window.__bldrFFExtendedExpanded = new Set();
+    return window.__bldrFFExtendedExpanded.has(`${kind}:${idx}`);
+  }
+  window.bldrFFExpandExtended = function(kind, idx) {
+    if (!window.__bldrFFExtendedExpanded) window.__bldrFFExtendedExpanded = new Set();
+    window.__bldrFFExtendedExpanded.add(`${kind}:${idx}`);
+    if (kind === 'feature') renderBldrFeaturesList();
+    else                    renderBldrFlawsList();
+  };
+  window.bldrFFCollapseExtended = function(kind, idx) {
+    if (!window.__bldrFFExtendedExpanded) window.__bldrFFExtendedExpanded = new Set();
+    window.__bldrFFExtendedExpanded.delete(`${kind}:${idx}`);
+    const b = getOpenedBuilder();
+    if (b) {
+      const arr = (kind === 'feature') ? b.features : b.flaws;
+      if (Array.isArray(arr) && arr[idx]) {
+        arr[idx].extendedSystem = '';
       }
     }
     if (kind === 'feature') renderBldrFeaturesList();
