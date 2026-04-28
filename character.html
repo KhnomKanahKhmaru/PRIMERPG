@@ -350,7 +350,7 @@
     body.prime-readonly #stats-list textarea,
     body.prime-readonly .skills-grid input,
     body.prime-readonly .skills-grid select,
-    body.prime-readonly .san-dmg-input,
+    body.prime-readonly .men-dmg-input,
     body.prime-readonly .rc-input,
     body.prime-readonly .ds-input {
       pointer-events: none;
@@ -413,7 +413,7 @@
       padding-bottom: 12px;
     }
 
-    /* When the section head contains an action button (e.g. Sanity's
+    /* When the section head contains an action button (e.g. Mental Health's
        Edit Modifiers), let the title text take the left side and push
        the button to the right. combat-section-head already did this;
        preserve it now that .cc-head is flex. */
@@ -472,18 +472,18 @@
     .state-tile-status.s-disabled { background: #2a1a10; color: #d89060; border: 1px solid #4a2d20; }
     .state-tile-status.s-dead     { background: #2a0d0d; color: #e06060; border: 1px solid #6a2a2a; }
     .state-tile-status.s-shock    { background: #2a2410; color: #d8c060; border: 1px solid #4a3d20; }
-    .state-tile-status.s-insane   { background: #2a1a10; color: #d89060; border: 1px solid #4a2d20; }
+    .state-tile-status.s-broken   { background: #2a1a10; color: #d89060; border: 1px solid #4a2d20; }
     .state-tile-status.s-broken   { background: #2a0d0d; color: #e06060; border: 1px solid #6a2a2a; }
     /* EXHAUSTION status pills — reuse the 4-step progression green →
        yellow → orange → red to match the segmented bar palette. Reuses
-       the same color values as the HP/SAN status pills where the
+       the same color values as the HP/MEN status pills where the
        meanings match: "ready" ≈ healthy, "unconscious" ≈ dead. */
     .state-tile-status.e-ready       { background: #1a2a1a; color: #8cc080; border: 1px solid #2a4a2a; }
     .state-tile-status.e-tired       { background: #2a2410; color: #d8c060; border: 1px solid #4a3d20; }
     .state-tile-status.e-exhausted   { background: #2a1a10; color: #d89060; border: 1px solid #4a2d20; }
     .state-tile-status.e-unconscious { background: #2a0d0d; color: #e06060; border: 1px solid #6a2a2a; }
 
-    /* Description block inside Body / Sanity / Penalty tiles. Shown
+    /* Description block inside Body / Mental Health / Penalty tiles. Shown
        below the status pill and data rows. Text is muted + italic to
        read as supplementary info rather than competing with the
        numeric content. Uses the shared .pc-desc-* system for the
@@ -503,7 +503,7 @@
     .state-tile-desc.pc-desc-static .pc-desc-text { font-style: italic; }
     .state-tile-desc.pc-desc-editing { font-style: normal; }
 
-    /* Segmented bar — re-uses visual language from HP/SAN bars in combat tab
+    /* Segmented bar — re-uses visual language from HP/MEN bars in combat tab
        but with slightly smaller segments for the overview density. */
     .state-bar {
       display: flex;
@@ -538,7 +538,7 @@
        flat full-width strip. Body is a single inline row: bar taking
        most of the width, status pill sitting on the right. Matches the
        visual rhythm of the surrounding flat tiles instead of being
-       tall like the Body/Sanity/Exh pools above. */
+       tall like the Body/Mental Health/Exh pools above. */
     .state-tile-power-row {
       display: flex;
       align-items: center;
@@ -2528,7 +2528,7 @@
     }
 
     /* ─── PAIN / STRESS / STRAIN ─── */
-    /* Shared pill block — appears in both Health (Pain) and Sanity (Stress)
+    /* Shared pill block — appears in both Health (Pain) and Mental Health (Stress)
        sections. Click the head row to expand an editor for percentile
        modifiers that adjust the base %. Left-edge color reflects severity. */
     .strain-block {
@@ -3349,9 +3349,9 @@
     .body-bar-bg { height: 14px; background: #0a0a0a; border: 1px solid #222; border-radius: 2px; overflow: hidden; display: flex; gap: 1px; padding: 1px; }
 
     /* ─── SANITY ─── */
-    .san-section { }
+    .men-section { }
 
-    /* Description block inside Combat-tab sections (Body row, SAN row,
+    /* Description block inside Combat-tab sections (Body row, MEN row,
        and potentially others). Sits below the numeric/segmented bar
        content and presents the same ruleset-authored hover description
        players see on the Overview tiles — they're the same underlying
@@ -3371,33 +3371,33 @@
     .combat-section-desc.pc-desc-static { font-style: normal; }
     .combat-section-desc.pc-desc-static .pc-desc-text { font-style: italic; }
     .combat-section-desc.pc-desc-editing { font-style: normal; }
-    .san-card-wrap { margin-bottom: 14px; }
-    .san-top-row {
+    .men-card-wrap { margin-bottom: 14px; }
+    .men-top-row {
       display: flex; align-items: center; gap: 12px;
       margin-bottom: 6px;
     }
-    .san-label {
+    .men-label {
       font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
       color: #888;
     }
-    .san-nums {
+    .men-nums {
       font-size: 18px; font-weight: 700; color: #e8e8e8;
       font-variant-numeric: tabular-nums;
     }
-    .san-slash { color: #555; }
-    .san-max { color: #888; font-weight: 500; font-size: 14px; }
-    .san-status-pill {
+    .men-slash { color: #555; }
+    .men-max { color: #888; font-weight: 500; font-size: 14px; }
+    .men-status-pill {
       font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
       padding: 3px 10px; border-radius: 10px;
       margin-left: auto;
       border: 1px solid;
     }
-    .san-status-healthy  { color: #a0c0e0; background: #101826; border-color: #304058; }
-    .san-status-inShock  { color: #d6b860; background: #231f10; border-color: #5a4a22; }
-    .san-status-insane   { color: #e0a460; background: #251810; border-color: #6a4a22; }
-    .san-status-broken   { color: #ff4a4a; background: #2a0a0a; border-color: #7a1010; }
+    .men-status-healthy  { color: #a0c0e0; background: #101826; border-color: #304058; }
+    .men-status-inShock  { color: #d6b860; background: #231f10; border-color: #5a4a22; }
+    .men-status-disturbed   { color: #e0a460; background: #251810; border-color: #6a4a22; }
+    .men-status-broken   { color: #ff4a4a; background: #2a0a0a; border-color: #7a1010; }
 
-    .san-penalty {
+    .men-penalty {
       font-size: 11px; color: #a08060; font-style: italic;
       margin-bottom: 10px;
       padding: 6px 10px; background: #0a0a0a;
@@ -3405,19 +3405,19 @@
     }
 
     /* Segmented bar */
-    .san-bar {
+    .men-bar {
       height: 14px; background: #0a0a0a;
       border: 1px solid #222; border-radius: 2px;
       overflow: hidden; display: flex; gap: 1px; padding: 1px;
       margin-bottom: 10px;
     }
-    .san-seg { flex: 1; min-width: 2px; border-radius: 1px; }
+    .men-seg { flex: 1; min-width: 2px; border-radius: 1px; }
 
     /* Controls row */
-    .san-controls {
+    .men-controls {
       display: flex; align-items: center; gap: 6px;
     }
-    .san-dmg-input {
+    .men-dmg-input {
       background: #111; border: 1px solid #222; color: #e0e0e0;
       font-family: 'Consolas', 'Courier New', monospace;
       font-size: 13px; font-weight: 700;
@@ -3425,34 +3425,34 @@
       width: 70px; text-align: center;
       font-variant-numeric: tabular-nums;
     }
-    .san-dmg-input:focus { border-color: #444; }
-    .san-controls-ro .san-current-ro {
+    .men-dmg-input:focus { border-color: #444; }
+    .men-controls-ro .men-current-ro {
       font-family: 'Consolas', 'Courier New', monospace;
       font-size: 13px; color: #aaa;
       font-variant-numeric: tabular-nums;
     }
 
     /* Breaking Point reference panel */
-    .san-breakpoint {
+    .men-breakpoint {
       margin-top: 14px;
       padding: 12px 14px;
       background: #140808;
       border: 1px solid #4a1a1a;
       border-radius: 4px;
     }
-    .san-breakpoint-title {
+    .men-breakpoint-title {
       font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
       color: #ff6a6a;
       margin-bottom: 6px;
     }
-    .san-breakpoint-intro {
+    .men-breakpoint-intro {
       font-size: 11px; color: #b08080; font-style: italic;
       margin-bottom: 10px; line-height: 1.5;
     }
-    .san-breakpoint-table {
+    .men-breakpoint-table {
       display: flex; flex-direction: column; gap: 3px;
     }
-    .san-bp-row {
+    .men-bp-row {
       display: grid;
       grid-template-columns: 50px 150px 1fr;
       gap: 10px;
@@ -3463,38 +3463,38 @@
       border: 1px solid #1a0a0a;
       align-items: baseline;
     }
-    .san-bp-roll {
+    .men-bp-roll {
       font-family: 'Consolas', 'Courier New', monospace;
       font-size: 13px; font-weight: 700;
       text-align: center;
       font-variant-numeric: tabular-nums;
     }
-    .san-bp-name {
+    .men-bp-name {
       font-weight: 700; letter-spacing: .04em;
     }
-    .san-bp-desc { color: #888; line-height: 1.4; }
-    .san-bp-tier-best    { border-color: #3a5a3a; }
-    .san-bp-tier-best    .san-bp-roll { color: #a6c89a; }
-    .san-bp-tier-best    .san-bp-name { color: #a6c89a; }
-    .san-bp-tier-good    { border-color: #4a5a2a; }
-    .san-bp-tier-good    .san-bp-roll { color: #c8c06a; }
-    .san-bp-tier-good    .san-bp-name { color: #c8c06a; }
-    .san-bp-tier-neutral { border-color: #3a3a3a; }
-    .san-bp-tier-neutral .san-bp-roll { color: #aaa; }
-    .san-bp-tier-neutral .san-bp-name { color: #aaa; }
-    .san-bp-tier-bad     { border-color: #5a3a1a; }
-    .san-bp-tier-bad     .san-bp-roll { color: #d89860; }
-    .san-bp-tier-bad     .san-bp-name { color: #d89860; }
-    .san-bp-tier-worst   { border-color: #6a2a2a; }
-    .san-bp-tier-worst   .san-bp-roll { color: #e07878; }
-    .san-bp-tier-worst   .san-bp-name { color: #e07878; }
-    .san-bp-tier-fatal   { border-color: #7a1010; background: #1a0505; }
-    .san-bp-tier-fatal   .san-bp-roll { color: #ff2a2a; }
-    .san-bp-tier-fatal   .san-bp-name { color: #ff2a2a; }
+    .men-bp-desc { color: #888; line-height: 1.4; }
+    .men-bp-tier-best    { border-color: #3a5a3a; }
+    .men-bp-tier-best    .men-bp-roll { color: #a6c89a; }
+    .men-bp-tier-best    .men-bp-name { color: #a6c89a; }
+    .men-bp-tier-good    { border-color: #4a5a2a; }
+    .men-bp-tier-good    .men-bp-roll { color: #c8c06a; }
+    .men-bp-tier-good    .men-bp-name { color: #c8c06a; }
+    .men-bp-tier-neutral { border-color: #3a3a3a; }
+    .men-bp-tier-neutral .men-bp-roll { color: #aaa; }
+    .men-bp-tier-neutral .men-bp-name { color: #aaa; }
+    .men-bp-tier-bad     { border-color: #5a3a1a; }
+    .men-bp-tier-bad     .men-bp-roll { color: #d89860; }
+    .men-bp-tier-bad     .men-bp-name { color: #d89860; }
+    .men-bp-tier-worst   { border-color: #6a2a2a; }
+    .men-bp-tier-worst   .men-bp-roll { color: #e07878; }
+    .men-bp-tier-worst   .men-bp-name { color: #e07878; }
+    .men-bp-tier-fatal   { border-color: #7a1010; background: #1a0505; }
+    .men-bp-tier-fatal   .men-bp-roll { color: #ff2a2a; }
+    .men-bp-tier-fatal   .men-bp-name { color: #ff2a2a; }
 
     @media (max-width: 600px) {
-      .san-bp-row { grid-template-columns: 40px 1fr; }
-      .san-bp-desc { grid-column: 1 / -1; padding-left: 50px; }
+      .men-bp-row { grid-template-columns: 40px 1fr; }
+      .men-bp-desc { grid-column: 1 / -1; padding-left: 50px; }
     }
 
     /* Power Pool */
@@ -5528,7 +5528,7 @@
               <p style="margin-bottom:8px">Morals are one-word concepts which encompass broad ethical value-and-belief systems; they intentionally lack descriptions as their one-words should be enough. If there is reasonable debate over what is, or isn't pertinent to a Moral, then it likely is pertinent.</p>
               <p style="margin-bottom:8px">When you violate, compromise, or otherwise are met with situations that go against your Morals, you must make a Mental Health Check with +/− Difficulty dependent on the scale of the infraction. Minor infractions are at −2, Moderate −1, Major +0 and so on so-forth.</p>
               <p style="margin-bottom:8px">After your Mental Health Check you must allocate a number of "Break Points" equal to 6 − Result to your choice/combination of Moral Obligations, Short-term Trauma, Long-term Trauma, or through an immediate Breakdown.</p>
-              <p style="margin-bottom:8px">Alternatively if you affirm/fulfill your Morals, you may make a Mental Health Check to recover SAN instead; the amount of SAN recovered is equal to Result.</p>
+              <p style="margin-bottom:8px">Alternatively if you affirm/fulfill your Morals, you may make a Mental Health Check to recover MEN instead; the amount of MEN recovered is equal to Result.</p>
               <p style="margin-bottom:8px">Morals are scaled based on how important / integral they are to you; Minor Morals are rolled at −2, Moderate at −1, Major at +0, Massive at +1, so-on so-forth. The inverse is true for Moral Affirmations.</p>
               <p>When you create your Character, you must allocate "10 Moral points" in Morals, with a Minor Moral being worth 1, a Moderate Moral 2, and so-on so-forth, based on how important each Moral is to your Character; there is no limit to the amount of Morals you may take, so long as you meet your spending limit for Moral Points.</p>
             </div>
@@ -5549,7 +5549,7 @@
               <p style="margin-bottom:8px">Mental Conditions are defined by "what I have", "which means", "and if triggered I might"; a Mental Condition's trigger is intuitive to what the Mental Condition is, and what it means for you.</p>
               <p style="margin-bottom:8px">When you fail a Mental Health Check you may choose to allocate Break Points to developing a Mental Condition; Minor is 1, Moderate is 2, so-on so-forth.</p>
               <p style="margin-bottom:8px">When a trigger has been met for a Mental Condition, you roll a Mental Health Check with +Difficulty based on the scale of the trigger; −1 for Minor triggers, +0 for Moderate, etc. The Difficulty is also affected by the scale of your Mental Condition; −1 for Minor, +0 for Moderate, etc.</p>
-              <p>Based on your roll, you must allocate 6 − Result points to your selection of SAN loss, and/or a breakdown based on your "if triggered" with severity based on allocated points; 1 point is a minor breakdown, 2 points is moderate, 3 is major, etc.</p>
+              <p>Based on your roll, you must allocate 6 − Result points to your selection of MEN loss, and/or a breakdown based on your "if triggered" with severity based on allocated points; 1 point is a minor breakdown, 2 points is moderate, 3 is major, etc.</p>
             </div>
           </div>
           <span class="edit-btn" id="disorders-edit-btn" style="display:none" onclick="event.stopPropagation();editDisorders()">Edit</span>
@@ -5604,7 +5604,7 @@
 
     <!-- ═══ THE STATE OF THINGS ═══ -->
     <!-- Simplified read-only dashboard sitting between the stats/skills area
-         and Advantages. Renders bars + status labels for Body, Sanity,
+         and Advantages. Renders bars + status labels for Body, Mental Health,
          Strain, Power Pool, and Movement, pulling live data from the
          same computeDerivedStats path the Combat tab uses. Purely a
          display — no controls here. All editing still happens in the
@@ -6207,14 +6207,14 @@
     setPowerColor:        async (color) => { await combat.setPowerColor(color); if (typeof renderAbilitiesTab === 'function') renderAbilitiesTab(); },
     setPowerName:         async (name)  => { await combat.setPowerName(name);  if (typeof renderAbilitiesTab === 'function') renderAbilitiesTab(); },
     toggleHlModifierEdit: () => combat.toggleEditMode(),
-    // SAN handlers
+    // MEN handlers
     tickSanDmg:           (delta) => combat.tickSanDmg(delta),
     setSanCurrent:        (val) => combat.setSanCurrent(val),
     toggleSanModifierEdit: () => combat.toggleSanModifierEdit(),
     addSanMod:            () => combat.addSanMod(),
     updateSanMod:         (idx, field, val) => combat.updateSanMod(idx, field, val),
     deleteSanMod:         (idx) => combat.deleteSanMod(idx),
-    // SAN Damages handlers
+    // MEN Damages handlers
     toggleSanDamagesSection: () => combat.toggleSanDamagesSection(),
     toggleSanDamageExpand:   (id) => combat.toggleSanDamageExpand(id),
     quickAddSanDamage:       () => combat.quickAddSanDamage(),
@@ -9135,6 +9135,26 @@
     const char = await loadCharacter(charId);
     if (!char) { window.location.href = 'home.html'; return; }
     charData = char;
+    // ── LEGACY SAN → MEN MIGRATION (read-time aliasing) ──
+    // SAN/Sanity was renamed to MEN/Mental Health to mirror HP/Body.
+    // Three Firestore fields hold the data — sanDamage (current damage
+    // taken), sanDamages (array of damage entries), sanModifiers
+    // (array of mod entries) — were renamed to menDamage / menDamages /
+    // menModifiers. For characters saved before the rename, we copy
+    // the legacy fields to their new names if the new fields aren't
+    // already populated. This keeps existing characters working
+    // before the one-time Firestore migration script has run, and is
+    // harmless afterward (the new fields will exist and the legacy
+    // ones won't, so the conditional copy is a no-op).
+    if (typeof charData['sanDamage'] === 'number' && typeof charData.menDamage !== 'number') {
+      charData.menDamage = charData['sanDamage'];
+    }
+    if (Array.isArray(charData['sanDamages']) && !Array.isArray(charData.menDamages)) {
+      charData.menDamages = charData['sanDamages'];
+    }
+    if (Array.isArray(charData['sanModifiers']) && !Array.isArray(charData.menModifiers)) {
+      charData.menModifiers = charData['sanModifiers'];
+    }
     // Initial canEdit is ownership; GM/Leader rights are folded in
     // below once we know the playgroup role. Keeps the log readable —
     // first line shows raw ownership, second shows the final value.
