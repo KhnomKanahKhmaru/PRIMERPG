@@ -1227,6 +1227,53 @@ export function renderSystemTextHtml(builder, instance, context) {
   });
 }
 
+// ─── GENERIC TOKEN RESOLUTION ───
+//
+// Resolve {Tokens} in any GM-authored Builder text — Visual Guideline,
+// Extra Guideline, Description, anything else — using the same lookup
+// table as renderSystemText. Useful when the GM wants tokens to flow
+// into hint text the player sees while authoring their Ability.
+//
+// Implemented as a thin wrapper that piggybacks on renderSystemText:
+// we hand it a synthetic shallow-cloned Builder whose systemTextTemplate
+// is the template we actually want to resolve. Avoids duplicating the
+// ~230-line token-registration block. The clone is shallow because we
+// only need to swap one string field; everything else (params, features,
+// flaws, activation/contested, defaults overrides) flows through to the
+// resolver as-is so the same tokens become available.
+//
+// Returns the resolved plain-text string. Empty input → empty output.
+// Unknown tokens are left as literal `{TokenName}` (matches existing
+// behavior in renderSystemText so GMs can spot typos).
+export function resolveAbilityTokens(template, builder, instance, context) {
+  if (typeof template !== 'string' || !template) return '';
+  if (!builder || typeof builder !== 'object') return template;
+  // Shallow clone so we don't mutate the caller's Builder.
+  const synth = Object.assign({}, builder, { systemTextTemplate: template });
+  // Skip the systemTextOverride short-circuit — that only applies when
+  // the player has authored their own override of the System text
+  // template, which has nothing to do with arbitrary template input.
+  const inst = (instance && typeof instance === 'object')
+    ? Object.assign({}, instance, { systemTextOverride: '' })
+    : { systemTextOverride: '' };
+  return renderSystemText(synth, inst, context);
+}
+
+// HTML form of resolveAbilityTokens — bolds substituted tokens and
+// applies Markdown emphasis (**bold** / *italic*) the same way
+// renderSystemTextHtml does. Use this when rendering directly into
+// a `.innerHTML`-ish target (player editor's hint area, card visual
+// section, etc.) so the formatting comes through.
+export function resolveAbilityTokensHtml(template, builder, instance, context) {
+  if (typeof template !== 'string' || !template) return '';
+  if (!builder || typeof builder !== 'object') return template;
+  const synth = Object.assign({}, builder, { systemTextTemplate: template });
+  const inst = (instance && typeof instance === 'object')
+    ? Object.assign({}, instance, { systemTextOverride: '' })
+    : { systemTextOverride: '' };
+  return renderSystemTextHtml(synth, inst, context);
+}
+
 // ─── CHARACTER-SIDE ABILITY ARRAY ACCESS ───
 //
 // Defensive accessor — char.abilities should always be an array but
