@@ -1848,9 +1848,9 @@
     }
     list.innerHTML = state.stats.map((s, i) => `
       <div class="skill-row">
-        <input type="text" class="skill-name" style="max-width:90px;text-transform:uppercase" value="${(s.code||'').replace(/"/g,'&quot;')}" placeholder="Code" oninput="updateStat(${i},'code',this.value.toUpperCase())">
-        <input type="text" class="skill-name" style="max-width:140px" value="${(s.name||'').replace(/"/g,'&quot;')}" placeholder="Name" oninput="updateStat(${i},'name',this.value)">
-        <input type="text" class="skill-desc" value="${(s.description||'').replace(/"/g,'&quot;')}" placeholder="Description" oninput="updateStat(${i},'description',this.value)">
+        <input type="text" class="skill-name" style="max-width:90px;text-transform:uppercase" value="${escapeHtmlAttr(s.code || '')}" placeholder="Code" oninput="updateStat(${i},'code',this.value.toUpperCase())">
+        <input type="text" class="skill-name" style="max-width:140px" value="${escapeHtmlAttr(s.name || '')}" placeholder="Name" oninput="updateStat(${i},'name',this.value)">
+        <input type="text" class="skill-desc" value="${escapeHtmlAttr(s.description || '')}" placeholder="Description" oninput="updateStat(${i},'description',this.value)">
         <span class="pl-delete" onclick="removeStat(${i})" title="Remove">×</span>
       </div>`).join('');
   }
@@ -1883,7 +1883,7 @@
       list.innerHTML = state.size.tiers.map((t, i) => `
         <div class="skill-row">
           <input type="number" class="skill-name" style="max-width:70px;text-align:center" value="${t.level ?? 0}" placeholder="Level" oninput="updateSizeTier(${i},'level',this.value)">
-          <input type="text" class="skill-name" style="max-width:180px" value="${(t.label||'').replace(/"/g,'&quot;')}" placeholder="Label" oninput="updateSizeTier(${i},'label',this.value)">
+          <input type="text" class="skill-name" style="max-width:180px" value="${escapeHtmlAttr(t.label || '')}" placeholder="Label" oninput="updateSizeTier(${i},'label',this.value)">
           <input type="number" class="skill-name" style="max-width:100px;text-align:center" value="${t.xpCost ?? 0}" placeholder="XP Cost" oninput="updateSizeTier(${i},'xpCost',this.value)">
           <span class="pl-delete" onclick="removeSizeTier(${i})" title="Remove">×</span>
         </div>`).join('');
@@ -1986,7 +1986,7 @@
     if (state.powerLevels.length === 0) { list.innerHTML = '<div class="empty">No power levels. Click below to add one.</div>'; return; }
     list.innerHTML = state.powerLevels.map((p, i) => `
       <div class="pl-row">
-        <input type="text" value="${(p.label||'').replace(/"/g,'&quot;')}" placeholder="Label" oninput="updatePl(${i},'label',this.value)">
+        <input type="text" value="${escapeHtmlAttr(p.label || '')}" placeholder="Label" oninput="updatePl(${i},'label',this.value)">
         <span class="pl-xp-lbl">XP/AP:</span>
         <input type="number" class="pl-xp" min="0" value="${p.xpPerAp ?? 0}" oninput="updatePl(${i},'xpPerAp',this.value)">
         <label class="pl-default-wrap"><input type="radio" name="default-pl" ${p.value === state.defaultPowerLevel ? 'checked' : ''} onchange="setDefaultPl(${i})">Default</label>
@@ -2043,8 +2043,8 @@
     }
     list.innerHTML = state.primarySkills.map((s, i) => `
       <div class="skill-row">
-        <input type="text" class="skill-name" value="${(s.name||'').replace(/"/g,'&quot;')}" placeholder="Name" oninput="updateSkill(${i},'name',this.value)">
-        <input type="text" class="skill-desc" value="${(s.description||'').replace(/"/g,'&quot;')}" placeholder="Description" oninput="updateSkill(${i},'description',this.value)">
+        <input type="text" class="skill-name" value="${escapeHtmlAttr(s.name || '')}" placeholder="Name" oninput="updateSkill(${i},'name',this.value)">
+        <input type="text" class="skill-desc" value="${escapeHtmlAttr(s.description || '')}" placeholder="Description" oninput="updateSkill(${i},'description',this.value)">
         <span class="pl-delete" onclick="removeSkill(${i})" title="Remove">×</span>
       </div>`).join('');
   }
@@ -2777,8 +2777,8 @@
     ];
     tiers.forEach((t, i) => {
       rows.push(`<div class="tt-idx">${i + 1}</div>`);
-      rows.push(`<input type="text" class="tt-label" value="${(t.label||'').replace(/"/g,'&quot;')}" oninput="updateTier('${side}',${i},'label',this.value)">`);
-      rows.push(`<input type="text" value="${(t.description||'').replace(/"/g,'&quot;')}" placeholder="Description of this tier" oninput="updateTier('${side}',${i},'description',this.value)">`);
+      rows.push(`<input type="text" class="tt-label" value="${escapeHtmlAttr(t.label || '')}" oninput="updateTier('${side}',${i},'label',this.value)">`);
+      rows.push(`<input type="text" value="${escapeHtmlAttr(t.description || '')}" placeholder="Description of this tier" oninput="updateTier('${side}',${i},'description',this.value)">`);
       rows.push(`<input type="number" class="tt-xp" value="${t.xp ?? 0}" oninput="updateTier('${side}',${i},'xp',this.value)">`);
     });
     container.innerHTML = rows.join('');
@@ -2864,7 +2864,7 @@
       const repTitle  = e.repeatable ? 'Can be taken multiple times — click to restrict to once' : 'Can only be taken once — click to allow multiple';
       return `
         <div class="ad-row" title="${xpLabel}">
-          <input type="text" value="${(e.name||'').replace(/"/g,'&quot;')}" placeholder="Name" oninput="updateAdEntry('${side}',${origIdx},'name',this.value)">
+          <input type="text" value="${escapeHtmlAttr(e.name || '')}" placeholder="Name" oninput="updateAdEntry('${side}',${origIdx},'name',this.value)">
           <select onchange="updateAdEntry('${side}',${origIdx},'category',this.value)">${catOptions}</select>
           <select onchange="updateAdEntry('${side}',${origIdx},'tier',parseInt(this.value))">${tierOptions}</select>
           <textarea rows="1" placeholder="Flavor / description" oninput="updateAdEntry('${side}',${origIdx},'description',this.value)">${(e.description||'').replace(/</g,'&lt;')}</textarea>
@@ -2972,7 +2972,7 @@
     groups.forEach((g, i) => {
       html += `<div class="group-pill">
         <span style="color:#666;font-size:10px;font-family:'Consolas',monospace">${g.code}</span>
-        <input type="text" value="${(g.label||'').replace(/"/g,'&quot;')}" oninput="updateDsgLabel(${i},this.value)">
+        <input type="text" value="${escapeHtmlAttr(g.label || '')}" oninput="updateDsgLabel(${i},this.value)">
         ${groups.length > 1 ? `<span class="gp-remove" onclick="removeDsg(${i})" title="Remove">×</span>` : ''}
       </div>`;
     });
@@ -4077,7 +4077,18 @@
   // used throughout this file — inputs only, since we're writing into
   // `value="..."` attributes. Textareas put content between tags, which
   // needs a broader escape (handled ad hoc below).
-  function q(s) { return String(s == null ? '' : s).replace(/"/g, '&quot;'); }
+  // Attribute-context escape — `q` is used inside HTML attribute
+  // values via template literals. Must escape <, >, &, ', " so that
+  // any user-typed text (a label like 'A & B', a description with
+  // quotes) renders correctly and can't break out of the attribute.
+  function q(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
   function qText(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
