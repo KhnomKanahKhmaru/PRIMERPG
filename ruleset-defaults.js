@@ -186,7 +186,7 @@ window.RULESET_DEFAULTS = {
   // sheet and is freely editable. Shipped labels:
   //   health   → "Physical"   (Physical durability & body stats)
   //   movement → "Combat"     (INIT, Speed, Sprint, Agility, Reflex)
-  //   mental   → "Mental"     (Sanity and mental stats)
+  //   mental   → "Mental"     (Mental Health and mental stats)
   //   power    → "Power"      (supernatural capacity)
   //   carry    → "Carry"      (encumbrance + lift)
   derivedStatGroups: [
@@ -202,19 +202,19 @@ window.RULESET_DEFAULTS = {
   ],
 
   // Descriptions for the three computed summary tiles on the Overview
-  // tab — Body, Sanity, Penalty. These tiles are calculated from other
-  // stats (HP, SAN, Pain+Stress+Encumbrance+Others) so they don't have a
+  // tab — Body, Mental Health, Penalty. These tiles are calculated from other
+  // stats (HP, MEN, Pain+Stress+Encumbrance+Others) so they don't have a
   // single source stat we could hang a description on. Instead we give
   // the GM a dedicated field in the ruleset for each, and let players
   // override per-character via the descriptions module like any other
   // game-content description.
   //
-  // Keys match the descriptions module's tile IDs: 'body', 'sanity',
+  // Keys match the descriptions module's tile IDs: 'body', 'mentalHealth',
   // 'penalty'. The resolver (resolveDescription in char-util.js) reads
   // from ruleset.tileDescriptions[id] when category === 'tiles'.
   tileDescriptions: {
     body:       'Your physical integrity — HP tracks overall durability; hit locations take separate damage and can be disabled or destroyed even while you\'re still alive. The tile shows current / max HP plus your status (Alive, Dying, Dead).',
-    sanity:     'Your mental integrity, tracked with its own pool. SAN damage from trauma, horror, or supernatural exposure accumulates here. Low SAN contributes to Stress, which contributes to Penalty on all rolls.',
+    mentalHealth:     'Your mental integrity, tracked with its own pool. MEN damage from trauma, horror, or supernatural exposure accumulates here. Low MEN contributes to Stress, which contributes to Penalty on all rolls.',
     exhaustion: 'Your stamina and endurance pool — drains from exertion, exposure to elements, and Exerting on rolls (spend EXH for −25% Penalty per point or +1 Difficulty Reduction once). Below 0 EXH you scale Penalty linearly; at −2× max you fall Unconscious until you regain EXH.',
     penalty:    'The sum of every modifier reducing your dice pools. Penalty = Pain + Stress + Encumbrance + Others. Applies to active rolls only — Passive rolls (resistances) ignore Penalty. Shown as a percentage; dice pool reduction is floor(pool × Penalty%).',
     power:      'Your supernatural capacity pool — spend Power Points on paradigm abilities, refresh per the rules of your paradigm. The bar shows current / max PP. Color and formula for PP are configured in the ruleset\'s Power Pool settings.'
@@ -263,7 +263,7 @@ window.RULESET_DEFAULTS = {
       group: 'movement',
       // Dice pool = DEX + PER, rolled when a scene transitions to combat
       // and turn order matters. Mod uses whichever of DEXMOD/PERMOD is
-      // greater — mirrors how SAN's resistance roll uses max(INTMOD, CHAMOD).
+      // greater — mirrors how MEN's resistance roll uses max(INTMOD, CHAMOD).
       // A character who's quick reflexes OR sharp perception gets the
       // better modifier; being strong in both doesn't stack.
       formula: 'DEX + PER',
@@ -349,8 +349,12 @@ window.RULESET_DEFAULTS = {
     },
     // MENTAL
     {
+      // Internal stat code stays 'SAN' for backward compatibility —
+      // existing characters have their stat values keyed by 'SAN' in
+      // Firestore, and renaming the code would orphan that data.
+      // Display label is 'Mental Health' / 'MEN' throughout the UI.
       code: 'SAN',
-      name: 'Sanity',
+      name: 'Mental Health',
       description: 'Mental durability. Roll for mental resistances.',
       group: 'mental',
       formula: 'CHA + INT',
@@ -359,21 +363,21 @@ window.RULESET_DEFAULTS = {
       // willpower both help resist mental pressure, and the stronger trait
       // carries you through.
       rollModifier: 'max(INTMOD, CHAMOD)',
-      // Passive roll — Sanity resistance rolls are not reduced by Strain.
+      // Passive roll — Mental Health resistance rolls are not reduced by Strain.
       passiveRoll: true,
       trackDamage: false,
       keepDecimals: false,
       unit: ''
     },
-    // EXHAUSTION — third pillar alongside HP/SAN.
+    // EXHAUSTION — third pillar alongside HP/MEN.
     //
     // Tracks stamina and fatigue: distinct from bodily wounds (HP) and
-    // mental wounds (SAN). The average person has EXH 5 — enough reserve
+    // mental wounds (MEN). The average person has EXH 5 — enough reserve
     // for a few moments of real exertion before needing rest. Drops
     // from physical/mental exertion, exposure to extreme environments,
     // and Exert-spending to push rolls.
     //
-    // Behaves like HP/SAN structurally: has current+max, can go negative,
+    // Behaves like HP/MEN structurally: has current+max, can go negative,
     // reaches a terminal state at −2× max. Three-tier status:
     //   current >  0            → Ready
     //   0 ≥ current > -EXH      → Tired       (scaling Penalty kicks in)
@@ -388,7 +392,7 @@ window.RULESET_DEFAULTS = {
       name: 'Exhaustion',
       description: 'Stamina and endurance pool. Average person has ~5. Drops from exertion, exposure, and pushing through rolls. Below 0 EXH you scale Penalty; at −2× max you fall Unconscious. Spend EXH before a roll to Exert — 1 Difficulty Reduction (max once) OR −25% Penalty per EXH spent.',
       group: 'health',
-      formula: '(HP / 2) + (SAN / 2)',
+      formula: '(HP / 2) + (MEN / 2)',
       // EXH is a pool (current/max tracker) — never rolled as a dice
       // pool. Matches FORT's static-value treatment: the card shows
       // the value but doesn't offer a roll affordance. Spending EXH
@@ -972,7 +976,7 @@ window.normalizeRuleset = function(rs) {
 
   // ── TILE DESCRIPTIONS ──
   // Per-ruleset author-editable text for the three computed summary
-  // tiles (Body, Sanity, Penalty) that don't correspond to a single
+  // tiles (Body, Mental Health, Penalty) that don't correspond to a single
   // stat. Normalizer coerces the shape to ensure the three string
   // fields exist, falling back to defaults when missing. Extra keys
   // are preserved (a homebrew ruleset might author a description for a
@@ -1120,7 +1124,7 @@ window.normalizeRuleset = function(rs) {
       const LABEL_UPGRADES = {
         health:   { oldLabels: ['Health'],   newLabel: 'Physical' },
         movement: { oldLabels: ['Movement'], newLabel: 'Combat'   },
-        mental:   { oldLabels: ['Sanity'],   newLabel: 'Mental'   }
+        mental:   { oldLabels: ['Mental Health'],   newLabel: 'Mental'   }
       };
       out.derivedStatGroups.forEach(g => {
         const u = LABEL_UPGRADES[g.code];
@@ -1328,7 +1332,7 @@ window.normalizeRuleset = function(rs) {
           s.rollModifier = defaultStat.rollModifier;
         }
       }
-      // Backfill passiveRoll for HP/SAN (or any default stat) if the saved
+      // Backfill passiveRoll for HP/MEN (or any default stat) if the saved
       // value still matches the pre-flag default of false. Safe: we only
       // flip false → true for stats that are DEFAULT passive; stats the user
       // actively set non-passive aren't touched.
