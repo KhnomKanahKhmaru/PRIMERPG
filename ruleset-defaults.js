@@ -1009,6 +1009,18 @@ window.normalizeRuleset = function(rs) {
   const rawTileDescs = (out.tileDescriptions && typeof out.tileDescriptions === 'object')
     ? out.tileDescriptions
     : {};
+  // Legacy rename — `sanity` was the original key for what is now
+  // `mentalHealth`. Existing rulesets may have GM-authored content
+  // under the old key. Promote it to the new key BEFORE merging
+  // defaults so the GM's text wins over the default text. We only
+  // promote if the new key isn't already set (otherwise the GM has
+  // already migrated and the new content is canonical). The legacy
+  // `sanity` key stays in the object for now — harmless, and the
+  // editor's first save will write the new key.
+  if (typeof rawTileDescs.sanity === 'string' &&
+      typeof rawTileDescs.mentalHealth !== 'string') {
+    rawTileDescs.mentalHealth = rawTileDescs.sanity;
+  }
   out.tileDescriptions = Object.assign(
     {},
     d.tileDescriptions,       // defaults first
