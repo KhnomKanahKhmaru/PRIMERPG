@@ -105,8 +105,8 @@ export function createCombatSection(ctx) {
     html += renderDerivedStatsSection(result, ruleset, { includeGroups: ['movement'] });
     // Health section — HP/FORT cards + hit locations + Body + injuries.
     html += renderHitLocationsSection(result);
-    // Sanity section — mental health pool, placed between physical and power.
-    html += renderSanSection(result);
+    // Mental Health section — mental health pool, placed between physical and power.
+    html += renderMenSection(result);
     // All other derived stat groups (mental, etc.) render below.
     // 'carry' is excluded because CAP / LIFT / ENC render as their own
     // cards at the top of the Inventory tab — putting them here too
@@ -120,7 +120,7 @@ export function createCombatSection(ctx) {
   }
 
   // ─── STATE OF THINGS (overview dashboard) ───
-  // Extracted to char-overview.js. The module renders Body / Sanity /
+  // Extracted to char-overview.js. The module renders Body / Mental Health /
   // Power / Movement / Penalty tiles into the Overview tab's #state-body
   // host. We also re-use its renderPenaltyTile inline on the Combat tab.
   //
@@ -149,7 +149,7 @@ export function createCombatSection(ctx) {
     fmt,
     conditionsSection,
     // Forward the description renderer from sectionCtx so the Body /
-    // Sanity / Penalty tiles can show the ruleset-authored, player-
+    // Mental Health / Penalty tiles can show the ruleset-authored, player-
     // overridable description blocks. Read lazily because sectionCtx
     // gets renderDescriptionDisplay attached AFTER combat.js runs its
     // factory (the descriptions module is instantiated last so it can
@@ -443,8 +443,13 @@ export function createCombatSection(ctx) {
     }
 
     const errTitle = error ? ` title="${escapeHtml(error)}"` : '';
+    // Display label for the stat code badge. Internal code stays 'SAN'
+    // for backward compatibility with existing characters' stat data,
+    // but everywhere we SHOW the code to the player, we relabel SAN
+    // as MEN to mirror HP/Body in the renamed Mental Health system.
+    const displayCode = def.code === 'SAN' ? 'MEN' : def.code;
     const codeBadge = def.code && def.code !== def.name
-      ? ` <span class="ds-card-code">${escapeHtml(def.code)}</span>`
+      ? ` <span class="ds-card-code">${escapeHtml(displayCode)}</span>`
       : '';
     const rawFormula = (def.formula || '').trim();
     const isIdentityFormula = rawFormula.toUpperCase() === def.code;
@@ -477,7 +482,7 @@ export function createCombatSection(ctx) {
     //
     // ALWAYS shown for rollable stats — even when the pool equals the base
     // and there are no mods. Previously the pill was suppressed in that
-    // "clean" case, which left cards like HP / SAN / INIT showing just a
+    // "clean" case, which left cards like HP / MEN / INIT showing just a
     // big number with no visual cue that the number IS a dice pool. Always
     // showing the "Xd" pill makes "these are dice stats" unambiguous at
     // a glance and unifies with the click-to-edit affordance.
@@ -485,7 +490,7 @@ export function createCombatSection(ctx) {
     // SKIPPED ENTIRELY for stats marked `rollable: false` (SPD, SPR, AGL,
     // RFX, FORT — static derived values that aren't rolled as dice pools).
     // Default `rollable === true` preserves behavior for existing stats
-    // (HP, SAN, INIT, and any ruleset-authored stat without the field).
+    // (HP, MEN, INIT, and any ruleset-authored stat without the field).
     const hasDiceMods = Array.isArray(diceMods) && diceMods.length > 0;
     const isPassive = entry.isPassive === true;
     const penaltyDice = entry.penaltyDice || 0;
@@ -856,7 +861,7 @@ export function createCombatSection(ctx) {
       const srcRow = (key, label) => {
         const checked = hasFilter ? (thisFilter[key] === true) : true;
         const hint = key === 'pain' ? 'from damage'
-                   : key === 'stress' ? 'from SAN loss'
+                   : key === 'stress' ? 'from MEN loss'
                    : key === 'encumbrance' ? 'from load'
                    : key === 'exhaustion' ? 'from negative EXH'
                    : '';
@@ -1112,8 +1117,8 @@ export function createCombatSection(ctx) {
 
   // ─── PAIN / STRESS ───
   //
-  // Pain is % of Body missing. Stress is % of SAN range used up (with 3×
-  // denominator to account for SAN's negative range). Strain = Pain + Stress
+  // Pain is % of Body missing. Stress is % of MEN range used up (with 3×
+  // denominator to account for MEN's negative range). Strain = Pain + Stress
   // and is used to reduce dice pools on active rolls.
   //
   // Both show as clickable pills with the same interaction pattern as Dice
@@ -1147,7 +1152,7 @@ export function createCombatSection(ctx) {
     if (!stress) return '';
     const canEdit = ctx.getCanEdit();
     const penalty = result.penalty || { percent: 0 };
-    const sanMax = (result.san && result.san.max) || 0;
+    const menMax = (result.men && result.men.max) || 0;
     return renderStrainPill({
       id: 'stress',
       label: 'Stress',
@@ -1159,7 +1164,7 @@ export function createCombatSection(ctx) {
       addFn: 'addStressMod',
       updateFn: 'updateStressMod',
       deleteFn: 'deleteStressMod',
-      baseDescription: `${stress.basePercent}% base = ${(result.san && result.san.damage) || 0} / ${sanMax * 3} SAN range lost`
+      baseDescription: `${stress.basePercent}% base = ${(result.men && result.men.damage) || 0} / ${menMax * 3} MEN range lost`
     });
   }
 
@@ -1198,7 +1203,7 @@ export function createCombatSection(ctx) {
 
     if (expanded && canEdit) {
       html += '<div class="strain-panel">';
-      html += `<div class="strain-panel-base">Base: ${data.basePercent}% (computed from ${label === 'Pain' ? 'Body damage' : 'SAN damage'})</div>`;
+      html += `<div class="strain-panel-base">Base: ${data.basePercent}% (computed from ${label === 'Pain' ? 'Body damage' : 'MEN damage'})</div>`;
       if (mods.length === 0) {
         html += '<div class="mod-empty">No modifiers. Add percentile adjustments (e.g. "Adrenaline: −10%" or "Fatigue: +15%").</div>';
       } else {
@@ -2226,13 +2231,13 @@ export function createCombatSection(ctx) {
   //   ± buttons      quick adjust for manual damage
   //
   // The bar itself visualizes damage via color bands on each segment,
-  // just like HP hit locations and the SAN pool tile do. Because EXH
+  // just like HP hit locations and the MEN pool tile do. Because EXH
   // can go deeply negative (-2×max), the bar has THREE zones mapped
   // to three color tiers: "positive" (ready), "0 to -max" (tired),
   // "-max to -2×max" (exhausted).
   //
   // ± buttons write to `charData.exhDamage` (scalar manual damage),
-  // parallel to how SAN's manual damage field works. Structured
+  // parallel to how MEN's manual damage field works. Structured
   // damages (named entries with level modifiers) are a Turn-2
   // feature — for now the widget just provides the simplest
   // adjustment affordance.
@@ -2373,7 +2378,7 @@ export function createCombatSection(ctx) {
 
     // Hit Locations + EXH rail. Side-by-side layout:
     //   [ EXH vertical bar ]  [ Hit Location rows ]
-    // EXH is thematically physical (third pillar alongside HP/SAN) so it
+    // EXH is thematically physical (third pillar alongside HP/MEN) so it
     // lives adjacent to the body diagram — players can see at a glance
     // "how wrecked am I bodily, AND how much is left in the tank."
     // The EXH rail is only rendered if the character actually has an
@@ -2625,7 +2630,7 @@ export function createCombatSection(ctx) {
     if (!body || body.max <= 0) return '';
     const canEdit = ctx.getCanEdit();
 
-    // Cap segment count for visual sanity on very high Body totals.
+    // Cap segment count for visual mentalHealth on very high Body totals.
     // Characters with Body > 80 get scaled to 80 segments (each = Body/80 points).
     // Below 80, use 1 seg per point.
     const SEG_CAP = 80;
@@ -3116,7 +3121,7 @@ export function createCombatSection(ctx) {
     return 'severity-mythical';
   }
 
-  // ─── SAN (SANITY) SECTION ───
+  // ─── MEN (SANITY) SECTION ───
   //
   // Dedicated section for mental health. Placed between physical health and
   // power. Damage is LINEAR (no FORT reduction) — this mirrors the spec that
@@ -3124,8 +3129,8 @@ export function createCombatSection(ctx) {
   //
   // Visual bar: 4 phases, same palette as HP location bars.
   //   Phase 1 (green→yellow): 0 damage → max damage      (Healthy → In Shock)
-  //   Phase 2 (yellow→red):   max → 2*max                (In Shock → Insane)
-  //   Phase 3 (red→deepRed):  2*max → 3*max              (Insane → Broken)
+  //   Phase 2 (yellow→red):   max → 2*max                (In Shock → Broken)
+  //   Phase 3 (red→deepRed):  2*max → 3*max              (Broken → Broken)
   //   Phase 4 (deepRed→black): 3*max → 4*max+            (Broken, deepening)
   //
   // Breaking Point reference panel renders when status === 'broken' so the
@@ -3135,15 +3140,15 @@ export function createCombatSection(ctx) {
 
   let editSanModifiersMode = false;
 
-  function renderSanSection(result) {
-    const san = result.san;
-    if (!san) return '';  // ruleset doesn't define SAN — skip entirely
+  function renderMenSection(result) {
+    const men = result.men;
+    if (!men) return '';  // ruleset doesn't define MEN — skip entirely
     const canEdit = ctx.getCanEdit();
 
-    // Cap segment count so very high-SAN characters don't render a runaway
+    // Cap segment count so very high-MEN characters don't render a runaway
     // row of micro-segments. Each segment represents max/segCount damage.
     const SEG_CAP = 80;
-    const segCount = Math.min(Math.max(san.max, 1), SEG_CAP);
+    const segCount = Math.min(Math.max(men.max, 1), SEG_CAP);
 
     // Build the section body (everything below the title). The Edit
     // Modifiers button goes INSIDE the collapsible header so players
@@ -3151,61 +3156,61 @@ export function createCombatSection(ctx) {
     // don't also collapse the section.
     let body_html = '';
 
-    // Sanity stat card at the top — shows name, code, formula, value, and
-    // description. Gives the player a clear reminder of what SAN is and
+    // Mental Health stat card at the top — shows name, code, formula, value, and
+    // description. Gives the player a clear reminder of what MEN is and
     // what they roll for mental resistances.
-    const sanEntry = result.stats.get('SAN');
-    if (sanEntry) {
-      body_html += '<div class="ds-grid san-card-wrap">';
-      body_html += renderDsCard(sanEntry);
+    const menEntry = result.stats.get('SAN');
+    if (menEntry) {
+      body_html += '<div class="ds-grid men-card-wrap">';
+      body_html += renderDsCard(menEntry);
       body_html += '</div>';
     }
 
-    // Status line: SAN label, current/max, colored status pill.
-    const statusClass = 'san-status-' + san.status;
-    body_html += '<div class="san-top-row">';
-    body_html += '<span class="san-label">SAN</span>';
-    body_html += `<span class="san-nums"><span class="san-current">${san.current}</span><span class="san-slash"> / </span><span class="san-max">${san.max}</span></span>`;
-    body_html += `<span class="san-status-pill ${statusClass}">${escapeHtml(san.statusLabel)}</span>`;
+    // Status line: MEN label, current/max, colored status pill.
+    const statusClass = 'men-status-' + men.status;
+    body_html += '<div class="men-top-row">';
+    body_html += '<span class="men-label">MEN</span>';
+    body_html += `<span class="men-nums"><span class="men-current">${men.current}</span><span class="men-slash"> / </span><span class="men-max">${men.max}</span></span>`;
+    body_html += `<span class="men-status-pill ${statusClass}">${escapeHtml(men.statusLabel)}</span>`;
     body_html += '</div>';
 
     // Penalty text — empty when Healthy, printed in italic otherwise.
-    if (san.penaltyText) {
-      body_html += `<div class="san-penalty">${escapeHtml(san.penaltyText)}</div>`;
+    if (men.penaltyText) {
+      body_html += `<div class="men-penalty">${escapeHtml(men.penaltyText)}</div>`;
     }
 
     // Segmented bar.
-    body_html += '<div class="san-bar">';
-    body_html += renderSanSegments(san.max, san.damage, segCount);
+    body_html += '<div class="men-bar">';
+    body_html += renderMenSegments(men.max, men.damage, segCount);
     body_html += '</div>';
 
     // Description block (player-overridable). Mirrors the Overview
-    // Sanity tile — pulls from ruleset.tileDescriptions.sanity, with
+    // Mental Health tile — pulls from ruleset.tileDescriptions.mentalHealth, with
     // optional per-character override via the descriptions module.
     if (ctx.renderDescriptionDisplay) {
-      body_html += ctx.renderDescriptionDisplay('tiles', 'sanity', { wrapperClass: 'combat-section-desc' });
+      body_html += ctx.renderDescriptionDisplay('tiles', 'mentalHealth', { wrapperClass: 'combat-section-desc' });
     }
 
     // Damage controls (input shows effective current; +/- tick damage).
     if (canEdit) {
-      const damageCap = Math.max(san.max * 5, 10);
-      body_html += `<div class="san-controls">
+      const damageCap = Math.max(men.max * 5, 10);
+      body_html += `<div class="men-controls">
         <button class="hl-dmg-btn" onclick="tickSanDmg(1)" title="Take 1 Mental Damage">−</button>
-        <input type="number" class="san-dmg-input" value="${san.current}" min="${-damageCap}" max="${san.max}"
+        <input type="number" class="men-dmg-input" value="${men.current}" min="${-damageCap}" max="${men.max}"
                onchange="setSanCurrent(this.value)"
-               title="Current SAN (type to set directly)">
-        <button class="hl-dmg-btn" onclick="tickSanDmg(-1)" title="Heal 1 SAN">+</button>
+               title="Current MEN (type to set directly)">
+        <button class="hl-dmg-btn" onclick="tickSanDmg(-1)" title="Heal 1 MEN">+</button>
       </div>`;
     } else {
-      body_html += `<div class="san-controls san-controls-ro"><span class="san-current-ro">${san.current} / ${san.max}</span></div>`;
+      body_html += `<div class="men-controls men-controls-ro"><span class="men-current-ro">${men.current} / ${men.max}</span></div>`;
     }
 
     // Edit modifiers panel — same shape as Body modifier panel.
     if (editSanModifiersMode && canEdit) {
-      body_html += renderSanModifierPanel(san);
+      body_html += renderMenModifierPanel(men);
     }
 
-    // Stress indicator — percent of SAN's full range (max → -2×max) that's
+    // Stress indicator — percent of MEN's full range (max → -2×max) that's
     // been used up. Editable percentile modifiers, parallels Pain pill in
     // the Health section. Combines with Pain to form Strain, which reduces
     // dice pools on non-passive active rolls.
@@ -3216,55 +3221,55 @@ export function createCombatSection(ctx) {
 
     // Breaking Point reference — shown whenever Broken. This is guidance,
     // not automation. GM rolls d10 per PRIME rules and applies the result.
-    if (san.status === 'broken') {
+    if (men.status === 'broken') {
       body_html += renderBreakingPointPanel();
     }
 
     // Head: title + the Edit Modifiers button (event.stopPropagation
     // on the button prevents its click from also collapsing the section).
     // Title reads from the ruleset's 'mental' group label so a renamed
-    // group propagates (e.g. "Sanity", "Mental", "Psyche").
+    // group propagates (e.g. "Mental Health", "Mental", "Psyche").
     const ruleset = ctx.getRuleset();
     const mentalGroup = (ruleset.derivedStatGroups || []).find(g => g.code === 'mental');
-    const sanTitle = (mentalGroup && mentalGroup.label) ? mentalGroup.label : 'Sanity';
-    let head_html = `<span class="combat-section-title-text">${escapeHtml(sanTitle)}</span>`;
+    const menTitle = (mentalGroup && mentalGroup.label) ? mentalGroup.label : 'Mental Health';
+    let head_html = `<span class="combat-section-title-text">${escapeHtml(menTitle)}</span>`;
     if (canEdit) {
       head_html += `<button class="hl-edit-btn${editSanModifiersMode ? ' active' : ''}" onclick="event.stopPropagation();toggleSanModifierEdit()">` +
                    `${editSanModifiersMode ? 'Done' : 'Edit Modifiers'}</button>`;
     }
 
     return wrapCollapsibleSection(
-      'prime.collapse.combat.sanity',
+      'prime.collapse.combat.mentalHealth',
       head_html,
       body_html,
-      { wrapperClass: 'combat-section san-section', collapsibleClass: 'combat-section-title combat-section-head', rerenderHandler: 'combatToggleCollapse' }
+      { wrapperClass: 'combat-section men-section', collapsibleClass: 'combat-section-title combat-section-head', rerenderHandler: 'combatToggleCollapse' }
     );
   }
 
   // UI-only state for Damages, mirroring the Injuries pattern.
   const expandedSanDamages = new Set();
-  let sanDamagesOpen = false;
+  let menDamagesOpen = false;
 
   function renderSanDamagesSection(result) {
-    const san = result.san;
-    const damages = (san && san.damages) || [];
+    const men = result.men;
+    const damages = (men && men.damages) || [];
     const canEdit = ctx.getCanEdit();
 
-    let html = '<div class="injury-section san-damages-section">';
+    let html = '<div class="injury-section men-damages-section">';
     html += `<div class="injury-head" onclick="toggleSanDamagesSection()">
-      <span class="injury-head-caret">${sanDamagesOpen ? '▾' : '▸'}</span>
+      <span class="injury-head-caret">${menDamagesOpen ? '▾' : '▸'}</span>
       <span class="injury-head-title">Damages</span>
       <span class="injury-head-count">${damages.length}</span>
     </div>`;
 
-    if (!sanDamagesOpen) { html += '</div>'; return html; }
+    if (!menDamagesOpen) { html += '</div>'; return html; }
 
-    // Quickadd form — just name + degree. No location, no AoE (SAN is one pool).
+    // Quickadd form — just name + degree. No location, no AoE (MEN is one pool).
     if (canEdit) {
-      html += `<div class="injury-quickadd-row san-qadd-row">
-        <input type="text" id="qadd-sandmg-name" class="qadd-inj-name" placeholder="Damage name"
+      html += `<div class="injury-quickadd-row men-qadd-row">
+        <input type="text" id="qadd-mendmg-name" class="qadd-inj-name" placeholder="Damage name"
                onkeydown="if(event.key==='Enter')quickAddSanDamage()">
-        <input type="number" id="qadd-sandmg-level" class="qadd-inj-level" placeholder="Deg"
+        <input type="number" id="qadd-mendmg-level" class="qadd-inj-level" placeholder="Deg"
                min="0" max="99" value="1"
                onkeydown="if(event.key==='Enter')quickAddSanDamage()">
         <button class="injury-add-btn" onclick="quickAddSanDamage()">Add</button>
@@ -3346,7 +3351,7 @@ export function createCombatSection(ctx) {
     // signed values that shift currentLevel).
     const mods = Array.isArray(dmg.levelModifiers) ? dmg.levelModifiers : [];
     html += '<div class="injury-mod-block">';
-    html += '<div class="injury-mod-head"><span class="injury-mod-title">Level Modifiers</span><span class="injury-mod-hint">Adjust current Degree (feeds SAN damage pool)</span></div>';
+    html += '<div class="injury-mod-head"><span class="injury-mod-title">Level Modifiers</span><span class="injury-mod-hint">Adjust current Degree (feeds MEN damage pool)</span></div>';
     if (mods.length === 0) {
       html += '<div class="mod-empty">No modifiers.</div>';
     } else {
@@ -3376,18 +3381,18 @@ export function createCombatSection(ctx) {
   }
 
   // Segment colors go: cool blue (healthy) → yellow (in shock) → orange
-  // (insane) → red (broken). Once damage hits the Broken threshold (3×max),
+  // (disturbed) → red (broken). Once damage hits the Broken threshold (3×max),
   // every segment is fully red and stays red no matter how much further the
   // damage goes — Broken is the narrative floor, not a waypoint to worse.
-  function renderSanSegments(sanMax, damage, segCount) {
-    if (sanMax <= 0 || segCount <= 0) return '';
+  function renderMenSegments(menMax, damage, segCount) {
+    if (menMax <= 0 || segCount <= 0) return '';
     const COLORS = {
       blue:   '#4a6a9a',
       yellow: '#bdb247',
       orange: '#c87a3a',
       red:    '#a63a3a'
     };
-    const dmgPerSeg = sanMax / segCount;
+    const dmgPerSeg = menMax / segCount;
 
     let html = '';
     for (let i = 1; i <= segCount; i++) {
@@ -3397,20 +3402,20 @@ export function createCombatSection(ctx) {
       const base = (rightDistance - 1) * dmgPerSeg;
 
       let color;
-      if (damage > 2 * sanMax + base) color = COLORS.red;
-      else if (damage > sanMax + base) color = COLORS.orange;
+      if (damage > 2 * menMax + base) color = COLORS.red;
+      else if (damage > menMax + base) color = COLORS.orange;
       else if (damage > base) color = COLORS.yellow;
       else color = COLORS.blue;
 
-      html += `<span class="san-seg" style="background:${color}"></span>`;
+      html += `<span class="men-seg" style="background:${color}"></span>`;
     }
     return html;
   }
 
-  function renderSanModifierPanel(san) {
-    const mods = Array.isArray(san.modifiers) ? san.modifiers : [];
+  function renderMenModifierPanel(men) {
+    const mods = Array.isArray(men.modifiers) ? men.modifiers : [];
     let html = '<div class="hl-mod-panel">';
-    html += '<div class="mod-panel-head"><span class="mod-base">SAN Modifiers</span><span class="mod-panel-hint">stack onto max</span></div>';
+    html += '<div class="mod-panel-head"><span class="mod-base">MEN Modifiers</span><span class="mod-panel-hint">stack onto max</span></div>';
     if (mods.length === 0) {
       html += '<div class="mod-empty">No modifiers.</div>';
     } else {
@@ -3436,34 +3441,34 @@ export function createCombatSection(ctx) {
   function renderBreakingPointPanel() {
     // Roll table is d10 (per PRIME convention). Results ordered high→low
     // because you'd rather score 7 than -1.
-    return `<div class="san-breakpoint">
-      <div class="san-breakpoint-title">⚠ Breaking Point</div>
-      <div class="san-breakpoint-intro">Roll once when first Broken; reroll with each additional Mental Damage. You may take any lower-roll option if you roll higher.</div>
-      <div class="san-breakpoint-table">
-        <div class="san-bp-row san-bp-tier-best"><span class="san-bp-roll">7</span><span class="san-bp-name">Renewal</span><span class="san-bp-desc">Mental awakening — restore full SAN.</span></div>
-        <div class="san-bp-row san-bp-tier-good"><span class="san-bp-roll">5–6</span><span class="san-bp-name">Partial Recovery</span><span class="san-bp-desc">Recover ½ SAN.</span></div>
-        <div class="san-bp-row san-bp-tier-neutral"><span class="san-bp-roll">3–4</span><span class="san-bp-name">Steadied</span><span class="san-bp-desc">No negative effect (still reroll on further Mental Damage).</span></div>
-        <div class="san-bp-row san-bp-tier-bad"><span class="san-bp-roll">1–2</span><span class="san-bp-name">Psychotic Break</span><span class="san-bp-desc">In control but antagonistic — act against allies/mission.</span></div>
-        <div class="san-bp-row san-bp-tier-worst"><span class="san-bp-roll">0</span><span class="san-bp-name">Indefinitely Insane</span><span class="san-bp-desc">Uncontrollable, irrational, effectively a vegetable.</span></div>
-        <div class="san-bp-row san-bp-tier-fatal"><span class="san-bp-roll">−1</span><span class="san-bp-name">Immediately Suicidal</span><span class="san-bp-desc">Must end own life by most effective means; Indefinitely Insane for all other purposes.</span></div>
+    return `<div class="men-breakpoint">
+      <div class="men-breakpoint-title">⚠ Breaking Point</div>
+      <div class="men-breakpoint-intro">Roll once when first Broken; reroll with each additional Mental Damage. You may take any lower-roll option if you roll higher.</div>
+      <div class="men-breakpoint-table">
+        <div class="men-bp-row men-bp-tier-best"><span class="men-bp-roll">7</span><span class="men-bp-name">Renewal</span><span class="men-bp-desc">Mental awakening — restore full MEN.</span></div>
+        <div class="men-bp-row men-bp-tier-good"><span class="men-bp-roll">5–6</span><span class="men-bp-name">Partial Recovery</span><span class="men-bp-desc">Recover ½ MEN.</span></div>
+        <div class="men-bp-row men-bp-tier-neutral"><span class="men-bp-roll">3–4</span><span class="men-bp-name">Steadied</span><span class="men-bp-desc">No negative effect (still reroll on further Mental Damage).</span></div>
+        <div class="men-bp-row men-bp-tier-bad"><span class="men-bp-roll">1–2</span><span class="men-bp-name">Psychotic Break</span><span class="men-bp-desc">In control but antagonistic — act against allies/mission.</span></div>
+        <div class="men-bp-row men-bp-tier-worst"><span class="men-bp-roll">0</span><span class="men-bp-name">Indefinitely Broken</span><span class="men-bp-desc">Uncontrollable, irrational, effectively a vegetable.</span></div>
+        <div class="men-bp-row men-bp-tier-fatal"><span class="men-bp-roll">−1</span><span class="men-bp-name">Immediately Suicidal</span><span class="men-bp-desc">Must end own life by most effective means; Indefinitely Broken for all other purposes.</span></div>
       </div>
     </div>`;
   }
 
-  // ─── SAN HANDLERS ───
+  // ─── MEN HANDLERS ───
 
   async function tickSanDmg(delta) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
-    const cur = Math.max(0, Number.isFinite(charData.sanDamage) ? charData.sanDamage : 0);
+    const cur = Math.max(0, Number.isFinite(charData.menDamage) ? charData.menDamage : 0);
     const next = Math.max(0, cur + delta);
-    charData.sanDamage = next;
-    await saveCharacter(ctx.getCharId(), { sanDamage: next });
+    charData.menDamage = next;
+    await saveCharacter(ctx.getCharId(), { menDamage: next });
     renderAll();
   }
 
   // Input shows CURRENT (max - total damage). Typing sets current.
-  // Manual damage (sanDamage) is the only thing we can edit directly here —
+  // Manual damage (menDamage) is the only thing we can edit directly here —
   // structured damages' contribution is floor we can't dip below without
   // editing them. If the typed current would require NEGATIVE manual damage,
   // we clamp manual to 0.
@@ -3472,21 +3477,21 @@ export function createCombatSection(ctx) {
     const charData = ctx.getCharData();
     const ruleset = ctx.getRuleset();
     const result = computeDerivedStats(charData, ruleset);
-    if (!result.san) return;
-    const sanMax = result.san.max;
-    const damagesContribution = result.san.damagesContribution || 0;
+    if (!result.men) return;
+    const menMax = result.men.max;
+    const damagesContribution = result.men.damagesContribution || 0;
 
     const typed = parseInt(val);
     if (!Number.isFinite(typed)) return;
-    const floorCurrent = -(sanMax * 5);
-    const clampedCurrent = Math.min(sanMax, Math.max(floorCurrent, typed));
-    const totalDesiredDamage = Math.max(0, sanMax - clampedCurrent);
+    const floorCurrent = -(menMax * 5);
+    const clampedCurrent = Math.min(menMax, Math.max(floorCurrent, typed));
+    const totalDesiredDamage = Math.max(0, menMax - clampedCurrent);
     // Manual portion = total - structured damages. Clamped at 0 since we can
     // only control manual; going below requires editing the damages themselves.
     const manual = Math.max(0, totalDesiredDamage - damagesContribution);
 
-    charData.sanDamage = manual;
-    await saveCharacter(ctx.getCharId(), { sanDamage: manual });
+    charData.menDamage = manual;
+    await saveCharacter(ctx.getCharId(), { menDamage: manual });
     renderAll();
   }
 
@@ -3499,43 +3504,43 @@ export function createCombatSection(ctx) {
   async function addSanMod() {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
-    if (!Array.isArray(charData.sanModifiers)) charData.sanModifiers = [];
-    charData.sanModifiers.push({ name: '', value: 0 });
-    await saveCharacter(ctx.getCharId(), { sanModifiers: charData.sanModifiers });
+    if (!Array.isArray(charData.menModifiers)) charData.menModifiers = [];
+    charData.menModifiers.push({ name: '', value: 0 });
+    await saveCharacter(ctx.getCharId(), { menModifiers: charData.menModifiers });
     renderAll();
   }
 
   async function updateSanMod(idx, field, val) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
-    if (!Array.isArray(charData.sanModifiers) || !charData.sanModifiers[idx]) return;
-    if (field === 'name') charData.sanModifiers[idx].name = typeof val === 'string' ? val : '';
-    else if (field === 'value') charData.sanModifiers[idx].value = parseInt(val) || 0;
-    await saveCharacter(ctx.getCharId(), { sanModifiers: charData.sanModifiers });
+    if (!Array.isArray(charData.menModifiers) || !charData.menModifiers[idx]) return;
+    if (field === 'name') charData.menModifiers[idx].name = typeof val === 'string' ? val : '';
+    else if (field === 'value') charData.menModifiers[idx].value = parseInt(val) || 0;
+    await saveCharacter(ctx.getCharId(), { menModifiers: charData.menModifiers });
     renderAll();
   }
 
   async function deleteSanMod(idx) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
-    if (!Array.isArray(charData.sanModifiers) || !charData.sanModifiers[idx]) return;
-    charData.sanModifiers.splice(idx, 1);
-    await saveCharacter(ctx.getCharId(), { sanModifiers: charData.sanModifiers });
+    if (!Array.isArray(charData.menModifiers) || !charData.menModifiers[idx]) return;
+    charData.menModifiers.splice(idx, 1);
+    await saveCharacter(ctx.getCharId(), { menModifiers: charData.menModifiers });
     renderAll();
   }
 
-  // ─── SAN DAMAGES ───
+  // ─── MEN DAMAGES ───
   //
   // Structured mental wounds. Parallel to injuries but simpler: no location,
   // no traumas, no degradation. Each damage has a name, description, a
   // baseLevel (Degree) and optional level modifiers.
 
   function newSanDamageId() {
-    return 'sandmg_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+    return 'mendmg_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
   }
 
   function toggleSanDamagesSection() {
-    sanDamagesOpen = !sanDamagesOpen;
+    menDamagesOpen = !menDamagesOpen;
     renderAll();
   }
 
@@ -3548,10 +3553,10 @@ export function createCombatSection(ctx) {
   async function quickAddSanDamage() {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
-    if (!Array.isArray(charData.sanDamages)) charData.sanDamages = [];
+    if (!Array.isArray(charData.menDamages)) charData.menDamages = [];
 
-    const nameEl  = document.getElementById('qadd-sandmg-name');
-    const levelEl = document.getElementById('qadd-sandmg-level');
+    const nameEl  = document.getElementById('qadd-mendmg-name');
+    const levelEl = document.getElementById('qadd-mendmg-level');
 
     const name = nameEl ? (nameEl.value || '').trim() : '';
     const baseLevel = levelEl ? Math.max(0, parseInt(levelEl.value) || 0) : 0;
@@ -3563,29 +3568,29 @@ export function createCombatSection(ctx) {
       baseLevel,
       levelModifiers: []
     };
-    charData.sanDamages.push(dmg);
+    charData.menDamages.push(dmg);
     expandedSanDamages.add(dmg.id);
-    sanDamagesOpen = true;
-    await saveCharacter(ctx.getCharId(), { sanDamages: charData.sanDamages });
+    menDamagesOpen = true;
+    await saveCharacter(ctx.getCharId(), { menDamages: charData.menDamages });
     renderAll();
-    const freshNameEl = document.getElementById('qadd-sandmg-name');
+    const freshNameEl = document.getElementById('qadd-mendmg-name');
     if (freshNameEl) { freshNameEl.value = ''; freshNameEl.focus(); }
   }
 
   async function removeSanDamage(id) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
-    if (!Array.isArray(charData.sanDamages)) return;
-    charData.sanDamages = charData.sanDamages.filter(d => d.id !== id);
+    if (!Array.isArray(charData.menDamages)) return;
+    charData.menDamages = charData.menDamages.filter(d => d.id !== id);
     expandedSanDamages.delete(id);
-    await saveCharacter(ctx.getCharId(), { sanDamages: charData.sanDamages });
+    await saveCharacter(ctx.getCharId(), { menDamages: charData.menDamages });
     renderAll();
   }
 
   async function updateSanDamageField(id, field, val) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
-    const dmg = (charData.sanDamages || []).find(d => d.id === id);
+    const dmg = (charData.menDamages || []).find(d => d.id === id);
     if (!dmg) return;
     if (field === 'baseLevel') {
       dmg.baseLevel = Math.max(0, parseInt(val) || 0);
@@ -3594,7 +3599,7 @@ export function createCombatSection(ctx) {
     } else {
       return;
     }
-    await saveCharacter(ctx.getCharId(), { sanDamages: charData.sanDamages });
+    await saveCharacter(ctx.getCharId(), { menDamages: charData.menDamages });
     renderAll();
   }
 
@@ -3603,7 +3608,7 @@ export function createCombatSection(ctx) {
   async function tickSanDamageQuickmod(id, delta) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
-    const dmg = (charData.sanDamages || []).find(d => d.id === id);
+    const dmg = (charData.menDamages || []).find(d => d.id === id);
     if (!dmg) return;
     if (!Array.isArray(dmg.levelModifiers)) dmg.levelModifiers = [];
 
@@ -3616,39 +3621,39 @@ export function createCombatSection(ctx) {
       if (next === 0) dmg.levelModifiers.splice(idx, 1);
       else dmg.levelModifiers[idx].value = next;
     }
-    await saveCharacter(ctx.getCharId(), { sanDamages: charData.sanDamages });
+    await saveCharacter(ctx.getCharId(), { menDamages: charData.menDamages });
     renderAll();
   }
 
   async function addSanDamageMod(id) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
-    const dmg = (charData.sanDamages || []).find(d => d.id === id);
+    const dmg = (charData.menDamages || []).find(d => d.id === id);
     if (!dmg) return;
     if (!Array.isArray(dmg.levelModifiers)) dmg.levelModifiers = [];
     dmg.levelModifiers.push({ name: '', value: 0 });
-    await saveCharacter(ctx.getCharId(), { sanDamages: charData.sanDamages });
+    await saveCharacter(ctx.getCharId(), { menDamages: charData.menDamages });
     renderAll();
   }
 
   async function updateSanDamageMod(id, idx, field, val) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
-    const dmg = (charData.sanDamages || []).find(d => d.id === id);
+    const dmg = (charData.menDamages || []).find(d => d.id === id);
     if (!dmg || !Array.isArray(dmg.levelModifiers) || !dmg.levelModifiers[idx]) return;
     if (field === 'name') dmg.levelModifiers[idx].name = typeof val === 'string' ? val : '';
     else if (field === 'value') dmg.levelModifiers[idx].value = parseInt(val) || 0;
-    await saveCharacter(ctx.getCharId(), { sanDamages: charData.sanDamages });
+    await saveCharacter(ctx.getCharId(), { menDamages: charData.menDamages });
     renderAll();
   }
 
   async function deleteSanDamageMod(id, idx) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
-    const dmg = (charData.sanDamages || []).find(d => d.id === id);
+    const dmg = (charData.menDamages || []).find(d => d.id === id);
     if (!dmg || !Array.isArray(dmg.levelModifiers) || !dmg.levelModifiers[idx]) return;
     dmg.levelModifiers.splice(idx, 1);
-    await saveCharacter(ctx.getCharId(), { sanDamages: charData.sanDamages });
+    await saveCharacter(ctx.getCharId(), { menDamages: charData.menDamages });
     renderAll();
   }
 
@@ -4130,10 +4135,10 @@ export function createCombatSection(ctx) {
     tickInjuryQuickmod,
     addInjuryMod, updateInjuryMod, deleteInjuryMod,
     addTrauma, removeTrauma, updateTraumaField,
-    // Sanity
+    // Mental Health
     tickSanDmg, setSanCurrent, toggleSanModifierEdit,
     addSanMod, updateSanMod, deleteSanMod,
-    // Sanity Damages
+    // Mental Health Damages
     toggleSanDamagesSection, toggleSanDamageExpand,
     quickAddSanDamage, removeSanDamage, updateSanDamageField,
     tickSanDamageQuickmod,
