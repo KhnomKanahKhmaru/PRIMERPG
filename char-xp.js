@@ -65,29 +65,32 @@ export function createXpBar(ctx) {
     const e = getEconomy();
     const canEdit = ctx.getCanEdit();
 
-    const xpOver = e.xpRemaining < 0;
-    const xpRowText = xpOver
-      ? `<span class="xp-pill-over">overspent by ${-e.xpRemaining}</span>`
-      : `<span class="xp-pill-spent">${e.xpSpent}</span><span class="xp-pill-sep">/</span><span class="xp-pill-total">${e.maxXp}</span>`;
-
-    const apOver = e.apRemaining < 0;
-    const apRowText = apOver
-      ? `<span class="xp-pill-over">overspent by ${-e.apRemaining}</span>`
-      : `<span class="xp-pill-spent">${e.apSpent}</span><span class="xp-pill-sep">/</span><span class="xp-pill-total">${e.totalAp}</span>`;
+    // Build one pill: always show "spent / total" as the main row,
+    // then a sub-line indicating remaining (green) or overspent (red).
+    // Even when remaining is 0 we render the sub-line so the layout
+    // stays consistent; "0 remaining" reads cleanly as a balanced state.
+    function pill(label, spent, total, remaining) {
+      const over = remaining < 0;
+      const sub = over
+        ? `<span class="xp-pill-sub xp-pill-sub-over">overspent by ${-remaining}</span>`
+        : `<span class="xp-pill-sub xp-pill-sub-rem">${remaining} remaining</span>`;
+      return `
+        <div class="xp-pill-row${over ? ' xp-pill-row-over' : ''}">
+          <span class="xp-pill-label">${label}</span>
+          <div class="xp-pill-stack">
+            <span class="xp-pill-vals"><span class="xp-pill-spent">${spent}</span><span class="xp-pill-sep">/</span><span class="xp-pill-total">${total}</span></span>
+            ${sub}
+          </div>
+        </div>`;
+    }
 
     const editBtn = canEdit
       ? `<button class="xp-pill-edit" onclick="window.openXpEditModal()" title="Edit XP and AP totals">✎</button>`
       : '';
 
     bar.innerHTML = `
-      <div class="xp-pill-row${xpOver ? ' xp-pill-row-over' : ''}">
-        <span class="xp-pill-label">XP</span>
-        <span class="xp-pill-vals">${xpRowText}</span>
-      </div>
-      <div class="xp-pill-row${apOver ? ' xp-pill-row-over' : ''}">
-        <span class="xp-pill-label">AP</span>
-        <span class="xp-pill-vals">${apRowText}</span>
-      </div>
+      ${pill('XP', e.xpSpent, e.maxXp, e.xpRemaining)}
+      ${pill('AP', e.apSpent, e.totalAp, e.apRemaining)}
       ${editBtn}
     `;
   }
