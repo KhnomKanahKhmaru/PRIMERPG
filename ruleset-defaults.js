@@ -24,11 +24,35 @@ window.RULESET_DEFAULTS = {
   // STATMOD per level (index = level, 0..statMax).
   statMods: [-1,-1,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,9,10],
 
-  // Stat flavor labels (index = level, 0..statMax).
+  // Stat flavor labels (index = level, 0..statMax). Aligned with the
+  // canonical PRIME stat tier scale:
+  //   0–6   Human         (Average → Human Limit)
+  //   7–10  Superhuman    (Lesser → Peak)
+  //   11–14 Mythical      (Beyond Superhuman → Greater Legendary)
+  //   15–18 Divine        (Semi-Divine → Greater Divine)
+  //   19–20 Cosmic        (Beyond Divine → Cosmic)
   statLabels: [
-    'Far Below Average','Below Average','Average','Above Average','Gifted','Exceptional','Peak Human',
-    'Superhuman','Extraordinary','Legendary','Heroic','Titanic','Mythic','Godly','Divine',
-    'Transcendent','Ascendant','Empyrean','Omnipotent','Absolute','Cosmic'
+    'Far Below Average',  // 0
+    'Below Average',      // 1
+    'Average',            // 2
+    'Above Average',      // 3
+    'Impressive',         // 4
+    'Exceptional',        // 5
+    'Human Limit',        // 6
+    'Lesser Superhuman',  // 7
+    'Superhuman',         // 8
+    'Greater Superhuman', // 9
+    'Peak Superhuman',    // 10
+    'Beyond Superhuman',  // 11
+    'Lesser Legendary',   // 12
+    'Legendary',          // 13
+    'Greater Legendary',  // 14
+    'Semi-Divine',        // 15
+    'Lesser Divine',      // 16
+    'Divine',             // 17
+    'Greater Divine',     // 18
+    'Beyond Divine',      // 19
+    'Cosmic'              // 20
   ],
 
   // SIZE: its own scale, XP costs, and tier labels. Has no STATMOD.
