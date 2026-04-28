@@ -1,7 +1,7 @@
 // char-overview.js
 //
 // "State of Things" dashboard tiles that live on the Overview tab.
-// Read-only summary of Body / Sanity / Power / Movement / Penalty, computed
+// Read-only summary of Body / Mental Health / Power / Movement / Penalty, computed
 // from the same pipeline as the Combat tab so the two views never drift.
 //
 // Split out of char-combat.js because these tiles are:
@@ -41,7 +41,7 @@ export function createOverviewSection(ctx) {
   //
   // Per-browser persistence of which Overview tiles are collapsed. Keys:
   //   prime.collapse.overview-tile.<slug>
-  // where <slug> is a stable identifier per tile (body, sanity, penalty,
+  // where <slug> is a stable identifier per tile (body, mentalHealth, penalty,
   // power, movement, afflictions). Absent = expanded (default).
   //
   // Tile renderers wrap their HTML via wrapCollapsibleTile(slug, head, body)
@@ -102,7 +102,7 @@ export function createOverviewSection(ctx) {
 
   // ─── ORCHESTRATOR ───
   //
-  // Read-only summary showing Body, Sanity, Penalty, Power, Movement. Lives
+  // Read-only summary showing Body, Mental Health, Penalty, Power, Movement. Lives
   // on the Overview tab. No controls — players go to Combat tab to edit.
   // We compute everything from the same pipeline as the Combat tab, so
   // numbers always match between the two views.
@@ -122,14 +122,14 @@ export function createOverviewSection(ctx) {
       tiles.push(renderBodyTile(body));
     }
 
-    // SANITY tile — SAN current/max, blue→red bar, status label.
-    const san = result.san;
-    if (san && san.max > 0) {
-      tiles.push(renderSanTile(san));
+    // SANITY tile — MEN current/max, blue→red bar, status label.
+    const men = result.men;
+    if (men && men.max > 0) {
+      tiles.push(renderMenTile(men));
     }
 
     // EXHAUSTION tile — EXH current/max, amber-palette bar, status
-    // label. Third pillar alongside Body and Sanity. Structurally
+    // label. Third pillar alongside Body and Mental Health. Structurally
     // identical — the three tiles together form the character's
     // core pool-based resources.
     const exh = result.exh;
@@ -139,10 +139,10 @@ export function createOverviewSection(ctx) {
 
     // Bottom section — full-width rows below the resource tiles. Power,
     // Movement, and Penalty all get wide/flat treatment so the top row
-    // (Body + Sanity + Exhaustion) reads as a balanced trio, and the
+    // (Body + Mental Health + Exhaustion) reads as a balanced trio, and the
     // bottom stack reads as supporting / derived / summary info.
     //
-    // Power was previously in the top row alongside Body/Sanity/Exh but
+    // Power was previously in the top row alongside Body/Mental Health/Exh but
     // was visually dwarfed: its single fill-bar carried less weight than
     // the segmented bars of the other three pools, leaving it with a lot
     // of empty space. Moving it down and widening it gives it room to
@@ -280,43 +280,43 @@ export function createOverviewSection(ctx) {
 
   // ─── SANITY TILE ───
 
-  function renderSanTile(san) {
-    // Status label + class mirror the Combat tab's SAN tiers.
+  function renderMenTile(men) {
+    // Status label + class mirror the Combat tab's MEN tiers.
     const tierMap = {
       healthy:  { label: 'Healthy',  cls: 's-healthy' },
       inShock:  { label: 'In Shock', cls: 's-shock' },
-      insane:   { label: 'Insane',   cls: 's-insane' },
+      disturbed:   { label: 'Broken',   cls: 's-broken' },
       broken:   { label: 'Broken',   cls: 's-broken' }
     };
-    const tier = tierMap[san.status] || tierMap.healthy;
-    const segCount = Math.min(san.max, 40);
-    const segHtml = renderSanOverviewSegments(san.max, san.damage, segCount);
+    const tier = tierMap[men.status] || tierMap.healthy;
+    const segCount = Math.min(men.max, 40);
+    const segHtml = renderSanOverviewSegments(men.max, men.damage, segCount);
     const headInner = `
-      <span class="state-tile-label">Sanity</span>
-      <span class="state-tile-nums">${san.current}<span class="sep">/</span><span class="max">${san.max}</span></span>`;
+      <span class="state-tile-label">Mental Health</span>
+      <span class="state-tile-nums">${men.current}<span class="sep">/</span><span class="max">${men.max}</span></span>`;
     const descHtml = ctx.renderDescriptionDisplay
-      ? ctx.renderDescriptionDisplay('tiles', 'sanity', { wrapperClass: 'state-tile-desc' })
+      ? ctx.renderDescriptionDisplay('tiles', 'mentalHealth', { wrapperClass: 'state-tile-desc' })
       : '';
     const bodyHtml = `
       <div class="state-bar">${segHtml}</div>
       <span class="state-tile-status ${tier.cls}">${escapeHtml(tier.label)}</span>
       ${descHtml}`;
-    return wrapCollapsibleTile('sanity', '', headInner, bodyHtml);
+    return wrapCollapsibleTile('mentalHealth', '', headInner, bodyHtml);
   }
 
-  function renderSanOverviewSegments(sanMax, damage, segCount) {
+  function renderSanOverviewSegments(menMax, damage, segCount) {
     // Same palette as Combat tab: blue (healthy) → yellow → orange → red.
     // Fully-red state past 3*max, matching the "broken floor" behavior.
-    if (sanMax <= 0 || segCount <= 0) return '';
+    if (menMax <= 0 || segCount <= 0) return '';
     const COLORS = { blue: '#4a6a9a', yellow: '#bdb247', orange: '#c87a3a', red: '#a63a3a' };
-    const dmgPerSeg = sanMax / segCount;
+    const dmgPerSeg = menMax / segCount;
     let html = '';
     for (let i = 1; i <= segCount; i++) {
       const rightDistance = segCount - i + 1;
       const base = (rightDistance - 1) * dmgPerSeg;
       let color;
-      if (damage > 2 * sanMax + base)     color = COLORS.red;
-      else if (damage > sanMax + base)    color = COLORS.orange;
+      if (damage > 2 * menMax + base)     color = COLORS.red;
+      else if (damage > menMax + base)    color = COLORS.orange;
       else if (damage > base)             color = COLORS.yellow;
       else                                color = COLORS.blue;
       html += `<span class="state-bar-seg" style="background:${color}"></span>`;
@@ -326,10 +326,10 @@ export function createOverviewSection(ctx) {
 
   // ─── EXHAUSTION TILE ───
   //
-  // Third pool tile. Shape mirrors SAN exactly — segmented bar,
+  // Third pool tile. Shape mirrors MEN exactly — segmented bar,
   // numeric current/max readout, status pill. Palette shifted to
   // amber tones (green-ready → yellow → orange → red-out) to read
-  // distinctly from HP's green-red and SAN's blue-red while keeping
+  // distinctly from HP's green-red and MEN's blue-red while keeping
   // the same "fuller is better" visual grammar.
   function renderExhTile(exh) {
     const tierMap = {
@@ -357,8 +357,8 @@ export function createOverviewSection(ctx) {
   function renderExhOverviewSegments(exhMax, damage, segCount) {
     // Amber palette: green (ready) → yellow (tired) → orange (exhausted)
     // → red (unconscious). Each segment represents the same ft-of-EXH as
-    // the SAN bar does for mental. Matches the progressive-coloring
-    // pattern used in SAN so the three tiles read as a coherent set.
+    // the MEN bar does for mental. Matches the progressive-coloring
+    // pattern used in MEN so the three tiles read as a coherent set.
     if (exhMax <= 0 || segCount <= 0) return '';
     const COLORS = { green: '#4a8a4a', yellow: '#bdb247', orange: '#c87a3a', red: '#a63a3a' };
     const dmgPerSeg = exhMax / segCount;
@@ -380,7 +380,7 @@ export function createOverviewSection(ctx) {
 
   function renderPowerTile(power) {
     // Flat, full-width layout — sits in the bottom stack alongside
-    // Movement and Penalty (not the top Body/Sanity/Exhaustion row).
+    // Movement and Penalty (not the top Body/Mental Health/Exhaustion row).
     // Numbers + bar + status pill all on one line; no description
     // text so the strip stays compact. Always renders even when max
     // is 0 so the player can see "no power yet" at a glance.
@@ -396,7 +396,7 @@ export function createOverviewSection(ctx) {
       : '#6a4a9a';
 
     // Status pill class — maps the 10 power tiers to three visual
-    // severity buckets that share the palette with Body/Sanity status
+    // severity buckets that share the palette with Body/Mental Health status
     // pills. Full / Nearly Full / Brimming read as healthy (green);
     // middle tiers read as injured/depleted (yellow→orange);
     // Slivers / Nearly Empty / Exhausted read as critical (red).
