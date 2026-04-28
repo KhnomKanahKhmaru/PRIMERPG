@@ -1706,7 +1706,12 @@
     const tdPower   = document.getElementById('tile-desc-power');
     const td = (state.tileDescriptions && typeof state.tileDescriptions === 'object') ? state.tileDescriptions : {};
     if (tdBody)    tdBody.value    = td.body    || '';
-    if (tdSanity)  tdSanity.value  = td.mentalHealth  || '';
+    // Legacy fallback — older rulesets stored this as `sanity` before
+    // the SAN→MEN rename. Prefer the new key but fall back to the old
+    // one so the GM doesn't see a blank textarea on first load. The
+    // first save will write to `mentalHealth` and the legacy key stays
+    // until a future cleanup migration.
+    if (tdSanity)  tdSanity.value  = td.mentalHealth || td.sanity || '';
     if (tdPenalty) tdPenalty.value = td.penalty || '';
     if (tdPower)   tdPower.value   = td.power   || '';
 
@@ -1945,7 +1950,7 @@
       const m = state.statMods[i] ?? 0;
       rows.push(`<input type="number" value="${m}" oninput="updateStatMod(${i},this.value)">`);
       const lbl = state.statLabels[i] ?? '';
-      rows.push(`<input type="text" value="${lbl.replace(/"/g,'&quot;')}" placeholder="Level ${i}" oninput="updateStatLabel(${i},this.value)">`);
+      rows.push(`<input type="text" value="${escapeHtmlAttr(lbl)}" placeholder="Level ${i}" oninput="updateStatLabel(${i},this.value)">`);
     }
     container.innerHTML = rows.join('');
   }
