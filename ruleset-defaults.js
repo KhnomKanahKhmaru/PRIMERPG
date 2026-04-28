@@ -1770,7 +1770,18 @@ window.normalizeRuleset = function(rs) {
         //   'customField' — the player's custom-field input
         //   'literal'     — a fixed string the GM authored
         tokenValueMode: ['name','description','customField','literal'].includes(f.tokenValueMode) ? f.tokenValueMode : 'description',
-        tokenLiteral: typeof f.tokenLiteral === 'string' ? f.tokenLiteral : ''
+        tokenLiteral: typeof f.tokenLiteral === 'string' ? f.tokenLiteral : '',
+        // requires: array of feature/flaw ids that must already be
+        // selected before this one can be picked. ALL listed must be
+        // present (logical AND). Same-Builder only — cross-Builder
+        // dependencies aren't supported yet. Empty array = no prereqs.
+        requires:    Array.isArray(f.requires) ? f.requires.filter(x => typeof x === 'string') : [],
+        // excludes: array of feature/flaw ids that this one is mutually
+        // exclusive with. If A.excludes contains B, then taking A blocks
+        // taking B and vice versa. Bidirectionality is enforced at
+        // validation time — the storage may be one-sided but the player
+        // sees both sides as locked. Empty array = no exclusions.
+        excludes:    Array.isArray(f.excludes) ? f.excludes.filter(x => typeof x === 'string') : []
       }));
 
     // Flaws — refund-AP additions. Same shape as Features but priced
@@ -1786,7 +1797,9 @@ window.normalizeRuleset = function(rs) {
         customField: normalizeCustomField(f.customField),
         token:       typeof f.token === 'string' ? f.token : '',
         tokenValueMode: ['name','description','customField','literal'].includes(f.tokenValueMode) ? f.tokenValueMode : 'description',
-        tokenLiteral: typeof f.tokenLiteral === 'string' ? f.tokenLiteral : ''
+        tokenLiteral: typeof f.tokenLiteral === 'string' ? f.tokenLiteral : '',
+        requires:    Array.isArray(f.requires) ? f.requires.filter(x => typeof x === 'string') : [],
+        excludes:    Array.isArray(f.excludes) ? f.excludes.filter(x => typeof x === 'string') : []
       }));
 
     return builder;
@@ -1849,7 +1862,9 @@ window.normalizeRuleset = function(rs) {
           customField: normCf(f.customField),
           token:       typeof f.token === 'string' ? f.token : '',
           tokenValueMode: ['name','description','customField','literal'].includes(f.tokenValueMode) ? f.tokenValueMode : 'description',
-          tokenLiteral: typeof f.tokenLiteral === 'string' ? f.tokenLiteral : ''
+          tokenLiteral: typeof f.tokenLiteral === 'string' ? f.tokenLiteral : '',
+          requires:    Array.isArray(f.requires) ? f.requires.filter(x => typeof x === 'string') : [],
+          excludes:    Array.isArray(f.excludes) ? f.excludes.filter(x => typeof x === 'string') : []
         }));
     }
     cat.defaultFeatures = normalizeDefaultFF(cat.defaultFeatures, 'deffeat');
