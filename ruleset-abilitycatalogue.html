@@ -1443,29 +1443,41 @@
                   <span>Stackable</span>
                 </label>
                 ${labelInputHtml}
-              </div>
-              <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:#888;flex-wrap:wrap;"
-                   title="Optional token name — when this default ${kind} is selected on a character, {TokenName} in the Builder's System / Visual / Extra text resolves to the chosen value.">
-                <span style="flex-shrink:0;">Token:</span>
-                <input type="text" placeholder="e.g. VISUAL_REQ (leave blank for none)"
-                       value="${escapeHtmlAttr(it.token || '')}"
-                       oninput="catDefaultFFSetField('${kind}', ${idx}, 'token', this.value)"
-                       style="flex:1;min-width:120px;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:4px 8px;border-radius:3px;outline:none;">
-                <span style="flex-shrink:0;">→</span>
-                <select onchange="catDefaultFFSetField('${kind}', ${idx}, 'tokenValueMode', this.value);renderCatDefaultFFSection();"
-                        style="background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:4px 6px;border-radius:3px;flex-shrink:0;">
-                  <option value="description"${(it.tokenValueMode || 'description') === 'description' ? ' selected' : ''}>Description</option>
-                  <option value="name"${it.tokenValueMode === 'name' ? ' selected' : ''}>Name</option>
-                  <option value="customField"${it.tokenValueMode === 'customField' ? ' selected' : ''}>Custom-field input</option>
-                  <option value="literal"${it.tokenValueMode === 'literal' ? ' selected' : ''}>Literal text</option>
-                </select>
-                ${it.tokenValueMode === 'literal' ? `
-                  <input type="text" placeholder="Literal text"
-                         value="${escapeHtmlAttr(it.tokenLiteral || '')}"
-                         oninput="catDefaultFFSetField('${kind}', ${idx}, 'tokenLiteral', this.value)"
-                         style="flex:1;min-width:140px;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:4px 8px;border-radius:3px;outline:none;">
+                ${(it.token || '').trim() === '' && !isCatDefTokenExpanded(kind, idx) ? `
+                  <button type="button"
+                          onclick="catDefFFExpandToken('${kind}', ${idx})"
+                          title="Add a token: when this default ${kind} is selected on a character, {TokenName} in the Builder's System / Visual / Extra text resolves to a value of your choice."
+                          style="background:transparent;border:1px dashed #2a2a2a;color:#666;font-size:10px;padding:2px 8px;border-radius:3px;cursor:pointer;font-family:inherit;flex-shrink:0;">+ Token</button>
                 ` : ''}
               </div>
+              ${(it.token || '').trim() !== '' || isCatDefTokenExpanded(kind, idx) ? `
+                <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:#888;flex-wrap:wrap;"
+                     title="Token: when this default ${kind} is selected on a character, {TokenName} resolves per the chosen mode.">
+                  <span style="flex-shrink:0;">Token:</span>
+                  <input type="text" placeholder="e.g. VISUAL_REQ"
+                         value="${escapeHtmlAttr(it.token || '')}"
+                         oninput="catDefaultFFSetField('${kind}', ${idx}, 'token', this.value)"
+                         style="flex:1;min-width:120px;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:4px 8px;border-radius:3px;outline:none;">
+                  <span style="flex-shrink:0;">→</span>
+                  <select onchange="catDefaultFFSetField('${kind}', ${idx}, 'tokenValueMode', this.value);renderCatDefaultFFSection();"
+                          style="background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:4px 6px;border-radius:3px;flex-shrink:0;">
+                    <option value="description"${(it.tokenValueMode || 'description') === 'description' ? ' selected' : ''}>Description</option>
+                    <option value="name"${it.tokenValueMode === 'name' ? ' selected' : ''}>Name</option>
+                    <option value="customField"${it.tokenValueMode === 'customField' ? ' selected' : ''}>Custom-field input</option>
+                    <option value="literal"${it.tokenValueMode === 'literal' ? ' selected' : ''}>Literal text</option>
+                  </select>
+                  ${it.tokenValueMode === 'literal' ? `
+                    <input type="text" placeholder="Literal text"
+                           value="${escapeHtmlAttr(it.tokenLiteral || '')}"
+                           oninput="catDefaultFFSetField('${kind}', ${idx}, 'tokenLiteral', this.value)"
+                           style="flex:1;min-width:140px;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:4px 8px;border-radius:3px;outline:none;">
+                  ` : ''}
+                  <button type="button"
+                          onclick="catDefFFCollapseToken('${kind}', ${idx})"
+                          title="Remove token"
+                          style="background:transparent;border:none;color:#c66;cursor:pointer;font-size:13px;padding:0 4px;line-height:1;flex-shrink:0;">×</button>
+                </div>
+              ` : ''}
             </div>
           `;
         }).join('');
@@ -1554,6 +1566,27 @@
     } else {
       it.customField.label = String(value || '');
     }
+  };
+
+  // Per-row UI flag for the catalogue-defaults editor — same pattern
+  // as the per-Builder editor's __bldrFFTokenExpanded. GM clicked
+  // "+ Token" but hasn't typed a token name yet.
+  if (!window.__catDefFFTokenExpanded) window.__catDefFFTokenExpanded = new Set();
+  function isCatDefTokenExpanded(kind, idx) {
+    return window.__catDefFFTokenExpanded.has(`${kind}:${idx}`);
+  }
+  window.catDefFFExpandToken = function(kind, idx) {
+    window.__catDefFFTokenExpanded.add(`${kind}:${idx}`);
+    renderCatDefaultFFSection();
+  };
+  window.catDefFFCollapseToken = function(kind, idx) {
+    window.__catDefFFTokenExpanded.delete(`${kind}:${idx}`);
+    const arr = getDefaultFFArr(kind);
+    if (idx >= 0 && idx < arr.length) {
+      arr[idx].token = '';
+      arr[idx].tokenLiteral = '';
+    }
+    renderCatDefaultFFSection();
   };
 
   // Helper — every legacy mutation handler reads cat.categories. We
@@ -3647,29 +3680,41 @@
                 <span>Stackable</span>
               </label>
               ${labelInputHtml}
-            </div>
-            <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:#888;flex-wrap:wrap;"
-                 title="Optional token name — when this ${kind} is selected, {TokenName} in System / Visual / Extra text resolves to the chosen value.">
-              <span style="flex-shrink:0;">Token:</span>
-              <input type="text" placeholder="e.g. CONDITION (leave blank for none)"
-                     value="${escapeHtmlAttr(it.token || '')}"
-                     oninput="bldrSetFFField('${kind}', ${idx}, 'token', this.value)"
-                     style="flex:1;min-width:120px;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:4px 8px;border-radius:3px;outline:none;">
-              <span style="flex-shrink:0;">→</span>
-              <select onchange="bldrSetFFField('${kind}', ${idx}, 'tokenValueMode', this.value);refreshFFRowTokenLiteral('${kind}', ${idx});"
-                      style="background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:4px 6px;border-radius:3px;flex-shrink:0;">
-                <option value="description"${(it.tokenValueMode || 'description') === 'description' ? ' selected' : ''}>Description</option>
-                <option value="name"${it.tokenValueMode === 'name' ? ' selected' : ''}>Name</option>
-                <option value="customField"${it.tokenValueMode === 'customField' ? ' selected' : ''}>Custom-field input</option>
-                <option value="literal"${it.tokenValueMode === 'literal' ? ' selected' : ''}>Literal text</option>
-              </select>
-              ${it.tokenValueMode === 'literal' ? `
-                <input type="text" placeholder="Literal text"
-                       value="${escapeHtmlAttr(it.tokenLiteral || '')}"
-                       oninput="bldrSetFFField('${kind}', ${idx}, 'tokenLiteral', this.value)"
-                       style="flex:1;min-width:140px;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:4px 8px;border-radius:3px;outline:none;">
+              ${(it.token || '').trim() === '' && !isFFTokenExpanded(kind, idx) ? `
+                <button type="button"
+                        onclick="bldrFFExpandToken('${kind}', ${idx})"
+                        title="Add a token: when this ${kind} is selected, {TokenName} in the Builder's System / Visual / Extra text resolves to a value of your choice."
+                        style="background:transparent;border:1px dashed #2a2a2a;color:#666;font-size:10px;padding:2px 8px;border-radius:3px;cursor:pointer;font-family:inherit;flex-shrink:0;">+ Token</button>
               ` : ''}
             </div>
+            ${(it.token || '').trim() !== '' || isFFTokenExpanded(kind, idx) ? `
+              <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:#888;flex-wrap:wrap;"
+                   title="Token: when this ${kind} is selected, {TokenName} in the Builder's System / Visual / Extra text resolves per the chosen mode.">
+                <span style="flex-shrink:0;">Token:</span>
+                <input type="text" placeholder="e.g. CONDITION"
+                       value="${escapeHtmlAttr(it.token || '')}"
+                       oninput="bldrSetFFField('${kind}', ${idx}, 'token', this.value)"
+                       style="flex:1;min-width:120px;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:4px 8px;border-radius:3px;outline:none;">
+                <span style="flex-shrink:0;">→</span>
+                <select onchange="bldrSetFFField('${kind}', ${idx}, 'tokenValueMode', this.value);refreshFFRowTokenLiteral('${kind}', ${idx});"
+                        style="background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:4px 6px;border-radius:3px;flex-shrink:0;">
+                  <option value="description"${(it.tokenValueMode || 'description') === 'description' ? ' selected' : ''}>Description</option>
+                  <option value="name"${it.tokenValueMode === 'name' ? ' selected' : ''}>Name</option>
+                  <option value="customField"${it.tokenValueMode === 'customField' ? ' selected' : ''}>Custom-field input</option>
+                  <option value="literal"${it.tokenValueMode === 'literal' ? ' selected' : ''}>Literal text</option>
+                </select>
+                ${it.tokenValueMode === 'literal' ? `
+                  <input type="text" placeholder="Literal text"
+                         value="${escapeHtmlAttr(it.tokenLiteral || '')}"
+                         oninput="bldrSetFFField('${kind}', ${idx}, 'tokenLiteral', this.value)"
+                         style="flex:1;min-width:140px;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:4px 8px;border-radius:3px;outline:none;">
+                ` : ''}
+                <button type="button"
+                        onclick="bldrFFCollapseToken('${kind}', ${idx})"
+                        title="Remove token"
+                        style="background:transparent;border:none;color:#c66;cursor:pointer;font-size:13px;padding:0 4px;line-height:1;flex-shrink:0;">×</button>
+              </div>
+            ` : ''}
             ${renderRequiresExcludesUI(it.id, it.requires, it.excludes, idx)}
           </div>
         `;
@@ -4648,6 +4693,40 @@
   window.refreshFFRowTokenLiteral = function(kind, idx) {
     if (kind === 'feature') renderBldrFeaturesList();
     else                    renderBldrFlawsList();
+  };
+
+  // Per-row UI flag: GM clicked "+ Token" but hasn't typed anything yet.
+  // Stored on window so it survives the re-renders that happen on
+  // tokenValueMode/literal changes within the same row, but is cleared
+  // when the Builder is re-opened (since the renderTierGrouped function
+  // doesn't read it for the initial pass — only the runtime helpers do).
+  // Keyed by `${kind}:${idx}` — idx is the absolute position in the
+  // Builder's features/flaws array.
+  if (!window.__bldrFFTokenExpanded) window.__bldrFFTokenExpanded = new Set();
+  function isFFTokenExpanded(kind, idx) {
+    return window.__bldrFFTokenExpanded.has(`${kind}:${idx}`);
+  }
+  window.bldrFFExpandToken = function(kind, idx) {
+    window.__bldrFFTokenExpanded.add(`${kind}:${idx}`);
+    if (kind === 'feature') renderBldrFeaturesList();
+    else                    renderBldrFlawsList();
+  };
+  // Collapse: clear both the UI flag AND wipe the persisted token data.
+  // Mirrors the user's intent — clicking × on the token row says "I
+  // don't want this token at all," so we drop the data along with the UI.
+  window.bldrFFCollapseToken = function(kind, idx) {
+    window.__bldrFFTokenExpanded.delete(`${kind}:${idx}`);
+    const b = getOpenedBuilder();
+    if (b) {
+      const arr = (kind === 'feature') ? b.features : b.flaws;
+      if (Array.isArray(arr) && arr[idx]) {
+        arr[idx].token = '';
+        arr[idx].tokenLiteral = '';
+      }
+    }
+    if (kind === 'feature') renderBldrFeaturesList();
+    else                    renderBldrFlawsList();
+    renderBuilderPreview();
   };
 
   // ── PREREQUISITE / MUTUAL-EXCLUDE EDITING ──
