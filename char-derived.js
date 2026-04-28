@@ -1001,7 +1001,7 @@ export function computeDerivedStats(character, ruleset) {
   //   current ≤ -2*MEN         → Broken         (+3 Diff MEN, +1 Diff others,
   //                                               Breaking Point roll required)
   let men = null;
-  const menStatEntry = stats.get('SAN');
+  const menStatEntry = stats.get('MEN');
   if (menStatEntry && menStatEntry.value !== null) {
     const baseMax = Math.floor(menStatEntry.value);
     const menMods = Array.isArray(character.menModifiers) ? character.menModifiers : [];
