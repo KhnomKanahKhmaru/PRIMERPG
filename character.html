@@ -9155,18 +9155,6 @@
     if (Array.isArray(charData['sanModifiers']) && !Array.isArray(charData.menModifiers)) {
       charData.menModifiers = charData['sanModifiers'];
     }
-    // Stat-value key rename: stat values are stored on character.stats
-    // keyed by lowercase stat code ('str', 'dex', 'san', etc). With the
-    // hard recode of stat code 'SAN' → 'MEN', existing characters' stat
-    // values still live under the lowercase key 'san'. Alias to 'men'
-    // on read so the buildSymbolTable lookup finds the value. The
-    // migration script rewrites this on disk; this alias is the
-    // fallback for any character not yet migrated.
-    if (charData.stats && typeof charData.stats === 'object' &&
-        typeof charData.stats['san'] === 'number' &&
-        typeof charData.stats.men !== 'number') {
-      charData.stats.men = charData.stats['san'];
-    }
     // Initial canEdit is ownership; GM/Leader rights are folded in
     // below once we know the playgroup role. Keeps the log readable —
     // first line shows raw ownership, second shows the final value.
