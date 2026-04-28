@@ -160,19 +160,21 @@ export function importAbilityCatalogue(currentState, jsonText, mode) {
 
 // ─── BUILDER IMPORT ───
 //
-// Drops a single Builder into a chosen Category. Always additive;
-// `mode` here just controls id-collision handling:
+// Drops a single Builder into the destination. Two routing modes:
 //
-//   • 'merge':    if a Builder with the same id already exists in
-//                 the destination, REPLACE that Builder in place
-//                 (preserves its position in the list).
-//   • 'replace':  same as merge for Builder scope — there's no "wipe
-//                 the category" operation. Treated as alias.
+// (A) Place into a Category (default). targetTypeKey + targetCategoryId
+//     (or targetCategoryName for new-category) determine where the
+//     imported Builder lands. If the imported Builder's id collides
+//     with one in that category, it replaces in place.
 //
-// targetTypeKey: which type-bucket the destination category lives
-//                under ('ability' currently — future-proofed).
-// targetCategoryId: id of the Category. Pass null + targetCategoryName
-//                to create a new Category.
+// (B) Overwrite a specific Builder by id. opts.overwriteBuilderId
+//     forces the imported Builder to take that id, regardless of
+//     what id the imported JSON has, and writes it into whichever
+//     category currently holds the targeted Builder. Use this when
+//     the GM wants to round-trip-edit an existing Builder.
+//
+// `mode` only affects id-collision handling for case (A); it's ignored
+// in case (B) since overwrite is the explicit intent there.
 export function importBuilder(currentState, jsonText, mode, opts) {
   const { parsed } = parseAndValidate(jsonText, 'builder');
   const incomingBuilder = parsed.builder;
@@ -196,6 +198,57 @@ export function importBuilder(currentState, jsonText, mode, opts) {
   const tBucket = cat.types[typeKey];
   if (!Array.isArray(tBucket.categories)) tBucket.categories = [];
 
+  // Mode (B) — overwrite a specific Builder by id. Find the category
+  // that currently holds that id, replace in place, force the imported
+  // Builder's id to match.
+  let summary;
+  if (opts.overwriteBuilderId) {
+    let foundCategory = null;
+    let foundIdx = -1;
+    for (const c of tBucket.categories) {
+      if (!c || !Array.isArray(c.builders)) continue;
+      const idx = c.builders.findIndex(b => b && b.id === opts.overwriteBuilderId);
+      if (idx >= 0) {
+        foundCategory = c;
+        foundIdx = idx;
+        break;
+      }
+    }
+    if (!foundCategory) {
+      throw new Error(`Builder to overwrite (id "${opts.overwriteBuilderId}") not found in this catalogue.`);
+    }
+    const newBuilder = deepClone(incomingBuilder);
+    const oldBuilder = foundCategory.builders[foundIdx];
+    const oldName = oldBuilder.name || '(unnamed)';
+    // Force the id so the open editor's references stay valid.
+    newBuilder.id = opts.overwriteBuilderId;
+    foundCategory.builders[foundIdx] = newBuilder;
+    summary = `Overwrote Builder "${oldName}" with imported "${newBuilder.name || '(unnamed)'}" in "${foundCategory.name}".`;
+
+    // Note re: imported builder's original id — we silently drop it
+    // in favor of the open editor's id. This is the explicit intent
+    // when the GM picked "Overwrite current Builder."
+
+    // Same catalogueContext handling as path (A) below.
+    const ctx = parsed.catalogueContext;
+    if (ctx && typeof ctx === 'object') {
+      if (!cat.canonicalTiers || typeof cat.canonicalTiers !== 'object') {
+        cat.canonicalTiers = deepClone(ctx.canonicalTiers || {});
+        warnings.push('Catalogue had no tier table — copied from imported Builder context.');
+      } else if (ctx.canonicalTiers && tierTablesMismatch(cat.canonicalTiers, ctx.canonicalTiers)) {
+        warnings.push('Imported Builder was authored against a different tier cost table; AP costs may shift in this catalogue.');
+      }
+    }
+
+    if (typeof window !== 'undefined' && typeof window.normalizeRuleset === 'function') {
+      Object.assign(applied, window.normalizeRuleset(applied));
+    } else {
+      warnings.push('normalizeRuleset() not available — Builder schema not validated.');
+    }
+    return { kind: 'builder', mode, applied, summary, warnings };
+  }
+
+  // Mode (A) — place into a chosen Category.
   // Resolve target category — either by id or by creating a new one.
   let category = null;
   if (opts.targetCategoryId) {
@@ -218,7 +271,6 @@ export function importBuilder(currentState, jsonText, mode, opts) {
 
   // Drop the Builder in. If id collides, replace in-place.
   const newBuilder = deepClone(incomingBuilder);
-  let summary;
   const existingIdx = category.builders.findIndex(b => b && b.id === newBuilder.id);
   if (existingIdx >= 0) {
     const oldName = category.builders[existingIdx].name || '(unnamed)';
