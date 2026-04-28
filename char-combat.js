@@ -217,7 +217,7 @@ export function createCombatSection(ctx) {
     const orphans = [];
     result.stats.forEach((entry) => {
       if (entry.def.code === 'POWER') return;
-      if (entry.def.code === 'SAN') return;        // rendered in its own section
+      if (entry.def.code === 'MEN') return;        // rendered in its own section
       if (entry.def.group === 'health') return;
       const g = entry.def.group;
       if (includeGroups && !includeGroups.has(g)) return;
@@ -443,13 +443,8 @@ export function createCombatSection(ctx) {
     }
 
     const errTitle = error ? ` title="${escapeHtml(error)}"` : '';
-    // Display label for the stat code badge. Internal code stays 'SAN'
-    // for backward compatibility with existing characters' stat data,
-    // but everywhere we SHOW the code to the player, we relabel SAN
-    // as MEN to mirror HP/Body in the renamed Mental Health system.
-    const displayCode = def.code === 'SAN' ? 'MEN' : def.code;
     const codeBadge = def.code && def.code !== def.name
-      ? ` <span class="ds-card-code">${escapeHtml(displayCode)}</span>`
+      ? ` <span class="ds-card-code">${escapeHtml(def.code)}</span>`
       : '';
     const rawFormula = (def.formula || '').trim();
     const isIdentityFormula = rawFormula.toUpperCase() === def.code;
@@ -3159,7 +3154,7 @@ export function createCombatSection(ctx) {
     // Mental Health stat card at the top — shows name, code, formula, value, and
     // description. Gives the player a clear reminder of what MEN is and
     // what they roll for mental resistances.
-    const menEntry = result.stats.get('SAN');
+    const menEntry = result.stats.get('MEN');
     if (menEntry) {
       body_html += '<div class="ds-grid men-card-wrap">';
       body_html += renderDsCard(menEntry);
