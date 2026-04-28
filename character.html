@@ -222,61 +222,88 @@
       display: flex;
       justify-content: flex-end;
       align-items: center;
-      padding: 8px 4px 6px;
-      margin-bottom: 4px;
-      min-height: 36px;
+      padding: 10px 4px 8px;
+      margin-bottom: 6px;
+      min-height: 56px;
     }
-    /* Compact dual-row pill showing XP and AP totals. Two rows stacked
-       vertically; a small Edit pencil floats at the right when the
-       viewer can edit. Bigger and more prominent than the legacy power
-       bar to match the "this matters" weight of the new economy. */
+    /* Page-level XP/AP economy pill. Two side-by-side pills (XP + AP),
+       each shows label + spent/total + a sub-line indicating remaining
+       or overspent. Sized for prominence — these are the primary
+       resource indicators for the character and need to read clearly
+       at a glance from across the room. The Edit pencil floats at the
+       right when the viewer can edit. */
     .char-xp-bar {
       display: flex;
-      align-items: center;
-      gap: 8px;
+      align-items: stretch;
+      gap: 10px;
       flex-wrap: nowrap;
       flex-shrink: 0;
       cursor: default;
     }
     .char-xp-bar > .xp-pill-row {
       display: flex;
-      align-items: baseline;
-      gap: 6px;
-      padding: 4px 10px;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 14px;
       background: #161616;
       border: 1px solid #2a2a2a;
-      border-radius: 4px;
+      border-radius: 5px;
       font-family: 'Open Sans', sans-serif;
-      font-size: 13px;
-      line-height: 1.2;
+      line-height: 1.15;
     }
     .char-xp-bar > .xp-pill-row-over {
       border-color: #5a2020;
       background: #1a0a0a;
     }
     .char-xp-bar .xp-pill-label {
-      font-size: 10px; font-weight: 700; letter-spacing: .1em;
-      text-transform: uppercase; color: #888;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: #aaa;
+    }
+    .char-xp-bar > .xp-pill-row-over .xp-pill-label {
+      color: #d88080;
+    }
+    /* Vertical stack inside each pill: spent/total on top, sub-line
+       beneath. align-items:flex-start keeps the sub-line left-aligned
+       under the bigger numbers. */
+    .char-xp-bar .xp-pill-stack {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 1px;
     }
     .char-xp-bar .xp-pill-vals {
       font-variant-numeric: tabular-nums;
-      color: #d8c060;
-      font-weight: 600;
+      font-size: 18px;
+      font-weight: 700;
       letter-spacing: .02em;
     }
-    .char-xp-bar .xp-pill-spent { color: #cfcfcf; }
-    .char-xp-bar .xp-pill-sep   { color: #555; margin: 0 2px; }
+    .char-xp-bar .xp-pill-spent { color: #f0f0f0; }
+    .char-xp-bar .xp-pill-sep   { color: #555; margin: 0 4px; font-weight: 400; }
     .char-xp-bar .xp-pill-total { color: #d8c060; }
-    .char-xp-bar .xp-pill-over  { color: #ff6060; font-weight: 600; }
+    .char-xp-bar > .xp-pill-row-over .xp-pill-spent { color: #ffb0b0; }
+    .char-xp-bar > .xp-pill-row-over .xp-pill-total { color: #ff8a8a; }
+    /* Sub-line: smaller, lighter weight, color-coded by state. */
+    .char-xp-bar .xp-pill-sub {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .02em;
+      font-variant-numeric: tabular-nums;
+    }
+    .char-xp-bar .xp-pill-sub-rem  { color: #6a8a5a; }
+    .char-xp-bar .xp-pill-sub-over { color: #ff6060; }
     .char-xp-bar .xp-pill-edit {
       background: transparent;
       border: 1px solid #2a2a2a;
       color: #888;
       cursor: pointer;
-      font-size: 13px;
-      padding: 3px 7px;
-      border-radius: 3px;
+      font-size: 14px;
+      padding: 4px 9px;
+      border-radius: 4px;
       line-height: 1;
+      align-self: center;
     }
     .char-xp-bar .xp-pill-edit:hover { color: #d8c060; border-color: #4a4a4a; }
 
