@@ -1571,15 +1571,21 @@
   // Per-row UI flag for the catalogue-defaults editor — same pattern
   // as the per-Builder editor's __bldrFFTokenExpanded. GM clicked
   // "+ Token" but hasn't typed a token name yet.
-  if (!window.__catDefFFTokenExpanded) window.__catDefFFTokenExpanded = new Set();
+  // We read window.__catDefFFTokenExpanded directly inside each helper
+  // (init-safe) instead of via a const alias, because these helpers can
+  // be called from initUI() during page load — before this surrounding
+  // function block has executed top-to-bottom in source order.
   function isCatDefTokenExpanded(kind, idx) {
+    if (!window.__catDefFFTokenExpanded) window.__catDefFFTokenExpanded = new Set();
     return window.__catDefFFTokenExpanded.has(`${kind}:${idx}`);
   }
   window.catDefFFExpandToken = function(kind, idx) {
+    if (!window.__catDefFFTokenExpanded) window.__catDefFFTokenExpanded = new Set();
     window.__catDefFFTokenExpanded.add(`${kind}:${idx}`);
     renderCatDefaultFFSection();
   };
   window.catDefFFCollapseToken = function(kind, idx) {
+    if (!window.__catDefFFTokenExpanded) window.__catDefFFTokenExpanded = new Set();
     window.__catDefFFTokenExpanded.delete(`${kind}:${idx}`);
     const arr = getDefaultFFArr(kind);
     if (idx >= 0 && idx < arr.length) {
@@ -4702,11 +4708,14 @@
   // doesn't read it for the initial pass — only the runtime helpers do).
   // Keyed by `${kind}:${idx}` — idx is the absolute position in the
   // Builder's features/flaws array.
-  if (!window.__bldrFFTokenExpanded) window.__bldrFFTokenExpanded = new Set();
+  // We init the Set inside each helper (defensive) so calls during
+  // initial render don't TDZ if the surrounding block hasn't executed yet.
   function isFFTokenExpanded(kind, idx) {
+    if (!window.__bldrFFTokenExpanded) window.__bldrFFTokenExpanded = new Set();
     return window.__bldrFFTokenExpanded.has(`${kind}:${idx}`);
   }
   window.bldrFFExpandToken = function(kind, idx) {
+    if (!window.__bldrFFTokenExpanded) window.__bldrFFTokenExpanded = new Set();
     window.__bldrFFTokenExpanded.add(`${kind}:${idx}`);
     if (kind === 'feature') renderBldrFeaturesList();
     else                    renderBldrFlawsList();
@@ -4715,6 +4724,7 @@
   // Mirrors the user's intent — clicking × on the token row says "I
   // don't want this token at all," so we drop the data along with the UI.
   window.bldrFFCollapseToken = function(kind, idx) {
+    if (!window.__bldrFFTokenExpanded) window.__bldrFFTokenExpanded = new Set();
     window.__bldrFFTokenExpanded.delete(`${kind}:${idx}`);
     const b = getOpenedBuilder();
     if (b) {
