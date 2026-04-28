@@ -74,7 +74,7 @@ export function createCombatSection(ctx) {
     const rollCalcSectionBody =
       rollcalc.renderTile(result, ruleset, charData) +
       overview.renderPenaltyTile(
-        result.pain, result.stress, result.penalty,
+        result.pain, result.stress, result.exh, result.penalty,
         Array.isArray(charData.otherModifiers) ? charData.otherModifiers : [],
         ctx.getCanEdit(),
         {
