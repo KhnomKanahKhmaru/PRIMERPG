@@ -8289,6 +8289,56 @@
     const selected = Array.isArray(inst.selectedFeatureIds) ? new Set(inst.selectedFeatureIds) : new Set();
     const cfValues = (inst.customFieldValues && typeof inst.customFieldValues === 'object') ? inst.customFieldValues : {};
 
+    // Build a unified set of currently-selected ids (features + flaws)
+    // so prereq/exclude logic can reference items of either kind.
+    const allSelected = new Set([
+      ...(Array.isArray(inst.selectedFeatureIds) ? inst.selectedFeatureIds : []),
+      ...(Array.isArray(inst.selectedFlawIds)    ? inst.selectedFlawIds    : [])
+    ]);
+    // Build name lookup across both kinds for tooltip text.
+    const allFlaws = charAbilities.resolveBuilderFlaws(activeRuleset, builder);
+    const nameById = {};
+    features.forEach(f => { if (f && f.id) nameById[f.id] = f.name || '(unnamed)'; });
+    allFlaws.forEach(f => { if (f && f.id) nameById[f.id] = f.name || '(unnamed)'; });
+    function lockReason(item) {
+      const isOn = selected.has(item.id);
+      // Already-selected items aren't "locked" — the player can still
+      // remove them. Lock applies only to picking it in the first place.
+      if (isOn) return null;
+      const reqs = Array.isArray(item.requires) ? item.requires : [];
+      const excs = Array.isArray(item.excludes) ? item.excludes : [];
+      const missingReqs = reqs.filter(rid => !allSelected.has(rid));
+      const conflicts   = excs.filter(eid => allSelected.has(eid));
+      if (missingReqs.length === 0 && conflicts.length === 0) return null;
+      const parts = [];
+      if (missingReqs.length > 0) {
+        parts.push('Requires: ' + missingReqs.map(id => nameById[id] || id).join(', '));
+      }
+      if (conflicts.length > 0) {
+        parts.push('Conflicts with: ' + conflicts.map(id => nameById[id] || id).join(', '));
+      }
+      return parts.join(' · ');
+    }
+    // For already-selected items: detect retroactive violations (the
+    // player un-took a prereq, or took a now-conflicting item, but
+    // didn't remove this one yet). Returns a warning string or null.
+    // Soft warning — the item is still selected and its AP is still
+    // counted, the player just needs to know they're in a broken state.
+    function violationReason(item) {
+      if (!selected.has(item.id)) return null;
+      const reqs = Array.isArray(item.requires) ? item.requires : [];
+      const excs = Array.isArray(item.excludes) ? item.excludes : [];
+      const missingReqs = reqs.filter(rid => !allSelected.has(rid));
+      // Excludes shouldn't list self, and even if they did, mutual
+      // exclusion means if BOTH are taken something's wrong — flag it.
+      const conflicts = excs.filter(eid => eid !== item.id && allSelected.has(eid));
+      if (missingReqs.length === 0 && conflicts.length === 0) return null;
+      const parts = [];
+      if (missingReqs.length > 0) parts.push('Missing required: ' + missingReqs.map(id => nameById[id] || id).join(', '));
+      if (conflicts.length > 0)   parts.push('Conflicts with selected: ' + conflicts.map(id => nameById[id] || id).join(', '));
+      return parts.join(' · ');
+    }
+
     // Group by tier (Minor → Mythical). Within each tier, alphabetize
     // by name (case-insensitive). Tiers with no features at all get
     // skipped — no empty bands.
@@ -8324,6 +8374,10 @@
       if (tierCollapsed) return;
       list.forEach(f => {
         const isOn = selected.has(f.id);
+        // Compute prereq/exclude lock reason (null when no constraints
+        // block this pick, or when it's already selected and just being
+        // displayed). Locked items render disabled with a tooltip.
+        const lockedReason = lockReason(f);
         const cf = (f.customField && typeof f.customField === 'object') ? f.customField : { enabled: false, label: '' };
         const cfInputHtml = (isOn && cf.enabled) ? `
           <div style="grid-column:2 / span 2;margin-top:6px;display:flex;align-items:center;gap:8px;font-size:12px;color:#bbb;">
@@ -8394,21 +8448,28 @@
           html += `
             <div style="padding:4px 0 8px 38px;">
               <button type="button"
+                      ${lockedReason && count === 0 ? 'disabled' : ''}
+                      ${lockedReason && count === 0 ? `title="${escapeHtmlAttr(lockedReason)}"` : ''}
                       onclick="abilitiesBuilderAddStack('feature','${escapeHtml(f.id)}')"
-                      style="background:transparent;border:1px dashed #2a2a2a;color:#888;font-size:11px;padding:4px 12px;border-radius:3px;cursor:pointer;font-family:inherit;">
+                      style="background:transparent;border:1px dashed #2a2a2a;color:#888;font-size:11px;padding:4px 12px;border-radius:3px;cursor:${lockedReason && count === 0 ? 'not-allowed' : 'pointer'};font-family:inherit;opacity:${lockedReason && count === 0 ? '0.4' : '1'};">
                 ${addLabel}
               </button>
+              ${lockedReason && count === 0 ? `<span style="font-size:10px;color:#aa6655;margin-left:8px;font-style:italic;">🔒 ${escapeHtml(lockedReason)}</span>` : ''}
             </div>
           `;
           return;
         }
 
+        const violationMsg = violationReason(f);
         html += `
-          <label style="display:grid;grid-template-columns:24px 1fr 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;cursor:pointer;">
-            <input type="checkbox" ${isOn ? 'checked' : ''} onchange="abilitiesBuilderToggleFeature('${escapeHtml(f.id)}')">
+          <label style="display:grid;grid-template-columns:24px 1fr 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;cursor:${lockedReason ? 'not-allowed' : 'pointer'};opacity:${lockedReason ? '0.45' : '1'};${violationMsg ? 'background:#2a1f0a;' : ''}"
+                 ${lockedReason ? `title="${escapeHtmlAttr(lockedReason)}"` : (violationMsg ? `title="${escapeHtmlAttr(violationMsg)}"` : '')}>
+            <input type="checkbox" ${isOn ? 'checked' : ''} ${lockedReason ? 'disabled' : ''} onchange="abilitiesBuilderToggleFeature('${escapeHtml(f.id)}')">
             <div>
-              <div style="font-weight:500;color:#ddd;font-size:13px;">${escapeHtml(f.name || 'Feature')}</div>
+              <div style="font-weight:500;color:#ddd;font-size:13px;">${escapeHtml(f.name || 'Feature')}${lockedReason ? ` <span style="font-size:10px;color:#aa6655;font-weight:400;font-style:italic;margin-left:4px;">🔒</span>` : ''}${violationMsg ? ` <span style="font-size:10px;color:#e0a060;font-weight:400;font-style:italic;margin-left:4px;">⚠</span>` : ''}</div>
               ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
+              ${lockedReason ? `<div style="font-size:10px;color:#aa6655;margin-top:2px;font-style:italic;">${escapeHtml(lockedReason)}</div>` : ''}
+              ${violationMsg ? `<div style="font-size:10px;color:#e0a060;margin-top:2px;font-style:italic;">⚠ ${escapeHtml(violationMsg)}</div>` : ''}
             </div>
             <span style="color:${isOn ? '#d8a060' : '#666'};font-family:monospace;font-size:12px;text-align:right;">+${cost} AP</span>
             ${cfInputHtml}
@@ -8426,6 +8487,41 @@
     const flawRefunds = (tiers && tiers.flawRefunds) || {};
     const selected = Array.isArray(inst.selectedFlawIds) ? new Set(inst.selectedFlawIds) : new Set();
     const cfValues = (inst.customFieldValues && typeof inst.customFieldValues === 'object') ? inst.customFieldValues : {};
+
+    // Same prereq/exclude bookkeeping as the features section.
+    const allSelected = new Set([
+      ...(Array.isArray(inst.selectedFeatureIds) ? inst.selectedFeatureIds : []),
+      ...(Array.isArray(inst.selectedFlawIds)    ? inst.selectedFlawIds    : [])
+    ]);
+    const allFeatures = charAbilities.resolveBuilderFeatures(activeRuleset, builder);
+    const nameById = {};
+    flaws.forEach(f => { if (f && f.id) nameById[f.id] = f.name || '(unnamed)'; });
+    allFeatures.forEach(f => { if (f && f.id) nameById[f.id] = f.name || '(unnamed)'; });
+    function lockReason(item) {
+      const isOn = selected.has(item.id);
+      if (isOn) return null;
+      const reqs = Array.isArray(item.requires) ? item.requires : [];
+      const excs = Array.isArray(item.excludes) ? item.excludes : [];
+      const missingReqs = reqs.filter(rid => !allSelected.has(rid));
+      const conflicts   = excs.filter(eid => allSelected.has(eid));
+      if (missingReqs.length === 0 && conflicts.length === 0) return null;
+      const parts = [];
+      if (missingReqs.length > 0) parts.push('Requires: ' + missingReqs.map(id => nameById[id] || id).join(', '));
+      if (conflicts.length > 0)   parts.push('Conflicts with: ' + conflicts.map(id => nameById[id] || id).join(', '));
+      return parts.join(' · ');
+    }
+    function violationReason(item) {
+      if (!selected.has(item.id)) return null;
+      const reqs = Array.isArray(item.requires) ? item.requires : [];
+      const excs = Array.isArray(item.excludes) ? item.excludes : [];
+      const missingReqs = reqs.filter(rid => !allSelected.has(rid));
+      const conflicts = excs.filter(eid => eid !== item.id && allSelected.has(eid));
+      if (missingReqs.length === 0 && conflicts.length === 0) return null;
+      const parts = [];
+      if (missingReqs.length > 0) parts.push('Missing required: ' + missingReqs.map(id => nameById[id] || id).join(', '));
+      if (conflicts.length > 0)   parts.push('Conflicts with selected: ' + conflicts.map(id => nameById[id] || id).join(', '));
+      return parts.join(' · ');
+    }
 
     const TIER_ORDER  = ['minor', 'moderate', 'major', 'massive', 'monumental', 'mega', 'mythical'];
     const TIER_LABELS = { minor: 'Minor', moderate: 'Moderate', major: 'Major', massive: 'Massive', monumental: 'Monumental', mega: 'Mega', mythical: 'Mythical' };
@@ -8458,6 +8554,7 @@
       if (tierCollapsed) return;
       list.forEach(f => {
         const isOn = selected.has(f.id);
+        const lockedReason = lockReason(f);
         const cf = (f.customField && typeof f.customField === 'object') ? f.customField : { enabled: false, label: '' };
         const cfInputHtml = (isOn && cf.enabled) ? `
           <div style="grid-column:2 / span 2;margin-top:6px;display:flex;align-items:center;gap:8px;font-size:12px;color:#bbb;">
@@ -8515,21 +8612,28 @@
           html += `
             <div style="padding:4px 0 8px 38px;">
               <button type="button"
+                      ${lockedReason && count === 0 ? 'disabled' : ''}
+                      ${lockedReason && count === 0 ? `title="${escapeHtmlAttr(lockedReason)}"` : ''}
                       onclick="abilitiesBuilderAddStack('flaw','${escapeHtml(f.id)}')"
-                      style="background:transparent;border:1px dashed #2a2a2a;color:#888;font-size:11px;padding:4px 12px;border-radius:3px;cursor:pointer;font-family:inherit;">
+                      style="background:transparent;border:1px dashed #2a2a2a;color:#888;font-size:11px;padding:4px 12px;border-radius:3px;cursor:${lockedReason && count === 0 ? 'not-allowed' : 'pointer'};font-family:inherit;opacity:${lockedReason && count === 0 ? '0.4' : '1'};">
                 ${addLabel}
               </button>
+              ${lockedReason && count === 0 ? `<span style="font-size:10px;color:#aa6655;margin-left:8px;font-style:italic;">🔒 ${escapeHtml(lockedReason)}</span>` : ''}
             </div>
           `;
           return;
         }
 
+        const violationMsg = violationReason(f);
         html += `
-          <label style="display:grid;grid-template-columns:24px 1fr 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;cursor:pointer;">
-            <input type="checkbox" ${isOn ? 'checked' : ''} onchange="abilitiesBuilderToggleFlaw('${escapeHtml(f.id)}')">
+          <label style="display:grid;grid-template-columns:24px 1fr 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;cursor:${lockedReason ? 'not-allowed' : 'pointer'};opacity:${lockedReason ? '0.45' : '1'};${violationMsg ? 'background:#2a1f0a;' : ''}"
+                 ${lockedReason ? `title="${escapeHtmlAttr(lockedReason)}"` : (violationMsg ? `title="${escapeHtmlAttr(violationMsg)}"` : '')}>
+            <input type="checkbox" ${isOn ? 'checked' : ''} ${lockedReason ? 'disabled' : ''} onchange="abilitiesBuilderToggleFlaw('${escapeHtml(f.id)}')">
             <div>
-              <div style="font-weight:500;color:#ddd;font-size:13px;">${escapeHtml(f.name || 'Flaw')}</div>
+              <div style="font-weight:500;color:#ddd;font-size:13px;">${escapeHtml(f.name || 'Flaw')}${lockedReason ? ` <span style="font-size:10px;color:#aa6655;font-weight:400;font-style:italic;margin-left:4px;">🔒</span>` : ''}${violationMsg ? ` <span style="font-size:10px;color:#e0a060;font-weight:400;font-style:italic;margin-left:4px;">⚠</span>` : ''}</div>
               ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
+              ${lockedReason ? `<div style="font-size:10px;color:#aa6655;margin-top:2px;font-style:italic;">${escapeHtml(lockedReason)}</div>` : ''}
+              ${violationMsg ? `<div style="font-size:10px;color:#e0a060;margin-top:2px;font-style:italic;">⚠ ${escapeHtml(violationMsg)}</div>` : ''}
             </div>
             <span style="color:${isOn ? '#88c080' : '#666'};font-family:monospace;font-size:12px;text-align:right;">−${refund} AP</span>
             ${cfInputHtml}
