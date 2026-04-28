@@ -5932,6 +5932,10 @@
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
   }
+  // escapeHtml already covers quotes/apostrophes, so attribute-context
+  // escaping has the same body. Aliased so code shared with the
+  // catalogue editor (which uses escapeHtmlAttr) drops in unchanged.
+  const escapeHtmlAttr = escapeHtml;
 
   let charData = {}, canEdit = false, userPlaygroups = [], loaded = false;
   let availableRulesets = [], primarySkillDefs = [];
