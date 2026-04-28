@@ -982,20 +982,6 @@ window.normalizeRuleset = function(rs) {
   if (out.statMax == null) out.statMax = d.statMax;
   if (out.statMax < out.statMaxPurchasable) out.statMax = out.statMaxPurchasable;
   if (!Array.isArray(out.stats) || out.stats.length === 0) out.stats = JSON.parse(JSON.stringify(d.stats));
-  // Legacy stat-code rename: 'SAN' → 'MEN'. Existing rulesets in
-  // Firestore have the Mental Health stat saved with code 'SAN'.
-  // Aliasing on read keeps things working before the migration script
-  // rewrites the saved data. If a stat with code 'SAN' AND no stat
-  // with code 'MEN' exists, rename the SAN entry. If both exist
-  // somehow (shouldn't happen post-migration), the MEN entry wins
-  // and we drop the SAN duplicate.
-  const hasMenStat = out.stats.some(s => s && s.code === 'MEN');
-  out.stats = out.stats.filter(s => {
-    if (!s || s.code !== 'SAN') return true;
-    if (hasMenStat) return false; // drop legacy duplicate
-    s.code = 'MEN';
-    return true;
-  });
   if (!Array.isArray(out.statMods) || out.statMods.length === 0) out.statMods = d.statMods.slice();
   if (!Array.isArray(out.statLabels) || out.statLabels.length === 0) out.statLabels = d.statLabels.slice();
   while (out.statMods.length < out.statMax + 1) out.statMods.push(out.statMods[out.statMods.length-1] ?? 0);
@@ -1287,10 +1273,16 @@ window.normalizeRuleset = function(rs) {
     // homebrew reuse of the old code.
     //
     // SPDUP → SPR (Sprint): part of the combat-section rework that
-    // clarified Speed Boost's role. Only migrates when formula matches
-    // 'STR * 1', preserving any homebrew that redefined SPDUP.
+    //   clarified Speed Boost's role. Only migrates when formula
+    //   matches 'STR * 1', preserving any homebrew that redefined
+    //   SPDUP.
+    // SAN → MEN (Mental Health): hard recode of the Mental Health
+    //   stat code from 'SAN' to 'MEN'. Migrates whenever the formula
+    //   matches the canonical 'CHA + INT' so homebrew rulesets that
+    //   redefined SAN with a different formula keep their version.
     const codeRenames = [
-      { oldCode: 'SPDUP', newCode: 'SPR', expectedFormula: 'STR * 1' }
+      { oldCode: 'SPDUP', newCode: 'SPR', expectedFormula: 'STR * 1' },
+      { oldCode: 'SAN',   newCode: 'MEN', expectedFormula: 'CHA + INT' }
     ];
     codeRenames.forEach(r => {
       const old = out.derivedStats.find(s => s.code === r.oldCode);
