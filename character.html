@@ -7481,6 +7481,7 @@
     }
     inst.activationRollChoice[slotKey] = String(value || '');
     refreshAbilitiesBuilderActivation();
+    refreshAbilitiesBuilderIdentity(); // {ACTIVATION_ROLL} may be in hints
     renderAbilitiesBuilderCostPreview();
     renderAbilitiesBuilderSystemText();
   };
@@ -7508,6 +7509,7 @@
       }
     }
     refreshAbilitiesBuilderContested();
+    refreshAbilitiesBuilderIdentity();
     renderAbilitiesBuilderSystemText();
   };
 
@@ -7537,6 +7539,7 @@
     // since that would destroy whatever the user is typing into and
     // steal focus.
     updatePrimaryParamRowText(paramId);
+    refreshAbilitiesBuilderIdentity(); // Visual / Extra hint may use this token
     renderAbilitiesBuilderCostPreview();
     renderAbilitiesBuilderSystemText();
   };
@@ -7548,6 +7551,7 @@
     const n = parseInt(stepIdx);
     if (Number.isFinite(n)) inst.paramValues[paramId] = n;
     updateSecondaryParamRowText(paramId);
+    refreshAbilitiesBuilderIdentity();
     renderAbilitiesBuilderCostPreview();
     renderAbilitiesBuilderSystemText();
   };
@@ -7631,6 +7635,8 @@
     if (i >= 0) inst.selectedFeatureIds.splice(i, 1);
     else inst.selectedFeatureIds.push(featureId);
     refreshAbilitiesBuilderFeatures();
+    refreshAbilitiesBuilderFlaws(); // prereq/exclude lock states cross kinds
+    refreshAbilitiesBuilderIdentity(); // Visual / Extra hint tokens may have changed
     renderAbilitiesBuilderCostPreview();
     renderAbilitiesBuilderSystemText();
   };
@@ -7643,6 +7649,8 @@
     if (i >= 0) inst.selectedFlawIds.splice(i, 1);
     else inst.selectedFlawIds.push(flawId);
     refreshAbilitiesBuilderFlaws();
+    refreshAbilitiesBuilderFeatures(); // prereq/exclude lock states cross kinds
+    refreshAbilitiesBuilderIdentity(); // Visual / Extra hint tokens may have changed
     renderAbilitiesBuilderCostPreview();
     renderAbilitiesBuilderSystemText();
   };
@@ -7670,6 +7678,7 @@
       else         inst.featureCounts[featureId] = n;
     }
     refreshAbilitiesBuilderFeatures();
+    refreshAbilitiesBuilderIdentity();
     renderAbilitiesBuilderCostPreview();
     renderAbilitiesBuilderSystemText();
   };
@@ -7690,6 +7699,7 @@
       else         inst.flawCounts[flawId] = n;
     }
     refreshAbilitiesBuilderFlaws();
+    refreshAbilitiesBuilderIdentity();
     renderAbilitiesBuilderCostPreview();
     renderAbilitiesBuilderSystemText();
   };
@@ -7725,6 +7735,9 @@
   function _stackRefresh(kind) {
     if (kind === 'feature') refreshAbilitiesBuilderFeatures();
     else                    refreshAbilitiesBuilderFlaws();
+    // Picking/dropping a stack changes selection set → token resolution
+    // for Identity hints might change too.
+    refreshAbilitiesBuilderIdentity();
     renderAbilitiesBuilderCostPreview();
     renderAbilitiesBuilderSystemText();
   }
@@ -7809,8 +7822,10 @@
     // Pad with empty strings if needed so stackIdx is reachable.
     while (h.fields[id].length <= stackIdx) h.fields[id].push('');
     h.fields[id][stackIdx] = String(value == null ? '' : value);
-    // Don't refresh the FF list (would lose focus). Just sync the
-    // tokens / system text in case this field feeds a feature-token.
+    // Don't refresh the FF list (would lose focus on the input the
+    // user is typing into). Identity is in a separate host so refreshing
+    // it is safe and lets Visual/Extra hints reflect the new field value.
+    refreshAbilitiesBuilderIdentity();
     renderAbilitiesBuilderSystemText();
   };
 
@@ -7828,6 +7843,12 @@
     const v = String(value == null ? '' : value);
     if (v === '') delete inst.customFieldValues[featureOrFlawId];
     else          inst.customFieldValues[featureOrFlawId] = v;
+    // The custom-field input lives inside the Features/Flaws section,
+    // not Identity — so re-rendering Identity (which contains the
+    // Visual / Extra hints whose tokens may resolve to this value)
+    // doesn't disrupt the user's typing focus.
+    refreshAbilitiesBuilderIdentity();
+    renderAbilitiesBuilderSystemText();
   };
 
   // Toggle the system-text-override checkbox. When ON, the player's
@@ -7901,7 +7922,7 @@
         <!-- BODY -->
         <div style="overflow-y:auto;padding:14px 18px;display:flex;flex-direction:column;gap:14px;">
           ${builder.description ? `<div style="font-size:12px;color:#888;font-style:italic;border-left:2px solid #2a2a2a;padding-left:10px;">${escapeHtml(builder.description)}</div>` : ''}
-          ${renderAbilitiesBuilderIdentitySection(inst)}
+          <div id="abil-builder-identity-host">${renderAbilitiesBuilderIdentitySection(inst)}</div>
           <div id="abil-builder-activation-host">${renderAbilitiesBuilderActivationSection(builder, inst)}</div>
           <div id="abil-builder-contested-host">${renderAbilitiesBuilderContestedSection(builder, inst)}</div>
           ${renderAbilitiesBuilderPrimarySection(builder, inst)}
@@ -7917,6 +7938,27 @@
 
   function renderAbilitiesBuilderIdentitySection(inst) {
     const collapsed = abilitiesBuilderIsCollapsed('identity');
+    // GM-authored Visual / Extra guidelines, with tokens resolved
+    // against the player's CURRENT selections. These hints help the
+    // player understand what's expected before they author their own
+    // text. We use the HTML-form so {VISUAL_REQ} substitutions appear
+    // bolded and Markdown emphasis works the same way as on the card.
+    // When the player hasn't selected the relevant flaws yet, unknown
+    // tokens render as literal `{TokenName}` — that's fine, it shows
+    // them what's missing.
+    const visualGuide = builder.visualGuideline || builder.visualPrompt || '';
+    const extraGuide  = builder.extraGuideline  || builder.extra        || '';
+    const visualHintHtml = visualGuide
+      ? `<div style="margin-top:6px;padding:8px 10px;background:#0a0a0a;border:1px solid #1a1a1a;border-left:2px solid #3a3a20;border-radius:3px;font-size:11px;color:#888;line-height:1.5;font-style:italic;">
+           ${charAbilities.resolveAbilityTokensHtml(visualGuide, builder, inst, { charData, ruleset: activeRuleset })}
+         </div>`
+      : '';
+    const extraHintHtml = extraGuide
+      ? `<div style="margin-top:6px;padding:8px 10px;background:#0a0a0a;border:1px solid #1a1a1a;border-left:2px solid #3a3a20;border-radius:3px;font-size:11px;color:#888;line-height:1.5;font-style:italic;">
+           ${charAbilities.resolveAbilityTokensHtml(extraGuide, builder, inst, { charData, ruleset: activeRuleset })}
+         </div>`
+      : '';
+
     const body = collapsed ? '' : `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div class="field">
@@ -7936,11 +7978,13 @@
         <label>Visual (optional)</label>
         <textarea rows="2" placeholder="What does this Ability look like in play?"
                   oninput="abilitiesBuilderSetField('visual',this.value)">${escapeHtml(inst.visual || '')}</textarea>
+        ${visualHintHtml}
       </div>
       <div class="field" style="margin-top:8px;">
         <label>Prose (optional, hidden by default on the Card)</label>
         <textarea rows="2" placeholder="Inspiration, metapsychics, lore, anything"
                   oninput="abilitiesBuilderSetField('prose',this.value)">${escapeHtml(inst.prose || '')}</textarea>
+        ${extraHintHtml}
       </div>
     `;
     return `
@@ -8788,6 +8832,20 @@
     if (!ref) return;
     const tiers = (activeRuleset.abilityCatalogue && activeRuleset.abilityCatalogue.canonicalTiers) || {};
     host.innerHTML = renderAbilitiesBuilderFlawsSection(ref.builder, inst, tiers);
+  }
+
+  // Identity host — re-rendered when selections that affect resolved
+  // tokens change, since the Visual / Extra hint blocks resolve
+  // {Token} substitutions against the player's current selections.
+  // We don't re-render on every keystroke — only on feature/flaw
+  // pick/unpick and parameter changes — so the player's typing in the
+  // Name/Visual/Prose textareas doesn't lose focus.
+  function refreshAbilitiesBuilderIdentity() {
+    if (!abilitiesBuilderSession) return;
+    const host = document.getElementById('abil-builder-identity-host');
+    if (!host) return;
+    const inst = abilitiesBuilderSession.instance;
+    host.innerHTML = renderAbilitiesBuilderIdentitySection(inst);
   }
 
   // Cost-preview pill update — called on every value change so the
