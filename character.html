@@ -197,16 +197,6 @@
       align-items: flex-start;
     }
     .sec-skill-under { font-size: 9px; color: #666; font-style: italic; white-space: nowrap; }
-    .char-power-bar { display: flex; align-items: center; gap: 16px; margin-top: 6px; margin-bottom: 4px; flex-wrap: wrap; }
-    .power-pill { display: flex; align-items: center; gap: 6px; }
-    .power-pill .pill-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #444; }
-    .power-pill .pill-val { font-size: 13px; font-weight: 600; color: #aaa; }
-    .power-pill .pill-sub { font-size: 11px; color: #555; }
-    .power-select { background: #111; border: 1px solid #222; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 12px; font-weight: 600; padding: 2px 6px; border-radius: 4px; outline: none; cursor: pointer; }
-    .power-select option { background: #111; }
-    .power-num-input { width: 52px; background: #111; border: 1px solid #222; color: #aaa; font-family: 'Open Sans', sans-serif; font-size: 13px; font-weight: 600; text-align: center; padding: 2px 4px; border-radius: 4px; outline: none; }
-    .power-num-input:focus { border-color: #444; }
-    .power-sep { color: #333; font-size: 13px; }
 
     /* ═══ THE STATE OF THINGS (overview dashboard) ═══ */
     /* Outer container uses the same visual rhythm as the Advantages block
@@ -221,8 +211,161 @@
     .state-title {
       font-size: 12px; font-weight: 600; letter-spacing: .08em;
       text-transform: uppercase; color: #aaa;
-      margin-bottom: 14px; padding-bottom: 8px;
+    }
+    /* Title row places the section title on the left and the XP/AP
+       pill on the right. The whole row is clickable to collapse the
+       Summary block — clicks inside the pill stop propagation so the
+       Edit button doesn't accidentally collapse the section. */
+    .state-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 14px;
+      padding-bottom: 8px;
       border-bottom: 1px solid #1a1a1a;
+      cursor: pointer;
+    }
+    /* Compact dual-row pill showing XP and AP totals. Two rows stacked
+       vertically; a small Edit pencil floats at the right when the
+       viewer can edit. Bigger and more prominent than the legacy power
+       bar to match the "this matters" weight of the new economy. */
+    .char-xp-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: nowrap;
+      flex-shrink: 0;
+      cursor: default;
+    }
+    .char-xp-bar > .xp-pill-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      padding: 4px 10px;
+      background: #161616;
+      border: 1px solid #2a2a2a;
+      border-radius: 4px;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 13px;
+      line-height: 1.2;
+    }
+    .char-xp-bar > .xp-pill-row-over {
+      border-color: #5a2020;
+      background: #1a0a0a;
+    }
+    .char-xp-bar .xp-pill-label {
+      font-size: 10px; font-weight: 700; letter-spacing: .1em;
+      text-transform: uppercase; color: #888;
+    }
+    .char-xp-bar .xp-pill-vals {
+      font-variant-numeric: tabular-nums;
+      color: #d8c060;
+      font-weight: 600;
+      letter-spacing: .02em;
+    }
+    .char-xp-bar .xp-pill-spent { color: #cfcfcf; }
+    .char-xp-bar .xp-pill-sep   { color: #555; margin: 0 2px; }
+    .char-xp-bar .xp-pill-total { color: #d8c060; }
+    .char-xp-bar .xp-pill-over  { color: #ff6060; font-weight: 600; }
+    .char-xp-bar .xp-pill-edit {
+      background: transparent;
+      border: 1px solid #2a2a2a;
+      color: #888;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 3px 7px;
+      border-radius: 3px;
+      line-height: 1;
+    }
+    .char-xp-bar .xp-pill-edit:hover { color: #d8c060; border-color: #4a4a4a; }
+
+    /* Modal overlay for editing XP/AP totals. Centered fixed positioning,
+       semi-transparent backdrop. The form lives inside .xp-edit-card. */
+    .xp-edit-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: none;
+      align-items: center; justify-content: center;
+      z-index: 9000;
+    }
+    .xp-edit-card {
+      background: #0d0d0d;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 20px 22px;
+      min-width: 360px;
+      max-width: 460px;
+      width: 90vw;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    }
+    .xp-edit-card h3 {
+      margin: 0 0 14px;
+      font-size: 14px; font-weight: 600; letter-spacing: .06em;
+      text-transform: uppercase; color: #d8c060;
+    }
+    .xp-edit-field {
+      margin-bottom: 12px;
+    }
+    .xp-edit-field label {
+      display: block;
+      font-size: 11px; font-weight: 600; letter-spacing: .06em;
+      text-transform: uppercase; color: #888;
+      margin-bottom: 4px;
+    }
+    .xp-edit-field input[type=number] {
+      width: 100%;
+      background: #0a0a0a;
+      border: 1px solid #2a2a2a;
+      color: #e0e0e0;
+      padding: 6px 10px;
+      font-size: 13px;
+      font-family: inherit;
+      border-radius: 3px;
+      outline: none;
+    }
+    .xp-edit-field input[type=number]:focus { border-color: #4a4a4a; }
+    .xp-edit-hint {
+      font-size: 11px;
+      color: #888;
+      margin-top: 4px;
+      line-height: 1.4;
+    }
+    #xp-edit-totals-hint {
+      font-size: 11px;
+      color: #aaa;
+      background: #0a0a0a;
+      border: 1px solid #1a1a1a;
+      border-radius: 3px;
+      padding: 8px 10px;
+      margin: 12px 0 4px;
+      font-variant-numeric: tabular-nums;
+    }
+    #xp-edit-totals-hint > div { margin: 2px 0; }
+    .xp-edit-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .xp-edit-actions button {
+      background: #161616;
+      border: 1px solid #2a2a2a;
+      color: #cfcfcf;
+      padding: 6px 14px;
+      font-size: 12px;
+      font-family: inherit;
+      cursor: pointer;
+      border-radius: 3px;
+    }
+    .xp-edit-actions button:hover { border-color: #4a4a4a; color: #fff; }
+    .xp-edit-actions button.primary {
+      background: #2a2410;
+      border-color: #5a4a22;
+      color: #d8c060;
+    }
+    .xp-edit-actions button.primary:hover {
+      background: #3a3220; color: #f0d878;
     }
     .state-empty { color: #444; font-size: 12px; font-style: italic; text-align: center; padding: 20px 0; }
 
@@ -5467,7 +5610,6 @@
           <div class="char-header-left">
             <div class="char-name" id="char-name"></div>
             <div class="char-archetype" id="char-archetype"></div>
-            <div class="char-power-bar" id="char-power-bar"></div>
           </div>
           <div class="char-quip-box" id="char-quip" onclick="editQuip()"></div>
         </div>
@@ -5610,7 +5752,10 @@
          display — no controls here. All editing still happens in the
          Combat tab. -->
     <div class="state-of-things" id="state-of-things">
-      <div class="state-title">Summary</div>
+      <div class="state-title-row">
+        <div class="state-title">Summary</div>
+        <div class="char-xp-bar" id="char-xp-bar" onclick="event.stopPropagation()"></div>
+      </div>
       <div class="state-body" id="state-body"><div class="state-empty">Loading…</div></div>
     </div>
 
@@ -5873,13 +6018,15 @@
     }
 
     // ── STATE OF THINGS ──
-    // The #state-of-things container has a .state-title text div. Master
-    // collapse hides the tile grid. Per-tile collapses (already wired
-    // via wrapCollapsibleTile in char-overview.js) continue to work
-    // inside the expanded dashboard.
+    // The #state-of-things container has a .state-title-row (containing
+    // the title text + XP/AP pill). Master collapse hides the tile grid.
+    // We use the row as the click target so clicking anywhere in the
+    // row (except the XP/AP edit button) toggles. Per-tile collapses
+    // (already wired via wrapCollapsibleTile in char-overview.js)
+    // continue to work inside the expanded dashboard.
     const sot = document.getElementById('state-of-things');
     if (sot) {
-      const sotHead = sot.querySelector(':scope > .state-title');
+      const sotHead = sot.querySelector(':scope > .state-title-row');
       const sotBody = document.getElementById('state-body');
       wire('state-of-things', sotHead, [sotBody], 'prime.collapse.overview.stateOfThings');
     }
@@ -5970,6 +6117,25 @@
     // saveXpSpent is defined later in this file but modules only call it
     // at runtime (never module-load time), so the forward reference is safe.
     saveXpSpent: () => saveXpSpent(),
+    // The XP/AP economy module reads these via ctx instead of importing
+    // them, so the dependency stays one-way (modules → character.html).
+    // calcTotalXp returns BASE XP spent (stats/skills/A&D/Power Pool);
+    // char-xp.js adds the apFromXp×rate conversion cost on top.
+    getXpSpent: () => calcTotalXp(),
+    getApSpent: () => {
+      // Sum of every Ability's AP cost. computeAbilityBudget already
+      // does this work — we just want the .spent field. Pass no
+      // hypothetical so it reflects actually-saved Abilities.
+      const b = computeAbilityBudget();
+      return b ? b.spent : 0;
+    },
+    // Called by the XP edit modal after a save so any UI that reads
+    // the economy (Ability budget pill, Combat-tab Power Pool deltas,
+    // etc.) re-renders with fresh totals.
+    onEconomyChange: () => {
+      if (typeof renderAbilitiesTab === 'function') renderAbilitiesTab();
+      if (typeof combat !== 'undefined' && combat && combat.renderAll) combat.renderAll();
+    },
     // Bio section needs access to xpBar to refresh the power bar alongside
     // its own renders. Returned via getter so the reference is always fresh.
     getXpBar: () => xpBar,
@@ -6700,9 +6866,21 @@
   // a "what if I built this" preview where the Ability under
   // construction is included in the spend.
   function computeAbilityBudget(extraAbility) {
-    const earned = Number.isFinite(charData.maxAp) ? charData.maxAp : 0;
+    // Total AP earned = directly awarded (charData.maxAp) + bought from
+    // XP (charData.apFromXp). The new economy decouples earned from the
+    // "starting AP" concept: a fresh character has maxAp synthesized to
+    // ruleset.startingAp by char-xp.js's getEconomy, and once the
+    // player saves anything via the edit modal it's stored as a real
+    // field. We mirror that here so the budget pill reads correctly
+    // even on never-edited characters.
+    const ruleset = activeRuleset || {};
+    const startingAp = Number.isFinite(ruleset.startingAp) ? ruleset.startingAp : 0;
+    const maxAp = Number.isFinite(charData.maxAp) ? charData.maxAp : startingAp;
+    const apFromXp = Number.isFinite(charData.apFromXp) ? charData.apFromXp : 0;
+    const earned = maxAp + apFromXp;
+
     const abilities = Array.isArray(charData.abilities) ? charData.abilities : [];
-    const tiers = (activeRuleset && activeRuleset.abilityCatalogue && activeRuleset.abilityCatalogue.canonicalTiers) || {};
+    const tiers = (ruleset.abilityCatalogue && ruleset.abilityCatalogue.canonicalTiers) || {};
     let spent = 0;
     abilities.forEach(abl => {
       // Skip the Ability that's being edited if `extraAbility` shadows
@@ -9310,5 +9488,38 @@
   }
   window.logout=async function(){await signOut(auth);window.location.href='index.html';}
 </script>
+
+<!-- ── XP / AP EDIT MODAL ──
+     Owner-only. Opened by clicking the pencil button on the XP/AP
+     pill at the top-right of the Overview Summary section. Three
+     editable inputs (maxXp, maxAp, AP-to-buy) plus live hint text
+     showing what the resulting totals/spent/remaining will be.
+     Handlers in char-xp.js mount window.openXpEditModal etc. -->
+<div class="xp-edit-overlay" id="xp-edit-overlay" onclick="if (event.target === this) window.closeXpEditModal()">
+  <div class="xp-edit-card">
+    <h3>Edit XP &amp; AP</h3>
+    <div class="xp-edit-field">
+      <label>Total XP earned</label>
+      <input type="number" id="xp-edit-maxXp" min="0" step="1">
+      <div class="xp-edit-hint">All XP your character has earned (starting + awards from play). Spent XP is tracked automatically.</div>
+    </div>
+    <div class="xp-edit-field">
+      <label>Total AP earned (direct)</label>
+      <input type="number" id="xp-edit-maxAp" min="0" step="1">
+      <div class="xp-edit-hint">AP awarded directly via play. Does not include AP bought from XP — that's tracked separately below.</div>
+    </div>
+    <div class="xp-edit-field">
+      <label>Buy AP with XP</label>
+      <input type="number" id="xp-edit-buyAp" min="0" step="1" value="0">
+      <div class="xp-edit-hint" id="xp-edit-buyAp-hint">Rate: 3 XP = 1 AP</div>
+    </div>
+    <div id="xp-edit-totals-hint"></div>
+    <div class="xp-edit-actions">
+      <button onclick="window.closeXpEditModal()">Cancel</button>
+      <button class="primary" onclick="window.saveXpEditModal()">Save</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
