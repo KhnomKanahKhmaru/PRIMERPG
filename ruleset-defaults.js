@@ -4,7 +4,23 @@
 
 window.RULESET_DEFAULTS = {
   tagline: '',
-  startingXp: 100,
+  // Starting XP for new characters in this ruleset. The GM/system
+  // grants this on creation; players gain more via play. Editable per
+  // ruleset via the GM editor. Default 200 for the canonical PRIME
+  // experience.
+  startingXp: 200,
+
+  // Starting AP for new characters. Distinct from XP — AP is the
+  // resource Abilities are bought with. Players can also gain AP
+  // mid-play via direct grant, or by spending XP to buy AP at the
+  // ruleset's `xpToApRate`.
+  startingAp: 0,
+
+  // XP→AP conversion rate. Players can spend XP to buy AP at this
+  // rate (1 AP costs N XP). Set per ruleset; the GM editor exposes
+  // this as a single integer field. Default 3 for the canonical
+  // PRIME economy.
+  xpToApRate: 3,
 
   // Stat caps / costs.
   statXp: [null, -10, 0, 10, 30, 60, 100],  // index 0 = not takable
@@ -87,16 +103,9 @@ window.RULESET_DEFAULTS = {
   specialtySkillXp: [0, 1, 1, 2,  3,  5,  7, 10, 13, 16, 20],
   skillMax: 10,
 
-  // Power Levels — ordered list
-  powerLevels: [
-    { value: 'powerless', label: 'Powerless',        xpPerAp: 10 },
-    { value: 'low',       label: 'Low Power',        xpPerAp: 8  },
-    { value: 'mid',       label: 'Mid Power',        xpPerAp: 6  },
-    { value: 'high',      label: 'High Power',       xpPerAp: 4  },
-    { value: 'very_high', label: 'Very High Power',  xpPerAp: 2  },
-    { value: 'highest',   label: 'Highest Power',    xpPerAp: 1  }
-  ],
-  defaultPowerLevel: 'powerless',
+  // Power Levels were removed in favor of a flat `xpToApRate` (above).
+  // Old rulesets may still have `powerLevels` and `defaultPowerLevel`
+  // fields — the normalizer drops them on read.
 
   // Primary skills (name + description)
   primarySkills: [
@@ -977,6 +986,10 @@ window.normalizeRuleset = function(rs) {
   const out = Object.assign({}, rs);
   if (typeof out.tagline !== 'string') out.tagline = '';
   if (out.startingXp == null) out.startingXp = d.startingXp;
+  if (out.startingAp == null) out.startingAp = d.startingAp;
+  if (out.xpToApRate == null || !Number.isFinite(out.xpToApRate) || out.xpToApRate < 1) {
+    out.xpToApRate = d.xpToApRate;
+  }
   if (!Array.isArray(out.statXp)) out.statXp = d.statXp.slice();
   if (out.statMaxPurchasable == null) out.statMaxPurchasable = d.statMaxPurchasable;
   if (out.statMax == null) out.statMax = d.statMax;
@@ -994,8 +1007,12 @@ window.normalizeRuleset = function(rs) {
   if (!Array.isArray(out.secondarySkillXp)) out.secondarySkillXp = d.secondarySkillXp.slice();
   if (!Array.isArray(out.specialtySkillXp)) out.specialtySkillXp = d.specialtySkillXp.slice();
   if (out.skillMax == null) out.skillMax = d.skillMax;
-  if (!Array.isArray(out.powerLevels) || out.powerLevels.length === 0) out.powerLevels = JSON.parse(JSON.stringify(d.powerLevels));
-  if (!out.defaultPowerLevel) out.defaultPowerLevel = d.defaultPowerLevel;
+  // Power Levels deprecated — drop them on read so the field stops
+  // appearing in JSON exports and the editor can't keep showing it.
+  // The legacy data is harmless but cleaning it up keeps the schema
+  // honest. Same for `defaultPowerLevel`.
+  delete out.powerLevels;
+  delete out.defaultPowerLevel;
   if (!Array.isArray(out.primarySkills) || out.primarySkills.length === 0) out.primarySkills = JSON.parse(JSON.stringify(d.primarySkills));
   if (!Array.isArray(out.morals)) out.morals = [];
 
