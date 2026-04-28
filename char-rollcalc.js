@@ -2,7 +2,7 @@
 //
 // Roll Calculator — the quick "how many dice will I actually roll?" scratch
 // pad that lives at the top of the Combat tab. Split out of char-combat.js
-// so that file can focus on the actual combat UI (health, injuries, sanity,
+// so that file can focus on the actual combat UI (health, injuries, mentalHealth,
 // power, etc.) instead of also carrying the dice-math helper.
 //
 // This module is self-contained:
@@ -40,7 +40,7 @@ export function createRollCalc(ctx) {
   //   'none'    — contributes 0, no statmod
   //   'stat'    — picks a base stat (STR/DEX/PER/INT/CHA/POW); contributes
   //               its VALUE to the pool and its MOD competes for statmod
-  //   'derived' — picks a derived stat (HP/SAN/SPD/etc); contributes its
+  //   'derived' — picks a derived stat (HP/MEN/SPD/etc); contributes its
   //               VALUE to the pool; does NOT contribute a statmod (per
   //               spec: only base stats compete for STATMOD)
   //   'skill'   — picks a primary/secondary/specialty skill; contributes
@@ -84,7 +84,7 @@ export function createRollCalc(ctx) {
 
   // Build the list of options the STAT dropdown offers. Pulls every base
   // stat and rollable derived stat (everything in result.stats) so you
-  // can roll with anything the ruleset defines — including SAN, HP, etc.
+  // can roll with anything the ruleset defines — including MEN, HP, etc.
   function buildStatOptions(result, charData, ruleset) {
     const opts = [];
     const baseStats = (ruleset.stats || []).filter(s => s && s.code);
@@ -382,6 +382,12 @@ export function createRollCalc(ctx) {
       kind:  'component'
     });
     out.push({
+      key:   'exhaustion',
+      label: 'Exhaustion',
+      value: p.exhPercent || 0,
+      kind:  'component'
+    });
+    out.push({
       key:   'encumbrance',
       label: 'Encumbrance',
       value: p.encumbrancePercent || 0,
@@ -448,7 +454,7 @@ export function createRollCalc(ctx) {
   }
 
   // Derived-stat dropdown — everything in ruleset.derivedStats (HP, SPD,
-  // SAN, etc.). Flat list. Used for slot kind='derived'.
+  // MEN, etc.). Flat list. Used for slot kind='derived'.
   function buildDerivedStatSelectHtml(opts, selectedKey) {
     const derived = opts.filter(o => o.group === 'derived');
     let html = '';
