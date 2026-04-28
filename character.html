@@ -211,20 +211,20 @@
     .state-title {
       font-size: 12px; font-weight: 600; letter-spacing: .08em;
       text-transform: uppercase; color: #aaa;
-    }
-    /* Title row places the section title on the left and the XP/AP
-       pill on the right. The whole row is clickable to collapse the
-       Summary block — clicks inside the pill stop propagation so the
-       Edit button doesn't accidentally collapse the section. */
-    .state-title-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 14px;
-      margin-bottom: 14px;
-      padding-bottom: 8px;
+      margin-bottom: 14px; padding-bottom: 8px;
       border-bottom: 1px solid #1a1a1a;
-      cursor: pointer;
+    }
+    /* Page-level header strip — sits between the global nav and the
+       sheet tabs. Justifies its content to the right so the XP/AP
+       pill floats on the top-right of the page regardless of tab.
+       Tight vertical spacing — this is a thin sliver, not a banner. */
+    .char-page-header {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      padding: 8px 4px 6px;
+      margin-bottom: 4px;
+      min-height: 36px;
     }
     /* Compact dual-row pill showing XP and AP totals. Two rows stacked
        vertically; a small Edit pencil floats at the right when the
@@ -5586,6 +5586,14 @@
   </script>
   <div id="char-content" style="display:none">
 
+    <!-- Page-level header strip — sits above the sheet wrapper, visible
+         on every tab. Currently holds only the XP/AP economy pill at
+         the top-right. Click stops propagation so toggle behaviors on
+         child wrappers don't catch clicks on the pill itself. -->
+    <div class="char-page-header">
+      <div class="char-xp-bar" id="char-xp-bar" onclick="event.stopPropagation()"></div>
+    </div>
+
     <div class="sheet-wrap">
       <div class="sheet-tabs">
         <div class="sheet-tab active" id="sheet-tab-overview" onclick="switchSheetTab('overview')">Overview</div>
@@ -5752,10 +5760,7 @@
          display — no controls here. All editing still happens in the
          Combat tab. -->
     <div class="state-of-things" id="state-of-things">
-      <div class="state-title-row">
-        <div class="state-title">Summary</div>
-        <div class="char-xp-bar" id="char-xp-bar" onclick="event.stopPropagation()"></div>
-      </div>
+      <div class="state-title">Summary</div>
       <div class="state-body" id="state-body"><div class="state-empty">Loading…</div></div>
     </div>
 
@@ -6018,15 +6023,13 @@
     }
 
     // ── STATE OF THINGS ──
-    // The #state-of-things container has a .state-title-row (containing
-    // the title text + XP/AP pill). Master collapse hides the tile grid.
-    // We use the row as the click target so clicking anywhere in the
-    // row (except the XP/AP edit button) toggles. Per-tile collapses
-    // (already wired via wrapCollapsibleTile in char-overview.js)
-    // continue to work inside the expanded dashboard.
+    // The #state-of-things container has a .state-title text div. Master
+    // collapse hides the tile grid. Per-tile collapses (already wired
+    // via wrapCollapsibleTile in char-overview.js) continue to work
+    // inside the expanded dashboard.
     const sot = document.getElementById('state-of-things');
     if (sot) {
-      const sotHead = sot.querySelector(':scope > .state-title-row');
+      const sotHead = sot.querySelector(':scope > .state-title');
       const sotBody = document.getElementById('state-body');
       wire('state-of-things', sotHead, [sotBody], 'prime.collapse.overview.stateOfThings');
     }
