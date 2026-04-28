@@ -8349,11 +8349,27 @@
       ...(Array.isArray(inst.selectedFeatureIds) ? inst.selectedFeatureIds : []),
       ...(Array.isArray(inst.selectedFlawIds)    ? inst.selectedFlawIds    : [])
     ]);
-    // Build name lookup across both kinds for tooltip text.
+    // Tier-prefixed display name. The same Feature/Flaw name can
+    // exist at multiple tiers (e.g. "Visual Requirement" at every
+    // tier from Minor to Mythical), so showing JUST the name leaves
+    // the player guessing which tier they're looking at — especially
+    // when two tier-bands stack visually. Prefixing with the tier
+    // label disambiguates: "Massive Visual Requirement", "Major
+    // Conditional", etc. Used in row labels, the "+ Take" buttons,
+    // and the tooltip text for prereq/exclude relationships.
+    const TIER_LABELS_LOCAL = { minor: 'Minor', moderate: 'Moderate', major: 'Major', massive: 'Massive', monumental: 'Monumental', mega: 'Mega', mythical: 'Mythical' };
+    function displayName(item) {
+      const baseName = (item && item.name) || '(unnamed)';
+      const tierLabel = (item && TIER_LABELS_LOCAL[item.tier]) || '';
+      return tierLabel ? `${tierLabel} ${baseName}` : baseName;
+    }
+    // Build name lookup across both kinds for tooltip text. Use the
+    // tier-prefixed form so prereq/conflict messages disambiguate
+    // ("Requires: Major Fire Mastery" vs ambiguous "Fire Mastery").
     const allFlaws = charAbilities.resolveBuilderFlaws(activeRuleset, builder);
     const nameById = {};
-    features.forEach(f => { if (f && f.id) nameById[f.id] = f.name || '(unnamed)'; });
-    allFlaws.forEach(f => { if (f && f.id) nameById[f.id] = f.name || '(unnamed)'; });
+    features.forEach(f => { if (f && f.id) nameById[f.id] = displayName(f); });
+    allFlaws.forEach(f => { if (f && f.id) nameById[f.id] = displayName(f); });
     function lockReason(item) {
       const isOn = selected.has(item.id);
       // Already-selected items aren't "locked" — the player can still
@@ -8484,7 +8500,7 @@
                         style="background:transparent;border:1px solid #2a2a2a;color:#c66;font-size:13px;cursor:pointer;border-radius:3px;height:24px;line-height:1;">×</button>
                 <div>
                   <div style="font-weight:500;color:#ddd;font-size:13px;">
-                    ${escapeHtml(f.name || 'Feature')}${count > 1 ? ` <span style="font-size:10px;color:#888;font-weight:400;">#${s + 1}</span>` : ''}
+                    ${escapeHtml(displayName(f))}${count > 1 ? ` <span style="font-size:10px;color:#888;font-weight:400;">#${s + 1}</span>` : ''}
                     <span style="font-size:10px;color:#888;font-weight:400;font-style:italic;margin-left:6px;">stackable</span>
                   </div>
                   ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
@@ -8498,7 +8514,7 @@
           // Disabled visually with a + symbol when none are taken yet,
           // labeled "Take" so it reads as the entry point. Once at least
           // one stack exists, it becomes "+ Add another".
-          const addLabel = count === 0 ? `+ Take "${escapeHtml(f.name || 'Feature')}"` : `+ Add another`;
+          const addLabel = count === 0 ? `+ Take "${escapeHtml(displayName(f))}"` : `+ Add another`;
           html += `
             <div style="padding:4px 0 8px 38px;">
               <button type="button"
@@ -8520,7 +8536,7 @@
                  ${lockedReason ? `title="${escapeHtmlAttr(lockedReason)}"` : (violationMsg ? `title="${escapeHtmlAttr(violationMsg)}"` : '')}>
             <input type="checkbox" ${isOn ? 'checked' : ''} ${lockedReason ? 'disabled' : ''} onchange="abilitiesBuilderToggleFeature('${escapeHtml(f.id)}')">
             <div>
-              <div style="font-weight:500;color:#ddd;font-size:13px;">${escapeHtml(f.name || 'Feature')}${lockedReason ? ` <span style="font-size:10px;color:#aa6655;font-weight:400;font-style:italic;margin-left:4px;">🔒</span>` : ''}${violationMsg ? ` <span style="font-size:10px;color:#e0a060;font-weight:400;font-style:italic;margin-left:4px;">⚠</span>` : ''}</div>
+              <div style="font-weight:500;color:#ddd;font-size:13px;">${escapeHtml(displayName(f))}${lockedReason ? ` <span style="font-size:10px;color:#aa6655;font-weight:400;font-style:italic;margin-left:4px;">🔒</span>` : ''}${violationMsg ? ` <span style="font-size:10px;color:#e0a060;font-weight:400;font-style:italic;margin-left:4px;">⚠</span>` : ''}</div>
               ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
               ${lockedReason ? `<div style="font-size:10px;color:#aa6655;margin-top:2px;font-style:italic;">${escapeHtml(lockedReason)}</div>` : ''}
               ${violationMsg ? `<div style="font-size:10px;color:#e0a060;margin-top:2px;font-style:italic;">⚠ ${escapeHtml(violationMsg)}</div>` : ''}
@@ -8547,10 +8563,18 @@
       ...(Array.isArray(inst.selectedFeatureIds) ? inst.selectedFeatureIds : []),
       ...(Array.isArray(inst.selectedFlawIds)    ? inst.selectedFlawIds    : [])
     ]);
+    // Tier-prefixed display name. Same rationale as the features
+    // section — disambiguate same-named items across tiers.
+    const TIER_LABELS_LOCAL = { minor: 'Minor', moderate: 'Moderate', major: 'Major', massive: 'Massive', monumental: 'Monumental', mega: 'Mega', mythical: 'Mythical' };
+    function displayName(item) {
+      const baseName = (item && item.name) || '(unnamed)';
+      const tierLabel = (item && TIER_LABELS_LOCAL[item.tier]) || '';
+      return tierLabel ? `${tierLabel} ${baseName}` : baseName;
+    }
     const allFeatures = charAbilities.resolveBuilderFeatures(activeRuleset, builder);
     const nameById = {};
-    flaws.forEach(f => { if (f && f.id) nameById[f.id] = f.name || '(unnamed)'; });
-    allFeatures.forEach(f => { if (f && f.id) nameById[f.id] = f.name || '(unnamed)'; });
+    flaws.forEach(f => { if (f && f.id) nameById[f.id] = displayName(f); });
+    allFeatures.forEach(f => { if (f && f.id) nameById[f.id] = displayName(f); });
     function lockReason(item) {
       const isOn = selected.has(item.id);
       if (isOn) return null;
@@ -8652,7 +8676,7 @@
                         style="background:transparent;border:1px solid #2a2a2a;color:#c66;font-size:13px;cursor:pointer;border-radius:3px;height:24px;line-height:1;">×</button>
                 <div>
                   <div style="font-weight:500;color:#ddd;font-size:13px;">
-                    ${escapeHtml(f.name || 'Flaw')}${count > 1 ? ` <span style="font-size:10px;color:#888;font-weight:400;">#${s + 1}</span>` : ''}
+                    ${escapeHtml(displayName(f))}${count > 1 ? ` <span style="font-size:10px;color:#888;font-weight:400;">#${s + 1}</span>` : ''}
                     <span style="font-size:10px;color:#888;font-weight:400;font-style:italic;margin-left:6px;">stackable</span>
                   </div>
                   ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
@@ -8662,7 +8686,7 @@
               </div>
             `;
           }
-          const addLabel = count === 0 ? `+ Take "${escapeHtml(f.name || 'Flaw')}"` : `+ Add another`;
+          const addLabel = count === 0 ? `+ Take "${escapeHtml(displayName(f))}"` : `+ Add another`;
           html += `
             <div style="padding:4px 0 8px 38px;">
               <button type="button"
@@ -8684,7 +8708,7 @@
                  ${lockedReason ? `title="${escapeHtmlAttr(lockedReason)}"` : (violationMsg ? `title="${escapeHtmlAttr(violationMsg)}"` : '')}>
             <input type="checkbox" ${isOn ? 'checked' : ''} ${lockedReason ? 'disabled' : ''} onchange="abilitiesBuilderToggleFlaw('${escapeHtml(f.id)}')">
             <div>
-              <div style="font-weight:500;color:#ddd;font-size:13px;">${escapeHtml(f.name || 'Flaw')}${lockedReason ? ` <span style="font-size:10px;color:#aa6655;font-weight:400;font-style:italic;margin-left:4px;">🔒</span>` : ''}${violationMsg ? ` <span style="font-size:10px;color:#e0a060;font-weight:400;font-style:italic;margin-left:4px;">⚠</span>` : ''}</div>
+              <div style="font-weight:500;color:#ddd;font-size:13px;">${escapeHtml(displayName(f))}${lockedReason ? ` <span style="font-size:10px;color:#aa6655;font-weight:400;font-style:italic;margin-left:4px;">🔒</span>` : ''}${violationMsg ? ` <span style="font-size:10px;color:#e0a060;font-weight:400;font-style:italic;margin-left:4px;">⚠</span>` : ''}</div>
               ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
               ${lockedReason ? `<div style="font-size:10px;color:#aa6655;margin-top:2px;font-style:italic;">${escapeHtml(lockedReason)}</div>` : ''}
               ${violationMsg ? `<div style="font-size:10px;color:#e0a060;margin-top:2px;font-style:italic;">⚠ ${escapeHtml(violationMsg)}</div>` : ''}
