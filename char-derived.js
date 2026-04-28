@@ -1051,7 +1051,7 @@ export function computeDerivedStats(character, ruleset) {
         menPenaltyText = '+3 Difficulty to MEN rolls, +1 Difficulty to other rolls. Roll on Breaking Point table. Any further Mental Damage forces a reroll.';
         break;
       case 'disturbed':
-        menStatusLabel = 'Broken';
+        menStatusLabel = 'Disturbed';
         menPenaltyText = '+2 Difficulty to MEN rolls, +1 Difficulty to other rolls.';
         break;
       case 'inShock':
