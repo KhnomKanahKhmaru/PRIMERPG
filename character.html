@@ -7098,6 +7098,24 @@
       return `<div style="margin-top:3px;margin-left:14px;font-size:12px;line-height:1.5;font-style:italic;color:#cfcfcf;">${labelHtml}${escapeHtml(val.trim())}</div>`;
     }
 
+    // Card-side Extended System affordance for built ability F/Fs.
+    // Same idea as the edit modal: ⓘ glyph next to the line, click
+    // expands a panel below showing the resolved Extended System.
+    function cardExtInfo(f, kind) {
+      const ext = (f && f.extendedSystem) ? String(f.extendedSystem).trim() : '';
+      if (!ext) return { glyph: '', panel: '' };
+      const open = isCardFFExtendedOpen(abl.id, kind, f.id);
+      const glyph = `<span title="Click for rules clarifications and examples"
+                           onclick="event.stopPropagation();abilitiesCardToggleExtended('${escapeHtml(abl.id)}','${kind}','${escapeHtml(f.id)}')"
+                           style="display:inline-block;color:${open ? '#d8c060' : '#888'};font-size:11px;margin-left:6px;cursor:pointer;user-select:none;">ⓘ</span>`;
+      let panel = '';
+      if (open) {
+        const resolved = charAbilities.resolveAbilityTokensHtml(ext, builder, abl, { charData, ruleset: activeRuleset });
+        panel = `<div style="margin:4px 0 2px 14px;padding:8px 10px;background:#0a0a0a;border:1px solid #1a1a1a;border-left:2px solid #3a3a20;border-radius:3px;font-size:11px;color:#aaa;line-height:1.55;white-space:pre-wrap;">${resolved}</div>`;
+      }
+      return { glyph, panel };
+    }
+
     let ffListHtml = '';
     if (systemExpanded && hasFFContent) {
       ffListHtml += `<div style="margin-top:12px;padding-top:10px;border-top:1px solid #2a2a20;display:flex;flex-direction:column;gap:10px;">`;
@@ -7107,11 +7125,13 @@
         ffListHtml += `<div style="font-size:10px;color:#6a8a6a;letter-spacing:.1em;text-transform:uppercase;font-weight:700;">Features</div>`;
         ffListHtml += `<div style="display:flex;flex-direction:column;gap:4px;">`;
         selFeatures.forEach(f => {
+          const fx = cardExtInfo(f, 'feature');
           ffListHtml += `
             <div style="font-size:12px;color:#9aaf9a;line-height:1.55;">
               <span style="color:#6a8a6a;">${tierPrefix(f, 'feature')}</span>
-              ${escapeHtml(ffLineText(f))}
+              ${escapeHtml(ffLineText(f))}${fx.glyph}
               ${customFieldHtml(f, 'feature')}
+              ${fx.panel}
             </div>
           `;
         });
@@ -7121,11 +7141,13 @@
         ffListHtml += `<div style="font-size:10px;color:#8a6a6a;letter-spacing:.1em;text-transform:uppercase;font-weight:700;${selFeatures.length > 0 ? 'margin-top:4px;' : ''}">Flaws</div>`;
         ffListHtml += `<div style="display:flex;flex-direction:column;gap:4px;">`;
         selFlaws.forEach(f => {
+          const fx = cardExtInfo(f, 'flaw');
           ffListHtml += `
             <div style="font-size:12px;color:#af9a9a;line-height:1.55;">
               <span style="color:#8a6a6a;">${tierPrefix(f, 'flaw')}</span>
-              ${escapeHtml(ffLineText(f))}
+              ${escapeHtml(ffLineText(f))}${fx.glyph}
               ${customFieldHtml(f, 'flaw')}
+              ${fx.panel}
             </div>
           `;
         });
@@ -7233,6 +7255,20 @@
   window.abilitiesToggleExtra = function(abilityId) {
     if (abilExtraOpen.has(abilityId)) abilExtraOpen.delete(abilityId);
     else abilExtraOpen.add(abilityId);
+    renderAbilitiesTab();
+  };
+
+  // Card-side Extended System expand state. Composite key
+  // `${abilityId}:${kind}:${ffId}` so each F/F on each ability has its
+  // own open/closed flag. Re-renders the Abilities tab to repaint.
+  const abilCardExtendedOpen = new Set();
+  function isCardFFExtendedOpen(ablId, kind, ffId) {
+    return abilCardExtendedOpen.has(`${ablId}:${kind}:${ffId}`);
+  }
+  window.abilitiesCardToggleExtended = function(ablId, kind, ffId) {
+    const key = `${ablId}:${kind}:${ffId}`;
+    if (abilCardExtendedOpen.has(key)) abilCardExtendedOpen.delete(key);
+    else abilCardExtendedOpen.add(key);
     renderAbilitiesTab();
   };
 
@@ -8336,6 +8372,26 @@
     return html;
   }
 
+  // ── EXTENDED SYSTEM EXPAND STATE (player edit modal) ──
+  // Each F/F row in the edit modal can have a click-to-expand panel
+  // showing the GM's Extended System text (long-form rules
+  // clarifications). State is a Set of `${kind}:${id}` keys so a
+  // feature and a flaw with the same id don't collide. Re-rendered
+  // surgically by refreshing the relevant section host so the user's
+  // typing in textareas elsewhere isn't disrupted.
+  function isFFExtendedOpen(kind, id) {
+    if (!window.__ablBldrFFExtendedOpen) window.__ablBldrFFExtendedOpen = new Set();
+    return window.__ablBldrFFExtendedOpen.has(`${kind}:${id}`);
+  }
+  window.abilitiesBuilderToggleExtended = function(kind, id) {
+    if (!window.__ablBldrFFExtendedOpen) window.__ablBldrFFExtendedOpen = new Set();
+    const key = `${kind}:${id}`;
+    if (window.__ablBldrFFExtendedOpen.has(key)) window.__ablBldrFFExtendedOpen.delete(key);
+    else window.__ablBldrFFExtendedOpen.add(key);
+    if (kind === 'feature') refreshAbilitiesBuilderFeatures();
+    else                    refreshAbilitiesBuilderFlaws();
+  };
+
   function renderAbilitiesBuilderFeaturesSection(builder, inst, tiers) {
     const features = charAbilities.resolveBuilderFeatures(activeRuleset, builder);
     if (features.length === 0) return '';
@@ -8370,6 +8426,26 @@
     const nameById = {};
     features.forEach(f => { if (f && f.id) nameById[f.id] = displayName(f); });
     allFlaws.forEach(f => { if (f && f.id) nameById[f.id] = displayName(f); });
+    // Extended System affordance — small ⓘ glyph next to the row name
+    // when the GM authored long-form rules text. Click toggles an
+    // expanded panel below the row showing the resolved content
+    // (tokens substituted against the player's current selections).
+    // Returns { glyph, panel } as HTML strings; either is '' when the
+    // F/F has no extendedSystem so the row stays compact.
+    function extInfo(f) {
+      const ext = (f && f.extendedSystem) ? String(f.extendedSystem).trim() : '';
+      if (!ext) return { glyph: '', panel: '' };
+      const open = isFFExtendedOpen('feature', f.id);
+      const glyph = `<span title="Click for rules clarifications and examples"
+                           onclick="event.preventDefault();event.stopPropagation();abilitiesBuilderToggleExtended('feature','${escapeHtml(f.id)}')"
+                           style="display:inline-block;color:${open ? '#d8c060' : '#888'};font-size:11px;margin-left:6px;cursor:pointer;user-select:none;font-style:normal;font-weight:400;">ⓘ</span>`;
+      let panel = '';
+      if (open) {
+        const resolved = charAbilities.resolveAbilityTokensHtml(ext, builder, inst, { charData, ruleset: activeRuleset });
+        panel = `<div style="grid-column:1 / -1;margin:6px 0 4px 30px;padding:10px 12px;background:#0a0a0a;border:1px solid #1a1a1a;border-left:2px solid #3a3a20;border-radius:3px;font-size:12px;color:#aaa;line-height:1.55;white-space:pre-wrap;">${resolved}</div>`;
+      }
+      return { glyph, panel };
+    }
     function lockReason(item) {
       const isOn = selected.has(item.id);
       // Already-selected items aren't "locked" — the player can still
@@ -8493,20 +8569,25 @@
                        style="flex:1;background:#111;border:1px solid #2a2a2a;color:#e0e0e0;font-family:inherit;font-size:12px;padding:5px 8px;border-radius:3px;outline:none;">
               </div>
             ` : '';
+            const fxStack = extInfo(f);
             html += `
-              <div style="display:grid;grid-template-columns:28px 1fr 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;">
-                <button title="Remove this pick" type="button"
-                        onclick="abilitiesBuilderRemoveStack('feature','${escapeHtml(f.id)}',${s})"
-                        style="background:transparent;border:1px solid #2a2a2a;color:#c66;font-size:13px;cursor:pointer;border-radius:3px;height:24px;line-height:1;">×</button>
-                <div>
-                  <div style="font-weight:500;color:#ddd;font-size:13px;">
-                    ${escapeHtml(displayName(f))}${count > 1 ? ` <span style="font-size:10px;color:#888;font-weight:400;">#${s + 1}</span>` : ''}
-                    <span style="font-size:10px;color:#888;font-weight:400;font-style:italic;margin-left:6px;">stackable</span>
+              <div>
+                <div style="display:grid;grid-template-columns:28px 1fr 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:${fxStack.panel ? 'none' : '1px solid #151515'};">
+                  <button title="Remove this pick" type="button"
+                          onclick="abilitiesBuilderRemoveStack('feature','${escapeHtml(f.id)}',${s})"
+                          style="background:transparent;border:1px solid #2a2a2a;color:#c66;font-size:13px;cursor:pointer;border-radius:3px;height:24px;line-height:1;">×</button>
+                  <div>
+                    <div style="font-weight:500;color:#ddd;font-size:13px;">
+                      ${escapeHtml(displayName(f))}${count > 1 ? ` <span style="font-size:10px;color:#888;font-weight:400;">#${s + 1}</span>` : ''}
+                      <span style="font-size:10px;color:#888;font-weight:400;font-style:italic;margin-left:6px;">stackable</span>
+                      ${fxStack.glyph}
+                    </div>
+                    ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;white-space:pre-wrap;">${escapeHtml(f.description)}</div>` : ''}
                   </div>
-                  ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
+                  <span style="color:#d8a060;font-family:monospace;font-size:12px;text-align:right;">+${cost} AP</span>
+                  ${stackCfHtml}
                 </div>
-                <span style="color:#d8a060;font-family:monospace;font-size:12px;text-align:right;">+${cost} AP</span>
-                ${stackCfHtml}
+                ${fxStack.panel}
               </div>
             `;
           }
@@ -8531,19 +8612,23 @@
         }
 
         const violationMsg = violationReason(f);
+        const fx = extInfo(f);
         html += `
-          <label style="display:grid;grid-template-columns:24px 1fr 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;cursor:${lockedReason ? 'not-allowed' : 'pointer'};opacity:${lockedReason ? '0.45' : '1'};${violationMsg ? 'background:#2a1f0a;' : ''}"
-                 ${lockedReason ? `title="${escapeHtmlAttr(lockedReason)}"` : (violationMsg ? `title="${escapeHtmlAttr(violationMsg)}"` : '')}>
-            <input type="checkbox" ${isOn ? 'checked' : ''} ${lockedReason ? 'disabled' : ''} onchange="abilitiesBuilderToggleFeature('${escapeHtml(f.id)}')">
-            <div>
-              <div style="font-weight:500;color:#ddd;font-size:13px;">${escapeHtml(displayName(f))}${lockedReason ? ` <span style="font-size:10px;color:#aa6655;font-weight:400;font-style:italic;margin-left:4px;">🔒</span>` : ''}${violationMsg ? ` <span style="font-size:10px;color:#e0a060;font-weight:400;font-style:italic;margin-left:4px;">⚠</span>` : ''}</div>
-              ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
-              ${lockedReason ? `<div style="font-size:10px;color:#aa6655;margin-top:2px;font-style:italic;">${escapeHtml(lockedReason)}</div>` : ''}
-              ${violationMsg ? `<div style="font-size:10px;color:#e0a060;margin-top:2px;font-style:italic;">⚠ ${escapeHtml(violationMsg)}</div>` : ''}
-            </div>
-            <span style="color:${isOn ? '#d8a060' : '#666'};font-family:monospace;font-size:12px;text-align:right;">+${cost} AP</span>
-            ${cfInputHtml}
-          </label>
+          <div>
+            <label style="display:grid;grid-template-columns:24px 1fr 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:${fx.panel ? 'none' : '1px solid #151515'};cursor:${lockedReason ? 'not-allowed' : 'pointer'};opacity:${lockedReason ? '0.45' : '1'};${violationMsg ? 'background:#2a1f0a;' : ''}"
+                   ${lockedReason ? `title="${escapeHtmlAttr(lockedReason)}"` : (violationMsg ? `title="${escapeHtmlAttr(violationMsg)}"` : '')}>
+              <input type="checkbox" ${isOn ? 'checked' : ''} ${lockedReason ? 'disabled' : ''} onchange="abilitiesBuilderToggleFeature('${escapeHtml(f.id)}')">
+              <div>
+                <div style="font-weight:500;color:#ddd;font-size:13px;">${escapeHtml(displayName(f))}${lockedReason ? ` <span style="font-size:10px;color:#aa6655;font-weight:400;font-style:italic;margin-left:4px;">🔒</span>` : ''}${violationMsg ? ` <span style="font-size:10px;color:#e0a060;font-weight:400;font-style:italic;margin-left:4px;">⚠</span>` : ''}${fx.glyph}</div>
+                ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;white-space:pre-wrap;">${escapeHtml(f.description)}</div>` : ''}
+                ${lockedReason ? `<div style="font-size:10px;color:#aa6655;margin-top:2px;font-style:italic;">${escapeHtml(lockedReason)}</div>` : ''}
+                ${violationMsg ? `<div style="font-size:10px;color:#e0a060;margin-top:2px;font-style:italic;">⚠ ${escapeHtml(violationMsg)}</div>` : ''}
+              </div>
+              <span style="color:${isOn ? '#d8a060' : '#666'};font-family:monospace;font-size:12px;text-align:right;">+${cost} AP</span>
+              ${cfInputHtml}
+            </label>
+            ${fx.panel}
+          </div>
         `;
       });
     });
@@ -8575,6 +8660,21 @@
     const nameById = {};
     flaws.forEach(f => { if (f && f.id) nameById[f.id] = displayName(f); });
     allFeatures.forEach(f => { if (f && f.id) nameById[f.id] = displayName(f); });
+    // Extended System affordance — see features section for rationale.
+    function extInfo(f) {
+      const ext = (f && f.extendedSystem) ? String(f.extendedSystem).trim() : '';
+      if (!ext) return { glyph: '', panel: '' };
+      const open = isFFExtendedOpen('flaw', f.id);
+      const glyph = `<span title="Click for rules clarifications and examples"
+                           onclick="event.preventDefault();event.stopPropagation();abilitiesBuilderToggleExtended('flaw','${escapeHtml(f.id)}')"
+                           style="display:inline-block;color:${open ? '#d8c060' : '#888'};font-size:11px;margin-left:6px;cursor:pointer;user-select:none;font-style:normal;font-weight:400;">ⓘ</span>`;
+      let panel = '';
+      if (open) {
+        const resolved = charAbilities.resolveAbilityTokensHtml(ext, builder, inst, { charData, ruleset: activeRuleset });
+        panel = `<div style="grid-column:1 / -1;margin:6px 0 4px 30px;padding:10px 12px;background:#0a0a0a;border:1px solid #1a1a1a;border-left:2px solid #3a3a20;border-radius:3px;font-size:12px;color:#aaa;line-height:1.55;white-space:pre-wrap;">${resolved}</div>`;
+      }
+      return { glyph, panel };
+    }
     function lockReason(item) {
       const isOn = selected.has(item.id);
       if (isOn) return null;
@@ -8669,20 +8769,25 @@
                        style="flex:1;background:#111;border:1px solid #2a2a2a;color:#e0e0e0;font-family:inherit;font-size:12px;padding:5px 8px;border-radius:3px;outline:none;">
               </div>
             ` : '';
+            const fxStack = extInfo(f);
             html += `
-              <div style="display:grid;grid-template-columns:28px 1fr 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;">
-                <button title="Remove this pick" type="button"
-                        onclick="abilitiesBuilderRemoveStack('flaw','${escapeHtml(f.id)}',${s})"
-                        style="background:transparent;border:1px solid #2a2a2a;color:#c66;font-size:13px;cursor:pointer;border-radius:3px;height:24px;line-height:1;">×</button>
-                <div>
-                  <div style="font-weight:500;color:#ddd;font-size:13px;">
-                    ${escapeHtml(displayName(f))}${count > 1 ? ` <span style="font-size:10px;color:#888;font-weight:400;">#${s + 1}</span>` : ''}
-                    <span style="font-size:10px;color:#888;font-weight:400;font-style:italic;margin-left:6px;">stackable</span>
+              <div>
+                <div style="display:grid;grid-template-columns:28px 1fr 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:${fxStack.panel ? 'none' : '1px solid #151515'};">
+                  <button title="Remove this pick" type="button"
+                          onclick="abilitiesBuilderRemoveStack('flaw','${escapeHtml(f.id)}',${s})"
+                          style="background:transparent;border:1px solid #2a2a2a;color:#c66;font-size:13px;cursor:pointer;border-radius:3px;height:24px;line-height:1;">×</button>
+                  <div>
+                    <div style="font-weight:500;color:#ddd;font-size:13px;">
+                      ${escapeHtml(displayName(f))}${count > 1 ? ` <span style="font-size:10px;color:#888;font-weight:400;">#${s + 1}</span>` : ''}
+                      <span style="font-size:10px;color:#888;font-weight:400;font-style:italic;margin-left:6px;">stackable</span>
+                      ${fxStack.glyph}
+                    </div>
+                    ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;white-space:pre-wrap;">${escapeHtml(f.description)}</div>` : ''}
                   </div>
-                  ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
+                  <span style="color:#88c080;font-family:monospace;font-size:12px;text-align:right;">−${refund} AP</span>
+                  ${stackCfHtml}
                 </div>
-                <span style="color:#88c080;font-family:monospace;font-size:12px;text-align:right;">−${refund} AP</span>
-                ${stackCfHtml}
+                ${fxStack.panel}
               </div>
             `;
           }
@@ -8703,19 +8808,23 @@
         }
 
         const violationMsg = violationReason(f);
+        const fx = extInfo(f);
         html += `
-          <label style="display:grid;grid-template-columns:24px 1fr 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #151515;cursor:${lockedReason ? 'not-allowed' : 'pointer'};opacity:${lockedReason ? '0.45' : '1'};${violationMsg ? 'background:#2a1f0a;' : ''}"
-                 ${lockedReason ? `title="${escapeHtmlAttr(lockedReason)}"` : (violationMsg ? `title="${escapeHtmlAttr(violationMsg)}"` : '')}>
-            <input type="checkbox" ${isOn ? 'checked' : ''} ${lockedReason ? 'disabled' : ''} onchange="abilitiesBuilderToggleFlaw('${escapeHtml(f.id)}')">
-            <div>
-              <div style="font-weight:500;color:#ddd;font-size:13px;">${escapeHtml(displayName(f))}${lockedReason ? ` <span style="font-size:10px;color:#aa6655;font-weight:400;font-style:italic;margin-left:4px;">🔒</span>` : ''}${violationMsg ? ` <span style="font-size:10px;color:#e0a060;font-weight:400;font-style:italic;margin-left:4px;">⚠</span>` : ''}</div>
-              ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;">${escapeHtml(f.description)}</div>` : ''}
-              ${lockedReason ? `<div style="font-size:10px;color:#aa6655;margin-top:2px;font-style:italic;">${escapeHtml(lockedReason)}</div>` : ''}
-              ${violationMsg ? `<div style="font-size:10px;color:#e0a060;margin-top:2px;font-style:italic;">⚠ ${escapeHtml(violationMsg)}</div>` : ''}
-            </div>
-            <span style="color:${isOn ? '#88c080' : '#666'};font-family:monospace;font-size:12px;text-align:right;">−${refund} AP</span>
-            ${cfInputHtml}
-          </label>
+          <div>
+            <label style="display:grid;grid-template-columns:24px 1fr 80px;gap:10px;align-items:center;padding:6px 0;border-bottom:${fx.panel ? 'none' : '1px solid #151515'};cursor:${lockedReason ? 'not-allowed' : 'pointer'};opacity:${lockedReason ? '0.45' : '1'};${violationMsg ? 'background:#2a1f0a;' : ''}"
+                   ${lockedReason ? `title="${escapeHtmlAttr(lockedReason)}"` : (violationMsg ? `title="${escapeHtmlAttr(violationMsg)}"` : '')}>
+              <input type="checkbox" ${isOn ? 'checked' : ''} ${lockedReason ? 'disabled' : ''} onchange="abilitiesBuilderToggleFlaw('${escapeHtml(f.id)}')">
+              <div>
+                <div style="font-weight:500;color:#ddd;font-size:13px;">${escapeHtml(displayName(f))}${lockedReason ? ` <span style="font-size:10px;color:#aa6655;font-weight:400;font-style:italic;margin-left:4px;">🔒</span>` : ''}${violationMsg ? ` <span style="font-size:10px;color:#e0a060;font-weight:400;font-style:italic;margin-left:4px;">⚠</span>` : ''}${fx.glyph}</div>
+                ${f.description ? `<div style="font-size:11px;color:#888;margin-top:2px;white-space:pre-wrap;">${escapeHtml(f.description)}</div>` : ''}
+                ${lockedReason ? `<div style="font-size:10px;color:#aa6655;margin-top:2px;font-style:italic;">${escapeHtml(lockedReason)}</div>` : ''}
+                ${violationMsg ? `<div style="font-size:10px;color:#e0a060;margin-top:2px;font-style:italic;">⚠ ${escapeHtml(violationMsg)}</div>` : ''}
+              </div>
+              <span style="color:${isOn ? '#88c080' : '#666'};font-family:monospace;font-size:12px;text-align:right;">−${refund} AP</span>
+              ${cfInputHtml}
+            </label>
+            ${fx.panel}
+          </div>
         `;
       });
     });
