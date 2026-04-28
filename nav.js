@@ -246,7 +246,17 @@ function _renderAlerts() {
 
   footer.style.display = 'flex';
   list.innerHTML = _navAlertsCache.map(a => {
-    const text = (a.text || '').replace(/</g, '&lt;').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    // Escape HTML-significant chars first so user content can't break
+    // the layout, then re-introduce **bold** as <strong>. Order matters:
+    // we strip <, &, > BEFORE the markdown step so attacker-controlled
+    // text like `**<img onerror=...>**` ends up as
+    // `<strong>&lt;img onerror=...&gt;</strong>` instead of injecting
+    // a tag. The non-greedy `(.+?)` lets multiple **pairs** coexist.
+    const text = (a.text || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     const time = _formatAlertTime(a.createdAt);
     const onClick = a.link ? `onclick="markAlertReadAndGo('${a.id}','${a.link.replace(/'/g,"\\'")}')"` : `onclick="markAlertRead('${a.id}')"`;
     return `<div class="alert-item ${a.read ? '' : 'unread'}" style="cursor:pointer" ${onClick}>
