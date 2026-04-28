@@ -221,7 +221,7 @@ export function createOverviewSection(ctx) {
 
     const segHtml = renderBodySegments(body.max, body.damage, Math.min(body.max, 40), body.destroyed);
     const headInner = `
-      <span class="state-tile-label">Body</span>
+      <span class="state-tile-label">Physical Health</span>
       <span class="state-tile-nums">${body.current}<span class="sep">/</span><span class="max">${body.max}</span></span>`;
     // Description block (player-overridable). Renders the ruleset's
     // ruleset.tileDescriptions.body with a pencil-edit affordance for
