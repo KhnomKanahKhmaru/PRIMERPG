@@ -472,7 +472,7 @@
     .state-tile-status.s-disabled { background: #2a1a10; color: #d89060; border: 1px solid #4a2d20; }
     .state-tile-status.s-dead     { background: #2a0d0d; color: #e06060; border: 1px solid #6a2a2a; }
     .state-tile-status.s-shock    { background: #2a2410; color: #d8c060; border: 1px solid #4a3d20; }
-    .state-tile-status.s-broken   { background: #2a1a10; color: #d89060; border: 1px solid #4a2d20; }
+    .state-tile-status.s-disturbed { background: #2a1a10; color: #d89060; border: 1px solid #4a2d20; }
     .state-tile-status.s-broken   { background: #2a0d0d; color: #e06060; border: 1px solid #6a2a2a; }
     /* EXHAUSTION status pills — reuse the 4-step progression green →
        yellow → orange → red to match the segmented bar palette. Reuses
@@ -6208,22 +6208,22 @@
     setPowerName:         async (name)  => { await combat.setPowerName(name);  if (typeof renderAbilitiesTab === 'function') renderAbilitiesTab(); },
     toggleHlModifierEdit: () => combat.toggleEditMode(),
     // MEN handlers
-    tickSanDmg:           (delta) => combat.tickSanDmg(delta),
-    setSanCurrent:        (val) => combat.setSanCurrent(val),
-    toggleSanModifierEdit: () => combat.toggleSanModifierEdit(),
-    addSanMod:            () => combat.addSanMod(),
-    updateSanMod:         (idx, field, val) => combat.updateSanMod(idx, field, val),
-    deleteSanMod:         (idx) => combat.deleteSanMod(idx),
+    tickMenDmg:           (delta) => combat.tickMenDmg(delta),
+    setMenCurrent:        (val) => combat.setMenCurrent(val),
+    toggleMenModifierEdit: () => combat.toggleMenModifierEdit(),
+    addMenMod:            () => combat.addMenMod(),
+    updateMenMod:         (idx, field, val) => combat.updateMenMod(idx, field, val),
+    deleteMenMod:         (idx) => combat.deleteMenMod(idx),
     // MEN Damages handlers
-    toggleSanDamagesSection: () => combat.toggleSanDamagesSection(),
-    toggleSanDamageExpand:   (id) => combat.toggleSanDamageExpand(id),
-    quickAddSanDamage:       () => combat.quickAddSanDamage(),
-    removeSanDamage:         (id) => combat.removeSanDamage(id),
-    updateSanDamageField:    (id, field, val) => combat.updateSanDamageField(id, field, val),
-    tickSanDamageQuickmod:   (id, delta) => combat.tickSanDamageQuickmod(id, delta),
-    addSanDamageMod:         (id) => combat.addSanDamageMod(id),
-    updateSanDamageMod:      (id, idx, field, val) => combat.updateSanDamageMod(id, idx, field, val),
-    deleteSanDamageMod:      (id, idx) => combat.deleteSanDamageMod(id, idx),
+    toggleMenDamagesSection: () => combat.toggleMenDamagesSection(),
+    toggleMenDamageExpand:   (id) => combat.toggleMenDamageExpand(id),
+    quickAddMenDamage:       () => combat.quickAddMenDamage(),
+    removeMenDamage:         (id) => combat.removeMenDamage(id),
+    updateMenDamageField:    (id, field, val) => combat.updateMenDamageField(id, field, val),
+    tickMenDamageQuickmod:   (id, delta) => combat.tickMenDamageQuickmod(id, delta),
+    addMenDamageMod:         (id) => combat.addMenDamageMod(id),
+    updateMenDamageMod:      (id, idx, field, val) => combat.updateMenDamageMod(id, idx, field, val),
+    deleteMenDamageMod:      (id, idx) => combat.deleteMenDamageMod(id, idx),
     // Card dice modifiers
     toggleDiceModPanel:   (code) => combat.toggleDiceModPanel(code),
     addDiceMod:           (code) => combat.addDiceMod(code),
