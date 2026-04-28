@@ -157,7 +157,7 @@
     .ds-desc-row textarea:focus { border-color: #444; }
 
     /* Overview Tile Descriptions editor — grid of three labeled
-       textareas for Body / Sanity / Penalty. Same aesthetic as
+       textareas for Body / Mental Health / Penalty. Same aesthetic as
        .ds-desc-row but full-width (no parent row to nest under),
        stacked three-high with a clear label per row. */
     .tile-desc-grid {
@@ -1222,7 +1222,7 @@
 
       <!-- TILE DESCRIPTIONS
            The three computed summary tiles on the Overview tab (Body,
-           Sanity, Penalty) don't have a single backing stat, so their
+           Mental Health, Penalty) don't have a single backing stat, so their
            descriptions live here in the ruleset. Players see these on
            their character sheet when hovering the tile and can override
            them per-character like any other game-content description. -->
@@ -1239,10 +1239,10 @@
                       placeholder="What does the Body tile represent? e.g. 'Your physical integrity — HP tracks overall durability...'"></textarea>
           </div>
           <div class="tile-desc-row">
-            <label class="tile-desc-label">Sanity</label>
-            <textarea id="tile-desc-sanity" rows="3"
-                      oninput="updateTileDescription('sanity',this.value)"
-                      placeholder="What does the Sanity tile represent?"></textarea>
+            <label class="tile-desc-label">Mental Health</label>
+            <textarea id="tile-desc-mentalHealth" rows="3"
+                      oninput="updateTileDescription('mentalHealth',this.value)"
+                      placeholder="What does the Mental Health tile represent?"></textarea>
           </div>
           <div class="tile-desc-row">
             <label class="tile-desc-label">Penalty</label>
@@ -1696,17 +1696,17 @@
     document.getElementById('rs-statAbsMax').value = state.statMax ?? 20;
     document.getElementById('rs-skillMax').value = state.skillMax ?? 10;
 
-    // Overview tile descriptions — Body / Sanity / Penalty / Power.
+    // Overview tile descriptions — Body / Mental Health / Penalty / Power.
     // Always populated, falling back to empty string if the ruleset
     // predates the tileDescriptions field (the normalizer will have
     // filled defaults by now, but belt-and-suspenders).
     const tdBody    = document.getElementById('tile-desc-body');
-    const tdSanity  = document.getElementById('tile-desc-sanity');
+    const tdSanity  = document.getElementById('tile-desc-mentalHealth');
     const tdPenalty = document.getElementById('tile-desc-penalty');
     const tdPower   = document.getElementById('tile-desc-power');
     const td = (state.tileDescriptions && typeof state.tileDescriptions === 'object') ? state.tileDescriptions : {};
     if (tdBody)    tdBody.value    = td.body    || '';
-    if (tdSanity)  tdSanity.value  = td.sanity  || '';
+    if (tdSanity)  tdSanity.value  = td.mentalHealth  || '';
     if (tdPenalty) tdPenalty.value = td.penalty || '';
     if (tdPower)   tdPower.value   = td.power   || '';
 
@@ -3069,7 +3069,7 @@
     if (field === 'code' || field === 'group') renderDerivedStats();
   };
 
-  // Tile descriptions (Body/Sanity/Penalty). Each textarea writes
+  // Tile descriptions (Body/Mental Health/Penalty). Each textarea writes
   // directly into state.tileDescriptions without triggering a
   // re-render — the textarea holds the value itself. On save, the
   // whole state.tileDescriptions object is persisted.
@@ -3953,7 +3953,7 @@
       // Derived Stats & Combat
       derivedStatGroups: state.derivedStatGroups,
       derivedStats:      state.derivedStats,
-      // Overview tile descriptions (Body/Sanity/Penalty) — a small
+      // Overview tile descriptions (Body/Mental Health/Penalty) — a small
       // map of hover descriptions for the three computed summary
       // tiles. Saved separately from derivedStats since these tiles
       // don't have a backing stat entry.
