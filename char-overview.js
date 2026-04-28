@@ -159,7 +159,7 @@ export function createOverviewSection(ctx) {
     const charData = getCharData ? getCharData() : null;
     const otherMods = charData && Array.isArray(charData.otherModifiers) ? charData.otherModifiers : [];
     const canEdit = getCanEdit ? getCanEdit() : true;
-    tiles.push(renderPenaltyTile(result.pain, result.stress, result.penalty, otherMods, canEdit, { collapsible: true }));
+    tiles.push(renderPenaltyTile(result.pain, result.stress, result.exh, result.penalty, otherMods, canEdit, { collapsible: true }));
 
     // Afflictions tile — Conditions & Circumstances split. Renders
     // directly after the Penalty tile so "what's wrong / what's affecting
@@ -525,7 +525,7 @@ export function createOverviewSection(ctx) {
   // clicks re-render the Combat tab, not the Overview tab — otherwise
   // toggles flip the state but appear to do nothing because the tab
   // containing the caret is never repainted.
-  function renderPenaltyTile(pain, stress, penalty, otherMods, canEdit, opts) {
+  function renderPenaltyTile(pain, stress, exh, penalty, otherMods, canEdit, opts) {
     if (!penalty) return '';
     opts = opts || {};
     const collapsible = opts.collapsible === true;
@@ -539,6 +539,7 @@ export function createOverviewSection(ctx) {
     else               pctColor = '#e07878';
     const painPct   = (pain && pain.finalPercent) || 0;
     const stressPct = (stress && stress.finalPercent) || 0;
+    const exhPct    = (exh && exh.finalPercent) || 0;
     const encPct    = penalty.encumbrancePercent || 0;
     const otherPct  = penalty.otherPercent || 0;
 
@@ -624,6 +625,10 @@ export function createOverviewSection(ctx) {
         <div class="state-penalty-row">
           <span class="state-penalty-k">Stress</span>
           <span class="state-penalty-v">${stressPct}%</span>
+        </div>
+        <div class="state-penalty-row">
+          <span class="state-penalty-k">Exhaustion</span>
+          <span class="state-penalty-v">${exhPct}%</span>
         </div>
         <div class="state-penalty-row state-penalty-row-locked" title="${escapeHtml(encTip)}">
           <span class="state-penalty-k">Encumbrance <span class="state-penalty-lock">🔒</span></span>
