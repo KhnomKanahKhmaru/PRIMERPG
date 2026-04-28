@@ -7938,6 +7938,12 @@
 
   function renderAbilitiesBuilderIdentitySection(inst) {
     const collapsed = abilitiesBuilderIsCollapsed('identity');
+    // Resolve the Builder for this instance so we can read its
+    // GM-authored Visual / Extra guidelines and pass it to the token
+    // resolver. Defensive: a missing Builder (catalogue moved/deleted)
+    // means we just render the basic identity fields with no hints.
+    const ref = charAbilities.findBuilderById(activeRuleset, inst.builderId);
+    const builder = ref ? ref.builder : null;
     // GM-authored Visual / Extra guidelines, with tokens resolved
     // against the player's CURRENT selections. These hints help the
     // player understand what's expected before they author their own
@@ -7946,14 +7952,14 @@
     // When the player hasn't selected the relevant flaws yet, unknown
     // tokens render as literal `{TokenName}` — that's fine, it shows
     // them what's missing.
-    const visualGuide = builder.visualGuideline || builder.visualPrompt || '';
-    const extraGuide  = builder.extraGuideline  || builder.extra        || '';
-    const visualHintHtml = visualGuide
+    const visualGuide = builder ? (builder.visualGuideline || builder.visualPrompt || '') : '';
+    const extraGuide  = builder ? (builder.extraGuideline  || builder.extra        || '') : '';
+    const visualHintHtml = (visualGuide && builder)
       ? `<div style="margin-top:6px;padding:8px 10px;background:#0a0a0a;border:1px solid #1a1a1a;border-left:2px solid #3a3a20;border-radius:3px;font-size:11px;color:#888;line-height:1.5;font-style:italic;">
            ${charAbilities.resolveAbilityTokensHtml(visualGuide, builder, inst, { charData, ruleset: activeRuleset })}
          </div>`
       : '';
-    const extraHintHtml = extraGuide
+    const extraHintHtml = (extraGuide && builder)
       ? `<div style="margin-top:6px;padding:8px 10px;background:#0a0a0a;border:1px solid #1a1a1a;border-left:2px solid #3a3a20;border-radius:3px;font-size:11px;color:#888;line-height:1.5;font-style:italic;">
            ${charAbilities.resolveAbilityTokensHtml(extraGuide, builder, inst, { charData, ruleset: activeRuleset })}
          </div>`
