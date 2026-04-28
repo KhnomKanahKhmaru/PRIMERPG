@@ -373,11 +373,12 @@ window.RULESET_DEFAULTS = {
     },
     // MENTAL
     {
-      // Internal stat code stays 'SAN' for backward compatibility —
-      // existing characters have their stat values keyed by 'SAN' in
-      // Firestore, and renaming the code would orphan that data.
-      // Display label is 'Mental Health' / 'MEN' throughout the UI.
-      code: 'SAN',
+      // Stat code is 'MEN' — display label 'Mental Health'. Was
+      // previously coded as 'SAN' for legacy reasons; renamed in the
+      // hard-recode pass. The normalizer (and the one-time migration
+      // script) handles existing rulesets/characters that still have
+      // the legacy 'SAN' code stored in Firestore.
+      code: 'MEN',
       name: 'Mental Health',
       description: 'Mental durability. Roll for mental resistances.',
       group: 'mental',
@@ -981,6 +982,20 @@ window.normalizeRuleset = function(rs) {
   if (out.statMax == null) out.statMax = d.statMax;
   if (out.statMax < out.statMaxPurchasable) out.statMax = out.statMaxPurchasable;
   if (!Array.isArray(out.stats) || out.stats.length === 0) out.stats = JSON.parse(JSON.stringify(d.stats));
+  // Legacy stat-code rename: 'SAN' → 'MEN'. Existing rulesets in
+  // Firestore have the Mental Health stat saved with code 'SAN'.
+  // Aliasing on read keeps things working before the migration script
+  // rewrites the saved data. If a stat with code 'SAN' AND no stat
+  // with code 'MEN' exists, rename the SAN entry. If both exist
+  // somehow (shouldn't happen post-migration), the MEN entry wins
+  // and we drop the SAN duplicate.
+  const hasMenStat = out.stats.some(s => s && s.code === 'MEN');
+  out.stats = out.stats.filter(s => {
+    if (!s || s.code !== 'SAN') return true;
+    if (hasMenStat) return false; // drop legacy duplicate
+    s.code = 'MEN';
+    return true;
+  });
   if (!Array.isArray(out.statMods) || out.statMods.length === 0) out.statMods = d.statMods.slice();
   if (!Array.isArray(out.statLabels) || out.statLabels.length === 0) out.statLabels = d.statLabels.slice();
   while (out.statMods.length < out.statMax + 1) out.statMods.push(out.statMods[out.statMods.length-1] ?? 0);
