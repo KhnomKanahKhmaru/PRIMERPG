@@ -122,7 +122,7 @@ export function createOverviewSection(ctx) {
       tiles.push(renderBodyTile(body));
     }
 
-    // SANITY tile — MEN current/max, blue→red bar, status label.
+    // MENTAL HEALTH tile — MEN current/max, blue→red bar, status label.
     const men = result.men;
     if (men && men.max > 0) {
       tiles.push(renderMenTile(men));
