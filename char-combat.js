@@ -218,6 +218,11 @@ export function createCombatSection(ctx) {
     result.stats.forEach((entry) => {
       if (entry.def.code === 'POWER') return;
       if (entry.def.code === 'MEN') return;        // rendered in its own section
+      // Defensive: legacy 'SAN' code may slip through if a ruleset
+      // hasn't been re-saved since the SAN→MEN rename. Skip it too
+      // so we don't render a stray "Sanity" card inside the Mental
+      // group while the proper Mental Health section also renders.
+      if (entry.def.code === 'SAN') return;
       if (entry.def.group === 'health') return;
       const g = entry.def.group;
       if (includeGroups && !includeGroups.has(g)) return;
@@ -1198,7 +1203,7 @@ export function createCombatSection(ctx) {
 
     if (expanded && canEdit) {
       html += '<div class="strain-panel">';
-      html += `<div class="strain-panel-base">Base: ${data.basePercent}% (computed from ${label === 'Pain' ? 'Body damage' : 'MEN damage'})</div>`;
+      html += `<div class="strain-panel-base">Base: ${data.basePercent}% (computed from ${label === 'Pain' ? 'Physical Health damage' : 'MEN damage'})</div>`;
       if (mods.length === 0) {
         html += '<div class="mod-empty">No modifiers. Add percentile adjustments (e.g. "Adrenaline: −10%" or "Fatigue: +15%").</div>';
       } else {
@@ -2681,7 +2686,7 @@ export function createCombatSection(ctx) {
     let html = `
       <div class="${rowClass}">
         <div class="body-top-row">
-          <span class="body-label">Body</span>
+          <span class="body-label">Physical Health</span>
           <span class="body-value">${body.current} / ${body.max}</span>
           <span class="${statusClass}">${escapeHtml(body.statusLabel)}</span>
         </div>
