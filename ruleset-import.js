@@ -369,7 +369,9 @@ function mergeRulesets(current, incoming, warnings) {
     if (typeof incoming[k] === 'string' && incoming[k].trim()) out[k] = incoming[k];
   });
   // Identified-array fields
-  const idArrays = ['stats', 'skills', 'weapons', 'derivedStats', 'powerLevels'];
+  // (powerLevels removed — Power Levels were deprecated when the
+  // economy was rewritten to use a flat xpToApRate.)
+  const idArrays = ['stats', 'skills', 'weapons', 'derivedStats'];
   idArrays.forEach(k => {
     if (Array.isArray(incoming[k])) {
       out[k] = mergeById(Array.isArray(out[k]) ? out[k] : [], incoming[k]);
