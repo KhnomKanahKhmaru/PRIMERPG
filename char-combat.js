@@ -3138,7 +3138,7 @@ export function createCombatSection(ctx) {
   // system narratively triggers the roll; the UI just tells you what the
   // results mean.
 
-  let editSanModifiersMode = false;
+  let editMenModifiersMode = false;
 
   function renderMenSection(result) {
     const men = result.men;
@@ -3195,18 +3195,18 @@ export function createCombatSection(ctx) {
     if (canEdit) {
       const damageCap = Math.max(men.max * 5, 10);
       body_html += `<div class="men-controls">
-        <button class="hl-dmg-btn" onclick="tickSanDmg(1)" title="Take 1 Mental Damage">−</button>
+        <button class="hl-dmg-btn" onclick="tickMenDmg(1)" title="Take 1 Mental Damage">−</button>
         <input type="number" class="men-dmg-input" value="${men.current}" min="${-damageCap}" max="${men.max}"
-               onchange="setSanCurrent(this.value)"
+               onchange="setMenCurrent(this.value)"
                title="Current MEN (type to set directly)">
-        <button class="hl-dmg-btn" onclick="tickSanDmg(-1)" title="Heal 1 MEN">+</button>
+        <button class="hl-dmg-btn" onclick="tickMenDmg(-1)" title="Heal 1 MEN">+</button>
       </div>`;
     } else {
       body_html += `<div class="men-controls men-controls-ro"><span class="men-current-ro">${men.current} / ${men.max}</span></div>`;
     }
 
     // Edit modifiers panel — same shape as Body modifier panel.
-    if (editSanModifiersMode && canEdit) {
+    if (editMenModifiersMode && canEdit) {
       body_html += renderMenModifierPanel(men);
     }
 
@@ -3217,7 +3217,7 @@ export function createCombatSection(ctx) {
     body_html += renderStressPill(result);
 
     // Damages manager — simplified Injuries for mental health.
-    body_html += renderSanDamagesSection(result);
+    body_html += renderMenDamagesSection(result);
 
     // Breaking Point reference — shown whenever Broken. This is guidance,
     // not automation. GM rolls d10 per PRIME rules and applies the result.
@@ -3234,8 +3234,8 @@ export function createCombatSection(ctx) {
     const menTitle = (mentalGroup && mentalGroup.label) ? mentalGroup.label : 'Mental Health';
     let head_html = `<span class="combat-section-title-text">${escapeHtml(menTitle)}</span>`;
     if (canEdit) {
-      head_html += `<button class="hl-edit-btn${editSanModifiersMode ? ' active' : ''}" onclick="event.stopPropagation();toggleSanModifierEdit()">` +
-                   `${editSanModifiersMode ? 'Done' : 'Edit Modifiers'}</button>`;
+      head_html += `<button class="hl-edit-btn${editMenModifiersMode ? ' active' : ''}" onclick="event.stopPropagation();toggleMenModifierEdit()">` +
+                   `${editMenModifiersMode ? 'Done' : 'Edit Modifiers'}</button>`;
     }
 
     return wrapCollapsibleSection(
@@ -3247,16 +3247,16 @@ export function createCombatSection(ctx) {
   }
 
   // UI-only state for Damages, mirroring the Injuries pattern.
-  const expandedSanDamages = new Set();
+  const expandedMenDamages = new Set();
   let menDamagesOpen = false;
 
-  function renderSanDamagesSection(result) {
+  function renderMenDamagesSection(result) {
     const men = result.men;
     const damages = (men && men.damages) || [];
     const canEdit = ctx.getCanEdit();
 
     let html = '<div class="injury-section men-damages-section">';
-    html += `<div class="injury-head" onclick="toggleSanDamagesSection()">
+    html += `<div class="injury-head" onclick="toggleMenDamagesSection()">
       <span class="injury-head-caret">${menDamagesOpen ? '▾' : '▸'}</span>
       <span class="injury-head-title">Damages</span>
       <span class="injury-head-count">${damages.length}</span>
@@ -3268,11 +3268,11 @@ export function createCombatSection(ctx) {
     if (canEdit) {
       html += `<div class="injury-quickadd-row men-qadd-row">
         <input type="text" id="qadd-mendmg-name" class="qadd-inj-name" placeholder="Damage name"
-               onkeydown="if(event.key==='Enter')quickAddSanDamage()">
+               onkeydown="if(event.key==='Enter')quickAddMenDamage()">
         <input type="number" id="qadd-mendmg-level" class="qadd-inj-level" placeholder="Deg"
                min="0" max="99" value="1"
-               onkeydown="if(event.key==='Enter')quickAddSanDamage()">
-        <button class="injury-add-btn" onclick="quickAddSanDamage()">Add</button>
+               onkeydown="if(event.key==='Enter')quickAddMenDamage()">
+        <button class="injury-add-btn" onclick="quickAddMenDamage()">Add</button>
       </div>`;
     }
 
@@ -3280,7 +3280,7 @@ export function createCombatSection(ctx) {
       html += '<div class="injury-empty">No damages recorded.</div>';
     } else {
       html += '<div class="injury-list">';
-      damages.forEach(d => { html += renderSanDamageCard(d, canEdit); });
+      damages.forEach(d => { html += renderMenDamageCard(d, canEdit); });
       html += '</div>';
     }
 
@@ -3290,8 +3290,8 @@ export function createCombatSection(ctx) {
 
   // Single damage card. Compact header when collapsed, full editor when open.
   // Header reads: [caret] [Name] [Nth Degree] [−][+] [×]
-  function renderSanDamageCard(dmg, canEdit) {
-    const open = expandedSanDamages.has(dmg.id);
+  function renderMenDamageCard(dmg, canEdit) {
+    const open = expandedMenDamages.has(dmg.id);
 
     let degreeText;
     if (dmg.currentLevel === dmg.baseLevel) {
@@ -3301,25 +3301,25 @@ export function createCombatSection(ctx) {
     }
 
     let html = `<div class="injury-card${open ? ' open' : ''}">`;
-    html += `<div class="injury-card-head" onclick="toggleSanDamageExpand('${dmg.id}')">
+    html += `<div class="injury-card-head" onclick="toggleMenDamageExpand('${dmg.id}')">
       <span class="injury-caret">${open ? '▾' : '▸'}</span>
       <span class="injury-name">${escapeHtml(dmg.name || '(unnamed)')}</span>
       <span class="injury-degree">${degreeText}</span>
       ${canEdit ? `<span class="injury-quickmod" onclick="event.stopPropagation()">
-        <button class="injury-qm-btn" onclick="event.stopPropagation();tickSanDamageQuickmod('${dmg.id}',-1)" title="Quickmod −1">−</button>
-        <button class="injury-qm-btn" onclick="event.stopPropagation();tickSanDamageQuickmod('${dmg.id}',1)" title="Quickmod +1">+</button>
+        <button class="injury-qm-btn" onclick="event.stopPropagation();tickMenDamageQuickmod('${dmg.id}',-1)" title="Quickmod −1">−</button>
+        <button class="injury-qm-btn" onclick="event.stopPropagation();tickMenDamageQuickmod('${dmg.id}',1)" title="Quickmod +1">+</button>
       </span>` : ''}
-      ${canEdit ? `<button class="injury-quickdelete" onclick="event.stopPropagation();removeSanDamage('${dmg.id}')" title="Delete damage">×</button>` : ''}
+      ${canEdit ? `<button class="injury-quickdelete" onclick="event.stopPropagation();removeMenDamage('${dmg.id}')" title="Delete damage">×</button>` : ''}
     </div>`;
 
     if (open) {
-      html += renderSanDamageBody(dmg, canEdit);
+      html += renderMenDamageBody(dmg, canEdit);
     }
     html += '</div>';
     return html;
   }
 
-  function renderSanDamageBody(dmg, canEdit) {
+  function renderMenDamageBody(dmg, canEdit) {
     let html = '<div class="injury-card-body">';
 
     if (canEdit) {
@@ -3327,18 +3327,18 @@ export function createCombatSection(ctx) {
         <div class="injury-field">
           <span>Name</span>
           <input type="text" value="${escapeHtml(dmg.name || '')}" placeholder="Damage name"
-                 onchange="updateSanDamageField('${dmg.id}','name',this.value)">
+                 onchange="updateMenDamageField('${dmg.id}','name',this.value)">
         </div>
         <div class="injury-field">
           <span>Base Degree</span>
           <input type="number" value="${dmg.baseLevel}" min="0" max="99"
-                 onchange="updateSanDamageField('${dmg.id}','baseLevel',this.value)">
+                 onchange="updateMenDamageField('${dmg.id}','baseLevel',this.value)">
         </div>
       </div>
       <div class="injury-field injury-field-desc">
         <span>Description</span>
         <textarea rows="2" placeholder="What caused this, what it feels like, etc."
-                  onchange="updateSanDamageField('${dmg.id}','description',this.value)">${escapeHtml(dmg.description || '')}</textarea>
+                  onchange="updateMenDamageField('${dmg.id}','description',this.value)">${escapeHtml(dmg.description || '')}</textarea>
       </div>`;
     } else {
       html += `<div class="injury-fields-ro">
@@ -3359,20 +3359,20 @@ export function createCombatSection(ctx) {
       mods.forEach((mod, idx) => {
         html += `<div class="mod-item">
           <input type="text" class="mod-name-input" value="${escapeHtml(mod.name || '')}" placeholder="Modifier name"
-                 ${canEdit ? `onchange="updateSanDamageMod('${dmg.id}',${idx},'name',this.value)"` : 'readonly'}>
+                 ${canEdit ? `onchange="updateMenDamageMod('${dmg.id}',${idx},'name',this.value)"` : 'readonly'}>
           <input type="number" class="mod-val-input" value="${mod.value || 0}" step="1"
-                 ${canEdit ? `onchange="updateSanDamageMod('${dmg.id}',${idx},'value',this.value)"` : 'readonly'}>
-          ${canEdit ? `<span class="mod-delete" onclick="deleteSanDamageMod('${dmg.id}',${idx})" title="Delete modifier">×</span>` : ''}
+                 ${canEdit ? `onchange="updateMenDamageMod('${dmg.id}',${idx},'value',this.value)"` : 'readonly'}>
+          ${canEdit ? `<span class="mod-delete" onclick="deleteMenDamageMod('${dmg.id}',${idx})" title="Delete modifier">×</span>` : ''}
         </div>`;
       });
       html += '</div>';
     }
-    if (canEdit) html += `<div class="mod-add-row"><button class="mod-add-btn" onclick="addSanDamageMod('${dmg.id}')">+ Add modifier</button></div>`;
+    if (canEdit) html += `<div class="mod-add-row"><button class="mod-add-btn" onclick="addMenDamageMod('${dmg.id}')">+ Add modifier</button></div>`;
     html += '</div>';
 
     if (canEdit) {
       html += `<div class="injury-delete-row">
-        <button class="injury-delete-btn" onclick="removeSanDamage('${dmg.id}')">Delete Damage</button>
+        <button class="injury-delete-btn" onclick="removeMenDamage('${dmg.id}')">Delete Damage</button>
       </div>`;
     }
 
@@ -3423,16 +3423,16 @@ export function createCombatSection(ctx) {
       mods.forEach((mod, idx) => {
         html += `<div class="mod-item">
           <input type="text" class="mod-name-input" value="${escapeHtml(mod.name || '')}" placeholder="Modifier name"
-                 onchange="updateSanMod(${idx}, 'name', this.value)">
+                 onchange="updateMenMod(${idx}, 'name', this.value)">
           <input type="number" class="mod-val-input" value="${mod.value || 0}" step="1"
-                 onchange="updateSanMod(${idx}, 'value', this.value)">
-          <span class="mod-delete" onclick="deleteSanMod(${idx})" title="Delete modifier">×</span>
+                 onchange="updateMenMod(${idx}, 'value', this.value)">
+          <span class="mod-delete" onclick="deleteMenMod(${idx})" title="Delete modifier">×</span>
         </div>`;
       });
       html += '</div>';
     }
     html += `<div class="mod-add-row">
-      <button class="mod-add-btn" onclick="addSanMod()">+ Add modifier</button>
+      <button class="mod-add-btn" onclick="addMenMod()">+ Add modifier</button>
     </div>`;
     html += '</div>';
     return html;
@@ -3457,7 +3457,7 @@ export function createCombatSection(ctx) {
 
   // ─── MEN HANDLERS ───
 
-  async function tickSanDmg(delta) {
+  async function tickMenDmg(delta) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     const cur = Math.max(0, Number.isFinite(charData.menDamage) ? charData.menDamage : 0);
@@ -3472,7 +3472,7 @@ export function createCombatSection(ctx) {
   // structured damages' contribution is floor we can't dip below without
   // editing them. If the typed current would require NEGATIVE manual damage,
   // we clamp manual to 0.
-  async function setSanCurrent(val) {
+  async function setMenCurrent(val) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     const ruleset = ctx.getRuleset();
@@ -3495,13 +3495,13 @@ export function createCombatSection(ctx) {
     renderAll();
   }
 
-  function toggleSanModifierEdit() {
+  function toggleMenModifierEdit() {
     if (!ctx.getCanEdit()) return;
-    editSanModifiersMode = !editSanModifiersMode;
+    editMenModifiersMode = !editMenModifiersMode;
     renderAll();
   }
 
-  async function addSanMod() {
+  async function addMenMod() {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     if (!Array.isArray(charData.menModifiers)) charData.menModifiers = [];
@@ -3510,7 +3510,7 @@ export function createCombatSection(ctx) {
     renderAll();
   }
 
-  async function updateSanMod(idx, field, val) {
+  async function updateMenMod(idx, field, val) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     if (!Array.isArray(charData.menModifiers) || !charData.menModifiers[idx]) return;
@@ -3520,7 +3520,7 @@ export function createCombatSection(ctx) {
     renderAll();
   }
 
-  async function deleteSanMod(idx) {
+  async function deleteMenMod(idx) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     if (!Array.isArray(charData.menModifiers) || !charData.menModifiers[idx]) return;
@@ -3535,22 +3535,22 @@ export function createCombatSection(ctx) {
   // no traumas, no degradation. Each damage has a name, description, a
   // baseLevel (Degree) and optional level modifiers.
 
-  function newSanDamageId() {
+  function newMenDamageId() {
     return 'mendmg_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
   }
 
-  function toggleSanDamagesSection() {
+  function toggleMenDamagesSection() {
     menDamagesOpen = !menDamagesOpen;
     renderAll();
   }
 
-  function toggleSanDamageExpand(id) {
-    if (expandedSanDamages.has(id)) expandedSanDamages.delete(id);
-    else expandedSanDamages.add(id);
+  function toggleMenDamageExpand(id) {
+    if (expandedMenDamages.has(id)) expandedMenDamages.delete(id);
+    else expandedMenDamages.add(id);
     renderAll();
   }
 
-  async function quickAddSanDamage() {
+  async function quickAddMenDamage() {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     if (!Array.isArray(charData.menDamages)) charData.menDamages = [];
@@ -3562,14 +3562,14 @@ export function createCombatSection(ctx) {
     const baseLevel = levelEl ? Math.max(0, parseInt(levelEl.value) || 0) : 0;
 
     const dmg = {
-      id: newSanDamageId(),
+      id: newMenDamageId(),
       name,
       description: '',
       baseLevel,
       levelModifiers: []
     };
     charData.menDamages.push(dmg);
-    expandedSanDamages.add(dmg.id);
+    expandedMenDamages.add(dmg.id);
     menDamagesOpen = true;
     await saveCharacter(ctx.getCharId(), { menDamages: charData.menDamages });
     renderAll();
@@ -3577,17 +3577,17 @@ export function createCombatSection(ctx) {
     if (freshNameEl) { freshNameEl.value = ''; freshNameEl.focus(); }
   }
 
-  async function removeSanDamage(id) {
+  async function removeMenDamage(id) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     if (!Array.isArray(charData.menDamages)) return;
     charData.menDamages = charData.menDamages.filter(d => d.id !== id);
-    expandedSanDamages.delete(id);
+    expandedMenDamages.delete(id);
     await saveCharacter(ctx.getCharId(), { menDamages: charData.menDamages });
     renderAll();
   }
 
-  async function updateSanDamageField(id, field, val) {
+  async function updateMenDamageField(id, field, val) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     const dmg = (charData.menDamages || []).find(d => d.id === id);
@@ -3605,7 +3605,7 @@ export function createCombatSection(ctx) {
 
   // Quickmod: +/- on collapsed header. Find-or-create a "Quickmod" level
   // modifier, zero removes it. Same pattern as injuries.
-  async function tickSanDamageQuickmod(id, delta) {
+  async function tickMenDamageQuickmod(id, delta) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     const dmg = (charData.menDamages || []).find(d => d.id === id);
@@ -3625,7 +3625,7 @@ export function createCombatSection(ctx) {
     renderAll();
   }
 
-  async function addSanDamageMod(id) {
+  async function addMenDamageMod(id) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     const dmg = (charData.menDamages || []).find(d => d.id === id);
@@ -3636,7 +3636,7 @@ export function createCombatSection(ctx) {
     renderAll();
   }
 
-  async function updateSanDamageMod(id, idx, field, val) {
+  async function updateMenDamageMod(id, idx, field, val) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     const dmg = (charData.menDamages || []).find(d => d.id === id);
@@ -3647,7 +3647,7 @@ export function createCombatSection(ctx) {
     renderAll();
   }
 
-  async function deleteSanDamageMod(id, idx) {
+  async function deleteMenDamageMod(id, idx) {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
     const dmg = (charData.menDamages || []).find(d => d.id === id);
@@ -4136,13 +4136,13 @@ export function createCombatSection(ctx) {
     addInjuryMod, updateInjuryMod, deleteInjuryMod,
     addTrauma, removeTrauma, updateTraumaField,
     // Mental Health
-    tickSanDmg, setSanCurrent, toggleSanModifierEdit,
-    addSanMod, updateSanMod, deleteSanMod,
+    tickMenDmg, setMenCurrent, toggleMenModifierEdit,
+    addMenMod, updateMenMod, deleteMenMod,
     // Mental Health Damages
-    toggleSanDamagesSection, toggleSanDamageExpand,
-    quickAddSanDamage, removeSanDamage, updateSanDamageField,
-    tickSanDamageQuickmod,
-    addSanDamageMod, updateSanDamageMod, deleteSanDamageMod,
+    toggleMenDamagesSection, toggleMenDamageExpand,
+    quickAddMenDamage, removeMenDamage, updateMenDamageField,
+    tickMenDamageQuickmod,
+    addMenDamageMod, updateMenDamageMod, deleteMenDamageMod,
     // Card dice modifiers (player/GM-editable bonus dice for rolls)
     toggleDiceModPanel, addDiceMod, updateDiceMod, deleteDiceMod,
     // Card value modifiers (flat bonuses on SPD/SPR-style stats)
