@@ -3346,6 +3346,85 @@
     const tiers = cat.canonicalTiers || {};
     const tierTable = (kind === 'feature' ? tiers.featureCosts : tiers.flawRefunds) || {};
 
+    // Build a flat picker-list of ALL features+flaws on this Builder
+    // (own + catalogue defaults), so the requires/excludes UI can show
+    // every option and look up names by id. Used by the prereq/exclude
+    // chip rendering below.
+    function buildPickerCandidates() {
+      const out = [];
+      const seen = new Set();
+      // Own features and flaws
+      (Array.isArray(b.features) ? b.features : []).forEach(f => {
+        if (f && f.id && !seen.has(f.id)) { seen.add(f.id); out.push({ id: f.id, name: f.name || '(unnamed)', kindLabel: 'F' }); }
+      });
+      (Array.isArray(b.flaws) ? b.flaws : []).forEach(f => {
+        if (f && f.id && !seen.has(f.id)) { seen.add(f.id); out.push({ id: f.id, name: f.name || '(unnamed)', kindLabel: 'f' }); }
+      });
+      // Catalogue defaults (visible to this Builder unless suppressed)
+      (Array.isArray(cat.defaultFeatures) ? cat.defaultFeatures : []).forEach(f => {
+        if (f && f.id && !seen.has(f.id)) {
+          const ov = (b.defaultFeatureOverrides || {})[f.id];
+          if (ov && ov.suppressed) return;
+          seen.add(f.id);
+          out.push({ id: f.id, name: (ov && ov.name) || f.name || '(unnamed)', kindLabel: 'F·def' });
+        }
+      });
+      (Array.isArray(cat.defaultFlaws) ? cat.defaultFlaws : []).forEach(f => {
+        if (f && f.id && !seen.has(f.id)) {
+          const ov = (b.defaultFlawOverrides || {})[f.id];
+          if (ov && ov.suppressed) return;
+          seen.add(f.id);
+          out.push({ id: f.id, name: (ov && ov.name) || f.name || '(unnamed)', kindLabel: 'f·def' });
+        }
+      });
+      return out;
+    }
+    const pickerCandidates = buildPickerCandidates();
+    const candidateById = {};
+    pickerCandidates.forEach(c => { candidateById[c.id] = c; });
+
+    // Render the requires/excludes UI for an FF row. Both lists show
+    // chips for currently-set ids + a small picker dropdown to add
+    // more. The picker omits the row's own id (a feature can't require
+    // itself) and any items already in either list.
+    function renderRequiresExcludesUI(ownId, requires, excludes, rowIdx) {
+      const reqIds = Array.isArray(requires) ? requires : [];
+      const excIds = Array.isArray(excludes) ? excludes : [];
+      const usedIds = new Set([ownId, ...reqIds, ...excIds]);
+      const availableForPicker = pickerCandidates.filter(c => !usedIds.has(c.id));
+      function chip(id, listKind) {
+        const c = candidateById[id];
+        const label = c ? `${escapeHtml(c.name)} <span style="opacity:.5;">[${c.kindLabel}]</span>` : `<span style="opacity:.5;">${escapeHtml(id)}</span>`;
+        return `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;background:#1f1f1f;border:1px solid #2a2a2a;border-radius:3px;font-size:10px;color:#bbb;margin-right:3px;">${label}<button type="button" title="Remove" style="background:transparent;border:none;color:#c66;cursor:pointer;font-size:11px;padding:0 2px;line-height:1;" onclick="bldrFFRemoveDep('${kind}', ${rowIdx}, '${listKind}', '${escapeHtmlAttr(id)}')">×</button></span>`;
+      }
+      const reqChips = reqIds.map(id => chip(id, 'requires')).join('');
+      const excChips = excIds.map(id => chip(id, 'excludes')).join('');
+      const pickerOptions = availableForPicker.length === 0
+        ? '<option value="">(no candidates)</option>'
+        : '<option value="">— pick to add —</option>' + availableForPicker.map(c =>
+            `<option value="${escapeHtmlAttr(c.id)}">${escapeHtml(c.name)} [${c.kindLabel}]</option>`).join('');
+      return `
+        <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:#888;flex-wrap:wrap;"
+             title="Player can only pick this ${kind} when ALL listed Requires are already taken, and NONE of the Excludes are taken.">
+          <span style="flex-shrink:0;">Requires:</span>
+          ${reqChips}
+          <select onchange="bldrFFAddDep('${kind}', ${rowIdx}, 'requires', this.value);this.value='';"
+                  style="background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:3px 6px;border-radius:3px;flex-shrink:0;">
+            ${pickerOptions}
+          </select>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:#888;flex-wrap:wrap;"
+             title="Player can NOT pick this ${kind} when any of these are already taken (and vice versa).">
+          <span style="flex-shrink:0;">Excludes:</span>
+          ${excChips}
+          <select onchange="bldrFFAddDep('${kind}', ${rowIdx}, 'excludes', this.value);this.value='';"
+                  style="background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:3px 6px;border-radius:3px;flex-shrink:0;">
+            ${pickerOptions}
+          </select>
+        </div>
+      `;
+    }
+
     // Catalogue-level defaults + per-Builder overrides for them.
     const defaults = (kind === 'feature' ? (cat.defaultFeatures || []) : (cat.defaultFlaws || []));
     const overrides = (kind === 'feature'
@@ -3569,6 +3648,7 @@
                        style="flex:1;min-width:140px;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:4px 8px;border-radius:3px;outline:none;">
               ` : ''}
             </div>
+            ${renderRequiresExcludesUI(it.id, it.requires, it.excludes, idx)}
           </div>
         `;
       }).join('');
@@ -4547,6 +4627,76 @@
     if (kind === 'feature') renderBldrFeaturesList();
     else                    renderBldrFlawsList();
   };
+
+  // ── PREREQUISITE / MUTUAL-EXCLUDE EDITING ──
+  // Add an id to a feature/flaw's `requires` or `excludes` list.
+  // Mirrors mutual-exclusion writes to the OTHER side automatically:
+  // if the GM adds B to A.excludes, we also add A to B.excludes so
+  // the relationship is symmetric. (Adding to A.requires does NOT
+  // mirror — prereqs are directional by design.)
+  window.bldrFFAddDep = function(kind, idx, listKind, idToAdd) {
+    if (!idToAdd) return;
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const arr = (kind === 'feature') ? b.features : b.flaws;
+    if (!Array.isArray(arr) || !arr[idx]) return;
+    const it = arr[idx];
+    const list = listKind === 'requires' ? 'requires' : 'excludes';
+    if (!Array.isArray(it[list])) it[list] = [];
+    if (!it[list].includes(idToAdd)) it[list].push(idToAdd);
+    // Mirror exclusion to the other side. Look across BOTH features
+    // and flaws on this Builder for the target id.
+    if (list === 'excludes') {
+      mirrorExclude(b, idToAdd, it.id);
+    }
+    if (kind === 'feature') renderBldrFeaturesList();
+    else                    renderBldrFlawsList();
+    renderBuilderPreview();
+  };
+
+  window.bldrFFRemoveDep = function(kind, idx, listKind, idToRemove) {
+    const b = getOpenedBuilder();
+    if (!b) return;
+    const arr = (kind === 'feature') ? b.features : b.flaws;
+    if (!Array.isArray(arr) || !arr[idx]) return;
+    const it = arr[idx];
+    const list = listKind === 'requires' ? 'requires' : 'excludes';
+    if (!Array.isArray(it[list])) return;
+    const i = it[list].indexOf(idToRemove);
+    if (i >= 0) it[list].splice(i, 1);
+    if (list === 'excludes') {
+      // Mirror the removal too.
+      unmirrorExclude(b, idToRemove, it.id);
+    }
+    if (kind === 'feature') renderBldrFeaturesList();
+    else                    renderBldrFlawsList();
+    renderBuilderPreview();
+  };
+
+  // Helper: find an FF (feature or flaw) by id across both arrays on
+  // a Builder, so we can mutate the OTHER side of an exclude relation.
+  function findFFOnBuilder(b, id) {
+    const fArr = Array.isArray(b.features) ? b.features : [];
+    for (const f of fArr) if (f && f.id === id) return f;
+    const lArr = Array.isArray(b.flaws) ? b.flaws : [];
+    for (const f of lArr) if (f && f.id === id) return f;
+    return null;
+  }
+  function mirrorExclude(b, targetId, sourceId) {
+    const target = findFFOnBuilder(b, targetId);
+    if (!target) return; // Could be a catalogue-default id — those are
+                         // edited at the catalogue level, not here.
+                         // The exclusion still works at validation time
+                         // via the source side.
+    if (!Array.isArray(target.excludes)) target.excludes = [];
+    if (!target.excludes.includes(sourceId)) target.excludes.push(sourceId);
+  }
+  function unmirrorExclude(b, targetId, sourceId) {
+    const target = findFFOnBuilder(b, targetId);
+    if (!target || !Array.isArray(target.excludes)) return;
+    const i = target.excludes.indexOf(sourceId);
+    if (i >= 0) target.excludes.splice(i, 1);
+  }
 
   // Toggle/edit the per-feature/flaw customField config. When enabling,
   // the row re-renders so the Label input appears. When disabling, we
