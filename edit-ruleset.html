@@ -293,15 +293,8 @@
     .filter-chip:hover { color: #ccc; border-color: #444; }
     .filter-chip.active { background: #1f2c3a; border-color: #3a5878; color: #cfe3f6; }
 
-    /* Power levels */
-    .pl-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
-    .pl-row { display: flex; gap: 6px; align-items: center; background: #111; border: 1px solid #1a1a1a; border-radius: 4px; padding: 8px 10px; }
-    .pl-row input[type=text] { flex: 1; background: transparent; border: none; color: #e0e0e0; font-family: 'Open Sans', sans-serif; font-size: 13px; outline: none; border-bottom: 1px solid #222; padding: 2px 0; }
-    .pl-row input[type=text]:focus { border-bottom-color: #555; }
-    .pl-row .pl-xp { width: 60px; background: #0a0a0a; border: 1px solid #222; color: #e0e0e0; padding: 4px 6px; border-radius: 3px; font-size: 12px; text-align: center; outline: none; font-family: 'Open Sans', sans-serif; }
-    .pl-row .pl-xp-lbl { font-size: 10px; color: #666; }
-    .pl-row .pl-default-wrap { display: flex; align-items: center; gap: 4px; font-size: 10px; color: #666; }
-    .pl-row .pl-default-wrap input { width: 14px; height: 14px; }
+    /* (Power Levels CSS removed — feature deprecated. .pl-delete is
+       still used by other rows in this editor, see below.) */
     .pl-delete { color: #555; font-size: 18px; cursor: pointer; padding: 0 4px; line-height: 1; }
     .pl-delete:hover { color: #c84b4b; }
 
@@ -930,22 +923,27 @@
         <button class="btn small" id="import-basic-btn" onclick="importFromBasic()" style="display:none">Import from Basic Set</button>
       </div>
 
-      <!-- STARTING XP & POWER LEVELS -->
+      <!-- ECONOMY: XP, AP, Conversion Rate -->
       <div class="section">
         <div class="section-header">
-          <div class="section-title">Starting XP & Power Levels</div>
+          <div class="section-title">Starting XP & AP</div>
         </div>
-        <div class="section-desc">How much XP new characters start with, and how expensive AP is to purchase at each Power Level.</div>
-        <div class="field" style="max-width:220px">
-          <label>Starting XP</label>
-          <input type="number" id="rs-startingXp" min="0" value="100">
+        <div class="section-desc">How much XP and AP new characters start with, and the rate at which players can convert XP into AP during play. AP is the resource Abilities are built with.</div>
+        <div class="row" style="align-items:flex-end;flex-wrap:wrap;gap:14px;">
+          <div class="field" style="max-width:200px">
+            <label>Starting XP</label>
+            <input type="number" id="rs-startingXp" min="0" value="200">
+          </div>
+          <div class="field" style="max-width:200px">
+            <label>Starting AP</label>
+            <input type="number" id="rs-startingAp" min="0" value="0">
+          </div>
+          <div class="field" style="max-width:200px">
+            <label>XP per 1 AP (conversion rate)</label>
+            <input type="number" id="rs-xpToApRate" min="1" value="3">
+          </div>
         </div>
-        <div style="margin-top:12px">
-          <label style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#888;display:block;margin-bottom:8px">Power Levels</label>
-          <div class="hint">Each level has a label and a cost in XP to purchase 1 AP. One must be marked as default (new characters start at this level).</div>
-          <div class="pl-list" id="pl-list"></div>
-          <button class="btn small" onclick="addPowerLevel()">+ Add Power Level</button>
-        </div>
+        <div class="hint" style="margin-top:6px">Players can spend XP at the conversion rate to "buy" AP during play. Default 3 XP = 1 AP — set higher for tighter economies, lower for more abundant Abilities.</div>
       </div>
 
       <!-- STATS -->
@@ -1691,7 +1689,9 @@
       sel.appendChild(opt);
     });
 
-    document.getElementById('rs-startingXp').value = state.startingXp ?? 100;
+    document.getElementById('rs-startingXp').value = state.startingXp ?? 200;
+    document.getElementById('rs-startingAp').value = state.startingAp ?? 0;
+    document.getElementById('rs-xpToApRate').value = state.xpToApRate ?? 3;
     document.getElementById('rs-statMax').value = state.statMaxPurchasable ?? 6;
     document.getElementById('rs-statAbsMax').value = state.statMax ?? 20;
     document.getElementById('rs-skillMax').value = state.skillMax ?? 10;
@@ -1716,11 +1716,12 @@
     if (tdPower)   tdPower.value   = td.power   || '';
 
     document.getElementById('rs-startingXp').oninput = (e) => { state.startingXp = Math.max(0, parseInt(e.target.value) || 0); renderScaleSummary(); };
+    document.getElementById('rs-startingAp').oninput = (e) => { state.startingAp = Math.max(0, parseInt(e.target.value) || 0); renderScaleSummary(); };
+    document.getElementById('rs-xpToApRate').oninput = (e) => { state.xpToApRate = Math.max(1, parseInt(e.target.value) || 1); renderScaleSummary(); };
     document.getElementById('rs-statMax').oninput = () => { syncStatMaxFromInput(); renderStatLevelTable(); renderScaleSummary(); };
     document.getElementById('rs-statAbsMax').oninput = () => { syncStatAbsMaxFromInput(); renderStatLevelTable(); renderScaleSummary(); };
     document.getElementById('rs-skillMax').oninput = () => { syncSkillMaxFromInput(); renderSkillXpTables(); renderScaleSummary(); };
 
-    renderPowerLevels();
     renderStatsList();
     renderStatLevelTable();
     renderSizeTiers();
@@ -1792,20 +1793,21 @@
     const box = document.getElementById('scale-summary');
     const stats = (state.stats || []).length;
     const pSkills = (state.primarySkills || []).length;
-    const pLevels = (state.powerLevels || []).length;
     const sizeTiers = (state.size && state.size.tiers) ? state.size.tiers.length : 0;
     const advCount = (state.advantages    || []).length;
     const disCount = (state.disadvantages || []).length;
     box.innerHTML = [
       `<span>Starting XP: <strong>${state.startingXp}</strong></span>`,
       `<span class="sep">·</span>`,
+      `<span>Starting AP: <strong>${state.startingAp ?? 0}</strong></span>`,
+      `<span class="sep">·</span>`,
+      `<span>XP→AP rate: <strong>${state.xpToApRate ?? 3}</strong> XP / 1 AP</span>`,
+      `<span class="sep">·</span>`,
       `<span>Stats: <strong>${stats}</strong> (0–${state.statMax}, purchasable to ${state.statMaxPurchasable})</span>`,
       `<span class="sep">·</span>`,
       `<span>Skills: <strong>${pSkills}</strong> primary, 0–${state.skillMax}</span>`,
       `<span class="sep">·</span>`,
       `<span>Size Tiers: <strong>${sizeTiers}</strong></span>`,
-      `<span class="sep">·</span>`,
-      `<span>Power Levels: <strong>${pLevels}</strong></span>`,
       `<span class="sep">·</span>`,
       `<span>A/D: <strong>${advCount}</strong> / <strong>${disCount}</strong></span>`
     ].join('');
@@ -1978,41 +1980,6 @@
     state.primarySkillXp = resize(state.primarySkillXp);
     state.secondarySkillXp = resize(state.secondarySkillXp);
     state.specialtySkillXp = resize(state.specialtySkillXp);
-  }
-
-  // ── POWER LEVELS ──
-  function renderPowerLevels() {
-    const list = document.getElementById('pl-list');
-    if (state.powerLevels.length === 0) { list.innerHTML = '<div class="empty">No power levels. Click below to add one.</div>'; return; }
-    list.innerHTML = state.powerLevels.map((p, i) => `
-      <div class="pl-row">
-        <input type="text" value="${escapeHtmlAttr(p.label || '')}" placeholder="Label" oninput="updatePl(${i},'label',this.value)">
-        <span class="pl-xp-lbl">XP/AP:</span>
-        <input type="number" class="pl-xp" min="0" value="${p.xpPerAp ?? 0}" oninput="updatePl(${i},'xpPerAp',this.value)">
-        <label class="pl-default-wrap"><input type="radio" name="default-pl" ${p.value === state.defaultPowerLevel ? 'checked' : ''} onchange="setDefaultPl(${i})">Default</label>
-        <span class="pl-delete" onclick="removePl(${i})" title="Remove">×</span>
-      </div>
-    `).join('');
-  }
-  window.updatePl = function(i, field, value) {
-    if (field === 'xpPerAp') state.powerLevels[i][field] = Math.max(0, parseInt(value) || 0);
-    else state.powerLevels[i][field] = value;
-  }
-  window.setDefaultPl = function(i) {
-    state.defaultPowerLevel = state.powerLevels[i].value;
-  }
-  window.addPowerLevel = function() {
-    state.powerLevels.push({ value: 'pl_' + Date.now(), label: 'New Power Level', xpPerAp: 5 });
-    if (!state.defaultPowerLevel) state.defaultPowerLevel = state.powerLevels[state.powerLevels.length-1].value;
-    renderPowerLevels();
-    renderScaleSummary();
-  }
-  window.removePl = function(i) {
-    const was = state.powerLevels[i].value;
-    state.powerLevels.splice(i, 1);
-    if (state.defaultPowerLevel === was && state.powerLevels.length > 0) state.defaultPowerLevel = state.powerLevels[0].value;
-    renderPowerLevels();
-    renderScaleSummary();
   }
 
   // ── SKILL XP TABLES ──
@@ -3431,8 +3398,9 @@
     state.secondarySkillXp = src.secondarySkillXp.slice();
     state.specialtySkillXp = src.specialtySkillXp.slice();
     state.skillMax = src.skillMax;
-    state.powerLevels = JSON.parse(JSON.stringify(src.powerLevels));
-    state.defaultPowerLevel = src.defaultPowerLevel;
+    // Starting XP is copied earlier; copy the new AP economy fields too.
+    state.startingAp = src.startingAp ?? 0;
+    state.xpToApRate = src.xpToApRate ?? 3;
     state.primarySkills = JSON.parse(JSON.stringify(src.primarySkills));
     state.morals = src.morals.slice();
     // Conditions preset library — the normalizer guarantees shape
@@ -3919,13 +3887,6 @@
       state.playgroupId = pgSel.value || null;
     }
 
-    if (state.powerLevels.length === 0) {
-      msg.textContent = 'Please add at least one Power Level.'; msg.style.color = '#ff6666'; return;
-    }
-    if (!state.powerLevels.some(p => p.value === state.defaultPowerLevel)) {
-      state.defaultPowerLevel = state.powerLevels[0].value;
-    }
-
     btn.disabled = true;
     const originalBtnText = btn.textContent;
     btn.textContent = 'Saving...';
@@ -3934,6 +3895,8 @@
       name: state.name,
       tagline: state.tagline || '',
       startingXp: state.startingXp,
+      startingAp: state.startingAp ?? 0,
+      xpToApRate: state.xpToApRate ?? 3,
       statXp: state.statXp,
       statMaxPurchasable: state.statMaxPurchasable,
       statMax: state.statMax,
@@ -3945,8 +3908,6 @@
       secondarySkillXp: state.secondarySkillXp,
       specialtySkillXp: state.specialtySkillXp,
       skillMax: state.skillMax,
-      powerLevels: state.powerLevels,
-      defaultPowerLevel: state.defaultPowerLevel,
       primarySkills: state.primarySkills,
       morals: state.morals,
       conditions: state.conditions,
