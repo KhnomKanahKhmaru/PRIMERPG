@@ -405,12 +405,23 @@ function lookupRulesetDescription(category, id, ruleset) {
       return (hit && typeof hit.description === 'string') ? hit.description : '';
     }
     case 'tiles': {
-      // Overview tiles (Body, Sanity, Penalty, Power) — computed
+      // Overview tiles (Body, Mental Health, Penalty, Power) — computed
       // summaries that don't live in derivedStats. Descriptions are
       // stored in a dedicated ruleset.tileDescriptions map keyed by
       // tile id.
       const map = ruleset.tileDescriptions;
-      const explicit = (map && typeof map === 'object' && typeof map[id] === 'string') ? map[id] : null;
+      // Legacy alias: 'mentalHealth' was previously stored as 'sanity'.
+      // For rulesets that haven't been migrated, fall back to the old
+      // key when looking up the new one. The first ruleset save will
+      // re-persist under the new key (whichever key the editor uses);
+      // until then this keeps the player tile text intact.
+      let lookupId = id;
+      if (id === 'mentalHealth' && map && typeof map === 'object' &&
+          (typeof map.mentalHealth !== 'string' || map.mentalHealth === '') &&
+          typeof map.sanity === 'string') {
+        lookupId = 'sanity';
+      }
+      const explicit = (map && typeof map === 'object' && typeof map[lookupId] === 'string') ? map[lookupId] : null;
 
       // Power tile has an organic fallback — the Power Pool itself
       // carries a description field in the ruleset (authored in the
