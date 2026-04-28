@@ -1392,6 +1392,66 @@
         ? ((cat.canonicalTiers && cat.canonicalTiers.featureCosts) || {})
         : ((cat.canonicalTiers && cat.canonicalTiers.flawRefunds) || {});
 
+      // Build picker candidates for requires/excludes — ALL catalogue
+      // defaults across both features AND flaws (since a default can
+      // require or exclude either kind). Per-Builder F/F can't be
+      // referenced from a catalogue-default — those don't exist at the
+      // catalogue level, the reference would be dangling.
+      const pickerCandidates = [];
+      const candidateById = {};
+      (Array.isArray(cat.defaultFeatures) ? cat.defaultFeatures : []).forEach(f => {
+        if (f && f.id) {
+          const c = { id: f.id, name: f.name || '(unnamed)', kindLabel: 'F·def' };
+          pickerCandidates.push(c);
+          candidateById[f.id] = c;
+        }
+      });
+      (Array.isArray(cat.defaultFlaws) ? cat.defaultFlaws : []).forEach(f => {
+        if (f && f.id) {
+          const c = { id: f.id, name: f.name || '(unnamed)', kindLabel: 'f·def' };
+          pickerCandidates.push(c);
+          candidateById[f.id] = c;
+        }
+      });
+      // Render the requires/excludes UI for one row.
+      function renderRequiresExcludesUI(ownId, requires, excludes, rowIdx, rowKind) {
+        const reqIds = Array.isArray(requires) ? requires : [];
+        const excIds = Array.isArray(excludes) ? excludes : [];
+        const usedIds = new Set([ownId, ...reqIds, ...excIds]);
+        const availableForPicker = pickerCandidates.filter(c => !usedIds.has(c.id));
+        function chip(id, listKind) {
+          const c = candidateById[id];
+          const label = c ? `${escapeHtml(c.name)} <span style="opacity:.5;">[${c.kindLabel}]</span>` : `<span style="opacity:.5;">${escapeHtml(id)}</span>`;
+          return `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;background:#1f1f1f;border:1px solid #2a2a2a;border-radius:3px;font-size:10px;color:#bbb;margin-right:3px;">${label}<button type="button" title="Remove" style="background:transparent;border:none;color:#c66;cursor:pointer;font-size:11px;padding:0 2px;line-height:1;" onclick="catDefFFRemoveDep('${rowKind}', ${rowIdx}, '${listKind}', '${escapeHtmlAttr(id)}')">×</button></span>`;
+        }
+        const reqChips = reqIds.map(id => chip(id, 'requires')).join('');
+        const excChips = excIds.map(id => chip(id, 'excludes')).join('');
+        const pickerOptions = availableForPicker.length === 0
+          ? '<option value="">(no candidates)</option>'
+          : '<option value="">— pick to add —</option>' + availableForPicker.map(c =>
+              `<option value="${escapeHtmlAttr(c.id)}">${escapeHtml(c.name)} [${c.kindLabel}]</option>`).join('');
+        return `
+          <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:#888;flex-wrap:wrap;"
+               title="Player can only pick this ${rowKind} when ALL listed Requires are already taken, and NONE of the Excludes are taken.">
+            <span style="flex-shrink:0;">Requires:</span>
+            ${reqChips}
+            <select onchange="catDefFFAddDep('${rowKind}', ${rowIdx}, 'requires', this.value);this.value='';"
+                    style="background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:3px 6px;border-radius:3px;flex-shrink:0;">
+              ${pickerOptions}
+            </select>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:#888;flex-wrap:wrap;"
+               title="Player can NOT pick this ${rowKind} when any of these are already taken (and vice versa).">
+            <span style="flex-shrink:0;">Excludes:</span>
+            ${excChips}
+            <select onchange="catDefFFAddDep('${rowKind}', ${rowIdx}, 'excludes', this.value);this.value='';"
+                    style="background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:3px 6px;border-radius:3px;flex-shrink:0;">
+              ${pickerOptions}
+            </select>
+          </div>
+        `;
+      }
+
       // Group by tier in canonical order.
       const byTier = {};
       arr.forEach((it, idx) => {
@@ -1478,6 +1538,7 @@
                           style="background:transparent;border:none;color:#c66;cursor:pointer;font-size:13px;padding:0 4px;line-height:1;flex-shrink:0;">×</button>
                 </div>
               ` : ''}
+              ${renderRequiresExcludesUI(it.id, it.requires, it.excludes, idx, kind)}
             </div>
           `;
         }).join('');
@@ -1591,6 +1652,54 @@
     if (idx >= 0 && idx < arr.length) {
       arr[idx].token = '';
       arr[idx].tokenLiteral = '';
+    }
+    renderCatDefaultFFSection();
+  };
+
+  // ── PREREQUISITE / MUTUAL-EXCLUDE EDITING (catalogue defaults) ──
+  // Same logic as the per-Builder bldrFFAddDep / bldrFFRemoveDep, but
+  // operating on cat.defaultFeatures / cat.defaultFlaws and mirroring
+  // exclude relationships across BOTH default arrays.
+  function findCatDefById(id) {
+    const cat = state && state.abilityCatalogue;
+    if (!cat) return null;
+    const f = (Array.isArray(cat.defaultFeatures) ? cat.defaultFeatures : []).find(x => x && x.id === id);
+    if (f) return f;
+    const l = (Array.isArray(cat.defaultFlaws) ? cat.defaultFlaws : []).find(x => x && x.id === id);
+    if (l) return l;
+    return null;
+  }
+  window.catDefFFAddDep = function(kind, idx, listKind, idToAdd) {
+    if (!idToAdd) return;
+    const arr = getDefaultFFArr(kind);
+    if (idx < 0 || idx >= arr.length) return;
+    const it = arr[idx];
+    const list = listKind === 'requires' ? 'requires' : 'excludes';
+    if (!Array.isArray(it[list])) it[list] = [];
+    if (!it[list].includes(idToAdd)) it[list].push(idToAdd);
+    if (list === 'excludes') {
+      const target = findCatDefById(idToAdd);
+      if (target) {
+        if (!Array.isArray(target.excludes)) target.excludes = [];
+        if (!target.excludes.includes(it.id)) target.excludes.push(it.id);
+      }
+    }
+    renderCatDefaultFFSection();
+  };
+  window.catDefFFRemoveDep = function(kind, idx, listKind, idToRemove) {
+    const arr = getDefaultFFArr(kind);
+    if (idx < 0 || idx >= arr.length) return;
+    const it = arr[idx];
+    const list = listKind === 'requires' ? 'requires' : 'excludes';
+    if (!Array.isArray(it[list])) return;
+    const i = it[list].indexOf(idToRemove);
+    if (i >= 0) it[list].splice(i, 1);
+    if (list === 'excludes') {
+      const target = findCatDefById(idToRemove);
+      if (target && Array.isArray(target.excludes)) {
+        const j = target.excludes.indexOf(it.id);
+        if (j >= 0) target.excludes.splice(j, 1);
+      }
     }
     renderCatDefaultFFSection();
   };
@@ -1971,13 +2080,24 @@
       m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;';
       document.body.appendChild(m);
     }
-    // Build category picker options for Builder scope
+    // Build category picker options for Builder scope.
     const cat = state.abilityCatalogue || {};
     const tBucket = (cat.types && cat.types.ability) || { categories: [] };
     const cats = Array.isArray(tBucket.categories) ? tBucket.categories : [];
     const catOptions = cats.map(c =>
       `<option value="${escapeHtmlAttr(c.id)}">${escapeHtml(c.name || '(unnamed category)')}</option>`
     ).join('');
+    // If a Builder is currently open in the editor, add a top option
+    // "Overwrite current Builder (Name)" so the GM can replace what
+    // they're looking at without navigating to a category picker.
+    // The existing Builder's id stays — the imported Builder's content
+    // is grafted onto the open record. Selected automatically when a
+    // Builder is open and scope is Builder, since that's the most
+    // common intent ("I exported, edited, want to put it back").
+    const openedB = (typeof getOpenedBuilder === 'function') ? getOpenedBuilder() : null;
+    const overwriteOption = openedB
+      ? `<option value="__overwrite__" selected>↻ Overwrite current Builder (${escapeHtml(openedB.name || 'Untitled')})</option>`
+      : '';
 
     m.innerHTML = `
       <div style="background:#0e0e0e;border:1px solid #2a2a2a;border-radius:6px;padding:24px;width:580px;max-width:92vw;max-height:90vh;overflow:auto;color:#ccc;">
@@ -2005,8 +2125,9 @@
         </div>
 
         <div id="imp-builder-target" style="display:none;margin-bottom:12px;padding:10px;background:#1a1a1a;border-radius:4px;">
-          <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">Target Category (Ability)</label>
+          <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">Target</label>
           <select id="imp-target-cat" style="width:100%;background:#111;border:1px solid #222;color:#e0e0e0;padding:6px 8px;border-radius:3px;">
+            ${overwriteOption}
             ${catOptions}
             <option value="__new__">— Create new category —</option>
           </select>
@@ -2152,19 +2273,26 @@
         // builder
         const targetSel = document.getElementById('imp-target-cat');
         const targetVal = targetSel ? targetSel.value : null;
-        let targetCategoryId = null;
-        let targetCategoryName = null;
-        if (targetVal === '__new__') {
+        let importOpts = { targetTypeKey: 'ability' };
+        if (targetVal === '__overwrite__') {
+          // GM picked "Overwrite current Builder" — we route to the
+          // Builder currently open in the editor. The imported JSON's
+          // id is silently replaced with the open Builder's id.
+          const openedB = (typeof getOpenedBuilder === 'function') ? getOpenedBuilder() : null;
+          if (!openedB) {
+            msg.textContent = 'Import failed: no Builder is currently open to overwrite.';
+            msg.style.color = '#ff6666';
+            return;
+          }
+          if (!confirm(`This will overwrite "${openedB.name || 'this Builder'}" with the imported data. You can Undo before saving. Continue?`)) return;
+          importOpts.overwriteBuilderId = openedB.id;
+        } else if (targetVal === '__new__') {
           const nameEl = document.getElementById('imp-new-cat-name');
-          targetCategoryName = (nameEl && nameEl.value.trim()) || 'Imported';
+          importOpts.targetCategoryName = (nameEl && nameEl.value.trim()) || 'Imported';
         } else {
-          targetCategoryId = targetVal;
+          importOpts.targetCategoryId = targetVal;
         }
-        result = rulesetImport.importBuilder(state, json, 'merge', {
-          targetTypeKey: 'ability',
-          targetCategoryId,
-          targetCategoryName
-        });
+        result = rulesetImport.importBuilder(state, json, 'merge', importOpts);
       }
     } catch (err) {
       msg.textContent = 'Import failed: ' + err.message;
@@ -2551,7 +2679,6 @@
              value="${escapeHtmlAttr(b.name || '')}"
              oninput="catBldrSetField('name',this.value);renderBuilderPreview();">
       <span class="bldr-head-cost" id="bldr-cost-pill">… AP</span>
-      <button class="btn small" type="button" onclick="exportDo('builder','copy')" title="Copy this Builder as JSON to clipboard">Export…</button>
     `;
     wrap.appendChild(head);
 
