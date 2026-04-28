@@ -1781,7 +1781,15 @@ window.normalizeRuleset = function(rs) {
         // taking B and vice versa. Bidirectionality is enforced at
         // validation time — the storage may be one-sided but the player
         // sees both sides as locked. Empty array = no exclusions.
-        excludes:    Array.isArray(f.excludes) ? f.excludes.filter(x => typeof x === 'string') : []
+        excludes:    Array.isArray(f.excludes) ? f.excludes.filter(x => typeof x === 'string') : [],
+        // extendedSystem: long-form rules clarifications, examples, and
+        // edge cases the GM can author. The compact `description` is
+        // what the player sees by default in the picker — extendedSystem
+        // is hidden behind a click-to-expand affordance (ⓘ) and shown
+        // only when the player explicitly asks for it. Tokens like
+        // {Damage} or {POWER_NAME} resolve here too. Empty = no
+        // affordance shown.
+        extendedSystem: typeof f.extendedSystem === 'string' ? f.extendedSystem : ''
       }));
 
     // Flaws — refund-AP additions. Same shape as Features but priced
@@ -1799,7 +1807,8 @@ window.normalizeRuleset = function(rs) {
         tokenValueMode: ['name','description','customField','literal'].includes(f.tokenValueMode) ? f.tokenValueMode : 'description',
         tokenLiteral: typeof f.tokenLiteral === 'string' ? f.tokenLiteral : '',
         requires:    Array.isArray(f.requires) ? f.requires.filter(x => typeof x === 'string') : [],
-        excludes:    Array.isArray(f.excludes) ? f.excludes.filter(x => typeof x === 'string') : []
+        excludes:    Array.isArray(f.excludes) ? f.excludes.filter(x => typeof x === 'string') : [],
+        extendedSystem: typeof f.extendedSystem === 'string' ? f.extendedSystem : ''
       }));
 
     return builder;
@@ -1864,7 +1873,8 @@ window.normalizeRuleset = function(rs) {
           tokenValueMode: ['name','description','customField','literal'].includes(f.tokenValueMode) ? f.tokenValueMode : 'description',
           tokenLiteral: typeof f.tokenLiteral === 'string' ? f.tokenLiteral : '',
           requires:    Array.isArray(f.requires) ? f.requires.filter(x => typeof x === 'string') : [],
-          excludes:    Array.isArray(f.excludes) ? f.excludes.filter(x => typeof x === 'string') : []
+          excludes:    Array.isArray(f.excludes) ? f.excludes.filter(x => typeof x === 'string') : [],
+          extendedSystem: typeof f.extendedSystem === 'string' ? f.extendedSystem : ''
         }));
     }
     cat.defaultFeatures = normalizeDefaultFF(cat.defaultFeatures, 'deffeat');
