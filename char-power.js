@@ -179,7 +179,7 @@ export function createPowerSection(ctx) {
     // Status pill — same 10-tier scale as the Overview tile, computed
     // once in char-derived.js and threaded through power.statusLabel.
     // Uses the shared s-* palette classes so the pill visually matches
-    // Body (Alive/Dying/Dead) and Sanity (Healthy/In Shock/Insane/Broken)
+    // Body (Alive/Dying/Dead) and Mental Health (Healthy/In Shock/Broken/Broken)
     // pills on the Combat tab. Rendered inside the top row so it sits
     // next to the value — mirrors the layout of the Body row.
     const pctForStatus = max > 0 ? (current / max) * 100 : 0;
@@ -319,7 +319,7 @@ export function createPowerSection(ctx) {
   async function setPowerColor(color) {
     if (!getCanEdit()) return;
     const charData = getCharData();
-    // Basic sanity: only accept hex-ish strings. Native color picker always
+    // Basic mentalHealth: only accept hex-ish strings. Native color picker always
     // gives us #rrggbb, so this is mostly paranoia.
     if (typeof color !== 'string' || !/^#[0-9a-fA-F]{3,8}$/.test(color.trim())) return;
     charData.powerColor = color.trim();
