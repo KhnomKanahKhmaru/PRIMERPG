@@ -282,15 +282,19 @@ export function createOverviewSection(ctx) {
 
   function renderMenTile(men) {
     // Status label + class mirror the Combat tab's MEN tiers.
+    // Two distinct distress states above "broken":
+    //   inShock (current ≤ 0)         — mild penalty
+    //   disturbed (current ≤ -max)    — Disabled-equivalent
+    //   broken (current ≤ -2 × max)   — death-equivalent floor
     const tierMap = {
-      healthy:  { label: 'Healthy',  cls: 's-healthy' },
-      inShock:  { label: 'In Shock', cls: 's-shock' },
-      disturbed:   { label: 'Broken',   cls: 's-broken' },
-      broken:   { label: 'Broken',   cls: 's-broken' }
+      healthy:    { label: 'Healthy',   cls: 's-healthy'   },
+      inShock:    { label: 'In Shock',  cls: 's-shock'     },
+      disturbed:  { label: 'Disturbed', cls: 's-disturbed' },
+      broken:     { label: 'Broken',    cls: 's-broken'    }
     };
     const tier = tierMap[men.status] || tierMap.healthy;
     const segCount = Math.min(men.max, 40);
-    const segHtml = renderSanOverviewSegments(men.max, men.damage, segCount);
+    const segHtml = renderMenOverviewSegments(men.max, men.damage, segCount);
     const headInner = `
       <span class="state-tile-label">Mental Health</span>
       <span class="state-tile-nums">${men.current}<span class="sep">/</span><span class="max">${men.max}</span></span>`;
@@ -304,7 +308,7 @@ export function createOverviewSection(ctx) {
     return wrapCollapsibleTile('mentalHealth', '', headInner, bodyHtml);
   }
 
-  function renderSanOverviewSegments(menMax, damage, segCount) {
+  function renderMenOverviewSegments(menMax, damage, segCount) {
     // Same palette as Combat tab: blue (healthy) → yellow → orange → red.
     // Fully-red state past 3*max, matching the "broken floor" behavior.
     if (menMax <= 0 || segCount <= 0) return '';
