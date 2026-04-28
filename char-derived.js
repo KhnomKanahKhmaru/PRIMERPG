@@ -609,7 +609,7 @@ export function computeDerivedStats(character, ruleset) {
 
     // Evaluate rollModifier expression if present. This is the STATIC mod
     // that gets added to the ROLL TOTAL (sum of dice) — e.g. STRMOD for
-    // Health, max(INTMOD, CHAMOD) for Sanity. Read-only, shown in the card's
+    // Health, max(INTMOD, CHAMOD) for Mental Health. Read-only, shown in the card's
     // top-right corner as a signed badge.
     let rollModifier = null;
     if (def.rollModifier && typeof def.rollModifier === 'string' && def.rollModifier.trim()) {
@@ -625,7 +625,7 @@ export function computeDerivedStats(character, ruleset) {
     // Dice modifiers — player/GM-editable bonus DICE added to the roll POOL
     // (not the total). E.g. "Brawny Trait: +2d" means you roll 2 extra D10s
     // when making a Health check. Stored per stat code on charData.diceModifiers.
-    // Example: { HP: [{ name: 'Brawny Trait', value: 2 }], SAN: [...] }.
+    // Example: { HP: [{ name: 'Brawny Trait', value: 2 }], MEN: [...] }.
     const diceMap = (character && character.diceModifiers && typeof character.diceModifiers === 'object')
       ? character.diceModifiers : {};
     const diceMods = Array.isArray(diceMap[def.code]) ? diceMap[def.code] : [];
@@ -937,7 +937,7 @@ export function computeDerivedStats(character, ruleset) {
     // Status label — ten-tier flavor scale. Reads the ratio of
     // current / max and maps to a descriptive word so the Overview
     // Power tile can show a status pill similar to Body (Alive, Dying,
-    // Dead) and Sanity (Healthy, In Shock, Insane, Broken).
+    // Dead) and Mental Health (Healthy, In Shock, Broken, Broken).
     //
     // Tier brackets are INCLUSIVE of the lower bound:
     //   100%       → Full
@@ -978,42 +978,42 @@ export function computeDerivedStats(character, ruleset) {
     };
   }
 
-  // ─── SAN (SANITY) ───
+  // ─── MEN (SANITY) ───
   //
   // Linear mental health pool. Damage stacks directly — no FORT reduction.
   //
   // Two damage sources both contribute to total:
-  //   - sanDamage (number): untracked manual damage from +/- controls
-  //   - sanDamages (array of {id, name, baseLevel, levelModifiers, description}):
+  //   - menDamage (number): untracked manual damage from +/- controls
+  //   - menDamages (array of {id, name, baseLevel, levelModifiers, description}):
   //     structured "damages" the player/GM records, each with its own level and
   //     optional modifiers. Parallels Injuries but without location/traumas/
   //     degradation — mental wounds are pool-wide, not located.
   //
-  // Effective SAN damage = sanDamage + sum(damage.currentLevel for each entry)
+  // Effective MEN damage = menDamage + sum(damage.currentLevel for each entry)
   //
-  // Max comes from the SAN derived stat (CHA + INT by default). sanModifiers
+  // Max comes from the MEN derived stat (CHA + INT by default). menModifiers
   // (array of {name, value}) adjust max same pattern as Body.
   //
   // Status bands (in terms of current = max - damage):
   //   current > 0              → Healthy
-  //   0  ≥ current > -SAN      → In Shock       (+1 Diff all rolls)
-  //   -SAN ≥ current > -2*SAN  → Insane         (+2 Diff SAN, +1 Diff others)
-  //   current ≤ -2*SAN         → Broken         (+3 Diff SAN, +1 Diff others,
+  //   0  ≥ current > -MEN      → In Shock       (+1 Diff all rolls)
+  //   -MEN ≥ current > -2*MEN  → Broken         (+2 Diff MEN, +1 Diff others)
+  //   current ≤ -2*MEN         → Broken         (+3 Diff MEN, +1 Diff others,
   //                                               Breaking Point roll required)
-  let san = null;
-  const sanStatEntry = stats.get('SAN');
-  if (sanStatEntry && sanStatEntry.value !== null) {
-    const baseMax = Math.floor(sanStatEntry.value);
-    const sanMods = Array.isArray(character.sanModifiers) ? character.sanModifiers : [];
-    const sanModTotal = sanMods.reduce((acc, m) => acc + (parseInt(m.value) || 0), 0);
-    const sanMax = Math.max(0, baseMax + sanModTotal);
+  let men = null;
+  const menStatEntry = stats.get('SAN');
+  if (menStatEntry && menStatEntry.value !== null) {
+    const baseMax = Math.floor(menStatEntry.value);
+    const menMods = Array.isArray(character.menModifiers) ? character.menModifiers : [];
+    const menModTotal = menMods.reduce((acc, m) => acc + (parseInt(m.value) || 0), 0);
+    const menMax = Math.max(0, baseMax + menModTotal);
 
     // Manual damage — untracked lump from +/- controls.
-    const manualDamage = Math.max(0, Number.isFinite(character.sanDamage) ? character.sanDamage : 0);
+    const manualDamage = Math.max(0, Number.isFinite(character.menDamage) ? character.menDamage : 0);
 
     // Structured damages — compute currentLevel for each, carry them on the
     // result so the UI can render cards without re-doing the math.
-    const damagesIn = Array.isArray(character.sanDamages) ? character.sanDamages : [];
+    const damagesIn = Array.isArray(character.menDamages) ? character.menDamages : [];
     const damages = damagesIn
       .filter(d => d && typeof d === 'object')
       .map(d => {
@@ -1022,7 +1022,7 @@ export function computeDerivedStats(character, ruleset) {
         const modTotal = mods.reduce((a, m) => a + (parseInt(m.value) || 0), 0);
         const currentLevel = Math.max(0, base + modTotal);
         return {
-          id: d.id || ('sandmg_' + Math.random().toString(36).slice(2, 9)),
+          id: d.id || ('mendmg_' + Math.random().toString(36).slice(2, 9)),
           name: typeof d.name === 'string' ? d.name : '',
           description: typeof d.description === 'string' ? d.description : '',
           baseLevel: base,
@@ -1032,59 +1032,59 @@ export function computeDerivedStats(character, ruleset) {
       });
     const damagesContribution = damages.reduce((s, d) => s + d.currentLevel, 0);
 
-    const sanDamage = manualDamage + damagesContribution;
-    const sanCurrent = sanMax - sanDamage;  // can be negative; that's the point
+    const menDamage = manualDamage + damagesContribution;
+    const menCurrent = menMax - menDamage;  // can be negative; that's the point
 
-    let sanStatus = 'healthy';
-    if (sanMax > 0) {
-      if (sanCurrent <= -2 * sanMax) sanStatus = 'broken';
-      else if (sanCurrent <= -sanMax) sanStatus = 'insane';
-      else if (sanCurrent <= 0) sanStatus = 'inShock';
+    let menStatus = 'healthy';
+    if (menMax > 0) {
+      if (menCurrent <= -2 * menMax) menStatus = 'broken';
+      else if (menCurrent <= -menMax) menStatus = 'disturbed';
+      else if (menCurrent <= 0) menStatus = 'inShock';
     }
 
     // Status label + penalty text for the UI. Penalties are narrative cues
     // for the GM — they're printed but not auto-applied to any dice rolls.
-    let sanStatusLabel, sanPenaltyText;
-    switch (sanStatus) {
+    let menStatusLabel, menPenaltyText;
+    switch (menStatus) {
       case 'broken':
-        sanStatusLabel = 'Broken';
-        sanPenaltyText = '+3 Difficulty to SAN rolls, +1 Difficulty to other rolls. Roll on Breaking Point table. Any further Mental Damage forces a reroll.';
+        menStatusLabel = 'Broken';
+        menPenaltyText = '+3 Difficulty to MEN rolls, +1 Difficulty to other rolls. Roll on Breaking Point table. Any further Mental Damage forces a reroll.';
         break;
-      case 'insane':
-        sanStatusLabel = 'Insane';
-        sanPenaltyText = '+2 Difficulty to SAN rolls, +1 Difficulty to other rolls.';
+      case 'disturbed':
+        menStatusLabel = 'Broken';
+        menPenaltyText = '+2 Difficulty to MEN rolls, +1 Difficulty to other rolls.';
         break;
       case 'inShock':
-        sanStatusLabel = 'In Shock';
-        sanPenaltyText = '+1 Difficulty to all rolls.';
+        menStatusLabel = 'In Shock';
+        menPenaltyText = '+1 Difficulty to all rolls.';
         break;
       default:
-        sanStatusLabel = 'Healthy';
-        sanPenaltyText = '';
+        menStatusLabel = 'Healthy';
+        menPenaltyText = '';
     }
 
-    san = {
+    men = {
       baseMax,
-      max: sanMax,
-      current: sanCurrent,
-      damage: sanDamage,
+      max: menMax,
+      current: menCurrent,
+      damage: menDamage,
       manualDamage,
       damagesContribution,
       damages,                 // structured damages with computed currentLevel
-      modifiers: sanMods,
-      status: sanStatus,
-      statusLabel: sanStatusLabel,
-      penaltyText: sanPenaltyText
+      modifiers: menMods,
+      status: menStatus,
+      statusLabel: menStatusLabel,
+      penaltyText: menPenaltyText
     };
   }
 
   // ─── EXH (EXHAUSTION) ───
   //
-  // Third pillar alongside HP/SAN. Structure MIRRORS SAN (pool with
+  // Third pillar alongside HP/MEN. Structure MIRRORS MEN (pool with
   // manual-damage + structured damages + max modifiers) because the
-  // UI/persistence story is well-trodden there. Differences from SAN:
+  // UI/persistence story is well-trodden there. Differences from MEN:
   //
-  //   - Formula is (HP/2)+(SAN/2) — derived from the other two pools.
+  //   - Formula is (HP/2)+(MEN/2) — derived from the other two pools.
   //   - "Damages" array entries are called exhDamages on charData.
   //   - Status bands differ: Ready / Tired / Exhausted / Unconscious.
   //   - Terminal state at -2×max = Unconscious (not "Broken" — EXH
@@ -1155,7 +1155,7 @@ export function computeDerivedStats(character, ruleset) {
     const exhFinalPercent = Math.max(0, Math.min(100,
       Math.round(exhBasePercent + exhPenaltyModTotal)));
 
-    // Status bands — matches the HP/SAN tiering pattern, named for the
+    // Status bands — matches the HP/MEN tiering pattern, named for the
     // exhaustion fiction. Passing -2×max means character is Unconscious
     // (out until regen pulls them back above that threshold).
     let exhStatus = 'ready';
@@ -1301,8 +1301,8 @@ export function computeDerivedStats(character, ruleset) {
   // ─── PAIN / STRESS / OTHER / PENALTY ───
   //
   // Pain: percent of Body you're missing (bodyDamage / bodyMax × 100).
-  // Stress: percent of SAN range you've lost (sanDamage / (sanMax × 3) × 100).
-  //   SAN denominator is 3× because SAN ranges from +max down to -2*max, so
+  // Stress: percent of MEN range you've lost (menDamage / (menMax × 3) × 100).
+  //   MEN denominator is 3× because MEN ranges from +max down to -2*max, so
   //   the total damageable range is 3× the displayed max.
   // Other: player-entered modifiers for everything that isn't damage —
   //   Exposure, Encumbrance, drugged, bound, etc. Sum of otherModifiers
@@ -1331,9 +1331,9 @@ export function computeDerivedStats(character, ruleset) {
   }
 
   let stress = null;
-  if (san && san.max > 0) {
-    const denom = san.max * 3;
-    const rawPct = (san.damage / denom) * 100;
+  if (men && men.max > 0) {
+    const denom = men.max * 3;
+    const rawPct = (men.damage / denom) * 100;
     const basePct = Math.max(0, Math.min(100, Math.round(rawPct)));
     const mods = Array.isArray(character.stressModifiers) ? character.stressModifiers : [];
     const modTotal = mods.reduce((a, m) => a + (parseInt(m && m.value) || 0), 0);
@@ -1508,7 +1508,7 @@ export function computeDerivedStats(character, ruleset) {
   }
 
   // Post-pass: for each stat entry, compute Penalty-adjusted dice count.
-  // Passive rolls are exempt (HP/SAN resistance rolls don't suffer Penalty).
+  // Passive rolls are exempt (HP/MEN resistance rolls don't suffer Penalty).
   stats.forEach(entry => {
     const def = entry.def;
     const baseDice = (entry.value != null && Number.isFinite(entry.value))
@@ -1555,7 +1555,7 @@ export function computeDerivedStats(character, ruleset) {
     entry.poolBeforePenalty = poolBeforePenalty;
   });
 
-  return { stats, locations, errors, vars, body, power, san, exh, injuries, pain, stress, other, encumbrance, carry, penalty };
+  return { stats, locations, errors, vars, body, power, men, exh, injuries, pain, stress, other, encumbrance, carry, penalty };
 }
 
 // ─── DEGRADATION TABLE ───
