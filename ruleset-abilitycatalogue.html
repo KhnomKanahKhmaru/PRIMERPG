@@ -122,6 +122,15 @@
     #main-pane-settings textarea:focus { border-color: #555; }
     #catalogue-body select option,
     #main-pane-settings select option { background: #111; }
+    /* Optgroup labels in the requires/excludes pickers — make them
+       readable against the dark dropdown. Browsers vary in how much
+       of optgroup styling they honor (Safari ignores most of it),
+       but setting these gives the best result we can manage. */
+    #catalogue-body select optgroup,
+    #main-pane-settings select optgroup {
+      background: #1a1a1a; color: #d8c060;
+      font-style: normal; font-weight: 700;
+    }
 
     /* Hint text — small muted instructional copy. */
     .hint {
@@ -1500,18 +1509,22 @@
         const nm = (f && f.name) || '(unnamed)';
         return tl ? `${tl} ${nm}` : nm;
       }
+      // Each candidate carries `kind` so the dropdown can group via
+      // <optgroup> ("Features" / "Flaws"). kindLabel is kept for chip
+      // rendering — chips don't have native grouping so we still want
+      // a small visual hint there.
       const pickerCandidates = [];
       const candidateById = {};
       (Array.isArray(cat.defaultFeatures) ? cat.defaultFeatures : []).forEach(f => {
         if (f && f.id) {
-          const c = { id: f.id, name: pickName(f), kindLabel: 'F·def' };
+          const c = { id: f.id, name: pickName(f), kind: 'feature', kindLabel: 'Feature' };
           pickerCandidates.push(c);
           candidateById[f.id] = c;
         }
       });
       (Array.isArray(cat.defaultFlaws) ? cat.defaultFlaws : []).forEach(f => {
         if (f && f.id) {
-          const c = { id: f.id, name: pickName(f), kindLabel: 'f·def' };
+          const c = { id: f.id, name: pickName(f), kind: 'flaw', kindLabel: 'Flaw' };
           pickerCandidates.push(c);
           candidateById[f.id] = c;
         }
@@ -1527,16 +1540,37 @@
         const availableForPicker = pickerCandidates.filter(c => !usedIds.has(c.id));
         function chip(id, listKind) {
           const c = candidateById[id];
-          const label = c ? `${escapeHtml(c.name)} <span style="opacity:.5;">[${c.kindLabel}]</span>` : `<span style="opacity:.5;">${escapeHtml(id)}</span>`;
-          return `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;background:#1f1f1f;border:1px solid #2a2a2a;border-radius:3px;font-size:10px;color:#bbb;margin-right:3px;">${label}<button type="button" title="Remove" style="background:transparent;border:none;color:#c66;cursor:pointer;font-size:11px;padding:0 2px;line-height:1;" onclick="catDefFFRemoveDep('${rowKind}', ${rowIdx}, '${listKind}', '${escapeHtmlAttr(id)}')">×</button></span>`;
+          // Chips show the candidate's name only — no [Feature]/[Flaw]
+          // suffix. Color-code the chip border instead so kind is
+          // legible at a glance: green-ish for features, red-ish for
+          // flaws. Falls back to a neutral chip for unresolved ids
+          // (catalogue/Builder mismatch — should be rare).
+          const isFlaw = c && c.kind === 'flaw';
+          const borderColor = c ? (isFlaw ? '#3a2a2a' : '#2a3a2a') : '#2a2a2a';
+          const label = c ? escapeHtml(c.name) : `<span style="opacity:.5;">${escapeHtml(id)}</span>`;
+          return `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;background:#1f1f1f;border:1px solid ${borderColor};border-radius:3px;font-size:10px;color:#bbb;margin-right:3px;">${label}<button type="button" title="Remove" style="background:transparent;border:none;color:#c66;cursor:pointer;font-size:11px;padding:0 2px;line-height:1;" onclick="catDefFFRemoveDep('${rowKind}', ${rowIdx}, '${listKind}', '${escapeHtmlAttr(id)}')">×</button></span>`;
         }
         const reqChips    = reqIds.map(id => chip(id, 'requires')).join('');
         const reqAnyChips = reqAnyIds.map(id => chip(id, 'requiresAnyOf')).join('');
         const excChips    = excIds.map(id => chip(id, 'excludes')).join('');
-        const pickerOptions = availableForPicker.length === 0
-          ? '<option value="">(no candidates)</option>'
-          : '<option value="">— pick to add —</option>' + availableForPicker.map(c =>
-              `<option value="${escapeHtmlAttr(c.id)}">${escapeHtml(c.name)} [${c.kindLabel}]</option>`).join('');
+        // Build optgrouped picker. <optgroup> renders as a non-selectable
+        // bold header with its children indented below — native browser
+        // behavior, no custom widget. Empty groups are omitted entirely.
+        const featureCands = availableForPicker.filter(c => c.kind === 'feature');
+        const flawCands    = availableForPicker.filter(c => c.kind === 'flaw');
+        function optList(cands) {
+          return cands.map(c =>
+            `<option value="${escapeHtmlAttr(c.id)}">${escapeHtml(c.name)}</option>`
+          ).join('');
+        }
+        let pickerOptions;
+        if (availableForPicker.length === 0) {
+          pickerOptions = '<option value="">(no candidates)</option>';
+        } else {
+          pickerOptions = '<option value="">— pick to add —</option>';
+          if (featureCands.length > 0) pickerOptions += `<optgroup label="Features">${optList(featureCands)}</optgroup>`;
+          if (flawCands.length > 0)    pickerOptions += `<optgroup label="Flaws">${optList(flawCands)}</optgroup>`;
+        }
         return `
           <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:#888;flex-wrap:wrap;"
                title="Player can only pick this ${rowKind} when ALL listed Requires are already taken.">
@@ -3805,12 +3839,17 @@
         const nm = ovName || (f && f.name) || '(unnamed)';
         return tl ? `${tl} ${nm}` : nm;
       }
-      // Own features and flaws
+      // Each candidate carries `kind` ('feature'/'flaw') for grouping
+      // in the dropdown via <optgroup>, plus `source` ('builder'/'default')
+      // so the four groups can be: Builder Features, Default Features,
+      // Builder Flaws, Default Flaws. Chips still show kindLabel as a
+      // hint (chips don't have native grouping).
+      // Own features and flaws on the Builder.
       (Array.isArray(b.features) ? b.features : []).forEach(f => {
-        if (f && f.id && !seen.has(f.id)) { seen.add(f.id); out.push({ id: f.id, name: pickName(f), kindLabel: 'F' }); }
+        if (f && f.id && !seen.has(f.id)) { seen.add(f.id); out.push({ id: f.id, name: pickName(f), kind: 'feature', source: 'builder', kindLabel: 'Feature' }); }
       });
       (Array.isArray(b.flaws) ? b.flaws : []).forEach(f => {
-        if (f && f.id && !seen.has(f.id)) { seen.add(f.id); out.push({ id: f.id, name: pickName(f), kindLabel: 'f' }); }
+        if (f && f.id && !seen.has(f.id)) { seen.add(f.id); out.push({ id: f.id, name: pickName(f), kind: 'flaw', source: 'builder', kindLabel: 'Flaw' }); }
       });
       // Catalogue defaults (visible to this Builder unless suppressed).
       // Per-Builder overrides may rename — pickName picks the override
@@ -3822,7 +3861,7 @@
           if (ov && ov.suppressed) return;
           seen.add(f.id);
           const effTier = (ov && typeof ov.tier === 'string') ? ov.tier : f.tier;
-          out.push({ id: f.id, name: pickName({ tier: effTier }, (ov && ov.name) || f.name), kindLabel: 'F·def' });
+          out.push({ id: f.id, name: pickName({ tier: effTier }, (ov && ov.name) || f.name), kind: 'feature', source: 'default', kindLabel: 'Default Feature' });
         }
       });
       (Array.isArray(cat.defaultFlaws) ? cat.defaultFlaws : []).forEach(f => {
@@ -3831,7 +3870,7 @@
           if (ov && ov.suppressed) return;
           seen.add(f.id);
           const effTier = (ov && typeof ov.tier === 'string') ? ov.tier : f.tier;
-          out.push({ id: f.id, name: pickName({ tier: effTier }, (ov && ov.name) || f.name), kindLabel: 'f·def' });
+          out.push({ id: f.id, name: pickName({ tier: effTier }, (ov && ov.name) || f.name), kind: 'flaw', source: 'default', kindLabel: 'Default Flaw' });
         }
       });
       return out;
@@ -3848,7 +3887,9 @@
     //                       a flaw that needs ANY tier of Visual Req).
     //   • Excludes       — NONE listed can be taken (mutual exclusion)
     // The picker omits the row's own id and anything already in any
-    // of the three lists.
+    // of the three lists. Picker uses <optgroup> to split candidates
+    // into "Builder Features", "Default Features", "Builder Flaws",
+    // "Default Flaws" — empty groups are omitted.
     function renderRequiresExcludesUI(ownId, requires, requiresAnyOf, excludes, rowIdx) {
       const reqIds    = Array.isArray(requires)      ? requires      : [];
       const reqAnyIds = Array.isArray(requiresAnyOf) ? requiresAnyOf : [];
@@ -3857,16 +3898,40 @@
       const availableForPicker = pickerCandidates.filter(c => !usedIds.has(c.id));
       function chip(id, listKind) {
         const c = candidateById[id];
-        const label = c ? `${escapeHtml(c.name)} <span style="opacity:.5;">[${c.kindLabel}]</span>` : `<span style="opacity:.5;">${escapeHtml(id)}</span>`;
-        return `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;background:#1f1f1f;border:1px solid #2a2a2a;border-radius:3px;font-size:10px;color:#bbb;margin-right:3px;">${label}<button type="button" title="Remove" style="background:transparent;border:none;color:#c66;cursor:pointer;font-size:11px;padding:0 2px;line-height:1;" onclick="bldrFFRemoveDep('${kind}', ${rowIdx}, '${listKind}', '${escapeHtmlAttr(id)}')">×</button></span>`;
+        // Chip color-coded by kind: green-tinted border for features,
+        // red-tinted for flaws. No [Feature]/[Flaw] suffix — kind is
+        // legible from the border at a glance. Source ('builder' vs
+        // 'default') isn't shown on chips since both behave identically
+        // to the player; the GM cares about the distinction only when
+        // picking.
+        const isFlaw = c && c.kind === 'flaw';
+        const borderColor = c ? (isFlaw ? '#3a2a2a' : '#2a3a2a') : '#2a2a2a';
+        const label = c ? escapeHtml(c.name) : `<span style="opacity:.5;">${escapeHtml(id)}</span>`;
+        return `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;background:#1f1f1f;border:1px solid ${borderColor};border-radius:3px;font-size:10px;color:#bbb;margin-right:3px;">${label}<button type="button" title="Remove" style="background:transparent;border:none;color:#c66;cursor:pointer;font-size:11px;padding:0 2px;line-height:1;" onclick="bldrFFRemoveDep('${kind}', ${rowIdx}, '${listKind}', '${escapeHtmlAttr(id)}')">×</button></span>`;
       }
       const reqChips    = reqIds.map(id => chip(id, 'requires')).join('');
       const reqAnyChips = reqAnyIds.map(id => chip(id, 'requiresAnyOf')).join('');
       const excChips    = excIds.map(id => chip(id, 'excludes')).join('');
-      const pickerOptions = availableForPicker.length === 0
-        ? '<option value="">(no candidates)</option>'
-        : '<option value="">— pick to add —</option>' + availableForPicker.map(c =>
-            `<option value="${escapeHtmlAttr(c.id)}">${escapeHtml(c.name)} [${c.kindLabel}]</option>`).join('');
+      // Build optgrouped picker. Four buckets: Builder/Default × Feature/Flaw.
+      const builderFeatures = availableForPicker.filter(c => c.kind === 'feature' && c.source === 'builder');
+      const defaultFeatures = availableForPicker.filter(c => c.kind === 'feature' && c.source === 'default');
+      const builderFlaws    = availableForPicker.filter(c => c.kind === 'flaw'    && c.source === 'builder');
+      const defaultFlaws    = availableForPicker.filter(c => c.kind === 'flaw'    && c.source === 'default');
+      function optList(cands) {
+        return cands.map(c =>
+          `<option value="${escapeHtmlAttr(c.id)}">${escapeHtml(c.name)}</option>`
+        ).join('');
+      }
+      let pickerOptions;
+      if (availableForPicker.length === 0) {
+        pickerOptions = '<option value="">(no candidates)</option>';
+      } else {
+        pickerOptions = '<option value="">— pick to add —</option>';
+        if (builderFeatures.length > 0) pickerOptions += `<optgroup label="Features (this Builder)">${optList(builderFeatures)}</optgroup>`;
+        if (defaultFeatures.length > 0) pickerOptions += `<optgroup label="Default Features (catalogue)">${optList(defaultFeatures)}</optgroup>`;
+        if (builderFlaws.length > 0)    pickerOptions += `<optgroup label="Flaws (this Builder)">${optList(builderFlaws)}</optgroup>`;
+        if (defaultFlaws.length > 0)    pickerOptions += `<optgroup label="Default Flaws (catalogue)">${optList(defaultFlaws)}</optgroup>`;
+      }
       return `
         <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:#888;flex-wrap:wrap;"
              title="Player can only pick this ${kind} when ALL listed Requires are already taken.">
