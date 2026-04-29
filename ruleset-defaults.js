@@ -18,9 +18,9 @@ window.RULESET_DEFAULTS = {
 
   // XP→AP conversion rate. Players can spend XP to buy AP at this
   // rate (1 AP costs N XP). Set per ruleset; the GM editor exposes
-  // this as a single integer field. Default 3 for the canonical
+  // this as a single integer field. Default 4 for the canonical
   // PRIME economy.
-  xpToApRate: 3,
+  xpToApRate: 4,
 
   // Stat caps / costs.
   statXp: [null, -10, 0, 10, 30, 60, 100],  // index 0 = not takable
@@ -1285,35 +1285,77 @@ window.normalizeRuleset = function(rs) {
 
     // ── CODE RENAMES ──
     // When a default stat's code changes, saved rulesets still carry
-    // the old code. This block migrates those to the new code IF the
-    // stat looks like the original default — same formula, not a
-    // homebrew reuse of the old code.
+    // the old code. This block migrates those to the new code.
     //
-    // SPDUP → SPR (Sprint): part of the combat-section rework that
-    //   clarified Speed Boost's role. Only migrates when formula
-    //   matches 'STR * 1', preserving any homebrew that redefined
-    //   SPDUP.
-    // SAN → MEN (Mental Health): hard recode of the Mental Health
-    //   stat code from 'SAN' to 'MEN'. Migrates whenever the formula
-    //   matches the canonical 'CHA + INT' so homebrew rulesets that
-    //   redefined SAN with a different formula keep their version.
-    const codeRenames = [
-      { oldCode: 'SPDUP', newCode: 'SPR', expectedFormula: 'STR * 1' },
-      { oldCode: 'SAN',   newCode: 'MEN', expectedFormula: 'CHA + INT' }
+    // SPDUP → SPR (Sprint): conservative — only migrates when formula
+    //   matches the canonical 'STR * 1'. Homebrew SPDUP entries with
+    //   different formulas are left alone (the GM can rename manually).
+    //
+    // SAN → MEN (Mental Health): aggressive — renames whenever a SAN
+    //   entry exists and no MEN entry does, regardless of formula.
+    //   Rationale: Mental Health is THE stat that uses this slot.
+    //   Anyone with a SAN entry meant Mental Health. A homebrew that
+    //   genuinely redefines SAN as something other than Mental Health
+    //   is vanishingly rare; in that case the GM can manually re-add
+    //   a SAN stat via the editor. The downside of being too
+    //   conservative here is much worse than being too aggressive:
+    //   a missed rename leaves the auto-injector adding a duplicate
+    //   MEN entry alongside the orphan SAN, which surfaces as a
+    //   ghost "Sanity" section in the Combat tab AND breaks every
+    //   formula that references MEN (EXH, derived rolls, etc.).
+    out.derivedStats.forEach(s => {
+      if (!s) return;
+      if (s.code === 'SPDUP') {
+        const norm = typeof s.formula === 'string' ? s.formula.replace(/\s+/g, '') : '';
+        if (norm !== 'STR*1') return;
+        if (out.derivedStats.some(x => x !== s && x.code === 'SPR')) return;
+        s.code = 'SPR';
+        seenCodes.delete('SPDUP');
+        seenCodes.add('SPR');
+      } else if (s.code === 'SAN') {
+        if (out.derivedStats.some(x => x !== s && x.code === 'MEN')) return;
+        s.code = 'MEN';
+        seenCodes.delete('SAN');
+        seenCodes.add('MEN');
+      }
+    });
+
+    // Rewrite OTHER stats' formulas that reference a renamed code as
+    // a variable. After SAN→MEN, formulas like EXH's `(HP / 2) +
+    // (SAN / 2)` need their SAN token swapped for MEN; without this
+    // the renamed stat is in the symbol table as MEN, the EXH formula
+    // looks for SAN, and the lookup falls through to 0 (silently),
+    // leaving EXH at half-strength and the EXH bar invisible.
+    // We use a word-boundary regex to avoid mangling unrelated tokens
+    // — `SAN` won't match `SAND` or `SANITY`. Both `formula` and
+    // `rollModifier` get the rewrite. Only runs for renames that
+    // actually fired (legacy code no longer in seenCodes), so homebrew
+    // rulesets that kept the legacy code as a custom stat (and skipped
+    // the rename above) don't have their formulas touched.
+    const renameTable = [
+      { oldCode: 'SPDUP', newCode: 'SPR' },
+      { oldCode: 'SAN',   newCode: 'MEN' }
     ];
-    codeRenames.forEach(r => {
-      const old = out.derivedStats.find(s => s.code === r.oldCode);
-      if (!old) return;
-      // Skip if the user's version has a different formula (homebrew).
-      const normFormula = typeof old.formula === 'string'
-        ? old.formula.replace(/\s+/g, '')
-        : '';
-      if (normFormula !== r.expectedFormula.replace(/\s+/g, '')) return;
-      // Skip if the new code is already taken (don't clobber).
-      if (out.derivedStats.some(s => s.code === r.newCode)) return;
-      old.code = r.newCode;
-      seenCodes.delete(r.oldCode);
-      seenCodes.add(r.newCode);
+    renameTable.forEach(r => {
+      if (seenCodes.has(r.oldCode)) return;
+      // Word-boundary regex prevents matching SAND, SANITY, etc.
+      // The MOD form is applied first so SANMOD doesn't get partially
+      // rewritten via the bare-code rule (which would leave MENMOD as
+      // a leftover string concat).
+      const reMod  = new RegExp('\\b' + r.oldCode + 'MOD\\b', 'g');
+      const reCode = new RegExp('\\b' + r.oldCode + '\\b', 'g');
+      out.derivedStats.forEach(s => {
+        if (typeof s.formula === 'string') {
+          s.formula = s.formula
+            .replace(reMod,  r.newCode + 'MOD')
+            .replace(reCode, r.newCode);
+        }
+        if (typeof s.rollModifier === 'string') {
+          s.rollModifier = s.rollModifier
+            .replace(reMod,  r.newCode + 'MOD')
+            .replace(reCode, r.newCode);
+        }
+      });
     });
 
     // Auto-inject any NEW default stats that aren't in the user's list yet.
