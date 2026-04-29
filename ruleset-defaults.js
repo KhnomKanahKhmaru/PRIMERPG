@@ -1877,11 +1877,17 @@ window.normalizeRuleset = function(rs) {
         //   'literal'     — a fixed string the GM authored
         tokenValueMode: ['name','description','customField','literal'].includes(f.tokenValueMode) ? f.tokenValueMode : 'description',
         tokenLiteral: typeof f.tokenLiteral === 'string' ? f.tokenLiteral : '',
-        // requires: array of feature/flaw ids that must already be
-        // selected before this one can be picked. ALL listed must be
-        // present (logical AND). Same-Builder only — cross-Builder
-        // dependencies aren't supported yet. Empty array = no prereqs.
+        // requires: array of feature/flaw ids that must ALL already be
+        // selected before this one can be picked. Logical AND. Empty
+        // array = no AND-prereqs.
         requires:    Array.isArray(f.requires) ? f.requires.filter(x => typeof x === 'string') : [],
+        // requiresAnyOf: array of feature/flaw ids where AT LEAST ONE
+        // must already be selected. Logical OR. Used for "this needs
+        // any one of N mutually-exclusive things" — e.g. Supernatural
+        // Visual Requirement needs one of the 6 Visual Requirement
+        // tiers, but those 6 tiers exclude each other so requires
+        // (AND) can never be satisfied. Empty array = no OR-prereqs.
+        requiresAnyOf: Array.isArray(f.requiresAnyOf) ? f.requiresAnyOf.filter(x => typeof x === 'string') : [],
         // excludes: array of feature/flaw ids that this one is mutually
         // exclusive with. If A.excludes contains B, then taking A blocks
         // taking B and vice versa. Bidirectionality is enforced at
@@ -1913,6 +1919,7 @@ window.normalizeRuleset = function(rs) {
         tokenValueMode: ['name','description','customField','literal'].includes(f.tokenValueMode) ? f.tokenValueMode : 'description',
         tokenLiteral: typeof f.tokenLiteral === 'string' ? f.tokenLiteral : '',
         requires:    Array.isArray(f.requires) ? f.requires.filter(x => typeof x === 'string') : [],
+        requiresAnyOf: Array.isArray(f.requiresAnyOf) ? f.requiresAnyOf.filter(x => typeof x === 'string') : [],
         excludes:    Array.isArray(f.excludes) ? f.excludes.filter(x => typeof x === 'string') : [],
         extendedSystem: typeof f.extendedSystem === 'string' ? f.extendedSystem : ''
       }));
@@ -1979,6 +1986,7 @@ window.normalizeRuleset = function(rs) {
           tokenValueMode: ['name','description','customField','literal'].includes(f.tokenValueMode) ? f.tokenValueMode : 'description',
           tokenLiteral: typeof f.tokenLiteral === 'string' ? f.tokenLiteral : '',
           requires:    Array.isArray(f.requires) ? f.requires.filter(x => typeof x === 'string') : [],
+          requiresAnyOf: Array.isArray(f.requiresAnyOf) ? f.requiresAnyOf.filter(x => typeof x === 'string') : [],
           excludes:    Array.isArray(f.excludes) ? f.excludes.filter(x => typeof x === 'string') : [],
           extendedSystem: typeof f.extendedSystem === 'string' ? f.extendedSystem : ''
         }));
