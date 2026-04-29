@@ -8659,14 +8659,22 @@
       // Already-selected items aren't "locked" — the player can still
       // remove them. Lock applies only to picking it in the first place.
       if (isOn) return null;
-      const reqs = Array.isArray(item.requires) ? item.requires : [];
-      const excs = Array.isArray(item.excludes) ? item.excludes : [];
+      const reqs    = Array.isArray(item.requires)      ? item.requires      : [];
+      const reqAny  = Array.isArray(item.requiresAnyOf) ? item.requiresAnyOf : [];
+      const excs    = Array.isArray(item.excludes)      ? item.excludes      : [];
       const missingReqs = reqs.filter(rid => !allSelected.has(rid));
+      // requiresAnyOf is satisfied if AT LEAST ONE listed id is taken.
+      // An empty list is "no constraint" → trivially satisfied. A
+      // non-empty list with no matches in allSelected is a lock.
+      const anyOfSatisfied = reqAny.length === 0 || reqAny.some(rid => allSelected.has(rid));
       const conflicts   = excs.filter(eid => allSelected.has(eid));
-      if (missingReqs.length === 0 && conflicts.length === 0) return null;
+      if (missingReqs.length === 0 && anyOfSatisfied && conflicts.length === 0) return null;
       const parts = [];
       if (missingReqs.length > 0) {
         parts.push('Requires: ' + missingReqs.map(id => nameById[id] || id).join(', '));
+      }
+      if (!anyOfSatisfied) {
+        parts.push('Requires one of: ' + reqAny.map(id => nameById[id] || id).join(', '));
       }
       if (conflicts.length > 0) {
         parts.push('Conflicts with: ' + conflicts.map(id => nameById[id] || id).join(', '));
@@ -8680,15 +8688,18 @@
     // counted, the player just needs to know they're in a broken state.
     function violationReason(item) {
       if (!selected.has(item.id)) return null;
-      const reqs = Array.isArray(item.requires) ? item.requires : [];
-      const excs = Array.isArray(item.excludes) ? item.excludes : [];
+      const reqs    = Array.isArray(item.requires)      ? item.requires      : [];
+      const reqAny  = Array.isArray(item.requiresAnyOf) ? item.requiresAnyOf : [];
+      const excs    = Array.isArray(item.excludes)      ? item.excludes      : [];
       const missingReqs = reqs.filter(rid => !allSelected.has(rid));
+      const anyOfSatisfied = reqAny.length === 0 || reqAny.some(rid => allSelected.has(rid));
       // Excludes shouldn't list self, and even if they did, mutual
       // exclusion means if BOTH are taken something's wrong — flag it.
       const conflicts = excs.filter(eid => eid !== item.id && allSelected.has(eid));
-      if (missingReqs.length === 0 && conflicts.length === 0) return null;
+      if (missingReqs.length === 0 && anyOfSatisfied && conflicts.length === 0) return null;
       const parts = [];
       if (missingReqs.length > 0) parts.push('Missing required: ' + missingReqs.map(id => nameById[id] || id).join(', '));
+      if (!anyOfSatisfied)        parts.push('Missing one-of: '   + reqAny.map(id => nameById[id] || id).join(', '));
       if (conflicts.length > 0)   parts.push('Conflicts with selected: ' + conflicts.map(id => nameById[id] || id).join(', '));
       return parts.join(' · ');
     }
@@ -8886,25 +8897,31 @@
     function lockReason(item) {
       const isOn = selected.has(item.id);
       if (isOn) return null;
-      const reqs = Array.isArray(item.requires) ? item.requires : [];
-      const excs = Array.isArray(item.excludes) ? item.excludes : [];
+      const reqs    = Array.isArray(item.requires)      ? item.requires      : [];
+      const reqAny  = Array.isArray(item.requiresAnyOf) ? item.requiresAnyOf : [];
+      const excs    = Array.isArray(item.excludes)      ? item.excludes      : [];
       const missingReqs = reqs.filter(rid => !allSelected.has(rid));
+      const anyOfSatisfied = reqAny.length === 0 || reqAny.some(rid => allSelected.has(rid));
       const conflicts   = excs.filter(eid => allSelected.has(eid));
-      if (missingReqs.length === 0 && conflicts.length === 0) return null;
+      if (missingReqs.length === 0 && anyOfSatisfied && conflicts.length === 0) return null;
       const parts = [];
       if (missingReqs.length > 0) parts.push('Requires: ' + missingReqs.map(id => nameById[id] || id).join(', '));
+      if (!anyOfSatisfied)        parts.push('Requires one of: ' + reqAny.map(id => nameById[id] || id).join(', '));
       if (conflicts.length > 0)   parts.push('Conflicts with: ' + conflicts.map(id => nameById[id] || id).join(', '));
       return parts.join(' · ');
     }
     function violationReason(item) {
       if (!selected.has(item.id)) return null;
-      const reqs = Array.isArray(item.requires) ? item.requires : [];
-      const excs = Array.isArray(item.excludes) ? item.excludes : [];
+      const reqs    = Array.isArray(item.requires)      ? item.requires      : [];
+      const reqAny  = Array.isArray(item.requiresAnyOf) ? item.requiresAnyOf : [];
+      const excs    = Array.isArray(item.excludes)      ? item.excludes      : [];
       const missingReqs = reqs.filter(rid => !allSelected.has(rid));
+      const anyOfSatisfied = reqAny.length === 0 || reqAny.some(rid => allSelected.has(rid));
       const conflicts = excs.filter(eid => eid !== item.id && allSelected.has(eid));
-      if (missingReqs.length === 0 && conflicts.length === 0) return null;
+      if (missingReqs.length === 0 && anyOfSatisfied && conflicts.length === 0) return null;
       const parts = [];
       if (missingReqs.length > 0) parts.push('Missing required: ' + missingReqs.map(id => nameById[id] || id).join(', '));
+      if (!anyOfSatisfied)        parts.push('Missing one-of: '   + reqAny.map(id => nameById[id] || id).join(', '));
       if (conflicts.length > 0)   parts.push('Conflicts with selected: ' + conflicts.map(id => nameById[id] || id).join(', '));
       return parts.join(' · ');
     }
@@ -9541,7 +9558,7 @@
     <div class="xp-edit-field">
       <label>Buy AP with XP</label>
       <input type="number" id="xp-edit-buyAp" min="0" step="1" value="0">
-      <div class="xp-edit-hint" id="xp-edit-buyAp-hint">Rate: 3 XP = 1 AP</div>
+      <div class="xp-edit-hint" id="xp-edit-buyAp-hint">Rate: 4 XP = 1 AP</div>
     </div>
     <div id="xp-edit-totals-hint"></div>
     <div class="xp-edit-actions">
