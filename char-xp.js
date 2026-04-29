@@ -31,7 +31,7 @@ export function createXpBar(ctx) {
     const ruleset = ctx.getRuleset() || {};
     const startingXp = Number.isFinite(ruleset.startingXp) ? ruleset.startingXp : 0;
     const startingAp = Number.isFinite(ruleset.startingAp) ? ruleset.startingAp : 0;
-    const rate = Math.max(1, Math.floor(ruleset.xpToApRate || 3));
+    const rate = Math.max(1, Math.floor(ruleset.xpToApRate || 4));
 
     // maxXp / maxAp are PLAYER-EDITABLE totals. Default to ruleset
     // starting values for fresh characters that haven't opened the
@@ -149,6 +149,10 @@ export function createXpBar(ctx) {
   async function saveXpEditModal() {
     if (!ctx.getCanEdit()) return;
     const charData = ctx.getCharData();
+    // Defensive — if the modal is somehow opened before charData is
+    // hydrated, a save would crash on the Object.assign. Bail and
+    // close so the user can retry once the page is fully loaded.
+    if (!charData) { closeXpEditModal(); return; }
     const e = getEconomy();
     const xpInput  = document.getElementById('xp-edit-maxXp');
     const apInput  = document.getElementById('xp-edit-maxAp');
@@ -182,6 +186,7 @@ export function createXpBar(ctx) {
     if (!ctx.getCanEdit()) return;
     if (field === 'powerLevel') return;
     const charData = ctx.getCharData();
+    if (!charData) return;
     const v = Math.max(0, parseInt(val, 10) || 0);
     charData[field] = v;
     await saveCharacter(ctx.getCharId(), { [field]: v });
