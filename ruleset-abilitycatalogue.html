@@ -1677,8 +1677,8 @@
           `;
         }).join('');
         html += `
-          <div class="bldr-tier-band">
-            <div class="bldr-tier-band-head">
+          <div class="bldr-tier-band" data-collapse-key="catdef:tier:${kind}:${tier}">
+            <div class="bldr-tier-band-head" onclick="toggleBldrCollapse(event)">
               <span class="bldr-tier-band-name">${TIER_LABELS[tier]}</span>
               <span class="bldr-tier-band-cost">${costLabel}</span>
             </div>
@@ -1689,6 +1689,12 @@
         `;
       });
       el.innerHTML = html;
+      // Restore any previously-collapsed bands (clicking ▾ persists
+      // their state into window.__bldrCollapsedKeys; without this
+      // every re-render would re-open them).
+      if (typeof window.restoreBldrCollapseState === 'function') {
+        window.restoreBldrCollapseState(el);
+      }
     }
     renderInto('cat-default-features', 'feature');
     renderInto('cat-default-flaws',    'flaw');
