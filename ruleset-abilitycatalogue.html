@@ -627,6 +627,70 @@
     .bldr-tier-band {
       margin-bottom: 14px;
     }
+
+    /* Side-by-side layout for the catalogue Default Features / Default
+       Flaws panes (Settings tab). At wide viewports (≥1100px) both
+       panes sit in two equal columns with a small gutter; below 1100px
+       they collapse to a single column so each pane gets full width.
+       Each section is self-contained — its own header, hint, and tier
+       bands inside — so the grid just sets the outer column behavior. */
+    .cat-defaults-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 18px;
+      align-items: flex-start;
+    }
+    .cat-defaults-grid > .section { margin-bottom: 0; }
+    @media (max-width: 1100px) {
+      .cat-defaults-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    /* Per-row collapse for individual Default Features / Flaws. When
+       collapsed, only the row header line (drag handle, name, tier,
+       caret, delete) is visible; description, custom field, token,
+       extended system, and requires/excludes are hidden. The caret
+       on the header rotates to indicate state. */
+    .cat-def-row {
+      display: flex; flex-direction: column; gap: 5px;
+      align-items: stretch;
+      padding: 6px 4px 6px 6px;
+      margin: 0 -4px 5px -6px;
+      border: 1px solid transparent;
+      border-radius: 3px;
+    }
+    .cat-def-row:hover { border-color: #1f1f1f; background: #0e0e0e; }
+    .cat-def-row[data-collapsed="1"] > *:not(.cat-def-row-head) {
+      display: none !important;
+    }
+    .cat-def-row-head {
+      display: flex; gap: 6px; align-items: center;
+    }
+    /* Caret toggle button — same visual language as the tier-band
+       header carets so the collapse affordance is consistent. */
+    .cat-def-row-caret {
+      background: transparent; border: none;
+      color: #666; cursor: pointer;
+      font-size: 11px; padding: 0 4px;
+      flex-shrink: 0; line-height: 1;
+      transition: transform 0.1s ease-out;
+    }
+    .cat-def-row-caret:hover { color: #aaa; }
+    .cat-def-row[data-collapsed="1"] .cat-def-row-caret {
+      transform: rotate(-90deg);
+    }
+    /* Drag handle on the row — six-dot grip. Cursor turns to grab
+       when hovered; activeline styles handled by the .drag-handle
+       rules above. */
+    .cat-def-row-drag {
+      color: #444; cursor: grab;
+      font-size: 14px; padding: 0 2px;
+      flex-shrink: 0; line-height: 1;
+      user-select: none;
+    }
+    .cat-def-row-drag:hover { color: #888; }
+    .cat-def-row-drag:active { cursor: grabbing; }
     .bldr-tier-band-head {
       display: flex; align-items: center; justify-content: space-between;
       padding: 4px 0 6px 0; margin-bottom: 6px;
@@ -854,26 +918,33 @@
         </div>
       </div>
 
-      <div class="section">
-        <div class="section-header">
-          <div class="section-title">Default Features</div>
+      <!-- Side-by-side layout for catalogue Default Features / Flaws.
+           At wide viewports they sit in two columns; below ~1100px the
+           grid collapses back to a single column so each section gets
+           full width on narrower windows. Mirrors the dual-column
+           layout in the per-Builder editor's features/flaws panes. -->
+      <div class="cat-defaults-grid">
+        <div class="section">
+          <div class="section-header">
+            <div class="section-title">Default Features</div>
+          </div>
+          <p class="hint">
+            Features that auto-populate every Builder in this catalogue. On each Builder, the GM
+            can suppress an individual default or override its name/description/tier/stackable.
+          </p>
+          <div id="cat-default-features"></div>
         </div>
-        <p class="hint">
-          Features that auto-populate every Builder in this catalogue. On each Builder, the GM
-          can suppress an individual default or override its name/description/tier/stackable.
-        </p>
-        <div id="cat-default-features"></div>
-      </div>
 
-      <div class="section">
-        <div class="section-header">
-          <div class="section-title">Default Flaws</div>
+        <div class="section">
+          <div class="section-header">
+            <div class="section-title">Default Flaws</div>
+          </div>
+          <p class="hint">
+            Flaws that auto-populate every Builder in this catalogue. Same override rules as
+            Default Features.
+          </p>
+          <div id="cat-default-flaws"></div>
         </div>
-        <p class="hint">
-          Flaws that auto-populate every Builder in this catalogue. Same override rules as
-          Default Features.
-        </p>
-        <div id="cat-default-flaws"></div>
       </div>
     </div>
 
@@ -1488,8 +1559,20 @@
                       style="flex:1;background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:12px;padding:5px 8px;border-radius:3px;outline:none;">`
             : '';
           return `
-            <div class="bldr-ff-row" style="flex-direction:column;gap:5px;align-items:stretch;">
-              <div style="display:flex;gap:6px;align-items:center;">
+            <div class="cat-def-row${isCatDefRowCollapsed(kind, idx) ? '' : ''}"
+                 data-collapsed="${isCatDefRowCollapsed(kind, idx) ? '1' : '0'}"
+                 data-drag-row
+                 ondragover="window.bldrDragOver(event, 'catdef:${kind}', ${idx})"
+                 ondragleave="window.bldrDragLeave(event)"
+                 ondrop="window.bldrDrop(event, 'reorderCatDefFF', 'catdef:${kind}', ${idx})">
+              <div class="cat-def-row-head">
+                <span class="cat-def-row-drag" title="Drag to reorder"
+                      draggable="true"
+                      ondragstart="window.bldrDragStart(event, 'catdef:${kind}', ${idx})"
+                      ondragend="window.bldrDragEnd()">⋮⋮</span>
+                <button type="button" class="cat-def-row-caret"
+                        title="${isCatDefRowCollapsed(kind, idx) ? 'Expand row' : 'Collapse row'}"
+                        onclick="catDefFFToggleCollapse('${kind}', ${idx})">▾</button>
                 <input type="text" placeholder="${kind === 'feature' ? 'Feature name' : 'Flaw name'}"
                        value="${escapeHtmlAttr(it.name || '')}"
                        oninput="catDefaultFFSetField('${kind}', ${idx}, 'name', this.value)"
@@ -1712,6 +1795,75 @@
     }
     renderCatDefaultFFSection();
   };
+
+  // ── PER-ROW COLLAPSE (catalogue defaults) ──
+  // Each Default Feature/Flaw row can be individually collapsed to
+  // just its header line (drag handle, name, tier, caret, delete) so
+  // the GM can scan a long list without scrolling through each row's
+  // description, custom field, token row, extended system, and
+  // requires/excludes UI. State lives in a Set keyed by `${kind}:${idx}`
+  // — purely UI ephemeral, not persisted to Firestore. Re-renders blow
+  // away the indices but the user just collapsed/expanded so they're
+  // still on-screen anyway.
+  function isCatDefRowCollapsed(kind, idx) {
+    if (!window.__catDefRowCollapsed) window.__catDefRowCollapsed = new Set();
+    return window.__catDefRowCollapsed.has(`${kind}:${idx}`);
+  }
+  window.catDefFFToggleCollapse = function(kind, idx) {
+    if (!window.__catDefRowCollapsed) window.__catDefRowCollapsed = new Set();
+    const key = `${kind}:${idx}`;
+    if (window.__catDefRowCollapsed.has(key)) window.__catDefRowCollapsed.delete(key);
+    else window.__catDefRowCollapsed.add(key);
+    renderCatDefaultFFSection();
+  };
+
+  // Drag-reorder handler for catalogue Default Features/Flaws. Group key
+  // is "catdef:feature" or "catdef:flaw". Mutates the catalogue's
+  // defaultFeatures / defaultFlaws array. Note: the array order is the
+  // canonical order; the renderer groups by tier purely for display, so
+  // moving a row across tier bands works (the visible ordering within a
+  // tier reflects array order, but the row's tier badge still controls
+  // which band it appears under). After reorder we also have to remap
+  // any per-row collapse flags so the user's collapse state follows the
+  // moved row to its new index.
+  registerDragReorder('reorderCatDefFF', function(groupKey, fromIdx, toIdx) {
+    const kind = groupKey.replace(/^catdef:/, '');
+    if (kind !== 'feature' && kind !== 'flaw') return;
+    const arr = getDefaultFFArr(kind);
+    if (!Array.isArray(arr) || fromIdx < 0 || fromIdx >= arr.length) return;
+    if (toIdx < 0) toIdx = 0;
+    if (toIdx > arr.length) toIdx = arr.length;
+
+    // Re-key any UI flags (collapsed/token-expanded/extended-expanded)
+    // so they follow rows by INDEX. We rebuild each Set: any entry
+    // whose index equals fromIdx maps to toIdx, indices between
+    // fromIdx and toIdx shift by one toward fromIdx, and the rest are
+    // unchanged. Other kinds in the same Set are passed through.
+    function remapSet(setName) {
+      const set = window[setName];
+      if (!(set instanceof Set)) return;
+      const remapped = new Set();
+      set.forEach(key => {
+        const [k, idxStr] = key.split(':');
+        if (k !== kind) { remapped.add(key); return; }
+        let i = parseInt(idxStr, 10);
+        if (!Number.isFinite(i)) { remapped.add(key); return; }
+        let newI = i;
+        if (i === fromIdx) newI = toIdx;
+        else if (fromIdx < toIdx && i > fromIdx && i <= toIdx) newI = i - 1;
+        else if (toIdx < fromIdx && i >= toIdx && i < fromIdx) newI = i + 1;
+        remapped.add(`${k}:${newI}`);
+      });
+      window[setName] = remapped;
+    }
+
+    const moved = arr.splice(fromIdx, 1)[0];
+    arr.splice(toIdx, 0, moved);
+    remapSet('__catDefRowCollapsed');
+    remapSet('__catDefFFTokenExpanded');
+    remapSet('__catDefFFExtendedExpanded');
+    renderCatDefaultFFSection();
+  });
 
   // ── PREREQUISITE / MUTUAL-EXCLUDE EDITING (catalogue defaults) ──
   // Same logic as the per-Builder bldrFFAddDep / bldrFFRemoveDep, but
