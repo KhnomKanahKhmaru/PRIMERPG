@@ -1517,28 +1517,41 @@
         }
       });
       // Render the requires/excludes UI for one row.
-      function renderRequiresExcludesUI(ownId, requires, excludes, rowIdx, rowKind) {
-        const reqIds = Array.isArray(requires) ? requires : [];
-        const excIds = Array.isArray(excludes) ? excludes : [];
-        const usedIds = new Set([ownId, ...reqIds, ...excIds]);
+      function renderRequiresExcludesUI(ownId, requires, requiresAnyOf, excludes, rowIdx, rowKind) {
+        const reqIds   = Array.isArray(requires)      ? requires      : [];
+        const reqAnyIds = Array.isArray(requiresAnyOf) ? requiresAnyOf : [];
+        const excIds   = Array.isArray(excludes)      ? excludes      : [];
+        // Same id can't appear twice across the three lists, and can
+        // never reference itself. The picker filters those out.
+        const usedIds = new Set([ownId, ...reqIds, ...reqAnyIds, ...excIds]);
         const availableForPicker = pickerCandidates.filter(c => !usedIds.has(c.id));
         function chip(id, listKind) {
           const c = candidateById[id];
           const label = c ? `${escapeHtml(c.name)} <span style="opacity:.5;">[${c.kindLabel}]</span>` : `<span style="opacity:.5;">${escapeHtml(id)}</span>`;
           return `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;background:#1f1f1f;border:1px solid #2a2a2a;border-radius:3px;font-size:10px;color:#bbb;margin-right:3px;">${label}<button type="button" title="Remove" style="background:transparent;border:none;color:#c66;cursor:pointer;font-size:11px;padding:0 2px;line-height:1;" onclick="catDefFFRemoveDep('${rowKind}', ${rowIdx}, '${listKind}', '${escapeHtmlAttr(id)}')">×</button></span>`;
         }
-        const reqChips = reqIds.map(id => chip(id, 'requires')).join('');
-        const excChips = excIds.map(id => chip(id, 'excludes')).join('');
+        const reqChips    = reqIds.map(id => chip(id, 'requires')).join('');
+        const reqAnyChips = reqAnyIds.map(id => chip(id, 'requiresAnyOf')).join('');
+        const excChips    = excIds.map(id => chip(id, 'excludes')).join('');
         const pickerOptions = availableForPicker.length === 0
           ? '<option value="">(no candidates)</option>'
           : '<option value="">— pick to add —</option>' + availableForPicker.map(c =>
               `<option value="${escapeHtmlAttr(c.id)}">${escapeHtml(c.name)} [${c.kindLabel}]</option>`).join('');
         return `
           <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:#888;flex-wrap:wrap;"
-               title="Player can only pick this ${rowKind} when ALL listed Requires are already taken, and NONE of the Excludes are taken.">
+               title="Player can only pick this ${rowKind} when ALL listed Requires are already taken.">
             <span style="flex-shrink:0;">Requires:</span>
             ${reqChips}
             <select onchange="catDefFFAddDep('${rowKind}', ${rowIdx}, 'requires', this.value);this.value='';"
+                    style="background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:3px 6px;border-radius:3px;flex-shrink:0;">
+              ${pickerOptions}
+            </select>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:#888;flex-wrap:wrap;"
+               title="Player can only pick this ${rowKind} when AT LEAST ONE of these is already taken. Use this when the prereq could be any of several mutually-exclusive options (e.g. one of the 6 Visual Requirement tiers).">
+            <span style="flex-shrink:0;">Requires one of:</span>
+            ${reqAnyChips}
+            <select onchange="catDefFFAddDep('${rowKind}', ${rowIdx}, 'requiresAnyOf', this.value);this.value='';"
                     style="background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:3px 6px;border-radius:3px;flex-shrink:0;">
               ${pickerOptions}
             </select>
@@ -1672,7 +1685,7 @@
                           style="background:transparent;border:none;color:#c66;cursor:pointer;font-size:13px;padding:0 4px;line-height:1;flex-shrink:0;margin-top:4px;">×</button>
                 </div>
               ` : ''}
-              ${renderRequiresExcludesUI(it.id, it.requires, it.excludes, idx, kind)}
+              ${renderRequiresExcludesUI(it.id, it.requires, it.requiresAnyOf, it.excludes, idx, kind)}
             </div>
           `;
         }).join('');
@@ -1907,9 +1920,16 @@
     const arr = getDefaultFFArr(kind);
     if (idx < 0 || idx >= arr.length) return;
     const it = arr[idx];
-    const list = listKind === 'requires' ? 'requires' : 'excludes';
+    // Three valid list kinds: requires (AND), requiresAnyOf (OR), excludes.
+    // Anything else falls back to 'excludes' to match the old behavior.
+    let list;
+    if (listKind === 'requires')           list = 'requires';
+    else if (listKind === 'requiresAnyOf') list = 'requiresAnyOf';
+    else                                   list = 'excludes';
     if (!Array.isArray(it[list])) it[list] = [];
     if (!it[list].includes(idToAdd)) it[list].push(idToAdd);
+    // Mirror exclusion to the other side. Requires/requiresAnyOf are
+    // directional and don't mirror.
     if (list === 'excludes') {
       const target = findCatDefById(idToAdd);
       if (target) {
@@ -1923,7 +1943,10 @@
     const arr = getDefaultFFArr(kind);
     if (idx < 0 || idx >= arr.length) return;
     const it = arr[idx];
-    const list = listKind === 'requires' ? 'requires' : 'excludes';
+    let list;
+    if (listKind === 'requires')           list = 'requires';
+    else if (listKind === 'requiresAnyOf') list = 'requiresAnyOf';
+    else                                   list = 'excludes';
     if (!Array.isArray(it[list])) return;
     const i = it[list].indexOf(idToRemove);
     if (i >= 0) it[list].splice(i, 1);
@@ -3817,32 +3840,48 @@
     const candidateById = {};
     pickerCandidates.forEach(c => { candidateById[c.id] = c; });
 
-    // Render the requires/excludes UI for an FF row. Both lists show
-    // chips for currently-set ids + a small picker dropdown to add
-    // more. The picker omits the row's own id (a feature can't require
-    // itself) and any items already in either list.
-    function renderRequiresExcludesUI(ownId, requires, excludes, rowIdx) {
-      const reqIds = Array.isArray(requires) ? requires : [];
-      const excIds = Array.isArray(excludes) ? excludes : [];
-      const usedIds = new Set([ownId, ...reqIds, ...excIds]);
+    // Render the requires/excludes UI for an FF row. Three lists:
+    //   • Requires       — ALL listed must be taken (logical AND)
+    //   • Requires One Of — AT LEAST ONE listed must be taken (logical
+    //                       OR). Use when the prereq could be any of
+    //                       several mutually-exclusive options (e.g.
+    //                       a flaw that needs ANY tier of Visual Req).
+    //   • Excludes       — NONE listed can be taken (mutual exclusion)
+    // The picker omits the row's own id and anything already in any
+    // of the three lists.
+    function renderRequiresExcludesUI(ownId, requires, requiresAnyOf, excludes, rowIdx) {
+      const reqIds    = Array.isArray(requires)      ? requires      : [];
+      const reqAnyIds = Array.isArray(requiresAnyOf) ? requiresAnyOf : [];
+      const excIds    = Array.isArray(excludes)      ? excludes      : [];
+      const usedIds = new Set([ownId, ...reqIds, ...reqAnyIds, ...excIds]);
       const availableForPicker = pickerCandidates.filter(c => !usedIds.has(c.id));
       function chip(id, listKind) {
         const c = candidateById[id];
         const label = c ? `${escapeHtml(c.name)} <span style="opacity:.5;">[${c.kindLabel}]</span>` : `<span style="opacity:.5;">${escapeHtml(id)}</span>`;
         return `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;background:#1f1f1f;border:1px solid #2a2a2a;border-radius:3px;font-size:10px;color:#bbb;margin-right:3px;">${label}<button type="button" title="Remove" style="background:transparent;border:none;color:#c66;cursor:pointer;font-size:11px;padding:0 2px;line-height:1;" onclick="bldrFFRemoveDep('${kind}', ${rowIdx}, '${listKind}', '${escapeHtmlAttr(id)}')">×</button></span>`;
       }
-      const reqChips = reqIds.map(id => chip(id, 'requires')).join('');
-      const excChips = excIds.map(id => chip(id, 'excludes')).join('');
+      const reqChips    = reqIds.map(id => chip(id, 'requires')).join('');
+      const reqAnyChips = reqAnyIds.map(id => chip(id, 'requiresAnyOf')).join('');
+      const excChips    = excIds.map(id => chip(id, 'excludes')).join('');
       const pickerOptions = availableForPicker.length === 0
         ? '<option value="">(no candidates)</option>'
         : '<option value="">— pick to add —</option>' + availableForPicker.map(c =>
             `<option value="${escapeHtmlAttr(c.id)}">${escapeHtml(c.name)} [${c.kindLabel}]</option>`).join('');
       return `
         <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:#888;flex-wrap:wrap;"
-             title="Player can only pick this ${kind} when ALL listed Requires are already taken, and NONE of the Excludes are taken.">
+             title="Player can only pick this ${kind} when ALL listed Requires are already taken.">
           <span style="flex-shrink:0;">Requires:</span>
           ${reqChips}
           <select onchange="bldrFFAddDep('${kind}', ${rowIdx}, 'requires', this.value);this.value='';"
+                  style="background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:3px 6px;border-radius:3px;flex-shrink:0;">
+            ${pickerOptions}
+          </select>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:#888;flex-wrap:wrap;"
+             title="Player can only pick this ${kind} when AT LEAST ONE of these is already taken. Use this when the prereq could be any of several mutually-exclusive options (e.g. one of the 6 Visual Requirement tiers).">
+          <span style="flex-shrink:0;">Requires one of:</span>
+          ${reqAnyChips}
+          <select onchange="bldrFFAddDep('${kind}', ${rowIdx}, 'requiresAnyOf', this.value);this.value='';"
                   style="background:#111;border:1px solid #222;color:#e0e0e0;font-family:inherit;font-size:11px;padding:3px 6px;border-radius:3px;flex-shrink:0;">
             ${pickerOptions}
           </select>
@@ -4113,7 +4152,7 @@
                         style="background:transparent;border:none;color:#c66;cursor:pointer;font-size:13px;padding:0 4px;line-height:1;flex-shrink:0;margin-top:4px;">×</button>
               </div>
             ` : ''}
-            ${renderRequiresExcludesUI(it.id, it.requires, it.excludes, idx)}
+            ${renderRequiresExcludesUI(it.id, it.requires, it.requiresAnyOf, it.excludes, idx)}
           </div>
         `;
       }).join('');
@@ -5173,11 +5212,18 @@
     const arr = (kind === 'feature') ? b.features : b.flaws;
     if (!Array.isArray(arr) || !arr[idx]) return;
     const it = arr[idx];
-    const list = listKind === 'requires' ? 'requires' : 'excludes';
+    // Three valid list kinds: requires (AND), requiresAnyOf (OR),
+    // excludes. Anything else falls back to 'excludes' to match the
+    // pre-OR-aware behavior.
+    let list;
+    if (listKind === 'requires')           list = 'requires';
+    else if (listKind === 'requiresAnyOf') list = 'requiresAnyOf';
+    else                                   list = 'excludes';
     if (!Array.isArray(it[list])) it[list] = [];
     if (!it[list].includes(idToAdd)) it[list].push(idToAdd);
     // Mirror exclusion to the other side. Look across BOTH features
-    // and flaws on this Builder for the target id.
+    // and flaws on this Builder for the target id. Requires and
+    // requiresAnyOf are directional and don't mirror.
     if (list === 'excludes') {
       mirrorExclude(b, idToAdd, it.id);
     }
@@ -5192,7 +5238,10 @@
     const arr = (kind === 'feature') ? b.features : b.flaws;
     if (!Array.isArray(arr) || !arr[idx]) return;
     const it = arr[idx];
-    const list = listKind === 'requires' ? 'requires' : 'excludes';
+    let list;
+    if (listKind === 'requires')           list = 'requires';
+    else if (listKind === 'requiresAnyOf') list = 'requiresAnyOf';
+    else                                   list = 'excludes';
     if (!Array.isArray(it[list])) return;
     const i = it[list].indexOf(idToRemove);
     if (i >= 0) it[list].splice(i, 1);
