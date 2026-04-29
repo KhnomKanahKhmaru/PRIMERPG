@@ -73,8 +73,10 @@ export function createBioSection(ctx) {
     document.getElementById('char-archetype').textContent =
       [charData.paradigm, charData.archetype].filter(Boolean).join(' · ') || '';
 
-    // The power bar sits in the header right next to the bio, so refresh
-    // it whenever the bio is re-rendered.
+    // The XP/AP pill sits in the page header strip (top-right of the
+    // page, visible across all tabs). Refresh it whenever the bio
+    // re-renders so any stat-affecting bio edits propagate to the
+    // economy display.
     ctx.getXpBar().renderPowerBar();
 
     // Tagline / quip styling differs depending on whether there's text.
