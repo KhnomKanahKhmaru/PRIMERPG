@@ -1502,12 +1502,16 @@
       // catalogue level, the reference would be dangling.
       // Tier-prefixed display name. Same name can exist at multiple
       // tiers (Visual Requirement at all 7 tiers), so prefixing with
-      // the tier label disambiguates picker chips.
+      // the tier label disambiguates picker chips. Tier wrapped in
+      // parens so it visually stands apart from the name itself —
+      // "(Major) Visual Requirement" reads as "the Major-tier
+      // Visual Requirement" rather than running together as a single
+      // word.
       const TIER_LABELS_PICK = { minor: 'Minor', moderate: 'Moderate', major: 'Major', massive: 'Massive', monumental: 'Monumental', mega: 'Mega', mythical: 'Mythical' };
       function pickName(f) {
         const tl = TIER_LABELS_PICK[f && f.tier] || '';
         const nm = (f && f.name) || '(unnamed)';
-        return tl ? `${tl} ${nm}` : nm;
+        return tl ? `(${tl}) ${nm}` : nm;
       }
       // Each candidate carries `kind` so the dropdown can group via
       // <optgroup> ("Features" / "Flaws"). kindLabel is kept for chip
@@ -3833,11 +3837,13 @@
       const seen = new Set();
       // Tier-prefixed display name. Same name can exist at multiple
       // tiers — this disambiguates the picker chips and dropdown.
+      // Tier wrapped in parens (e.g. "(Major) Visual Requirement")
+      // so it visually stands apart from the name itself.
       const TIER_LABELS_PICK = { minor: 'Minor', moderate: 'Moderate', major: 'Major', massive: 'Massive', monumental: 'Monumental', mega: 'Mega', mythical: 'Mythical' };
       function pickName(f, ovName) {
         const tl = TIER_LABELS_PICK[f && f.tier] || '';
         const nm = ovName || (f && f.name) || '(unnamed)';
-        return tl ? `${tl} ${nm}` : nm;
+        return tl ? `(${tl}) ${nm}` : nm;
       }
       // Each candidate carries `kind` ('feature'/'flaw') for grouping
       // in the dropdown via <optgroup>, plus `source` ('builder'/'default')
