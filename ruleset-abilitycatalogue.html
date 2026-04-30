@@ -956,8 +956,13 @@
            layout in the per-Builder editor's features/flaws panes. -->
       <div class="cat-defaults-grid">
         <div class="section">
-          <div class="section-header">
+          <div class="section-header" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
             <div class="section-title">Default Features</div>
+            <div style="margin-left:auto;display:flex;gap:4px;">
+              <button class="btn small" type="button" onclick="catDefSetAllCollapsed('feature', true)" title="Collapse every row in Default Features to its header line.">Collapse all</button>
+              <button class="btn small" type="button" onclick="catDefSetAllCollapsed('feature', false)" title="Expand every row in Default Features.">Uncollapse all</button>
+              <button class="btn small" type="button" onclick="catDefSortAlpha('feature')" title="Sort rows alphabetically within each tier. Empty-name rows go to the end. Drag-order is overwritten.">Sort A→Z</button>
+            </div>
           </div>
           <p class="hint">
             Features that auto-populate every Builder in this catalogue. On each Builder, the GM
@@ -967,8 +972,13 @@
         </div>
 
         <div class="section">
-          <div class="section-header">
+          <div class="section-header" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
             <div class="section-title">Default Flaws</div>
+            <div style="margin-left:auto;display:flex;gap:4px;">
+              <button class="btn small" type="button" onclick="catDefSetAllCollapsed('flaw', true)" title="Collapse every row in Default Flaws to its header line.">Collapse all</button>
+              <button class="btn small" type="button" onclick="catDefSetAllCollapsed('flaw', false)" title="Expand every row in Default Flaws.">Uncollapse all</button>
+              <button class="btn small" type="button" onclick="catDefSortAlpha('flaw')" title="Sort rows alphabetically within each tier. Empty-name rows go to the end. Drag-order is overwritten.">Sort A→Z</button>
+            </div>
           </div>
           <p class="hint">
             Flaws that auto-populate every Builder in this catalogue. Same override rules as
@@ -1911,6 +1921,121 @@
     const key = `${kind}:${idx}`;
     if (window.__catDefRowCollapsed.has(key)) window.__catDefRowCollapsed.delete(key);
     else window.__catDefRowCollapsed.add(key);
+    renderCatDefaultFFSection();
+  };
+
+  // ── BULK ROW COLLAPSE / SORT (catalogue defaults) ──
+  // Toolbar buttons on each Default Features / Default Flaws section.
+  // Operate on every row in the section regardless of which tier band
+  // it lives in. Re-render after mutation so the visual state matches
+  // the underlying Set / array.
+
+  // Collapse-all and Uncollapse-all. We rebuild __catDefRowCollapsed
+  // for the affected kind, leaving entries for the OTHER kind alone
+  // (so collapsing all features doesn't expand the flaw rows the GM
+  // had collapsed).
+  window.catDefSetAllCollapsed = function(kind, collapsed) {
+    if (!window.__catDefRowCollapsed) window.__catDefRowCollapsed = new Set();
+    const arr = (kind === 'feature')
+      ? (state.abilityCatalogue && state.abilityCatalogue.defaultFeatures || [])
+      : (state.abilityCatalogue && state.abilityCatalogue.defaultFlaws    || []);
+    // Drop existing entries for THIS kind. Keep entries for the other.
+    const next = new Set();
+    window.__catDefRowCollapsed.forEach(key => {
+      const [k] = key.split(':');
+      if (k !== kind) next.add(key);
+    });
+    if (collapsed) {
+      arr.forEach((_, idx) => next.add(`${kind}:${idx}`));
+    }
+    window.__catDefRowCollapsed = next;
+    renderCatDefaultFFSection();
+  };
+
+  // Sort rows alphabetically by name WITHIN each tier band. Tiers stay
+  // separate because the row's `tier` field controls which band it
+  // displays under — sorting across tiers would mix rows from different
+  // bands into one ordering, which is jarring (and the rows would
+  // visually still snap back to their tier band on render anyway).
+  //
+  // Empty-name rows sort to the end so they don't crowd the top of
+  // each tier. Comparison uses localeCompare for proper Unicode
+  // handling and case-insensitivity (so "abc" doesn't sort after "Z").
+  //
+  // Side effects:
+  //   • Mutates state.abilityCatalogue.defaultFeatures/defaultFlaws
+  //     in place (array indices change)
+  //   • Per-row UI flag Sets keyed by index (collapsed/token-expanded/
+  //     extended-expanded) need to be re-keyed so flags follow rows
+  //     to their new positions. Same logic as drag-reorder uses.
+  window.catDefSortAlpha = function(kind) {
+    const cat = state.abilityCatalogue;
+    if (!cat) return;
+    const arr = (kind === 'feature') ? cat.defaultFeatures : cat.defaultFlaws;
+    if (!Array.isArray(arr) || arr.length === 0) return;
+
+    // Tag each row with its current index so we can build an
+    // oldIdx → newIdx mapping after the sort.
+    const tagged = arr.map((it, oldIdx) => ({ it, oldIdx }));
+
+    // Group by tier so sort happens within bands.
+    const TIER_ORDER_LOCAL = ['minor','moderate','major','massive','monumental','mega','mythical'];
+    const byTier = {};
+    TIER_ORDER_LOCAL.forEach(t => { byTier[t] = []; });
+    const orphans = []; // rows with unknown tier (shouldn't happen post-normalize)
+    tagged.forEach(entry => {
+      const t = (entry.it && entry.it.tier) || 'minor';
+      if (byTier[t]) byTier[t].push(entry);
+      else           orphans.push(entry);
+    });
+
+    // Sort each tier's group alphabetically by name. Empty names → end.
+    Object.keys(byTier).forEach(t => {
+      byTier[t].sort((a, b) => {
+        const na = (a.it.name || '').trim();
+        const nb = (b.it.name || '').trim();
+        if (!na && !nb) return 0;
+        if (!na) return  1;
+        if (!nb) return -1;
+        return na.localeCompare(nb, undefined, { sensitivity: 'base' });
+      });
+    });
+
+    // Rebuild the array in canonical tier order. Orphans go at the end.
+    const newArr = [];
+    TIER_ORDER_LOCAL.forEach(t => {
+      byTier[t].forEach(entry => newArr.push(entry));
+    });
+    orphans.forEach(entry => newArr.push(entry));
+
+    // Build oldIdx → newIdx map and re-key the per-row UI flag Sets.
+    const oldToNew = new Map();
+    newArr.forEach((entry, newIdx) => {
+      oldToNew.set(entry.oldIdx, newIdx);
+    });
+    function remapSet(setName) {
+      const set = window[setName];
+      if (!(set instanceof Set)) return;
+      const remapped = new Set();
+      set.forEach(key => {
+        const [k, idxStr] = key.split(':');
+        if (k !== kind) { remapped.add(key); return; }
+        const i = parseInt(idxStr, 10);
+        if (!Number.isFinite(i)) { remapped.add(key); return; }
+        const ni = oldToNew.get(i);
+        if (ni == null) return; // shouldn't happen — every old idx gets a new one
+        remapped.add(`${k}:${ni}`);
+      });
+      window[setName] = remapped;
+    }
+    remapSet('__catDefRowCollapsed');
+    remapSet('__catDefFFTokenExpanded');
+    remapSet('__catDefFFExtendedExpanded');
+
+    // Commit the new order.
+    if (kind === 'feature') cat.defaultFeatures = newArr.map(e => e.it);
+    else                    cat.defaultFlaws    = newArr.map(e => e.it);
+
     renderCatDefaultFFSection();
   };
 
