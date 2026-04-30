@@ -1710,6 +1710,9 @@
                         onchange="catDefaultFFSetField('${kind}', ${idx}, 'tier', this.value)">
                   ${TIER_ORDER.map(t => `<option value="${t}"${t === tier ? ' selected' : ''}>${TIER_LABELS[t]}</option>`).join('')}
                 </select>
+                <button class="row-x" type="button" title="Duplicate this row at the same tier"
+                        style="color:#aaa;"
+                        onclick="catDefaultFFDuplicate('${kind}', ${idx})">⎘</button>
                 <button class="row-x" type="button" title="Delete"
                         onclick="catDefaultFFRemove('${kind}', ${idx})">×</button>
               </div>
@@ -1842,6 +1845,84 @@
   window.catDefaultFFRemove = function(kind, idx) {
     const arr = getDefaultFFArr(kind);
     if (idx >= 0 && idx < arr.length) arr.splice(idx, 1);
+    renderCatDefaultFFSection();
+  };
+
+  // Duplicate a Default Feature/Flaw row. The clone is inserted
+  // directly after the source so the new row is visually adjacent
+  // (same tier band, immediately below the original). Every field
+  // copies — including requires/requiresAnyOf/excludes — except `id`,
+  // which gets a fresh synth id so the clone doesn't collide with
+  // the source.
+  //
+  // Reference fields (requires/requiresAnyOf/excludes) point at OTHER
+  // rows by id. We copy them as-is; the references stay valid because
+  // the clone lives in the same catalogue as the source. NOTE: this
+  // means a duplicated flaw shares its prereqs/excludes with the
+  // original — usually what you want when bulk-creating tier variants
+  // (each Visual Requirement tier excludes the same other 5 tiers and
+  // is excluded BY them; cloning preserves that web).
+  //
+  // The clone's name is left as-is rather than suffixed " (copy)".
+  // Rationale: the dominant use case is "I want 7 Visual Requirements
+  // at 7 tiers" — auto-suffixing would create "Visual Requirement (copy)"
+  // that the GM has to manually edit back. If they want a different
+  // name they'll type it. Empty-name cloning still produces an
+  // empty-name clone, which is fine.
+  //
+  // Per-row UI flag Sets (collapsed/token/extended) need to be re-keyed
+  // since inserting at idx+1 shifts every subsequent index up by one.
+  window.catDefaultFFDuplicate = function(kind, idx) {
+    const arr = getDefaultFFArr(kind);
+    if (idx < 0 || idx >= arr.length) return;
+    const src = arr[idx];
+    if (!src) return;
+
+    // Deep-clone via JSON round-trip — safe for plain data (no fns,
+    // no Dates, no circular refs) and matches every field in the
+    // F/F shape. Then overwrite id with a fresh one.
+    const clone = JSON.parse(JSON.stringify(src));
+    clone.id = synthDefaultFFId(kind);
+
+    const insertIdx = idx + 1;
+    arr.splice(insertIdx, 0, clone);
+
+    // Mirror the clone's excludes back to its targets. excludes is
+    // bidirectional — if A.excludes contains B, then B.excludes should
+    // contain A. Without this, cloning a row whose excludes points at
+    // 5 other rows would leave those 5 rows pointing only at the
+    // ORIGINAL, not the clone, breaking the symmetric exclusion.
+    // findCatDefById walks both defaultFeatures and defaultFlaws so it
+    // finds targets across kinds. requires/requiresAnyOf are
+    // directional and don't mirror.
+    if (Array.isArray(clone.excludes)) {
+      clone.excludes.forEach(targetId => {
+        const target = findCatDefById(targetId);
+        if (!target) return;
+        if (!Array.isArray(target.excludes)) target.excludes = [];
+        if (!target.excludes.includes(clone.id)) target.excludes.push(clone.id);
+      });
+    }
+
+    // Re-key UI flag Sets: any entry whose index is >= insertIdx
+    // for THIS kind shifts up by one. Other-kind entries unchanged.
+    function shiftSet(setName) {
+      const set = window[setName];
+      if (!(set instanceof Set)) return;
+      const remapped = new Set();
+      set.forEach(key => {
+        const [k, idxStr] = key.split(':');
+        if (k !== kind) { remapped.add(key); return; }
+        const i = parseInt(idxStr, 10);
+        if (!Number.isFinite(i)) { remapped.add(key); return; }
+        remapped.add(i >= insertIdx ? `${k}:${i + 1}` : key);
+      });
+      window[setName] = remapped;
+    }
+    shiftSet('__catDefRowCollapsed');
+    shiftSet('__catDefFFTokenExpanded');
+    shiftSet('__catDefFFExtendedExpanded');
+
     renderCatDefaultFFSection();
   };
 
