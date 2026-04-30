@@ -659,6 +659,34 @@
        they collapse to a single column so each pane gets full width.
        Each section is self-contained — its own header, hint, and tier
        bands inside — so the grid just sets the outer column behavior. */
+    /* Section cards in the Settings tab — each major settings group
+       (Catalogue Settings, Feature & Flaw Tier Costs, Default Features,
+       Default Flaws) gets its own bordered, padded card so the
+       boundary between sections is unambiguous. Without this they all
+       run together visually. The .section-title inside gets bumped
+       to a slightly heavier presentation since it now anchors a
+       full panel rather than floating inline. */
+    #main-pane-settings > .section,
+    #main-pane-settings .cat-defaults-grid > .section {
+      background: #0d0d0d;
+      border: 1px solid #1a1a1a;
+      border-radius: 6px;
+      padding: 18px 20px;
+      margin-bottom: 18px;
+    }
+    #main-pane-settings .section-title {
+      font-size: 13px; font-weight: 700;
+      letter-spacing: .12em; text-transform: uppercase;
+      color: #aaa; margin-bottom: 4px;
+    }
+    /* The hint line directly under a section title gets a touch of
+       breathing room so it doesn't sit flush against the bordered
+       title. Also a hair more muted to defer to the title. */
+    #main-pane-settings .section > .hint:first-of-type {
+      margin-bottom: 14px; color: #777;
+    }
+
+    /* Per-section grid layout for Default Features / Default Flaws. */
     .cat-defaults-grid {
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
