@@ -122,14 +122,18 @@
     #main-pane-settings textarea:focus { border-color: #555; }
     #catalogue-body select option,
     #main-pane-settings select option { background: #111; }
-    /* Optgroup labels in the requires/excludes pickers — make them
-       readable against the dark dropdown. Browsers vary in how much
-       of optgroup styling they honor (Safari ignores most of it),
-       but setting these gives the best result we can manage. */
+    /* Optgroup labels in the requires/excludes pickers — match the
+       monochrome palette of the rest of the editor (section labels at
+       #888, hint text at #666). No accent color: section dividers
+       elsewhere are flat grey, this should be too. Browser support
+       varies — Safari ignores most optgroup styling, Chrome and
+       Firefox honor color/font-style/font-weight. The label TEXT
+       itself ("Features · Major" etc.) is what carries information;
+       styling is just to make the visual hierarchy clearer. */
     #catalogue-body select optgroup,
     #main-pane-settings select optgroup {
-      background: #1a1a1a; color: #d8c060;
-      font-style: normal; font-weight: 700;
+      background: #1a1a1a; color: #aaa;
+      font-style: normal; font-weight: 600;
     }
 
     /* Hint text — small muted instructional copy. */
@@ -1500,35 +1504,39 @@
       // require or exclude either kind). Per-Builder F/F can't be
       // referenced from a catalogue-default — those don't exist at the
       // catalogue level, the reference would be dangling.
-      // Tier-prefixed display name. Same name can exist at multiple
-      // tiers (Visual Requirement at all 7 tiers), so prefixing with
-      // the tier label disambiguates picker chips. Tier wrapped in
-      // parens so it visually stands apart from the name itself —
-      // "(Major) Visual Requirement" reads as "the Major-tier
-      // Visual Requirement" rather than running together as a single
-      // word.
+      // Tier-prefixed display name for chips. Same ability name can
+      // exist at multiple tiers (Visual Requirement at all 7 tiers),
+      // so chips show the tier in parens — "(Major) Visual Requirement".
+      // The DROPDOWN doesn't need this prefix because it groups by
+      // tier via <optgroup>, so we keep both forms on each candidate:
+      //   name           — chip display, with tier paren prefix
+      //   nameWithoutTier — option display inside its tier optgroup
       const TIER_LABELS_PICK = { minor: 'Minor', moderate: 'Moderate', major: 'Major', massive: 'Massive', monumental: 'Monumental', mega: 'Mega', mythical: 'Mythical' };
       function pickName(f) {
         const tl = TIER_LABELS_PICK[f && f.tier] || '';
         const nm = (f && f.name) || '(unnamed)';
         return tl ? `(${tl}) ${nm}` : nm;
       }
-      // Each candidate carries `kind` so the dropdown can group via
-      // <optgroup> ("Features" / "Flaws"). kindLabel is kept for chip
-      // rendering — chips don't have native grouping so we still want
-      // a small visual hint there.
+      function pickNameOnly(f) { return (f && f.name) || '(unnamed)'; }
+      // Each candidate carries:
+      //   kind  — 'feature' | 'flaw' (for top-level optgroup split)
+      //   tier  — raw tier key (for sub-optgroup split by tier)
+      //   name  — chip display text with "(Tier)" prefix
+      //   nameWithoutTier — bare name for the dropdown option (since
+      //                     the optgroup label already says the tier)
+      //   kindLabel — historical, kept for compat (no longer rendered)
       const pickerCandidates = [];
       const candidateById = {};
       (Array.isArray(cat.defaultFeatures) ? cat.defaultFeatures : []).forEach(f => {
         if (f && f.id) {
-          const c = { id: f.id, name: pickName(f), kind: 'feature', kindLabel: 'Feature' };
+          const c = { id: f.id, name: pickName(f), nameWithoutTier: pickNameOnly(f), kind: 'feature', tier: (f.tier || 'minor'), kindLabel: 'Feature' };
           pickerCandidates.push(c);
           candidateById[f.id] = c;
         }
       });
       (Array.isArray(cat.defaultFlaws) ? cat.defaultFlaws : []).forEach(f => {
         if (f && f.id) {
-          const c = { id: f.id, name: pickName(f), kind: 'flaw', kindLabel: 'Flaw' };
+          const c = { id: f.id, name: pickName(f), nameWithoutTier: pickNameOnly(f), kind: 'flaw', tier: (f.tier || 'minor'), kindLabel: 'Flaw' };
           pickerCandidates.push(c);
           candidateById[f.id] = c;
         }
@@ -1557,23 +1565,37 @@
         const reqChips    = reqIds.map(id => chip(id, 'requires')).join('');
         const reqAnyChips = reqAnyIds.map(id => chip(id, 'requiresAnyOf')).join('');
         const excChips    = excIds.map(id => chip(id, 'excludes')).join('');
-        // Build optgrouped picker. <optgroup> renders as a non-selectable
-        // bold header with its children indented below — native browser
-        // behavior, no custom widget. Empty groups are omitted entirely.
-        const featureCands = availableForPicker.filter(c => c.kind === 'feature');
-        const flawCands    = availableForPicker.filter(c => c.kind === 'flaw');
+        // Build optgrouped picker. <optgroup> doesn't nest in HTML, so
+        // we use a flat list of tier-keyed groups instead — the user
+        // sees "Features · Major", "Features · Minor", "Flaws · Minor",
+        // etc. Each group lists only that tier's candidates, with the
+        // tier prefix stripped from the option labels (the optgroup
+        // label already says it). Tiers are emitted in canonical order
+        // (Minor → Mythical) so the dropdown reads top-to-bottom from
+        // the cheapest to the most powerful. Empty groups are omitted.
+        const TIER_ORDER_PICK = ['minor','moderate','major','massive','monumental','mega','mythical'];
+        const TIER_LABELS_OPT = { minor: 'Minor', moderate: 'Moderate', major: 'Major', massive: 'Massive', monumental: 'Monumental', mega: 'Mega', mythical: 'Mythical' };
         function optList(cands) {
           return cands.map(c =>
-            `<option value="${escapeHtmlAttr(c.id)}">${escapeHtml(c.name)}</option>`
+            `<option value="${escapeHtmlAttr(c.id)}">${escapeHtml(c.nameWithoutTier || c.name)}</option>`
           ).join('');
+        }
+        function buildKindGroups(kind, kindHeader) {
+          let html = '';
+          TIER_ORDER_PICK.forEach(tier => {
+            const cands = availableForPicker.filter(c => c.kind === kind && c.tier === tier);
+            if (cands.length === 0) return;
+            html += `<optgroup label="${kindHeader} · ${TIER_LABELS_OPT[tier]}">${optList(cands)}</optgroup>`;
+          });
+          return html;
         }
         let pickerOptions;
         if (availableForPicker.length === 0) {
           pickerOptions = '<option value="">(no candidates)</option>';
         } else {
-          pickerOptions = '<option value="">— pick to add —</option>';
-          if (featureCands.length > 0) pickerOptions += `<optgroup label="Features">${optList(featureCands)}</optgroup>`;
-          if (flawCands.length > 0)    pickerOptions += `<optgroup label="Flaws">${optList(flawCands)}</optgroup>`;
+          pickerOptions = '<option value="">— pick to add —</option>'
+                        + buildKindGroups('feature', 'Features')
+                        + buildKindGroups('flaw',    'Flaws');
         }
         return `
           <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:#888;flex-wrap:wrap;"
@@ -3839,23 +3861,31 @@
       // tiers — this disambiguates the picker chips and dropdown.
       // Tier wrapped in parens (e.g. "(Major) Visual Requirement")
       // so it visually stands apart from the name itself.
+      // We keep TWO display strings on each candidate:
+      //   name           — for chips, with "(Tier)" prefix
+      //   nameWithoutTier — for dropdown options (since the optgroup
+      //                     label already says the tier)
       const TIER_LABELS_PICK = { minor: 'Minor', moderate: 'Moderate', major: 'Major', massive: 'Massive', monumental: 'Monumental', mega: 'Mega', mythical: 'Mythical' };
       function pickName(f, ovName) {
         const tl = TIER_LABELS_PICK[f && f.tier] || '';
         const nm = ovName || (f && f.name) || '(unnamed)';
         return tl ? `(${tl}) ${nm}` : nm;
       }
+      function pickNameOnly(f, ovName) {
+        return ovName || (f && f.name) || '(unnamed)';
+      }
       // Each candidate carries `kind` ('feature'/'flaw') for grouping
       // in the dropdown via <optgroup>, plus `source` ('builder'/'default')
-      // so the four groups can be: Builder Features, Default Features,
-      // Builder Flaws, Default Flaws. Chips still show kindLabel as a
-      // hint (chips don't have native grouping).
+      // for the four-way kind/source split, plus `tier` for the
+      // sub-grouping by tier inside each kind/source bucket. Chips
+      // still show kindLabel as a hint (chips don't have native
+      // grouping).
       // Own features and flaws on the Builder.
       (Array.isArray(b.features) ? b.features : []).forEach(f => {
-        if (f && f.id && !seen.has(f.id)) { seen.add(f.id); out.push({ id: f.id, name: pickName(f), kind: 'feature', source: 'builder', kindLabel: 'Feature' }); }
+        if (f && f.id && !seen.has(f.id)) { seen.add(f.id); out.push({ id: f.id, name: pickName(f), nameWithoutTier: pickNameOnly(f), kind: 'feature', source: 'builder', tier: (f.tier || 'minor'), kindLabel: 'Feature' }); }
       });
       (Array.isArray(b.flaws) ? b.flaws : []).forEach(f => {
-        if (f && f.id && !seen.has(f.id)) { seen.add(f.id); out.push({ id: f.id, name: pickName(f), kind: 'flaw', source: 'builder', kindLabel: 'Flaw' }); }
+        if (f && f.id && !seen.has(f.id)) { seen.add(f.id); out.push({ id: f.id, name: pickName(f), nameWithoutTier: pickNameOnly(f), kind: 'flaw', source: 'builder', tier: (f.tier || 'minor'), kindLabel: 'Flaw' }); }
       });
       // Catalogue defaults (visible to this Builder unless suppressed).
       // Per-Builder overrides may rename — pickName picks the override
@@ -3866,8 +3896,9 @@
           const ov = (b.defaultFeatureOverrides || {})[f.id];
           if (ov && ov.suppressed) return;
           seen.add(f.id);
-          const effTier = (ov && typeof ov.tier === 'string') ? ov.tier : f.tier;
-          out.push({ id: f.id, name: pickName({ tier: effTier }, (ov && ov.name) || f.name), kind: 'feature', source: 'default', kindLabel: 'Default Feature' });
+          const effTier = (ov && typeof ov.tier === 'string') ? ov.tier : (f.tier || 'minor');
+          const ovName = (ov && ov.name) || f.name;
+          out.push({ id: f.id, name: pickName({ tier: effTier }, ovName), nameWithoutTier: pickNameOnly(null, ovName), kind: 'feature', source: 'default', tier: effTier, kindLabel: 'Default Feature' });
         }
       });
       (Array.isArray(cat.defaultFlaws) ? cat.defaultFlaws : []).forEach(f => {
@@ -3875,8 +3906,9 @@
           const ov = (b.defaultFlawOverrides || {})[f.id];
           if (ov && ov.suppressed) return;
           seen.add(f.id);
-          const effTier = (ov && typeof ov.tier === 'string') ? ov.tier : f.tier;
-          out.push({ id: f.id, name: pickName({ tier: effTier }, (ov && ov.name) || f.name), kind: 'flaw', source: 'default', kindLabel: 'Default Flaw' });
+          const effTier = (ov && typeof ov.tier === 'string') ? ov.tier : (f.tier || 'minor');
+          const ovName = (ov && ov.name) || f.name;
+          out.push({ id: f.id, name: pickName({ tier: effTier }, ovName), nameWithoutTier: pickNameOnly(null, ovName), kind: 'flaw', source: 'default', tier: effTier, kindLabel: 'Default Flaw' });
         }
       });
       return out;
@@ -3918,25 +3950,39 @@
       const reqChips    = reqIds.map(id => chip(id, 'requires')).join('');
       const reqAnyChips = reqAnyIds.map(id => chip(id, 'requiresAnyOf')).join('');
       const excChips    = excIds.map(id => chip(id, 'excludes')).join('');
-      // Build optgrouped picker. Four buckets: Builder/Default × Feature/Flaw.
-      const builderFeatures = availableForPicker.filter(c => c.kind === 'feature' && c.source === 'builder');
-      const defaultFeatures = availableForPicker.filter(c => c.kind === 'feature' && c.source === 'default');
-      const builderFlaws    = availableForPicker.filter(c => c.kind === 'flaw'    && c.source === 'builder');
-      const defaultFlaws    = availableForPicker.filter(c => c.kind === 'flaw'    && c.source === 'default');
+      // Build optgrouped picker. <optgroup> doesn't nest, so we emit
+      // a flat list of tier-keyed groups, but we maintain the four
+      // top-level buckets via the optgroup LABEL: "Features · Major",
+      // "Default Features · Minor", "Flaws · Mythical" etc. Tiers are
+      // emitted in canonical order (Minor → Mythical) so the dropdown
+      // reads top-to-bottom from cheapest to most powerful within each
+      // section. Empty buckets and empty tiers are omitted entirely
+      // so the dropdown only shows what's actually pickable.
+      const TIER_ORDER_PICK = ['minor','moderate','major','massive','monumental','mega','mythical'];
+      const TIER_LABELS_OPT = { minor: 'Minor', moderate: 'Moderate', major: 'Major', massive: 'Massive', monumental: 'Monumental', mega: 'Mega', mythical: 'Mythical' };
       function optList(cands) {
         return cands.map(c =>
-          `<option value="${escapeHtmlAttr(c.id)}">${escapeHtml(c.name)}</option>`
+          `<option value="${escapeHtmlAttr(c.id)}">${escapeHtml(c.nameWithoutTier || c.name)}</option>`
         ).join('');
+      }
+      function buildBucket(kindFilter, sourceFilter, header) {
+        let html = '';
+        TIER_ORDER_PICK.forEach(tier => {
+          const cands = availableForPicker.filter(c => c.kind === kindFilter && c.source === sourceFilter && c.tier === tier);
+          if (cands.length === 0) return;
+          html += `<optgroup label="${header} · ${TIER_LABELS_OPT[tier]}">${optList(cands)}</optgroup>`;
+        });
+        return html;
       }
       let pickerOptions;
       if (availableForPicker.length === 0) {
         pickerOptions = '<option value="">(no candidates)</option>';
       } else {
-        pickerOptions = '<option value="">— pick to add —</option>';
-        if (builderFeatures.length > 0) pickerOptions += `<optgroup label="Features (this Builder)">${optList(builderFeatures)}</optgroup>`;
-        if (defaultFeatures.length > 0) pickerOptions += `<optgroup label="Default Features (catalogue)">${optList(defaultFeatures)}</optgroup>`;
-        if (builderFlaws.length > 0)    pickerOptions += `<optgroup label="Flaws (this Builder)">${optList(builderFlaws)}</optgroup>`;
-        if (defaultFlaws.length > 0)    pickerOptions += `<optgroup label="Default Flaws (catalogue)">${optList(defaultFlaws)}</optgroup>`;
+        pickerOptions = '<option value="">— pick to add —</option>'
+                      + buildBucket('feature', 'builder', 'Features (this Builder)')
+                      + buildBucket('feature', 'default', 'Default Features')
+                      + buildBucket('flaw',    'builder', 'Flaws (this Builder)')
+                      + buildBucket('flaw',    'default', 'Default Flaws');
       }
       return `
         <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:#888;flex-wrap:wrap;"
